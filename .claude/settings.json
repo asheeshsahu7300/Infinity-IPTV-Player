@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const RN = require\\('react-native'\\); console.log\\('TVFocusGuideView' in RN ? 'YES' : 'NO'\\); console.log\\('useTVEventHandler' in RN ? 'useTVEventHandler: YES' : 'useTVEventHandler: NO'\\); console.log\\('TVEventHandler' in RN ? 'TVEventHandler: YES' : 'TVEventHandler: NO'\\);\")"
+    ]
+  }
+}

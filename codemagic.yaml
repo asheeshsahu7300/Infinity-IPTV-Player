@@ -1,0 +1,20 @@
+workflows:
+  android-release:
+    name: Build Android APK/AAB
+    instance_type: mac_mini_m2
+    environment:
+      node: 20.19.4
+    scripts:
+      - name: Install Dependencies
+        script: |
+          yarn install --frozen-lockfile
+
+      - name: Build Android Release
+        script: |
+          cd android
+          ./gradlew bundleRelease
+          ./gradlew assembleRelease
+
+    artifacts:
+      - android/app/build/outputs/**/*.apk
+      - android/app/build/outputs/**/*.aab
