@@ -306,6 +306,8 @@ export class XtreamApi {
           name: ep.title,
           episodeNum: ep.episode_num,
           streamUrl: this.buildSeriesUrl(ep.id, ep.container_extension),
+          description: ep.info?.plot || ep.info?.description || undefined,
+          duration: ep.info?.duration || ep.info?.duration_secs ? `${ep.info.duration || ep.info.duration_secs}` : undefined,
         })),
       }));
 

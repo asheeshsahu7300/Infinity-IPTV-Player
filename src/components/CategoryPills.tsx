@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, FlatList, Platform, Animated } from 'react-native';
 import { Category } from '../store/portalStore';
+import { THEME } from '../theme/tokens';
 
 interface CategoryPillsProps {
   categories: Category[];
@@ -171,18 +172,18 @@ const styles = StyleSheet.create({
   },
 
   pillActive: {
-    backgroundColor: "#d60f6f",
+    backgroundColor: THEME.colors.primary,
   },
 
   pillFocused: {
-    borderColor: "#d60f6f",
+    borderColor: THEME.colors.primary,
     backgroundColor: "#1f2937",
     zIndex: 10,
   },
 
   pillText: {
     color: "#888",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "500",
     lineHeight: 18,
   },

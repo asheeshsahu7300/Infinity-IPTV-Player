@@ -475,7 +475,7 @@ export default function SeriesDetailsScreen() {
               {`S${currentSeason?.seasonNumber || ""} E${selectedEpisode?.episodeNum || ""} : ${selectedEpisode?.name || ""}`}
             </Text>
             <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-              {params.description || "Continue your journey with this episode. High-definition streaming ready for playback."}
+              {selectedEpisode?.description || params.description || "Continue your journey with this episode. High-definition streaming ready for playback."}
             </Text>
             <View style={S.modalMetaRow}>
               {selectedEpisode?.duration && (

@@ -22,6 +22,7 @@ import {
 } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
 import { isTV } from "../src/utils/tvUtils";
+import { THEME } from "../src/theme/tokens";
 
 type FavoriteType = "channels" | "vod" | "series";
 
@@ -129,7 +130,7 @@ const FavoriteListItem = ({
         <Ionicons
           name={item.type === "series" ? "chevron-forward" : "play-circle"}
           size={isTV ? 36 : 28}
-          color="#d60f6f"
+          color={THEME.colors.primary}
         />
       </Pressable>
     </Animated.View>
@@ -473,7 +474,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   typeButtonActive: {
-    backgroundColor: "#d60f6f",
+    backgroundColor: THEME.colors.primary,
   },
   typeButtonText: {
     color: "#888",
@@ -513,7 +514,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#1e3a5f",
     borderColor: "#fff",
     borderWidth: 2,
-    shadowColor: "#d60f6f",
+    shadowColor: THEME.colors.primary,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 15,
@@ -579,7 +580,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   focusedHeaderButton: {
-    backgroundColor: 'rgba(214, 15, 111, 0.4)',
+    backgroundColor: THEME.colors.primary + '66',
     borderColor: '#fff',
     borderWidth: 1,
     transform: [{ scale: 1.1 }],
@@ -587,10 +588,10 @@ const styles = StyleSheet.create({
   focusedTypeButton: {
     borderColor: '#fff',
     borderWidth: 2,
-    backgroundColor: 'rgba(214, 15, 111, 0.4)',
+    backgroundColor: THEME.colors.primary + '66',
     transform: [{ scale: 1.1 }],
     zIndex: 10,
-    shadowColor: "#d60f6f",
+    shadowColor: THEME.colors.primary,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 10,

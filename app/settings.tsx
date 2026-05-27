@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePortalStore } from '../src/store/portalStore';
 import { isTV } from '../src/utils/tvUtils';
 import { LinearGradient } from 'expo-linear-gradient';
+import { THEME } from '../src/theme/tokens';
 import { BlurView } from 'expo-blur';
 import MaskedView from "@react-native-masked-view/masked-view";
 import { Focusable, FocusGroup } from "../src/tv";
@@ -151,7 +152,7 @@ export default function SettingsScreen() {
   const renderBentoContent = (icon: any, title: string, subtitle: string) => (
     <>
       <View style={S.bentoIconBox}>
-        <Ionicons name={icon} size={ps(2)} color="#ff1b8a" />
+        <Ionicons name={icon} size={ps(2)} color={THEME.colors.primary} />
       </View>
       <View>
         <GradientText
@@ -230,7 +231,7 @@ export default function SettingsScreen() {
               >
                 {(focused) => (
                   <LinearGradient
-                    colors={["#d60f6f", "#4c00ff"]}
+                    colors={[THEME.colors.primary, THEME.colors.secondary]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={[S.disconnectBtnGradient, focused && S.disconnectBtnFocused]}
@@ -300,7 +301,7 @@ export default function SettingsScreen() {
               {(focused) => (
                 focused ? (
                   <LinearGradient
-                    colors={["#d60f6f", "#4c00ff"]}
+                    colors={[THEME.colors.primary, THEME.colors.secondary]}
                     style={S.bentoGradientBorder}
                   >
                     <View style={[S.bentoCard, S.bentoCardFocused]}>
@@ -319,7 +320,7 @@ export default function SettingsScreen() {
               {(focused) => (
                 focused ? (
                   <LinearGradient
-                    colors={["#d60f6f", "#4c00ff"]}
+                    colors={[THEME.colors.primary, THEME.colors.secondary]}
                     style={S.bentoGradientBorder}
                   >
                     <View style={[S.bentoCard, S.bentoCardFocused]}>
@@ -389,7 +390,7 @@ const S = StyleSheet.create({
     justifyContent: 'center',
   },
   backBtnFocused: {
-    backgroundColor: '#d60f6f',
+    backgroundColor: THEME.colors.primary,
     transform: [{ scale: 1.1 }],
   },
   brandingText: {
@@ -410,7 +411,7 @@ const S = StyleSheet.create({
   },
   headerSubtitleAccent: {
     fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: "#ff1b8a",
+    color: THEME.colors.primary,
     fontWeight: "600",
     letterSpacing: 2,
     textAlign: "center",
@@ -445,7 +446,7 @@ const S = StyleSheet.create({
   settingItemFocused: {
     backgroundColor: '#1D1B20',
     borderWidth: 0,
-    shadowColor: "#ff1b8a",
+    shadowColor: THEME.colors.primary,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.3,
     shadowRadius: 15,
@@ -526,7 +527,7 @@ const S = StyleSheet.create({
     borderRadius: ps(1.2),
     overflow: 'hidden',
     // Shadow for gradient button
-    shadowColor: "#ff1b8a",
+    shadowColor: THEME.colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5,
     shadowRadius: 10,
@@ -574,7 +575,7 @@ const S = StyleSheet.create({
     marginRight: pw(2),
   },
   innerIconBoxFocused: {
-    backgroundColor: '#ff1b8a20',
+    backgroundColor: THEME.colors.primary + '20',
   },
   innerTextContent: {
     flex: 1,
@@ -623,7 +624,7 @@ const S = StyleSheet.create({
   bentoCardFocused: {
     backgroundColor: '#1D1B20',
     borderWidth: 0,
-    shadowColor: "#ff1b8a",
+    shadowColor: THEME.colors.primary,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.3,
     shadowRadius: 15,
@@ -659,7 +660,7 @@ const S = StyleSheet.create({
     padding: 2,
   },
   customSwitchActive: {
-    backgroundColor: '#ff1b8a',
+    backgroundColor: THEME.colors.primary,
   },
   switchKnob: {
     width: ps(1.8),
@@ -682,7 +683,7 @@ const S = StyleSheet.create({
   statValue: {
     fontSize: ps(4),
     fontWeight: '300',
-    color: '#ff1b8a',
+    color: THEME.colors.primary,
   },
   statLabel: {
     fontSize: ps(1.1),

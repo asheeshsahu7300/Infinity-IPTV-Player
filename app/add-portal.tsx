@@ -90,7 +90,7 @@ const GradientBorderCard = ({
         },
         focused && {
           transform: [{ scale: 1.05 }],
-          shadowColor: "#d60f6f",
+          shadowColor: THEME.colors.primary,
           shadowOffset: { width: 0, height: 0 },
           shadowOpacity: 0.55,
           shadowRadius: pw(1.2),
@@ -142,7 +142,7 @@ const GradientBorderInput = ({
 
   return (
     <LinearGradient
-      colors={isFocused ? ["#d60f6f", "#4c00ff"] : ["transparent", "transparent"]}
+      colors={isFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["transparent", "transparent"]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 0 }}
       style={[{ borderRadius: RADIUS, padding: isFocused ? BORDER : 0 }, style]}
@@ -528,7 +528,7 @@ export default function AddPortalScreen() {
             >
               {(focused) => (
                 <LinearGradient
-                  colors={["#d60f6f", "#5b21ff"]}
+                  colors={[THEME.colors.primary, THEME.colors.secondary]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0.5 }}
                   style={S.connectBtnGradient}
@@ -697,7 +697,7 @@ const S = StyleSheet.create({
     lineHeight: ph(3.2),
   },
   premiumText: {
-    color: "#ff1b8a",
+    color: THEME.colors.primary,
     fontWeight: "800",
   },
   cardsContainer: {
@@ -763,7 +763,7 @@ const S = StyleSheet.create({
   },
   premiumTopActionBtnFocused: {
     borderWidth: 2,
-    borderColor: "#ff1b8a",
+    borderColor: THEME.colors.primary,
   },
   premiumSupportBtn: {
     flexDirection: "row",

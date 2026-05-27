@@ -533,6 +533,7 @@ export const portalApi = {
               episodeNum: epNum,
               seasonNum,
               cmd: s.cmd,
+              description: pickDescription(s),
             };
           });
         } else if (Array.isArray(s.series)) {
@@ -545,6 +546,7 @@ export const portalApi = {
                 episodeNum: epNum,
                 seasonNum,
                 cmd: s.cmd,
+                description: pickDescription(s),
               };
             }
             const epNum = Number(
@@ -556,6 +558,8 @@ export const portalApi = {
               episodeNum: epNum,
               seasonNum,
               cmd: item.cmd ?? s.cmd,
+              description: pickDescription(item) || pickDescription(s),
+              duration: item.time ?? item.duration ?? undefined,
             };
           });
         }

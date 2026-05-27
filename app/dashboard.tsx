@@ -43,7 +43,7 @@ const PORTRAIT_H = PORTRAIT_W * 1.5;
 const LANDSCAPE_W = pw(isTV ? 12 : 26);
 const LANDSCAPE_H = LANDSCAPE_W * (9 / 16);
 
-const GRADIENT_COLORS = ["#d60f6f", "#4c00ff"] as const;
+const GRADIENT_COLORS = [THEME.colors.primary, THEME.colors.secondary] as const;
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
@@ -183,7 +183,7 @@ const HeroPill = ({
           focused && { transform: [{ scale: 1.08 }] }
         ]}>
           <LinearGradient
-            colors={focused ? ["#ff1b8a", "#4c00ff"] : ["rgba(255,255,255,0.08)", "rgba(255,255,255,0.05)"]}
+            colors={focused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.08)", "rgba(255,255,255,0.05)"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={S.heroPillGradient}

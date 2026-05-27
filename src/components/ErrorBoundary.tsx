@@ -1,6 +1,7 @@
 import React, { Component, ReactNode } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { THEME } from '../theme/tokens';
 
 interface Props {
   children: ReactNode;
@@ -64,7 +65,7 @@ export default class ErrorBoundary extends Component<Props, State> {
       if (this.state.attempt < MAX_AUTO_RETRIES) {
         return (
           <View style={styles.container}>
-            <ActivityIndicator size="large" color="#d60f6f" />
+            <ActivityIndicator size="large" color={THEME.colors.primary} />
           </View>
         );
       }
@@ -137,7 +138,7 @@ const styles = StyleSheet.create({
   button: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#d60f6f',
+    backgroundColor: THEME.colors.primary,
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 12,

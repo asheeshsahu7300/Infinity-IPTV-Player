@@ -21,6 +21,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { Focusable } from "../src/tv";
+import { THEME } from "../src/theme/tokens";
 
 // ─── Percentage helpers ───────────────────────────────────────────────────────
 const { width: W, height: H } = Dimensions.get("window");
@@ -117,7 +118,7 @@ export default function PortalsScreen() {
       case "m3u": return { icon: "play-circle-outline", color: "#10b981" };
       case "xtream": return { icon: "cloud-download-outline", color: "#3b82f6" };
       case "mag": return { icon: "tv-outline", color: "#f59e0b" };
-      default: return { icon: "server-outline", color: "#d60f6f" };
+      default: return { icon: "server-outline", color: THEME.colors.primary };
     }
   };
 
@@ -129,11 +130,11 @@ export default function PortalsScreen() {
     return (
       <>
         <View style={S.cardHeader}>
-          <View style={[S.cardIconBox, { backgroundColor: isActive ? "#ff1b8a20" : "rgba(255,255,255,0.03)" }]}>
+          <View style={[S.cardIconBox, { backgroundColor: isActive ? THEME.colors.primary + '20' : "rgba(255,255,255,0.03)" }]}>
             <Ionicons
               name={getPortalTypeInfo(item.type).icon as any}
               size={ps(3.5)}
-              color={isActive ? "#ff1b8a" : "#9ca3af"}
+              color={isActive ? THEME.colors.primary : "#9ca3af"}
             />
           </View>
           {isActive && (
@@ -202,7 +203,7 @@ export default function PortalsScreen() {
         >
           {isFocused ? (
             <LinearGradient
-              colors={["#d60f6f", "#4c00ff"]}
+              colors={[THEME.colors.primary, THEME.colors.secondary]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={S.gradientBorder}
@@ -240,14 +241,14 @@ export default function PortalsScreen() {
       >
         {(focused) => (
           <LinearGradient
-            colors={focused ? ["#d60f6f", "#4c00ff"] : ["transparent", "transparent"]}
+            colors={focused ? [THEME.colors.primary, THEME.colors.secondary] : ["transparent", "transparent"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={[
               { padding: focused ? 1.5 : 0, borderRadius: ps(1) },
               focused && {
                 transform: [{ scale: 1.06 }],
-                shadowColor: "#d60f6f",
+                shadowColor: THEME.colors.primary,
                 shadowOpacity: 0.6,
                 shadowRadius: 12,
                 elevation: 12,
@@ -300,12 +301,12 @@ export default function PortalsScreen() {
             >
               {(focused) => (
                 <LinearGradient
-                  colors={["#d60f6f", "#4c00ff"]}
+                  colors={[THEME.colors.primary, THEME.colors.secondary]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={[
                     S.addButtonLarge,
-                    focused && { transform: [{ scale: 1.06 }], shadowColor: "#d60f6f", shadowOpacity: 0.7, shadowRadius: 14, elevation: 14 },
+                    focused && { transform: [{ scale: 1.06 }], shadowColor: THEME.colors.primary, shadowOpacity: 0.7, shadowRadius: 14, elevation: 14 },
                   ]}
                 >
                   <Text style={S.addButtonText}>GET STARTED</Text>
@@ -383,10 +384,10 @@ const S = StyleSheet.create({
   },
   headerSubtitleAccent: {
     fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: "#ff1b8a",
-    fontWeight: "600",
+    color: THEME.colors.primary,
+    fontWeight: '600',
     letterSpacing: 2,
-    textAlign: "center",
+    textAlign: 'center',
   },
   actionArea: {
     alignItems: "center",
@@ -405,6 +406,7 @@ const S = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
     gap: pw(1),
+    borderRadius: ps(1),
   },
   addBtnText: {
     color: "rgba(255,255,255,0.8)",
@@ -461,7 +463,7 @@ const S = StyleSheet.create({
   portalCardFocused: {
     backgroundColor: "#222026",
     // Intense focus glow
-    shadowColor: "#ff1b8a",
+    shadowColor: THEME.colors.primary,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.4,
     shadowRadius: 25,
@@ -529,7 +531,7 @@ const S = StyleSheet.create({
   },
   cardTypeLabel: {
     fontSize: ps(1.6),
-    color: "#ff1b8a",
+    color: THEME.colors.primary,
     fontWeight: "500",
     letterSpacing: 4,
   },
@@ -550,7 +552,7 @@ const S = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.08)",
   },
   exploreBtnFocused: {
-    borderColor: "#ff1b8a",
+    borderColor: THEME.colors.primary,
     backgroundColor: "rgba(255,255,255,0.1)",
     transform: [{ scale: 1.05 }],
   },
@@ -593,6 +595,7 @@ const S = StyleSheet.create({
     paddingVertical: ph(2),
     alignItems: "center",
     justifyContent: "center",
+    borderRadius: ps(1),
   },
   addButtonText: {
     color: "#fff",

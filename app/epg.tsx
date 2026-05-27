@@ -339,7 +339,7 @@ export default function EPGScreen() {
 
       {/* Bottom Shortcuts */}
       <View style={S.bottomBar}>
-        <View style={S.statusItem}><View style={[S.dot, {backgroundColor: '#ff1b8a'}]} /><Text style={S.statusText}>LIVE NOW</Text></View>
+        <View style={S.statusItem}><View style={[S.dot, {backgroundColor: THEME.colors.primary}]} /><Text style={S.statusText}>LIVE NOW</Text></View>
         <View style={S.statusItem}><View style={[S.dot, {backgroundColor: '#7e8299'}]} /><Text style={S.statusText}>RECORDED</Text></View>
       </View>
     </View>

@@ -63,14 +63,14 @@ const ResultCard = ({ item, onPress, onFocus }: any) => (
   >
     {(focused) => (
       <LinearGradient
-        colors={focused ? ["#d60f6f", "#4c00ff"] : ["transparent", "transparent"]}
+        colors={focused ? [THEME.colors.primary, THEME.colors.secondary] : ["transparent", "transparent"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[
           { flex: 1, borderRadius: ps(1.2), padding: focused ? 1.5 : 0 },
           focused && {
             transform: [{ scale: 1.06 }],
-            shadowColor: "#ff1b8a",
+            shadowColor: THEME.colors.primary,
             shadowOffset: { width: 0, height: 6 },
             shadowOpacity: 0.6,
             shadowRadius: 10,
@@ -300,7 +300,7 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
           >
             {(focused) => (
               <LinearGradient
-                colors={focused || searchFocused ? ["#d60f6f", "#4c00ff"] : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
+                colors={focused || searchFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={[S.searchBarGradient, (focused || searchFocused) && S.searchBarFocused]}
@@ -365,7 +365,7 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
                   ]}>
                     {isActive && (
                       <LinearGradient
-                        colors={["#ff1b8a", "#8e2de2"]}
+                        colors={[THEME.colors.primary, THEME.colors.secondary]}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
                         style={StyleSheet.absoluteFillObject}
@@ -387,7 +387,7 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
         <FocusGroup>
           <View style={S.trendingInline}>
             <View style={S.sectionLabelRow}>
-              <MaterialCommunityIcons name="trending-up" size={ps(1.6)} color="#ff1b8a" />
+              <MaterialCommunityIcons name="trending-up" size={ps(1.6)} color={THEME.colors.primary} />
               <Text style={S.sectionLabel}>Trending Searches</Text>
             </View>
             <View style={S.pillRow}>
@@ -403,7 +403,7 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
       <FocusGroup style={S.resultsArea}>
         {isLoading && (
           <View style={S.loadingInline}>
-            <ActivityIndicator color="#ff1b8a" />
+            <ActivityIndicator color={THEME.colors.primary} />
           </View>
         )}
         <FlatList
@@ -554,7 +554,7 @@ const S = StyleSheet.create({
     padding: 1.5,
   },
   searchBarFocused: {
-    shadowColor: "#ff1b8a",
+    shadowColor: THEME.colors.primary,
     shadowOpacity: 0.7,
     shadowRadius: 16,
     elevation: 12,

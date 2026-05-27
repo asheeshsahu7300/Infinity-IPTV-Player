@@ -599,7 +599,7 @@ export default function VODScreen() {
         >
           {(focused) => (
             <LinearGradient
-              colors={focused || searchFocused ? ["#d60f6f", "#4c00ff"] : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
+              colors={focused || searchFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={[S.searchGradient, (focused || searchFocused) && S.searchFocused]}
