@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,6 @@ import {
   PanResponder,
   ScrollView,
   BackHandler,
-  useTVEventHandler,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -24,10 +23,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useKeepAwake } from "expo-keep-awake";
-import { Image } from "expo-image";
 import { StreamManager } from "../src/services/StreamManager";
-import { usePortalStore, Channel, Category } from "../src/store/portalStore";
-import { cacheManager } from "../src/services/cacheManager";
+import { usePortalStore } from "../src/store/portalStore";
 import { isTV } from "../src/utils/tvUtils";
 import { THEME, ps, pw, ph } from "../src/theme/tokens";
 import { Focusable, FocusGroup, Overlay, useDPad } from "../src/tv";
@@ -60,18 +57,6 @@ export default function PlayerScreen() {
   const activePortal = usePortalStore((s) => s.activePortal);
 
   const isLive = params.type === "live";
-
-  // Dynamic channel playback state (for live tv zapping inside player)
-  const [currentChannelId, setCurrentChannelId] = useState(params.contentId || "");
-  const [currentTitle, setCurrentTitle] = useState(params.title || "");
-  const [currentCmd, setCurrentCmd] = useState(params.cmd || "");
-
-  // Channel Guide Menu states
-  const [allChannels, setAllChannels] = useState<Channel[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [menuSelectedCategory, setMenuSelectedCategory] = useState<string>("all");
-  const [showMenu, setShowMenu] = useState(false);
-  const [digitInput, setDigitInput] = useState("");
 
   // Update isSeekable based on content type
   useEffect(() => {
@@ -141,7 +126,6 @@ export default function PlayerScreen() {
   const showAudioModalRef = useRef(showAudioModal);
   const showSubtitleModalRef = useRef(showSubtitleModal);
   const seekBarFocusedRef = useRef(seekBarFocused);
-  const showMenuRef = useRef(showMenu);
 
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
   useEffect(() => { showControlsRef.current = showControls; }, [showControls]);
@@ -149,7 +133,6 @@ export default function PlayerScreen() {
   useEffect(() => { showAudioModalRef.current = showAudioModal; }, [showAudioModal]);
   useEffect(() => { showSubtitleModalRef.current = showSubtitleModal; }, [showSubtitleModal]);
   useEffect(() => { seekBarFocusedRef.current = seekBarFocused; }, [seekBarFocused]);
-  useEffect(() => { showMenuRef.current = showMenu; }, [showMenu]);
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -176,26 +159,15 @@ export default function PlayerScreen() {
         ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
       }
       Brightness.restoreSystemBrightnessAsync();
-      if (currentChannelIdRef.current && position > 0 && duration > 0) {
-        StreamManager.savePlaybackPosition(currentChannelIdRef.current, position, duration);
+      if (params.contentId && position > 0 && duration > 0) {
+        StreamManager.savePlaybackPosition(params.contentId, position, duration);
       }
     };
   }, []);
 
-  // Track latest currentChannelId in a ref for cleanup/listeners
-  const currentChannelIdRef = useRef(currentChannelId);
-  useEffect(() => {
-    currentChannelIdRef.current = currentChannelId;
-  }, [currentChannelId]);
-
   // Handle hardware back button: hide controls first, then navigate back
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      // If menu is open, close it
-      if (showMenuRef.current) {
-        setShowMenu(false);
-        return true;
-      }
       // If a modal is open, close it (the Overlay handles this itself)
       if (showAudioModalRef.current || showSubtitleModalRef.current) {
         return false; // Let Overlay handle it
@@ -207,14 +179,14 @@ export default function PlayerScreen() {
         return true;
       }
       // Controls are hidden – navigate back
-      if (currentChannelIdRef.current && position > 0 && duration > 0) {
-        StreamManager.savePlaybackPosition(currentChannelIdRef.current, position, duration);
+      if (params.contentId && position > 0 && duration > 0) {
+        StreamManager.savePlaybackPosition(params.contentId, position, duration);
       }
       router.back();
       return true;
     });
     return () => sub.remove();
-  }, [position, duration]);
+  }, [position, duration, params.contentId]);
 
   useEffect(() => {
     const loadSettingsAndResume = async () => {
@@ -225,8 +197,8 @@ export default function PlayerScreen() {
           if (typeof parsed.autoPlay === "boolean") setAutoPlay(parsed.autoPlay);
         }
 
-        if (currentChannelId && params.type !== "live") {
-          const savedPosition = await StreamManager.getPlaybackPosition(currentChannelId);
+        if (params.contentId && params.type !== "live") {
+          const savedPosition = await StreamManager.getPlaybackPosition(params.contentId);
           if (savedPosition && savedPosition.position > 0) {
             const remainingTime = savedPosition.duration - savedPosition.position;
             if (remainingTime > 5000) {
@@ -240,47 +212,7 @@ export default function PlayerScreen() {
       }
     };
     loadSettingsAndResume();
-  }, [currentChannelId, params.type]);
-
-  // Load live guide channels and categories on mount
-  useEffect(() => {
-    if (!isLive || !activePortal) return;
-    const loadLiveGuideContent = async () => {
-      try {
-        const cacheKey = `portal:${activePortal.id}:live:channels:search:all`;
-        const cached = await cacheManager.get<Channel[]>(cacheKey);
-        if (cached && cached.length > 0) {
-          setAllChannels(cached);
-          
-          // Set initial category selection based on current channel
-          const activeChan = cached.find(c => c.id === currentChannelId);
-          if (activeChan && activeChan.categoryId) {
-            setMenuSelectedCategory(activeChan.categoryId);
-          }
-        } else {
-          // Fallback to store channels
-          const storeChans = usePortalStore.getState().channels;
-          if (storeChans && storeChans.length > 0) {
-            setAllChannels(storeChans);
-            const activeChan = storeChans.find(c => c.id === currentChannelId);
-            if (activeChan && activeChan.categoryId) {
-              setMenuSelectedCategory(activeChan.categoryId);
-            }
-          }
-        }
-
-        // Load categories
-        const storeCats = usePortalStore.getState().categories;
-        const liveCats = (storeCats || []).filter(c => c.type === "live");
-        // Prepend "All Channels" category
-        const allCats = [{ id: "all", name: "All Channels", type: "live" as const }, ...liveCats];
-        setCategories(allCats);
-      } catch (e) {
-        console.error("Failed to load live guide content", e);
-      }
-    };
-    loadLiveGuideContent();
-  }, [isLive, activePortal]);
+  }, [params.contentId, params.type]);
 
   const resetControlsTimeout = useCallback(() => {
     if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
@@ -366,93 +298,6 @@ export default function PlayerScreen() {
     lastTapTime.current = now;
   };
 
-  // Helper to filter channels by selected category
-  const filteredChannels = useMemo(() => {
-    if (!menuSelectedCategory || menuSelectedCategory === "all") return allChannels;
-    return allChannels.filter(c => String(c.categoryId) === String(menuSelectedCategory));
-  }, [allChannels, menuSelectedCategory]);
-
-  const digitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (digitTimeoutRef.current) clearTimeout(digitTimeoutRef.current);
-    };
-  }, []);
-
-  // Play a specific channel inside player
-  const playChannel = useCallback(async (channel: Channel) => {
-    if (!activePortal) return;
-    setIsLoading(true);
-    setIsBuffering(false);
-    try {
-      let url = channel.streamUrl || "";
-      if (activePortal.type === "mag") {
-        const result = await StreamManager.getStreamUrl(channel, activePortal, "itv");
-        if (result.success && result.url) url = result.url;
-      }
-      setStreamUrl(url);
-      setCurrentChannelId(channel.id);
-      setCurrentTitle(channel.name);
-      setCurrentCmd(channel.streamUrl || "");
-      setPosition(0);
-      setDuration(0);
-      setVlcPosition(0);
-      setIsPlaying(true);
-      retryCount.current = 0; // reset retry count
-      
-      // Update menu category to match the new channel
-      if (channel.categoryId) {
-        setMenuSelectedCategory(channel.categoryId);
-      }
-    } catch (e) {
-      console.error("Failed to switch channel:", e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activePortal]);
-
-  // Zap functions
-  const zapNext = useCallback(() => {
-    if (filteredChannels.length === 0) return;
-    const currentIndex = filteredChannels.findIndex(c => c.id === currentChannelId);
-    let nextIndex = 0;
-    if (currentIndex !== -1) {
-      nextIndex = (currentIndex + 1) % filteredChannels.length;
-    }
-    const nextChannel = filteredChannels[nextIndex];
-    if (nextChannel) playChannel(nextChannel);
-  }, [filteredChannels, currentChannelId, playChannel]);
-
-  const zapPrevious = useCallback(() => {
-    if (filteredChannels.length === 0) return;
-    const currentIndex = filteredChannels.findIndex(c => c.id === currentChannelId);
-    let prevIndex = filteredChannels.length - 1;
-    if (currentIndex !== -1) {
-      prevIndex = (currentIndex - 1 + filteredChannels.length) % filteredChannels.length;
-    }
-    const prevChannel = filteredChannels[prevIndex];
-    if (prevChannel) playChannel(prevChannel);
-  }, [filteredChannels, currentChannelId, playChannel]);
-
-  // Digit channel select
-  const handleDigitInput = useCallback((digit: string) => {
-    if (!isLive) return;
-    setDigitInput(prev => {
-      const nextVal = prev + digit;
-      if (digitTimeoutRef.current) clearTimeout(digitTimeoutRef.current);
-      digitTimeoutRef.current = setTimeout(() => {
-        const targetIndex = parseInt(nextVal, 10);
-        if (!isNaN(targetIndex) && targetIndex > 0 && targetIndex <= filteredChannels.length) {
-          const targetChannel = filteredChannels[targetIndex - 1];
-          if (targetChannel) playChannel(targetChannel);
-        }
-        setDigitInput("");
-      }, 1500);
-      return nextVal;
-    });
-  }, [filteredChannels, playChannel, isLive]);
-
   const togglePlay = useCallback(() => {
     setIsPlaying(prev => !prev);
     resetControlsTimeout();
@@ -476,8 +321,8 @@ export default function PlayerScreen() {
     }
   }, [duration, isSeekable, position, resetControlsTimeout]);
 
-  // D-pad handler — only fires when NO modal or side guide menu is open.
-  // When controls are hidden, any key press shows them (except zapping/opening menu).
+  // D-pad handler — only fires when NO modal is open.
+  // When controls are hidden, any key press shows them.
   // When controls are visible, native focus engine drives navigation.
   useDPad(
     {
@@ -497,10 +342,6 @@ export default function PlayerScreen() {
         resetControlsTimeout();
       },
       onLeft: () => {
-        if (isLive && !showControlsRef.current) {
-          setShowMenu(true);
-          return;
-        }
         if (!showControlsRef.current && !isLive) {
           seek(-60000); // 1 minute
         } else if (showControlsRef.current && seekBarFocusedRef.current && !isLive) {
@@ -523,10 +364,6 @@ export default function PlayerScreen() {
         resetControlsTimeout();
       },
       onSelect: () => {
-        if (isLive && !showControlsRef.current) {
-          setShowMenu(true);
-          return;
-        }
         if (!showControlsRef.current) {
           setShowControls(true);
           resetControlsTimeout();
@@ -534,68 +371,22 @@ export default function PlayerScreen() {
         // When controls are showing, let native focus engine handle select on buttons
       },
       onUp: () => {
-        if (isLive && !showControlsRef.current) {
-          zapPrevious();
-          return;
-        }
         setShowControls(true);
         resetControlsTimeout();
       },
       onDown: () => {
-        if (isLive && !showControlsRef.current) {
-          zapNext();
-          return;
-        }
         setShowControls(true);
         resetControlsTimeout();
       },
-      onAny: (eventType) => {
+      onAny: () => {
         if (!showControlsRef.current) {
-          // Prevent showing controls for live TV zapping / digit keys / menu opening
-          const eventStr = eventType as string;
-          if (isLive && (
-            eventStr === "up" ||
-            eventStr === "down" ||
-            eventStr === "left" ||
-            eventStr === "select" ||
-            eventStr === "dpad_center" ||
-            eventStr === "center" ||
-            /^[0-9]$/.test(eventStr)
-          )) {
-            return;
-          }
           setShowControls(true);
           resetControlsTimeout();
         }
       }
     },
-    isTV && !showAudioModal && !showSubtitleModal && !showMenu
+    isTV && !showAudioModal && !showSubtitleModal
   );
-
-  // Capture numeric key presses for channel switching when menu and controls are hidden
-  useTVEventHandler((evt) => {
-    if (!isLive || showAudioModal || showSubtitleModal || showMenu) return;
-    
-    // Deduplicate eventKeyAction: only trigger on keyDown (0)
-    const rawEvt = evt as any;
-    const action = rawEvt?.eventKeyAction;
-    const isDown = action == null || action === 0;
-    if (!isDown) return;
-    
-    const type = rawEvt?.eventType;
-    const keyCode = rawEvt?.eventKeyCode ?? rawEvt?.keyCode;
-    let digit: string | null = null;
-    
-    if (typeof type === "string" && /^[0-9]$/.test(type)) {
-      digit = type;
-    } else if (typeof keyCode === "number" && keyCode >= 7 && keyCode <= 16) {
-      digit = String(keyCode - 7);
-    }
-    
-    if (digit !== null) {
-      handleDigitInput(digit);
-    }
-  });
 
   const cycleAspectRatio = () => setAspectRatioIndex(p => (p + 1) % ASPECT_RATIOS.length);
 
@@ -604,14 +395,14 @@ export default function PlayerScreen() {
     const nextIndex = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
     const nextSpeed = speeds[nextIndex];
     setPlaybackSpeed(nextSpeed);
-    
+
     if (vlcPlayerRef.current) {
       // VLC player uses dynamic rate prop so state update will automatically propagate
     }
     if (expoVideoRef.current) {
       expoVideoRef.current.setRateAsync(nextSpeed, true);
     }
-    
+
     // Show a premium VLC-like toast-style overlay indicating speed change
     setSeekIndicator(`${nextSpeed.toFixed(2)}x Speed`);
     setTimeout(() => setSeekIndicator(null), 1000);
@@ -626,7 +417,7 @@ export default function PlayerScreen() {
       if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
       return;
     }
-    if (currentChannelId && position > 0 && duration > 0) StreamManager.savePlaybackPosition(currentChannelId, position, duration);
+    if (params.contentId && position > 0 && duration > 0) StreamManager.savePlaybackPosition(params.contentId, position, duration);
     router.back();
   };
 
@@ -648,15 +439,15 @@ export default function PlayerScreen() {
   };
 
   const handleSilentRetry = useCallback(async () => {
-    if (retryCount.current >= maxRetries || !activePortal || !currentCmd) return;
+    if (retryCount.current >= maxRetries || !activePortal || !params.cmd) return;
     retryCount.current += 1;
     setIsRetrying(true);
     try {
-      const result = await StreamManager.retryStream({ id: currentChannelId || "", name: currentTitle || "", streamUrl: currentCmd }, activePortal, params.type === "live" ? "itv" : "vod", retryCount.current - 1);
+      const result = await StreamManager.retryStream({ id: params.contentId || "", name: params.title || "", streamUrl: params.cmd }, activePortal, params.type === "live" ? "itv" : "vod", retryCount.current - 1);
       if (result.success && result.url) { setStreamUrl(result.url); setIsLoading(true); }
     } catch (e) { console.error("Retry failed", e); }
     finally { setIsRetrying(false); }
-  }, [activePortal, currentChannelId, currentTitle, currentCmd, params.type]);
+  }, [activePortal, params]);
 
   const onLoad = (data: any) => {
     setIsLoading(false); retryCount.current = 0;
@@ -701,9 +492,9 @@ export default function PlayerScreen() {
       setVlcPosition(data.position);
     }
 
-    if (currentChannelId && params.type !== "live" && Date.now() - lastPositionSaveTime.current > 10000) {
+    if (params.contentId && params.type !== "live" && Date.now() - lastPositionSaveTime.current > 10000) {
       lastPositionSaveTime.current = Date.now();
-      StreamManager.savePlaybackPosition(currentChannelId, cur, data.duration || duration);
+      StreamManager.savePlaybackPosition(params.contentId, cur, data.duration || duration);
     }
   };
 
@@ -712,7 +503,7 @@ export default function PlayerScreen() {
     setIsBuffering(status.isBuffering);
     if (status.durationMillis) setDuration(status.durationMillis);
     if (status.positionMillis !== undefined) onProgress({ currentTime: status.positionMillis, duration: status.durationMillis });
-    if (status.didJustFinish) { setIsPlaying(false); if (currentChannelId) StreamManager.savePlaybackPosition(currentChannelId, 0, status.durationMillis || duration); }
+    if (status.didJustFinish) { setIsPlaying(false); if (params.contentId) StreamManager.savePlaybackPosition(params.contentId, 0, status.durationMillis || duration); }
   };
 
   const getExpoResizeMode = () => {
@@ -794,16 +585,6 @@ export default function PlayerScreen() {
         </View>
       )}
 
-      {/* Digit zapping input overlay */}
-      {digitInput !== "" && (
-        <View style={S.digitInputOverlay} pointerEvents="none">
-          <View style={S.digitInputBox}>
-            <Text style={S.digitInputTitle}>CHANNEL NUMBER</Text>
-            <Text style={S.digitInputText}>{digitInput}</Text>
-          </View>
-        </View>
-      )}
-
       {showControls && (
         <FocusGroup style={S.controlsOverlay}>
           {/* Top gradient */}
@@ -824,7 +605,7 @@ export default function PlayerScreen() {
                 <Ionicons name="arrow-back" size={ps(1.8)} color="#fff" />
               </Focusable>
               <View style={S.headerInfo}>
-                <Text style={S.mainTitle} numberOfLines={1}>{currentTitle || "Unknown Content"}</Text>
+                <Text style={S.mainTitle} numberOfLines={1}>{params.title || "Unknown Content"}</Text>
                 <Text style={S.subTitle}>{isLive ? "LIVE STREAM" : ""}</Text>
               </View>
             </View>
@@ -958,17 +739,6 @@ export default function PlayerScreen() {
                     )}
                   </View>
                   <View style={S.actionsRight}>
-                    {isLive && (
-                      <Focusable
-                        ringOnFocus={false}
-                        focusStyle={S.iconChipFocused}
-                        style={S.settingBtn}
-                        onPress={() => setShowMenu(true)}
-                      >
-                        <Ionicons name="list-outline" size={ps(1.4)} color="white" />
-                        <Text style={S.settingLabel}>CHANNELS</Text>
-                      </Focusable>
-                    )}
                     <Focusable
                       ringOnFocus={false}
                       focusStyle={S.iconChipFocused}
@@ -1012,110 +782,6 @@ export default function PlayerScreen() {
           )}
         </FocusGroup>
       )}
-
-      {/* Live TV Channels Side Guide Menu */}
-      <Overlay
-        visible={showMenu}
-        onClose={() => setShowMenu(false)}
-        style={S.menuOverlayBackdrop}
-        contentStyle={S.menuOverlayContent}
-      >
-        <View style={S.sideMenuContainer}>
-          {/* Category Column */}
-          <View style={S.categoryColumn}>
-            <Text style={S.menuTitle}>Categories</Text>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {categories.map((cat, idx) => {
-                const isActive = menuSelectedCategory === cat.id;
-                return (
-                  <Focusable
-                    key={cat.id}
-                    hasTVPreferredFocus={idx === 0 && menuSelectedCategory === "all"}
-                    ringOnFocus={false}
-                    style={[
-                      S.categoryItem,
-                      isActive && S.categoryItemActive
-                    ]}
-                    focusStyle={S.categoryItemFocused}
-                    onFocus={() => setMenuSelectedCategory(cat.id)}
-                  >
-                    {(focused: boolean) => (
-                      <Text
-                        style={[
-                          S.categoryItemText,
-                          focused && S.categoryItemTextFocused,
-                          isActive && S.categoryItemTextActive
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {cat.name}
-                      </Text>
-                    )}
-                  </Focusable>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          {/* Channels Column */}
-          <View style={S.channelColumn}>
-            <Text style={S.menuTitle}>Channels</Text>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {filteredChannels.length === 0 ? (
-                <View style={S.emptyState}>
-                  <Ionicons name="alert-circle-outline" size={ps(2.5)} color="rgba(255,255,255,0.2)" />
-                  <Text style={S.emptyText}>No channels found</Text>
-                </View>
-              ) : (
-                filteredChannels.map((chan, idx) => {
-                  const isPlayingChannel = chan.id === currentChannelId;
-                  return (
-                    <Focusable
-                      key={chan.id}
-                      hasTVPreferredFocus={isPlayingChannel}
-                      ringOnFocus={false}
-                      style={[
-                        S.channelItem,
-                        isPlayingChannel && S.channelItemPlaying
-                      ]}
-                      focusStyle={S.channelItemFocused}
-                      onPress={() => {
-                        playChannel(chan);
-                        setShowMenu(false);
-                      }}
-                    >
-                      {(focused: boolean) => (
-                        <View style={S.channelItemInner}>
-                          {chan.logo ? (
-                            <Image source={{ uri: chan.logo }} style={S.channelLogo} contentFit="contain" />
-                          ) : (
-                            <View style={S.channelLogoPlaceholder}>
-                              <Ionicons name="tv-outline" size={ps(1)} color="rgba(255,255,255,0.4)" />
-                            </View>
-                          )}
-                          <Text
-                            numberOfLines={1}
-                            style={[
-                              S.channelItemText,
-                              focused && S.channelItemTextFocused,
-                              isPlayingChannel && S.channelItemTextPlaying
-                            ]}
-                          >
-                            {idx + 1}. {chan.name}
-                          </Text>
-                          {isPlayingChannel && (
-                            <Ionicons name="volume-high" size={ps(1.2)} color={THEME.colors.primary} />
-                          )}
-                        </View>
-                      )}
-                    </Focusable>
-                  );
-                })
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Overlay>
 
       <TrackSelectionModal visible={showAudioModal} title="Audio Track" icon="musical-notes" options={audioTracks} selected={selectedAudioTrack} onSelect={(id: number) => { setSelectedAudioTrack(id); setShowAudioModal(false); }} onClose={() => setShowAudioModal(false)} />
       <TrackSelectionModal visible={showSubtitleModal} title="Subtitles" icon="text" isSubtitle options={textTracks} selected={selectedTextTrack} onSelect={(id: number) => { setSelectedTextTrack(id); setShowSubtitleModal(false); }} onClose={() => setShowSubtitleModal(false)} />
@@ -1498,163 +1164,6 @@ const S = StyleSheet.create({
     fontSize: ps(1.2),
     fontWeight: "900",
     fontFamily: THEME.fonts.bold,
-    letterSpacing: 2,
-  },
-
-  // Side Menu Guide Styles
-  menuOverlayBackdrop: {
-    justifyContent: "flex-start",
-    alignItems: "stretch",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
-  menuOverlayContent: {
-    height: "100%",
-    width: 420,
-    maxWidth: 420,
-    borderRadius: 0,
-  },
-  sideMenuContainer: {
-    flex: 1,
-    flexDirection: "row",
-    backgroundColor: "rgba(10, 10, 15, 0.96)",
-    borderRightWidth: 1,
-    borderRightColor: "rgba(255, 255, 255, 0.08)",
-  },
-  categoryColumn: {
-    width: 160,
-    borderRightWidth: 1,
-    borderRightColor: "rgba(255, 255, 255, 0.05)",
-    paddingVertical: 16,
-    paddingHorizontal: 8,
-  },
-  channelColumn: {
-    flex: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-  },
-  menuTitle: {
-    color: "rgba(255, 255, 255, 0.4)",
-    fontSize: ps(0.8),
-    fontFamily: THEME.fonts.bold,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    letterSpacing: 1.5,
-    marginBottom: 12,
-    paddingHorizontal: 8,
-  },
-  categoryItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 4,
-    borderWidth: 1.5,
-    borderColor: "transparent",
-  },
-  categoryItemActive: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-  },
-  categoryItemFocused: {
-    borderColor: "#fff",
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
-  },
-  categoryItemText: {
-    color: "rgba(255, 255, 255, 0.6)",
-    fontSize: ps(0.95),
-    fontFamily: THEME.fonts.medium,
-  },
-  categoryItemTextActive: {
-    color: THEME.colors.primary,
-    fontFamily: THEME.fonts.bold,
-  },
-  categoryItemTextFocused: {
-    color: "#fff",
-  },
-  channelItem: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    marginBottom: 4,
-    borderWidth: 1.5,
-    borderColor: "transparent",
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
-  },
-  channelItemPlaying: {
-    backgroundColor: "rgba(255, 27, 138, 0.12)",
-    borderColor: "rgba(255, 27, 138, 0.3)",
-  },
-  channelItemFocused: {
-    borderColor: "#fff",
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-  },
-  channelItemInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  channelLogo: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-  },
-  channelLogoPlaceholder: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  channelItemText: {
-    color: "#fff",
-    fontSize: ps(1),
-    fontFamily: THEME.fonts.medium,
-    flex: 1,
-  },
-  channelItemTextFocused: {
-    fontFamily: THEME.fonts.bold,
-  },
-  channelItemTextPlaying: {
-    color: THEME.colors.primary,
-    fontFamily: THEME.fonts.bold,
-  },
-
-  // Digit Input Overlay Styles
-  digitInputOverlay: {
-    position: "absolute",
-    top: "35%",
-    alignSelf: "center",
-    zIndex: 1000,
-  },
-  digitInputBox: {
-    alignItems: "center",
-    backgroundColor: "rgba(10, 10, 15, 0.9)",
-    paddingHorizontal: 36,
-    paddingVertical: 24,
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: THEME.colors.primary,
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.6,
-    shadowRadius: 16,
-    elevation: 24,
-    minWidth: 200,
-  },
-  digitInputTitle: {
-    color: "rgba(255, 255, 255, 0.5)",
-    fontSize: ps(0.8),
-    fontFamily: THEME.fonts.bold,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    letterSpacing: 1.5,
-    marginBottom: 8,
-  },
-  digitInputText: {
-    color: "#fff",
-    fontSize: ps(4),
-    fontFamily: THEME.fonts.bold,
-    fontWeight: "900",
     letterSpacing: 2,
   },
 });
