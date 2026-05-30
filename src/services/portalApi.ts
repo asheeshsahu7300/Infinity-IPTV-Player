@@ -149,14 +149,40 @@ const pickRating = (v: any) => {
     v?.vote_average ??
     v?.rating_tmdb ??
     v?.score;
-  return r != null ? String(r) : undefined;
+  if (r == null) return undefined;
+  const s = String(r).trim();
+  const lower = s.toLowerCase();
+  if (
+    !s ||
+    lower === "n/a" ||
+    lower === "na" ||
+    lower === "0" ||
+    lower === "0.0" ||
+    lower === "0.00" ||
+    lower === "null" ||
+    lower === "undefined"
+  ) {
+    return undefined;
+  }
+  return s;
 };
 
 const pickYear = (v: any) => {
   const y =
     v?.year ?? v?.production_year ?? v?.release_year ?? v?.first_air_date;
-  if (!y) return undefined;
-  const s = String(y);
+  if (y == null) return undefined;
+  const s = String(y).trim();
+  const lower = s.toLowerCase();
+  if (
+    !s ||
+    lower === "n/a" ||
+    lower === "na" ||
+    lower === "0" ||
+    lower === "null" ||
+    lower === "undefined"
+  ) {
+    return undefined;
+  }
   const match = s.match(/(19|20)\d{2}/);
   return match ? match[0] : s;
 };

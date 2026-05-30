@@ -38,7 +38,7 @@ const S = StyleSheet.create({
   },
   sidebarLabel: {
     color: "rgba(255,255,255,0.25)",
-    fontSize: ps(0.85),
+    fontSize: ps(0.95),
     fontWeight: "900",
     letterSpacing: 2,
   },
@@ -50,7 +50,7 @@ const S = StyleSheet.create({
     marginBottom: ph(0.8),
   },
   itemContainer: {
-    height: ph(5.8),
+    height: ph(6.4),
     borderTopRightRadius: ps(2),
     borderBottomRightRadius: ps(2),
     justifyContent: "center",
@@ -77,13 +77,13 @@ const S = StyleSheet.create({
   },
   itemText: {
     color: "rgba(255,255,255,0.45)",
-    fontSize: ps(1.05),
+    fontSize: ps(1.25),
     fontWeight: "600",
     letterSpacing: 0.3,
   },
   itemTextActive: {
     color: "#fff",
-    fontSize: ps(1.15),
+    fontSize: ps(1.35),
     fontWeight: "800",
     letterSpacing: 0.5,
   },
@@ -172,7 +172,7 @@ const CategoryItem = React.memo(function CategoryItem({
               <View style={[S.itemInner, { paddingLeft: focused ? pw(0.5) : 0 }]}>
                 <IconLib
                   name={iconData.name}
-                  size={ps(1.1)}
+                  size={ps(1.3)}
                   color={isActive || focused ? "#fff" : "rgba(255,255,255,0.3)"}
                   style={S.icon}
                 />
@@ -226,7 +226,7 @@ export default function CategorySidebar({
     }
   }, [selectedId, categories, scrollToIndex]);
 
-  const ITEM_HEIGHT = ph(6.5);
+  const ITEM_HEIGHT = ph(7.2);
 
   return (
     <View style={[S.container, { width }]}>
@@ -234,36 +234,38 @@ export default function CategorySidebar({
         <Text style={S.sidebarLabel}>CATEGORIES</Text>
       </View>
 
-      <FlatList
-        ref={flatListRef}
-        data={categories}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={S.listContent}
-        removeClippedSubviews={Platform.OS === 'android'}
-        initialNumToRender={20}
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        updateCellsBatchingPeriod={50}
-        keyboardShouldPersistTaps="always"
-        getItemLayout={(_, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
-        onScrollToIndexFailed={(info) => {
-          setTimeout(() => {
-            if (isMounted.current && flatListRef.current) {
-              flatListRef.current.scrollToIndex({ index: info.index, animated: false });
-            }
-          }, 100);
-        }}
-        renderItem={({ item, index }) => (
-          <CategoryItem
-            item={item}
-            isActive={selectedId === item.id}
-            onSelect={() => onSelect(item.id)}
-            onFocus={(i) => scrollToIndex(i)}
-            index={index}
-          />
-        )}
-      />
+      <View style={{ height: ITEM_HEIGHT * 10 }}>
+        <FlatList
+          ref={flatListRef}
+          data={categories}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={S.listContent}
+          removeClippedSubviews={false}
+          initialNumToRender={20}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          updateCellsBatchingPeriod={50}
+          keyboardShouldPersistTaps="always"
+          getItemLayout={(_, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
+          onScrollToIndexFailed={(info) => {
+            setTimeout(() => {
+              if (isMounted.current && flatListRef.current) {
+                flatListRef.current.scrollToIndex({ index: info.index, animated: false });
+              }
+            }, 100);
+          }}
+          renderItem={({ item, index }) => (
+            <CategoryItem
+              item={item}
+              isActive={selectedId === item.id}
+              onSelect={() => onSelect(item.id)}
+              onFocus={(i) => scrollToIndex(i)}
+              index={index}
+            />
+          )}
+        />
+      </View>
     </View>
   );
 }

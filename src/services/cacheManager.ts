@@ -17,26 +17,37 @@ export const CACHE_TTL = {
 // Symbol used to signal that cache should be rejected
 export const CACHE_REJECT = Symbol("CACHE_REJECT");
 
+const b64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const b64Lookup = new Uint8Array(256);
+for (let i = 0; i < b64Chars.length; i++) {
+  b64Lookup[b64Chars.charCodeAt(i)] = i;
+}
+
 function uint8ToBase64(u8: Uint8Array): string {
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let result = "";
-  for (let i = 0; i < u8.length; i += 3) {
+  const len = u8.length;
+  const parts: string[] = [];
+  let chunk = "";
+  for (let i = 0; i < len; i += 3) {
     const a = u8[i];
-    const b = i + 1 < u8.length ? u8[i + 1] : 0;
-    const c = i + 2 < u8.length ? u8[i + 2] : 0;
+    const b = i + 1 < len ? u8[i + 1] : 0;
+    const c = i + 2 < len ? u8[i + 2] : 0;
     const triple = (a << 16) | (b << 8) | c;
-    result += chars[(triple >> 18) & 0x3f];
-    result += chars[(triple >> 12) & 0x3f];
-    result += i + 1 < u8.length ? chars[(triple >> 6) & 0x3f] : "=";
-    result += i + 2 < u8.length ? chars[triple & 0x3f] : "=";
+    chunk += b64Chars[(triple >> 18) & 0x3f];
+    chunk += b64Chars[(triple >> 12) & 0x3f];
+    chunk += i + 1 < len ? b64Chars[(triple >> 6) & 0x3f] : "=";
+    chunk += i + 2 < len ? b64Chars[triple & 0x3f] : "=";
+    if (chunk.length > 8192) {
+      parts.push(chunk);
+      chunk = "";
+    }
   }
-  return result;
+  if (chunk.length > 0) {
+    parts.push(chunk);
+  }
+  return parts.join("");
 }
 
 function base64ToUint8(b64: string): Uint8Array {
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   const cleaned = b64.replace(/[^A-Za-z0-9+/=]/g, "");
   const len = cleaned.length;
   const placeholderChars = cleaned.endsWith("==")
@@ -49,10 +60,10 @@ function base64ToUint8(b64: string): Uint8Array {
   let outIndex = 0;
 
   for (let i = 0; i < len; i += 4) {
-    const c1 = chars.indexOf(cleaned.charAt(i));
-    const c2 = chars.indexOf(cleaned.charAt(i + 1));
-    const c3 = chars.indexOf(cleaned.charAt(i + 2));
-    const c4 = chars.indexOf(cleaned.charAt(i + 3));
+    const c1 = b64Lookup[cleaned.charCodeAt(i)];
+    const c2 = b64Lookup[cleaned.charCodeAt(i + 1)];
+    const c3 = b64Lookup[cleaned.charCodeAt(i + 2)];
+    const c4 = b64Lookup[cleaned.charCodeAt(i + 3)];
 
     const triple = (c1 << 18) | (c2 << 12) | ((c3 & 63) << 6) | (c4 & 63);
 
@@ -91,7 +102,7 @@ class MemoryCache {
   private estimateSize(data: any): number {
     try {
       const str = JSON.stringify(data);
-      return new Blob([str]).size; // accurate byte size
+      return str.length * 2; // UTF-16 characters take 2 bytes in memory
     } catch {
       return 1024; // fallback
     }
@@ -215,7 +226,7 @@ class DiskCache {
       const serialized = JSON.stringify(entry);
       const storageKey = this.prefix + key;
 
-      if (serialized.length > 10000) {
+      if (serialized.length > 100000) {
         const compressed = pako.gzip(serialized);
         const b64 = uint8ToBase64(compressed);
         await AsyncStorage.setItem(storageKey, `gz:${b64}`);
@@ -227,7 +238,7 @@ class DiskCache {
     }
   }
 
-  async get<T>(key: string): Promise<T | null> {
+  async getEntry<T>(key: string): Promise<CacheEntry<T> | null> {
     try {
       const storageKey = this.prefix + key;
       const value = await AsyncStorage.getItem(storageKey);
@@ -249,11 +260,16 @@ class DiskCache {
         await this.remove(key);
         return null;
       }
-      return entry.data;
+      return entry;
     } catch (e) {
-      console.warn("DiskCache get failed:", e);
+      console.warn("DiskCache getEntry failed:", e);
       return null;
     }
+  }
+
+  async get<T>(key: string): Promise<T | null> {
+    const entry = await this.getEntry<T>(key);
+    return entry ? entry.data : null;
   }
 
   async has(key: string): Promise<boolean> {
@@ -296,6 +312,7 @@ class CacheManager {
   private memoryCache = new MemoryCache(50);
   private diskCache = new DiskCache();
   private warmingKeys = new Set<string>();
+  private inFlightFetches = new Map<string, Promise<any>>();
 
   async set<T>(key: string, data: T, ttl: number): Promise<void> {
     this.memoryCache.set(key, data, ttl);
@@ -306,10 +323,11 @@ class CacheManager {
     const mem = this.memoryCache.get<T>(key);
     if (mem !== null) return mem;
 
-    const disk = await this.diskCache.get<T>(key);
-    if (disk !== null) {
-      this.memoryCache.set(key, disk, CACHE_TTL.CHANNELS); // default TTL
-      return disk;
+    const entry = await this.diskCache.getEntry<T>(key);
+    if (entry !== null) {
+      const remainingTTL = Math.max(0, entry.expiry - Date.now());
+      this.memoryCache.set(key, entry.data, remainingTTL);
+      return entry.data;
     }
     return null;
   }
@@ -348,23 +366,38 @@ class CacheManager {
     loader: () => Promise<T>,
     ttl: number
   ): Promise<T> {
-    if (this.warmingKeys.has(key)) {
-      await new Promise((r) => setTimeout(r, 200));
-      const cached = await this.get<T>(key);
-      if (cached !== null) return cached;
+    const cached = await this.get<T>(key);
+    if (cached !== null) return cached;
+
+    if (this.inFlightFetches.has(key)) {
+      return this.inFlightFetches.get(key)!;
     }
 
     this.warmingKeys.add(key);
-    try {
-      const data = await loader();
-      await this.set(key, data, ttl);
-      return data;
-    } catch (e) {
-      console.warn("Warm failed:", e);
-      throw e;
-    } finally {
-      this.warmingKeys.delete(key);
-    }
+    const promise = loader()
+      .then(async (data) => {
+        await this.set(key, data, ttl);
+        return data;
+      })
+      .catch((e) => {
+        console.warn(`Warm failed for key ${key}:`, e);
+        throw e;
+      })
+      .finally(() => {
+        this.warmingKeys.delete(key);
+        this.inFlightFetches.delete(key);
+      });
+
+    this.inFlightFetches.set(key, promise);
+    return promise;
+  }
+
+  async getOrFetch<T>(
+    key: string,
+    loader: () => Promise<T>,
+    ttl: number
+  ): Promise<T> {
+    return this.warm<T>(key, loader, ttl);
   }
 
   getStats() {

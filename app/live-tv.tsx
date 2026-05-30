@@ -41,16 +41,23 @@ const ChannelCard = React.memo(function ChannelCard({
   itemWidth,
 }: {
   item: Channel;
-  onPress: () => void;
-  onFocus?: () => void;
+  onPress: (item: Channel) => void;
+  onFocus?: (item: Channel) => void;
   autoFocus?: boolean;
   itemWidth: number;
 }) {
+  const handlePress = useCallback(() => {
+    onPress(item);
+  }, [onPress, item]);
+
+  const handleFocus = useCallback(() => {
+    onFocus?.(item);
+  }, [onFocus, item]);
   return (
     <View style={{ width: itemWidth, padding: pw(0.6) }}>
       <Focusable
-        onPress={onPress}
-        onFocus={onFocus}
+        onPress={handlePress}
+        onFocus={handleFocus}
         hasTVPreferredFocus={autoFocus}
         ringOnFocus={false}
         style={S.cardWrapper}
@@ -145,8 +152,7 @@ export default function LiveTVScreen() {
     if (trapTimeoutRef.current) clearTimeout(trapTimeoutRef.current);
   }, []);
 
-  // Ref to keep scroll / focus stable during load-more appends.
-  const maintainPosition = useRef({ minIndexForVisible: 0 }).current;
+
 
   const localCategories = useMemo(
     () => (storeCategories || []).filter(c => c.type === "live"),
@@ -305,6 +311,10 @@ export default function LiveTVScreen() {
       router.push({ pathname: "/player", params: { url: channel.streamUrl || "", title: channel.name, type: "live" } });
     }
   }, [activePortal, router]);
+
+  const handleChannelFocus = useCallback((channel: Channel) => {
+    setFocusedImage(channel.logo || null);
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -470,7 +480,7 @@ export default function LiveTVScreen() {
         </FocusGroup>
 
         {/* Right channel grid */}
-        <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapDown={trappingFocus}>
+        <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapUp={trappingFocus}>
           {isLoading && storeChannels.length === 0 ? (
             <View style={S.loadingCenter}>
               <ActivityIndicator size="large" color={THEME.colors.primary} />
@@ -485,17 +495,17 @@ export default function LiveTVScreen() {
               onEndReached={onEndReached}
               onEndReachedThreshold={1.5}
               removeClippedSubviews={false}
-              maintainVisibleContentPosition={maintainPosition}
+
               initialNumToRender={numColumns * 6}
               maxToRenderPerBatch={numColumns * 6}
-              windowSize={31}
+              windowSize={11}
               renderItem={({ item, index }) => (
                 <ChannelCard
                   item={item}
                   itemWidth={itemWidth}
                   autoFocus={index === 0 && !searchFocused}
-                  onPress={() => handleChannelPress(item)}
-                  onFocus={() => setFocusedImage(item.logo || null)}
+                  onPress={handleChannelPress}
+                  onFocus={handleChannelFocus}
                 />
               )}
               contentContainerStyle={S.gridContent}

@@ -54,6 +54,48 @@ const TrendingPill = ({ text, onPress }: { text: string; onPress: (t: string) =>
   </Focusable>
 );
 
+// ─────────────────────────────────────────────
+// Metadata Pick Helpers
+// ─────────────────────────────────────────────
+const pickRating = (v: any) => {
+  const r = v?.rating ?? v?.rating_imdb ?? v?.imdb_rating ?? v?.rating_tmdb ?? v?.score;
+  if (r == null) return "";
+  const s = String(r).trim();
+  const lower = s.toLowerCase();
+  if (
+    !s ||
+    lower === "n/a" ||
+    lower === "na" ||
+    lower === "0" ||
+    lower === "0.0" ||
+    lower === "0.00" ||
+    lower === "null" ||
+    lower === "undefined"
+  ) {
+    return "";
+  }
+  return s;
+};
+
+const pickYear = (v: any) => {
+  const y = v?.year ?? v?.production_year ?? v?.release_year ?? v?.first_air_date ?? (v?.release_date ? v?.release_date.slice(0, 4) : "");
+  if (y == null) return "";
+  const s = String(y).trim();
+  const lower = s.toLowerCase();
+  if (
+    !s ||
+    lower === "n/a" ||
+    lower === "na" ||
+    lower === "0" ||
+    lower === "null" ||
+    lower === "undefined"
+  ) {
+    return "";
+  }
+  const match = s.match(/(19|20)\d{2}/);
+  return match ? match[0] : s;
+};
+
 const ResultCard = ({ item, onPress, onFocus }: any) => (
   <Focusable
     onPress={onPress}
@@ -85,7 +127,7 @@ const ResultCard = ({ item, onPress, onFocus }: any) => (
           </View>
           <View style={S.cardInfo}>
             <Text style={S.cardTitle} numberOfLines={1}>{item.name}</Text>
-            <Text style={S.cardSub}>{item.year || "2024"} • {item.type.toUpperCase()}</Text>
+            <Text style={S.cardSub}>{item.year ? `${item.year} • ` : ""}{item.type.toUpperCase()}</Text>
           </View>
         </View>
       </LinearGradient>
@@ -156,10 +198,10 @@ export default function SearchScreen() {
               name: i.name || i.title,
               logo: i.cover || i.stream_icon || i.screenshot_uri || i.logo || "",
               type: st,
-              year: i.year || (i.release_date ? i.release_date.slice(0, 4) : ""),
+              year: pickYear(i),
               quality: i.quality || (i.container_extension ? i.container_extension.toUpperCase() : ""),
               description: i.plot || i.description || i.descr || i.info || "",
-              rating: String(i.rating || i.rating_imdb || i.imdb_rating || ""),
+              rating: pickRating(i),
               streamUrl: i.cmd || i.url || "",
             }));
             finalResults = [...finalResults, ...mapped];
@@ -179,9 +221,9 @@ export default function SearchScreen() {
             name: i.name || i.title,
             logo: i.screenshot_uri || i.logo || "",
             type: st,
-            year: i.year || "",
+            year: pickYear(i),
             description: i.description || i.descr || i.plot || "",
-            rating: String(i.rating || i.rating_imdb || i.imdb_rating || ""),
+            rating: pickRating(i),
           }));
           finalResults = [...finalResults, ...mapped];
         }

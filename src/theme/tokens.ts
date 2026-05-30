@@ -19,9 +19,9 @@ export const THEME = {
     surface: "#171923",             // elevated card surface
     surfaceLight: "rgba(255,255,255,0.07)",
 
-    primary: "#ff005dff",               // brand pink/magenta
+    primary: "#ff002bff",               // brand pink/magenta
     secondary: "#005effff",             // brand indigo/blue
-    accent: "#ff1b8a",                // brand highlight accent
+    accent: "#ff1b4cff",                // brand highlight accent
 
     text: "#FFFFFF",
     textMuted: "#C5C9D6",           // better readability at distance
@@ -34,7 +34,7 @@ export const THEME = {
 
     // optional TV focus colors
     focusRing: "#FFFFFF",
-    focusGlow: "rgba(255,77,166,0.45)",
+    focusGlow: "rgba(255, 77, 116, 0.45)",
   },
   spacing: {
     xs: pw(1),

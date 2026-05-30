@@ -105,7 +105,7 @@ const S = StyleSheet.create({
   textOverlay: { display: "none" },
   cardContent: { padding: ps(0.7), backgroundColor: "#161622", borderBottomLeftRadius: ps(1.2), borderBottomRightRadius: ps(1.2) },
   vodTitle: { color: "#fff", fontSize: ps(0.95), fontWeight: "700", fontFamily: THEME.fonts.bold },
-  metaRow: { flexDirection: "row", alignItems: "center", marginTop: 6 },
+  metaRow: { flexDirection: "row", alignItems: "center", marginTop: 6, height: ps(1.6) },
   vodMetaText: { color: "rgba(255,255,255,0.6)", fontSize: ps(0.8), fontWeight: "600", fontFamily: THEME.fonts.medium },
   metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.3)", marginHorizontal: 6 },
   ratingWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 215, 0, 0.08)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
@@ -161,19 +161,30 @@ const MovieItem = React.memo(function MovieItem({
   autoFocus,
 }: {
   item: VODItem;
-  onPress: () => void;
-  onFocus?: () => void;
-  onFavoritePress: () => void;
+  onPress: (item: VODItem) => void;
+  onFocus?: (item: VODItem) => void;
+  onFavoritePress: (item: VODItem) => void;
   isFavorite: boolean;
   itemWidth: number;
   autoFocus?: boolean;
 }) {
+  const handlePress = useCallback(() => {
+    onPress(item);
+  }, [onPress, item]);
+
+  const handleFocus = useCallback(() => {
+    onFocus?.(item);
+  }, [onFocus, item]);
+
+  const handleFavoritePress = useCallback(() => {
+    onFavoritePress(item);
+  }, [onFavoritePress, item]);
   return (
     <View style={{ width: itemWidth, padding: pw(1), overflow: "visible" }}>
       <Focusable
-        onPress={onPress}
-        onFocus={onFocus}
-        onLongPress={onFavoritePress}
+        onPress={handlePress}
+        onFocus={handleFocus}
+        onLongPress={handleFavoritePress}
         hasTVPreferredFocus={autoFocus}
         ringOnFocus={false}
       >
@@ -241,13 +252,39 @@ const MovieItem = React.memo(function MovieItem({
 // ─────────────────────────────────────────────
 const pickRating = (v: any) => {
   const r = v?.rating ?? v?.rating_imdb ?? v?.imdb_rating ?? v?.rating_tmdb ?? v?.score;
-  return r != null ? String(r) : "";
+  if (r == null) return "";
+  const s = String(r).trim();
+  const lower = s.toLowerCase();
+  if (
+    !s ||
+    lower === "n/a" ||
+    lower === "na" ||
+    lower === "0" ||
+    lower === "0.0" ||
+    lower === "0.00" ||
+    lower === "null" ||
+    lower === "undefined"
+  ) {
+    return "";
+  }
+  return s;
 };
 
 const pickYear = (v: any) => {
   const y = v?.year ?? v?.production_year ?? v?.release_year ?? v?.first_air_date;
-  if (!y) return "";
-  const s = String(y);
+  if (y == null) return "";
+  const s = String(y).trim();
+  const lower = s.toLowerCase();
+  if (
+    !s ||
+    lower === "n/a" ||
+    lower === "na" ||
+    lower === "0" ||
+    lower === "null" ||
+    lower === "undefined"
+  ) {
+    return "";
+  }
   const match = s.match(/(19|20)\d{2}/);
   return match ? match[0] : s;
 };
@@ -279,6 +316,11 @@ export default function VODScreen() {
 
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [focusedImage, setFocusedImage] = useState<string | null>(null);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [searchResults, setSearchResults] = useState<VODItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(1);
@@ -297,8 +339,7 @@ export default function VODScreen() {
     if (trapTimeoutRef.current) clearTimeout(trapTimeoutRef.current);
   }, []);
 
-  // Ref to keep scroll / focus stable during load-more appends.
-  const maintainPosition = useRef({ minIndexForVisible: 0 }).current;
+
 
   const PAGE_SIZE = 28;
 
@@ -449,6 +490,14 @@ export default function VODScreen() {
     setPlayModalVisible(true);
   }, []);
 
+  const handleVodFocus = useCallback((vod: VODItem) => {
+    setFocusedImage(vod.logo || null);
+  }, []);
+
+  const handleFavoritePress = useCallback((vod: VODItem) => {
+    toggleFavorite("vod", vod.id);
+  }, [toggleFavorite]);
+
   const startPlayback = async (url: string | null, isExternal: boolean = false, title?: string) => {
     if (!url) { Alert.alert("Error", "No stream URL found"); return; }
     setPlayModalVisible(false);
@@ -489,22 +538,19 @@ export default function VODScreen() {
     startPlayback(streamUrl, isExternal, titleSnapshot);
   };
 
-  const renderMovieItem = ({ item, index }: { item: VODItem; index: number }) => (
+  const renderMovieItem = useCallback(({ item, index }: { item: VODItem; index: number }) => (
     <MovieItem
       item={item}
-      onPress={() => handleVodPress(item)}
-      onFocus={() => setFocusedImage(item.logo || null)}
-      onFavoritePress={() => toggleFavorite("vod", item.id)}
+      onPress={handleVodPress}
+      onFocus={handleVodFocus}
+      onFavoritePress={handleFavoritePress}
       isFavorite={favorites.vod.includes(item.id)}
       itemWidth={itemWidth}
       autoFocus={index === 0 && !searchFocused}
     />
-  );
+  ), [favorites.vod, itemWidth, searchFocused]);
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchResults, setSearchResults] = useState<VODItem[]>([]);
+
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -638,7 +684,7 @@ export default function VODScreen() {
             width={SIDEBAR_WIDTH_VAL}
           />
         </FocusGroup>
-        <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapDown={trappingFocus}>
+        <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapUp={trappingFocus}>
           {isLoading && vodItems.length === 0 ? (
             <View style={S.loadingCenter}>
               <ActivityIndicator color={THEME.colors.primary} size="large" />
@@ -653,10 +699,10 @@ export default function VODScreen() {
               key={`vod-grid-${numColumns}`}
               contentContainerStyle={S.list}
               removeClippedSubviews={false}
-              maintainVisibleContentPosition={maintainPosition}
+
               initialNumToRender={numColumns * 6}
               maxToRenderPerBatch={numColumns * 6}
-              windowSize={31}
+              windowSize={11}
               onEndReached={() => {
                 if (isLoading || loadingMore || !hasMore || debouncedQuery) return;
                 trapFocusBriefly();

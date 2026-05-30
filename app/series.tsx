@@ -100,7 +100,7 @@ const S = StyleSheet.create({
   textOverlay: { display: "none" },
   cardContent: { padding: ps(0.7), backgroundColor: "#161622", borderBottomLeftRadius: ps(1.2), borderBottomRightRadius: ps(1.2) },
   seriesTitle: { color: "#fff", fontSize: ps(0.95), fontWeight: "700", fontFamily: THEME.fonts.bold },
-  metaRow: { flexDirection: "row", alignItems: "center", marginTop: 6 },
+  metaRow: { flexDirection: "row", alignItems: "center", marginTop: 6, height: ps(1.6) },
   seriesMetaText: { color: "rgba(255,255,255,0.6)", fontSize: ps(0.8), fontWeight: "600", fontFamily: THEME.fonts.medium },
   metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.3)", marginHorizontal: 6 },
   ratingWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 215, 0, 0.08)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
@@ -129,19 +129,30 @@ const SeriesItem = React.memo(function SeriesItem({
   autoFocus,
 }: {
   item: Series;
-  onPress: () => void;
-  onFocus?: () => void;
-  onFavoritePress: () => void;
+  onPress: (item: Series) => void;
+  onFocus?: (item: Series) => void;
+  onFavoritePress: (item: Series) => void;
   isFavorite: boolean;
   itemWidth: number;
   autoFocus?: boolean;
 }) {
+  const handlePress = useCallback(() => {
+    onPress(item);
+  }, [onPress, item]);
+
+  const handleFocus = useCallback(() => {
+    onFocus?.(item);
+  }, [onFocus, item]);
+
+  const handleFavoritePress = useCallback(() => {
+    onFavoritePress(item);
+  }, [onFavoritePress, item]);
   return (
     <View style={{ width: itemWidth, padding: pw(1), overflow: "visible" }}>
       <Focusable
-        onPress={onPress}
-        onFocus={onFocus}
-        onLongPress={onFavoritePress}
+        onPress={handlePress}
+        onFocus={handleFocus}
+        onLongPress={handleFavoritePress}
         hasTVPreferredFocus={autoFocus}
         ringOnFocus={false}
       >
@@ -209,13 +220,39 @@ const SeriesItem = React.memo(function SeriesItem({
 // ─────────────────────────────────────────────
 const pickRating = (v: any) => {
   const r = v?.rating ?? v?.rating_imdb ?? v?.imdb_rating ?? v?.rating_tmdb ?? v?.score;
-  return r != null ? String(r) : "";
+  if (r == null) return "";
+  const s = String(r).trim();
+  const lower = s.toLowerCase();
+  if (
+    !s ||
+    lower === "n/a" ||
+    lower === "na" ||
+    lower === "0" ||
+    lower === "0.0" ||
+    lower === "0.00" ||
+    lower === "null" ||
+    lower === "undefined"
+  ) {
+    return "";
+  }
+  return s;
 };
 
 const pickYear = (v: any) => {
   const y = v?.year ?? v?.production_year ?? v?.release_year ?? v?.first_air_date;
-  if (!y) return "";
-  const s = String(y);
+  if (y == null) return "";
+  const s = String(y).trim();
+  const lower = s.toLowerCase();
+  if (
+    !s ||
+    lower === "n/a" ||
+    lower === "na" ||
+    lower === "0" ||
+    lower === "null" ||
+    lower === "undefined"
+  ) {
+    return "";
+  }
   const match = s.match(/(19|20)\d{2}/);
   return match ? match[0] : s;
 };
@@ -247,6 +284,11 @@ export default function SeriesScreen() {
 
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [focusedImage, setFocusedImage] = useState<string | null>(null);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [searchResults, setSearchResults] = useState<Series[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(1);
@@ -265,8 +307,7 @@ export default function SeriesScreen() {
     if (trapTimeoutRef.current) clearTimeout(trapTimeoutRef.current);
   }, []);
 
-  // Ref to keep scroll / focus stable during load-more appends.
-  const maintainPosition = useRef({ minIndexForVisible: 0 }).current;
+
 
   const PAGE_SIZE = 28;
 
@@ -409,32 +450,41 @@ export default function SeriesScreen() {
     setRefreshing(false);
   }, [selectedCategory, activePortal]);
 
-  const renderSeriesItem = ({ item, index }: { item: Series; index: number }) => (
+  const handleSeriesPress = useCallback((item: Series) => {
+    router.push({
+      pathname: "/series-details",
+      params: {
+        id: item.id,
+        name: item.name,
+        logo: item.logo,
+        description: item.description,
+        year: item.year,
+        rating: item.rating
+      }
+    });
+  }, [router]);
+
+  const handleSeriesFocus = useCallback((item: Series) => {
+    setFocusedImage(item.logo || null);
+  }, []);
+
+  const handleFavoritePress = useCallback((item: Series) => {
+    toggleFavorite("series", item.id);
+  }, [toggleFavorite]);
+
+  const renderSeriesItem = useCallback(({ item, index }: { item: Series; index: number }) => (
     <SeriesItem
       item={item}
-      onPress={() => router.push({
-        pathname: "/series-details",
-        params: {
-          id: item.id,
-          name: item.name,
-          logo: item.logo,
-          description: item.description,
-          year: item.year,
-          rating: item.rating
-        }
-      })}
-      onFocus={() => setFocusedImage(item.logo || null)}
-      onFavoritePress={() => toggleFavorite("series", item.id)}
+      onPress={handleSeriesPress}
+      onFocus={handleSeriesFocus}
+      onFavoritePress={handleFavoritePress}
       isFavorite={favorites.series.includes(item.id)}
       itemWidth={itemWidth}
       autoFocus={index === 0 && !searchFocused}
     />
-  );
+  ), [favorites.series, itemWidth, searchFocused, handleSeriesPress]);
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchResults, setSearchResults] = useState<Series[]>([]);
+
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -569,7 +619,7 @@ export default function SeriesScreen() {
             width={SIDEBAR_WIDTH_VAL}
           />
         </FocusGroup>
-        <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapDown={trappingFocus}>
+        <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapUp={trappingFocus}>
           {isLoading && series.length === 0 ? (
             <View style={S.loadingCenter}>
               <ActivityIndicator color={THEME.colors.primary} size="large" />
@@ -584,10 +634,10 @@ export default function SeriesScreen() {
               key={`series-grid-${numColumns}`}
               contentContainerStyle={S.list}
               removeClippedSubviews={false}
-              maintainVisibleContentPosition={maintainPosition}
+
               initialNumToRender={numColumns * 6}
               maxToRenderPerBatch={numColumns * 6}
-              windowSize={31}
+              windowSize={11}
               onEndReached={() => {
                 if (isLoading || loadingMore || !hasMore || debouncedQuery) return;
                 trapFocusBriefly();
