@@ -57,7 +57,13 @@
       "expo-video",
       "expo-audio",
       "react-native-vlc-media-player",
-      "@react-native-tvos/config-tv"
+      [
+        "@react-native-tvos/config-tv",
+        {
+          "isTV": true,
+          "androidTVBanner": "./assets/images/tv-banner.png"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
