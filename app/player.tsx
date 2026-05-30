@@ -727,7 +727,7 @@ export default function PlayerScreen() {
   return (
     <View style={S.container} {...panResponder.panHandlers}>
       <StatusBar hidden />
-      {true ? (
+      {isLive ? (
         <VLCPlayer
           ref={vlcPlayerRef} style={S.video} source={{ uri: streamUrl }} autoplay={autoPlay} paused={!isPlaying}
           audioTrack={selectedAudioTrack} textTrack={selectedTextTrack} volume={currentVolume} rate={playbackSpeed}
