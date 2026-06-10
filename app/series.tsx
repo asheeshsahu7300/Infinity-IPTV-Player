@@ -294,10 +294,11 @@ export default function SeriesScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  // Trap focus briefly during load-more append so the focus
-  // engine doesn't fall back to the sidebar while FlatList reconciles.
   const [trappingFocus, setTrappingFocus] = useState(false);
   const trapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track last focused Series id so we can restore focus after refresh
+  const focusedIdRef = useRef<string>("");
+  const flatListRef = useRef<FlatList>(null);
   const trapFocusBriefly = useCallback(() => {
     setTrappingFocus(true);
     if (trapTimeoutRef.current) clearTimeout(trapTimeoutRef.current);
@@ -375,10 +376,13 @@ export default function SeriesScreen() {
       } else {
         cats = await portalApi.getSeriesCategories(activePortal);
       }
-      setCategories(Array.isArray(cats) ? cats : []);
+      // Read live state at call-time to avoid overwriting live/vod categories
+      const currentCategories = usePortalStore.getState().categories || [];
+      const others = currentCategories.filter(c => c.type !== "series");
+      setCategories([...others, ...(Array.isArray(cats) ? cats : [])]);
     } catch (e) {
       console.error(e);
-      setCategories([]);
+      // On error, do NOT clear categories — leave existing ones intact
     }
   };
 
@@ -403,6 +407,7 @@ export default function SeriesScreen() {
         setSeries(sliced);
         setHasMore(filtered.length > sliced.length);
         setPage(pageNum);
+        if (reset) restoreFocusPosition(sliced);
       } else if (activePortal.type === "xtream") {
         if (allSeriesCacheRef.current.length === 0) {
           const all = await xtreamApiRef.current!.getSeries(undefined, 1, 100000);
@@ -417,6 +422,7 @@ export default function SeriesScreen() {
         setSeries(sliced);
         setHasMore(filtered.length > sliced.length);
         setPage(pageNum);
+        if (reset) restoreFocusPosition(sliced);
       } else {
         // MAG / Stalker: server-side pagination
         const fresh = await portalApi.getSeries(activePortal, cat, pageNum);
@@ -429,6 +435,7 @@ export default function SeriesScreen() {
         setSeries(updatedList);
         setHasMore(items.length > 0);
         setPage(pageNum);
+        if (reset) restoreFocusPosition(updatedList);
       }
     } catch (e) {
       console.error(e);
@@ -466,6 +473,21 @@ export default function SeriesScreen() {
 
   const handleSeriesFocus = useCallback((item: Series) => {
     setFocusedImage(item.logo || null);
+    focusedIdRef.current = String(item.id);
+  }, []);
+
+  // After a refresh/reset, scroll the list back to the previously focused item
+  const restoreFocusPosition = useCallback((items: Series[]) => {
+    if (!focusedIdRef.current || !flatListRef.current) return;
+    // With multi-column grids, scrollToIndex needs the flat index
+    const idx = items.findIndex(s => String(s.id) === focusedIdRef.current);
+    if (idx > 0) {
+      setTimeout(() => {
+        try {
+          flatListRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.3 });
+        } catch { /* ignore if out of range */ }
+      }, 120);
+    }
   }, []);
 
   const handleFavoritePress = useCallback((item: Series) => {
@@ -480,7 +502,11 @@ export default function SeriesScreen() {
       onFavoritePress={handleFavoritePress}
       isFavorite={favorites.series.includes(item.id)}
       itemWidth={itemWidth}
-      autoFocus={index === 0 && !searchFocused}
+      autoFocus={
+        focusedIdRef.current
+          ? String(item.id) === focusedIdRef.current
+          : index === 0 && !searchFocused
+      }
     />
   ), [favorites.series, itemWidth, searchFocused, handleSeriesPress]);
 
@@ -627,6 +653,8 @@ export default function SeriesScreen() {
             </View>
           ) : (
             <FlatList
+              ref={flatListRef}
+              onScrollToIndexFailed={() => {}}
               data={filteredSeries}
               renderItem={renderSeriesItem}
               keyExtractor={(item) => String(item.id)}

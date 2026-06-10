@@ -141,6 +141,9 @@ export default function LiveTVScreen() {
   const [trappingFocus, setTrappingFocus] = useState(false);
   const trapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<TextInput>(null);
+  // Track last focused channel id so we can restore focus after refresh
+  const focusedIdRef = useRef<string>("");
+  const flatListRef = useRef<FlatList>(null);
 
   const trapFocusBriefly = useCallback(() => {
     setTrappingFocus(true);
@@ -170,6 +173,8 @@ export default function LiveTVScreen() {
   const prevCategoryIdRef = useRef<string | undefined>(undefined);
 
   // ── Load Categories ──
+  // NOTE: Read current categories from store at call-time (not closure)
+  // to avoid stale-closure bugs when the store is cleared/evicted.
   const loadCategories = useCallback(async () => {
     if (!activePortal) return;
     try {
@@ -183,12 +188,14 @@ export default function LiveTVScreen() {
       } else {
         cats = (await portalApi.getLiveCategories(activePortal)) || [];
       }
-      const others = (storeCategories || []).filter(c => c.type !== "live");
+      // Read live state at call-time to avoid stale closure wiping non-live categories
+      const currentCategories = usePortalStore.getState().categories || [];
+      const others = currentCategories.filter(c => c.type !== "live");
       setCategories([...others, ...cats]);
     } catch (e) {
       console.error("loadCategories error:", e);
     }
-  }, [activePortal, storeCategories, setCategories]);
+  }, [activePortal, setCategories]);
 
   // ── Load Channels (mirrors VOD/Series pattern) ──
   const loadChannels = useCallback(async (
@@ -252,6 +259,8 @@ export default function LiveTVScreen() {
       list = Array.isArray(list) ? list : [];
       setChannels(list);
       setPage(pageNum);
+      // Restore scroll position after a reset-load so focus doesn't snap to top
+      if (reset) restoreFocusPosition(list);
     } catch (e) {
       console.error("loadChannels error:", e);
     } finally {
@@ -314,6 +323,20 @@ export default function LiveTVScreen() {
 
   const handleChannelFocus = useCallback((channel: Channel) => {
     setFocusedImage(channel.logo || null);
+    focusedIdRef.current = String(channel.id);
+  }, []);
+
+  // After a refresh/reset, scroll the list back to the previously focused item
+  const restoreFocusPosition = useCallback((list: Channel[]) => {
+    if (!focusedIdRef.current || !flatListRef.current) return;
+    const idx = list.findIndex(c => String(c.id) === focusedIdRef.current);
+    if (idx > 0) {
+      setTimeout(() => {
+        try {
+          flatListRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.3 });
+        } catch { /* ignore if out of range */ }
+      }, 120);
+    }
   }, []);
 
   const onRefresh = useCallback(async () => {
@@ -499,11 +522,17 @@ export default function LiveTVScreen() {
               initialNumToRender={numColumns * 6}
               maxToRenderPerBatch={numColumns * 6}
               windowSize={11}
+              ref={flatListRef}
+              onScrollToIndexFailed={() => {}}
               renderItem={({ item, index }) => (
                 <ChannelCard
                   item={item}
                   itemWidth={itemWidth}
-                  autoFocus={index === 0 && !searchFocused}
+                  autoFocus={
+                    focusedIdRef.current
+                      ? String(item.id) === focusedIdRef.current
+                      : index === 0 && !searchFocused
+                  }
                   onPress={handleChannelPress}
                   onFocus={handleChannelFocus}
                 />

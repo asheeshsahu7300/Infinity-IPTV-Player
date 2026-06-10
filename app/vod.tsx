@@ -364,6 +364,9 @@ export default function VODScreen() {
   // first N pages of this.
   const fullListRef = useRef<VODItem[]>([]);
   const prevCategoryIdRef = useRef<string | undefined>(undefined);
+  // Track last focused VOD id so we can restore focus after refresh
+  const focusedIdRef = useRef<string>("");
+  const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
     if (!activePortal) { router.replace("/"); return; }
@@ -410,10 +413,13 @@ export default function VODScreen() {
       } else {
         cats = await portalApi.getVodCategories(activePortal);
       }
-      setCategories(Array.isArray(cats) ? cats : []);
+      // Read live state at call-time to avoid overwriting live/series categories
+      const currentCategories = usePortalStore.getState().categories || [];
+      const others = currentCategories.filter(c => c.type !== "vod");
+      setCategories([...others, ...(Array.isArray(cats) ? cats : [])]);
     } catch (e) {
       console.error(e);
-      setCategories([]);
+      // On error, do NOT clear categories — leave existing ones intact
     }
   };
 
@@ -438,6 +444,7 @@ export default function VODScreen() {
         setVodItems(sliced);
         setHasMore(filtered.length > sliced.length);
         setPage(pageNum);
+        if (reset) restoreFocusPosition(sliced);
       } else if (activePortal.type === "xtream") {
         if (allVodCacheRef.current.length === 0) {
           const all = await xtreamApiRef.current!.getVodItems(undefined, 1, 100000);
@@ -452,6 +459,7 @@ export default function VODScreen() {
         setVodItems(sliced);
         setHasMore(filtered.length > sliced.length);
         setPage(pageNum);
+        if (reset) restoreFocusPosition(sliced);
       } else {
         // MAG / Stalker: server-side pagination
         const fresh = await portalApi.getVodItems(activePortal, cat, pageNum);
@@ -464,6 +472,7 @@ export default function VODScreen() {
         setVodItems(updatedList);
         setHasMore(items.length > 0);
         setPage(pageNum);
+        if (reset) restoreFocusPosition(updatedList);
       }
     } catch (e) {
       console.error(e);
@@ -492,6 +501,21 @@ export default function VODScreen() {
 
   const handleVodFocus = useCallback((vod: VODItem) => {
     setFocusedImage(vod.logo || null);
+    focusedIdRef.current = String(vod.id);
+  }, []);
+
+  // After a refresh/reset, scroll the list back to the previously focused item
+  const restoreFocusPosition = useCallback((items: VODItem[]) => {
+    if (!focusedIdRef.current || !flatListRef.current) return;
+    // With multi-column grids, scrollToIndex needs the flat index
+    const idx = items.findIndex(v => String(v.id) === focusedIdRef.current);
+    if (idx > 0) {
+      setTimeout(() => {
+        try {
+          flatListRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.3 });
+        } catch { /* ignore if out of range */ }
+      }, 120);
+    }
   }, []);
 
   const handleFavoritePress = useCallback((vod: VODItem) => {
@@ -546,7 +570,11 @@ export default function VODScreen() {
       onFavoritePress={handleFavoritePress}
       isFavorite={favorites.vod.includes(item.id)}
       itemWidth={itemWidth}
-      autoFocus={index === 0 && !searchFocused}
+      autoFocus={
+        focusedIdRef.current
+          ? String(item.id) === focusedIdRef.current
+          : index === 0 && !searchFocused
+      }
     />
   ), [favorites.vod, itemWidth, searchFocused]);
 
@@ -692,6 +720,8 @@ export default function VODScreen() {
             </View>
           ) : (
             <FlatList
+              ref={flatListRef}
+              onScrollToIndexFailed={() => {}}
               data={filteredMovies}
               renderItem={renderMovieItem}
               keyExtractor={(item) => String(item.id)}

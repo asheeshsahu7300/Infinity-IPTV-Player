@@ -55,6 +55,7 @@ const S = StyleSheet.create({
     borderBottomRightRadius: ps(2),
     justifyContent: "center",
     paddingLeft: pw(2),
+    overflow: "visible",
   },
   itemActiveContainer: {
     // shadow styling if needed
@@ -70,10 +71,12 @@ const S = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  icon: {
+  iconWrapper: {
     marginRight: pw(1.2),
-    width: ps(1.8),
-    textAlign: "center",
+    width: ps(2),
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "visible",
   },
   itemText: {
     color: "rgba(255,255,255,0.45)",
@@ -170,12 +173,13 @@ const CategoryItem = React.memo(function CategoryItem({
                 <View style={S.focusIndicatorBar} />
               )}
               <View style={[S.itemInner, { paddingLeft: focused ? pw(0.5) : 0 }]}>
-                <IconLib
-                  name={iconData.name}
-                  size={ps(1.3)}
-                  color={isActive || focused ? "#fff" : "rgba(255,255,255,0.3)"}
-                  style={S.icon}
-                />
+                <View style={S.iconWrapper}>
+                  <IconLib
+                    name={iconData.name}
+                    size={ps(1.3)}
+                    color={isActive || focused ? "#fff" : "rgba(255,255,255,0.3)"}
+                  />
+                </View>
                 <Text
                   style={[
                     S.itemText,

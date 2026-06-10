@@ -228,6 +228,12 @@ class DiskCache {
   }
 
   async get<T>(key: string): Promise<T | null> {
+    const raw = await this.getRaw<T>(key);
+    return raw ? raw.data : null;
+  }
+
+  /** Returns the full CacheEntry (with expiry) or null, for TTL-preserving restores */
+  async getRaw<T>(key: string): Promise<CacheEntry<T> | null> {
     try {
       const storageKey = this.prefix + key;
       const value = await AsyncStorage.getItem(storageKey);
@@ -249,9 +255,9 @@ class DiskCache {
         await this.remove(key);
         return null;
       }
-      return entry.data;
+      return entry;
     } catch (e) {
-      console.warn("DiskCache get failed:", e);
+      console.warn("DiskCache getRaw failed:", e);
       return null;
     }
   }
@@ -306,10 +312,17 @@ class CacheManager {
     const mem = this.memoryCache.get<T>(key);
     if (mem !== null) return mem;
 
-    const disk = await this.diskCache.get<T>(key);
+    const disk = await this.diskCache.getRaw<T>(key);
     if (disk !== null) {
-      this.memoryCache.set(key, disk, CACHE_TTL.CHANNELS); // default TTL
-      return disk;
+      // Preserve remaining TTL from the disk entry so memory expiry matches disk expiry
+      const remainingTtl = Math.max(0, disk.expiry - Date.now());
+      if (remainingTtl > 0) {
+        this.memoryCache.set(key, disk.data, remainingTtl);
+        return disk.data;
+      }
+      // Entry expired — clean it up
+      await this.diskCache.remove(key);
+      return null;
     }
     return null;
   }
