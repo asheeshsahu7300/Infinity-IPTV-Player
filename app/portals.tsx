@@ -21,7 +21,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { Focusable } from "../src/tv";
-import { THEME } from "../src/theme/tokens";
+import { THEME , fw } from '../src/theme/tokens';
 
 // ─── Percentage helpers ───────────────────────────────────────────────────────
 const { width: W, height: H } = Dimensions.get("window");
@@ -224,10 +224,21 @@ export default function PortalsScreen() {
 
   // ── Header ─────────────────────────────────────────────────────────────────
   const renderHeader = () => (
-    <View style={S.header}>
-      <Text style={S.brandingText}>IPTV HUB</Text>
-      <Text style={S.headerSubtitle}>SELECT YOUR PREFERRED CONNECTION TO BEGIN YOUR</Text>
-      <Text style={S.headerSubtitleAccent}>PREMIUM STREAMING EXPERIENCE</Text>
+    <View style={[S.header, { flexDirection: "row", paddingHorizontal: pw(4), alignItems: "center", gap: 16 }]}>
+      {Dimensions.get("window").width >= 768 && router.canGoBack() && (
+        <Focusable
+          ringOnFocus={false}
+          onPress={() => router.back()}
+          style={{ width: ps(5), height: ps(5), borderRadius: ps(2.5), backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center' }}
+          focusStyle={{ backgroundColor: THEME.colors.primary, transform: [{ scale: 1.1 }] }}
+        >
+          {() => <Ionicons name="chevron-back" size={ps(2)} color="#fff" />}
+        </Focusable>
+      )}
+      <View style={{ alignItems: "flex-start" }}>
+        <Text style={[S.brandingText, { marginBottom: 0 }]}>IPTV HUB</Text>
+        <Text style={[S.headerSubtitle, { textAlign: "left", marginBottom: 0 }]}>SELECT YOUR PORTAL CONNECTION</Text>
+      </View>
     </View>
   );
 
@@ -369,7 +380,7 @@ const S = StyleSheet.create({
   },
   brandingText: {
     fontSize: isTV ? ps(2.5) : ps(2.2),
-    fontWeight: "500",
+    fontWeight: fw("500"),
     color: "#fff",
     letterSpacing: 5,
     marginBottom: ph(1),
@@ -377,7 +388,7 @@ const S = StyleSheet.create({
   headerSubtitle: {
     fontSize: isTV ? ps(1.2) : ps(0.9),
     color: "rgba(255,255,255,0.4)",
-    fontWeight: "400",
+    fontWeight: fw("400"),
     letterSpacing: 1.5,
     textAlign: "center",
     marginBottom: ph(0.5),
@@ -385,7 +396,7 @@ const S = StyleSheet.create({
   headerSubtitleAccent: {
     fontSize: isTV ? ps(1.2) : ps(0.9),
     color: THEME.colors.primary,
-    fontWeight: '600',
+    fontWeight: fw('600'),
     letterSpacing: 2,
     textAlign: 'center',
   },
@@ -411,7 +422,7 @@ const S = StyleSheet.create({
   addBtnText: {
     color: "rgba(255,255,255,0.8)",
     fontSize: ps(1.1),
-    fontWeight: "500",
+    fontWeight: fw("500"),
     letterSpacing: 2,
   },
 
@@ -506,7 +517,7 @@ const S = StyleSheet.create({
   activeBadgeText: {
     color: "#fff",
     fontSize: ps(0.8),
-    fontWeight: "600",
+    fontWeight: fw("600"),
     letterSpacing: 1,
   },
 
@@ -517,7 +528,7 @@ const S = StyleSheet.create({
   },
   cardName: {
     fontSize: ps(3.2),
-    fontWeight: "300",
+    fontWeight: fw("300"),
     color: "#fff",
     marginBottom: ph(0.5),
     letterSpacing: 2,
@@ -525,14 +536,14 @@ const S = StyleSheet.create({
   cardDetailText: {
     fontSize: ps(1.4),
     color: "rgba(255,255,255,0.3)",
-    fontWeight: "300",
+    fontWeight: fw("300"),
     marginBottom: ph(1.5),
     letterSpacing: 1,
   },
   cardTypeLabel: {
     fontSize: ps(1.6),
     color: THEME.colors.primary,
-    fontWeight: "500",
+    fontWeight: fw("500"),
     letterSpacing: 4,
   },
 
@@ -559,7 +570,7 @@ const S = StyleSheet.create({
   exploreBtnText: {
     color: "#fff",
     fontSize: ps(1.1),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     letterSpacing: 1,
   },
   settingsBtn: {
@@ -600,7 +611,7 @@ const S = StyleSheet.create({
   addButtonText: {
     color: "#fff",
     fontSize: ps(1.5),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     letterSpacing: 2,
   },
 

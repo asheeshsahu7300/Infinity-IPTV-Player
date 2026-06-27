@@ -14,7 +14,7 @@ import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Focusable } from "../tv";
-import { THEME, pw, ph, ps } from "../theme/tokens";
+import { THEME, pw, ph, ps , fw } from '../theme/tokens';
 
 export type CardAspectRatio = "16:9" | "2:3" | "1:1";
 export type CardType = "channel" | "vod" | "series";
@@ -184,13 +184,13 @@ const S = StyleSheet.create({
   },
   title: {
     color: "#fff",
-    fontSize: ps(1.15),
-    fontWeight: "700",
+    fontSize: ps(1.4),
+    fontWeight: fw("700"),
     fontFamily: THEME.fonts.bold,
   },
   subtitle: {
     color: "rgba(255,255,255,0.5)",
-    fontSize: ps(0.9),
+    fontSize: ps(1.1),
     marginTop: 4,
     fontFamily: THEME.fonts.regular,
   },

@@ -7,11 +7,16 @@ const IS_TV =
   (Platform.OS === 'android' && W > 1000) ||
   (Platform.OS === 'web' && W > 800);
 
+const IS_MOBILE = W < 768;
+
 const TV_SCALE = IS_TV ? 1.3 : 1;
+const MOBILE_SCALE = IS_MOBILE ? 2.2 : 1;
+const SCALE = IS_TV ? TV_SCALE : MOBILE_SCALE;
 
 export const pw = (pct: number) => (W * pct) / 100;
 export const ph = (pct: number) => (H * pct) / 100;
-export const ps = (pct: number) => ((pw(pct) + ph(pct)) / 2) * TV_SCALE;
+export const ps = (pct: number) => ((pw(pct) + ph(pct)) / 2) * SCALE;
+export const fw = (weight: string | number): any => String(weight);
 
 export const THEME = {
   colors: {

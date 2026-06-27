@@ -23,7 +23,7 @@ import { CinematicBackground } from "../src/components/CinematicBackground";
 import { isTV } from "../src/utils/tvUtils";
 import { Focusable } from "../src/tv";
 
-import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { THEME, pw, ph, ps , fw } from '../src/theme/tokens';
 
 // ─── Gradient text ────────────────────────────────────────────────────────────
 const GradientText = ({
@@ -569,22 +569,26 @@ export default function AddPortalScreen() {
 
       {step === 2 && (
         <View style={S.premiumHeader}>
-          <Focusable
-            onPress={handleBack}
-            onFocus={() => setFocusedField("back")}
-            onBlur={() => setFocusedField(null)}
-            ringOnFocus={false}
-            style={[
-              S.premiumTopActionBtn,
-              focusedField === "back" && S.premiumTopActionBtnFocused,
-            ]}
-          >
-            {(focused) => (
-              <Ionicons name="arrow-back" size={ps(2.2)} color="#fff" />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            {Dimensions.get("window").width >= 768 && (
+              <Focusable
+                onPress={handleBack}
+                onFocus={() => setFocusedField("back")}
+                onBlur={() => setFocusedField(null)}
+                ringOnFocus={false}
+                style={[
+                  S.premiumTopActionBtn,
+                  focusedField === "back" && S.premiumTopActionBtnFocused,
+                ]}
+              >
+                {(focused) => (
+                  <Ionicons name="arrow-back" size={ps(2.2)} color="#fff" />
+                )}
+              </Focusable>
             )}
-          </Focusable>
-
-          <Text style={S.premiumHeaderTitle}>IPTV HUB</Text>
+  
+            <Text style={S.premiumHeaderTitle}>IPTV HUB</Text>
+          </View>
 
           <Focusable
             onPress={() => Alert.alert("Support", "Please visit our website for support.")}
@@ -686,7 +690,7 @@ const S = StyleSheet.create({
   logoTitle: {
     color: "#fff",
     fontSize: ps(3.2),
-    fontWeight: "500",
+    fontWeight: fw("500"),
     letterSpacing: 5,
   },
   step1Subtitle: {
@@ -698,7 +702,7 @@ const S = StyleSheet.create({
   },
   premiumText: {
     color: THEME.colors.primary,
-    fontWeight: "800",
+    fontWeight: fw("800"),
   },
   cardsContainer: {
     flexDirection: isTV ? "row" : "column",
@@ -721,7 +725,7 @@ const S = StyleSheet.create({
   },
   darkCardTitle: {
     fontSize: isTV ? ps(2.2) : ps(1.8),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     color: "#fff",
     marginBottom: ph(1.2),
     textAlign: "center",
@@ -744,7 +748,7 @@ const S = StyleSheet.create({
   },
   premiumHeaderTitle: {
     fontSize: ps(2.2),
-    fontWeight: "500",
+    fontWeight: fw("500"),
     color: "#fff",
     letterSpacing: 5,
   },
@@ -772,7 +776,7 @@ const S = StyleSheet.create({
   premiumSupportText: {
     color: "#b0b0b0",
     fontSize: ps(1.2),
-    fontWeight: "600",
+    fontWeight: fw("600"),
     letterSpacing: 1,
   },
 
@@ -793,7 +797,7 @@ const S = StyleSheet.create({
   },
   premiumFormTitle: {
     fontSize: isTV ? ps(2.0) : ps(1.8),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     color: "#e2e2e2",
     marginBottom: ph(0.4),
   },
@@ -808,7 +812,7 @@ const S = StyleSheet.create({
   },
   premiumLabel: {
     fontSize: ps(1.1),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     color: "#b0b0b0",
     letterSpacing: 1.2,
     marginBottom: ph(1),
@@ -834,7 +838,7 @@ const S = StyleSheet.create({
   premiumDividerText: {
     color: "#555",
     fontSize: ps(1.1),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     paddingHorizontal: pw(2),
   },
 
@@ -852,7 +856,7 @@ const S = StyleSheet.create({
   premiumBrowseBtnText: {
     color: "#e2e2e2",
     fontSize: isTV ? ps(1.5) : ps(1.3),
-    fontWeight: "600",
+    fontWeight: fw("600"),
   },
   premiumInputWrapperFocused: {
     borderColor: "#ff1b8a",
@@ -879,7 +883,7 @@ const S = StyleSheet.create({
   saveOnlyBtnText: {
     color: "#777",
     fontSize: ps(1.3),
-    fontWeight: "600",
+    fontWeight: fw("600"),
     textDecorationLine: "underline",
   },
   connectBtnWrapper: {
@@ -894,7 +898,7 @@ const S = StyleSheet.create({
   connectBtnText: {
     color: "#fff",
     fontSize: isTV ? ps(1.8) : ps(1.5),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     letterSpacing: 0.5,
   },
 
@@ -904,7 +908,7 @@ const S = StyleSheet.create({
     fontSize: ps(1.0),
     textAlign: "center",
     marginTop: ph(4),
-    fontWeight: "600",
+    fontWeight: fw("600"),
     letterSpacing: 0.8,
   },
 });

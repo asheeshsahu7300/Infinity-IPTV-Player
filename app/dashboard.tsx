@@ -8,6 +8,7 @@ import {
   Image,
   Dimensions,
   Alert,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -22,7 +23,7 @@ import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import LoadingOverlay from "../src/components/LoadingOverlay";
 import { isTV } from "../src/utils/tvUtils";
 import { Focusable, Overlay } from "../src/tv";
-import { THEME } from "../src/theme/tokens";
+import { THEME , fw } from '../src/theme/tokens';
 
 // ─── Percentage helpers ───────────────────────────────────────────────────────
 const { width: W, height: H } = Dimensions.get("window");
@@ -38,9 +39,9 @@ const RAIL_GAP = pw(1);
 // with a `RAIL_GAP` of pw(1) between tiles:
 //   7 × tileW + 6 × pw(1) = 100% − 2 × pw(5)
 //   tileW = (90 − 6) / 7 = 12% of width  ⇒ pw(12)
-const PORTRAIT_W = pw(isTV ? 12 : 18);
+const PORTRAIT_W = pw(isTV ? 12 : 28);
 const PORTRAIT_H = PORTRAIT_W * 1.5;
-const LANDSCAPE_W = pw(isTV ? 12 : 26);
+const LANDSCAPE_W = pw(isTV ? 12 : 40);
 const LANDSCAPE_H = LANDSCAPE_W * (9 / 16);
 
 const GRADIENT_COLORS = [THEME.colors.primary, THEME.colors.secondary] as const;
@@ -169,6 +170,9 @@ const HeroPill = ({
   iconType?: "ionicons" | "material";
   autoFocus?: boolean;
 }) => {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+
   return (
     <Focusable
       hasTVPreferredFocus={autoFocus}
@@ -179,21 +183,22 @@ const HeroPill = ({
       {(focused) => (
         <View style={[
           S.heroPillContainer,
+          isMobile && { borderWidth: 0 },
           focused && S.heroPillContainerFocused,
           focused && { transform: [{ scale: 1.08 }] }
         ]}>
           <LinearGradient
-            colors={focused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.08)", "rgba(255,255,255,0.05)"]}
+            colors={[THEME.colors.primary, THEME.colors.secondary]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={S.heroPillGradient}
+            style={[S.heroPillGradient, isMobile && { paddingHorizontal: 12, paddingVertical: 8 }]}
           >
             {iconType === "material" ? (
-              <MaterialCommunityIcons name={icon as any} size={ps(1.8)} color="#fff" style={{ marginRight: pw(0.8) }} />
+              <MaterialCommunityIcons name={icon as any} size={isMobile ? 16 : ps(1.8)} color="#fff" style={{ marginRight: isMobile ? 6 : pw(0.8) }} />
             ) : (
-              <Ionicons name={icon as any} size={ps(1.8)} color="#fff" style={{ marginRight: pw(0.8) }} />
+              <Ionicons name={icon as any} size={isMobile ? 16 : ps(1.8)} color="#fff" style={{ marginRight: isMobile ? 6 : pw(0.8) }} />
             )}
-            <Text style={S.heroPillText}>{text}</Text>
+            <Text style={[S.heroPillText, isMobile && { fontSize: ps(1.4) }]}>{text}</Text>
           </LinearGradient>
         </View>
       )}
@@ -204,6 +209,8 @@ const HeroPill = ({
 export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
   const { activePortal, channels, vodItems, series, favorites, loadFavorites, setActivePortal, updatePortal } = usePortalStore();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -324,40 +331,43 @@ export default function DashboardScreen() {
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: insets.top + ph(2), paddingBottom: ph(10) }}
+        contentContainerStyle={{ paddingTop: isMobile ? insets.top : insets.top + ph(2), paddingBottom: isMobile ? 120 : ph(10) }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ff1b8a" />}
       >
         {/* Cinematic Header Branding */}
-        <View style={S.headerBranding}>
+        <View style={[S.headerBranding, isMobile && { marginTop: 0, marginBottom: 16 }]}>
           <View style={S.logoRow}>
-            <Text style={S.logoTitle}>IPTV HUB</Text>
+            <Text style={[S.logoTitle, isMobile && { fontSize: ps(3.2) }]}>IPTV HUB</Text>
           </View>
           <View style={S.headerActions}>
-            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={handleFullRefresh} style={S.roundBtn}>
-              <Ionicons name="refresh" size={ps(2)} color="#fff" />
+            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={handleFullRefresh} style={[S.roundBtn, isMobile && { width: 36, height: 36, borderRadius: 18 }]}>
+              <Ionicons name="refresh" size={isMobile ? 20 : ps(2)} color="#fff" />
             </Focusable>
-            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/portals")} style={S.roundBtn}>
-              <Ionicons name="apps" size={ps(2)} color="#fff" />
+            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/portals")} style={[S.roundBtn, isMobile && { width: 36, height: 36, borderRadius: 18 }]}>
+              <Ionicons name="apps" size={isMobile ? 20 : ps(2)} color="#fff" />
             </Focusable>
-            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/settings")} style={S.roundBtn}>
-              <Ionicons name="settings" size={ps(2)} color="#fff" />
+            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/settings")} style={[S.roundBtn, isMobile && { width: 36, height: 36, borderRadius: 18 }]}>
+              <Ionicons name="settings" size={isMobile ? 20 : ps(2)} color="#fff" />
             </Focusable>
           </View>
         </View>
 
-        <View style={S.heroSection}>
-          <GradientText text="PREMIUM STREAMING" style={S.heroTagline} />
-          <Text style={S.heroTitle}>Unlimited Entertainment</Text>
-          <Text style={S.heroDesc}>Access thousands of Indian channels, global movies and exclusive series directly on your screen.</Text>
-          <View style={S.heroButtons}>
+        <View style={[S.heroSection, isMobile && { maxWidth: "100%", marginBottom: 10 }]}>
+          {!isMobile && (
+            <>
+              <GradientText text="PREMIUM STREAMING" style={[S.heroTagline, isMobile && { fontSize: ps(1.6) }]} />
+              <Text style={[S.heroTitle, isMobile && { fontSize: ps(5) }]}>Unlimited Entertainment</Text>
+              <Text style={[S.heroDesc, isMobile && { fontSize: ps(1.8), lineHeight: 28 }]}>Access thousands of Indian channels, global movies and exclusive series directly on your screen.</Text>
+            </>
+          )}
+          <View style={[S.heroButtons, isMobile && { flexWrap: "wrap", gap: 12 }]}>
             <HeroPill icon="search" text="Search Content" autoFocus onPress={() => router.push("/search")} />
-            <HeroPill icon="settings" text="Preferences" onPress={() => router.push("/settings")} />
           </View>
         </View>
 
         {/* Browse Category Cards */}
         <View style={S.browseSection}>
-          <View style={S.browseContainer}>
+          <View style={[S.browseContainer, isMobile && { gap: 16 }]}>
             {(
               [
                 { id: "cat-live", title: "Live TV", icon: "tv", img: "https://i.pinimg.com/1200x/c2/f5/f5/c2f5f508392fc27ab89483fe3037fd30.jpg", route: "/live-tv" },
@@ -370,7 +380,7 @@ export default function DashboardScreen() {
                 onFocus={() => setFocusedImage(cat.img)}
                 onPress={() => router.push(cat.route as any)}
                 ringOnFocus={false}
-                style={[S.browseCardWrapper, { overflow: "visible" }]}
+                style={[S.browseCardWrapper, { overflow: "visible" }, isMobile && { flex: 0, height: 220, minHeight: 220 }]}
               >
                 {(focused) => (
                   <View style={[S.browseCard, focused && {
@@ -380,22 +390,22 @@ export default function DashboardScreen() {
                     shadowOpacity: 0.6,
                     shadowRadius: 10,
                     elevation: 14,
-                  }]}>
+                  }, isMobile && { borderRadius: 16 }]}>
                     <LinearGradient
                       colors={focused ? GRADIENT_COLORS : ["transparent", "transparent"]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
-                      style={{ flex: 1, borderRadius: pw(1.2), padding: focused ? 1.5 : 0 }}
+                      style={[{ flex: 1, borderRadius: pw(1.2), padding: focused ? 1.5 : 0 }, isMobile && { borderRadius: 16 }]}
                     >
-                      <View style={S.browseCardInner}>
+                      <View style={[S.browseCardInner, isMobile && { borderRadius: 16 }]}>
                         <Image source={{ uri: cat.img }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
                         <LinearGradient
-                          colors={focused ? ["rgba(0,0,0,0.2)", "rgba(0,0,0,0.4)"] : ["rgba(0,0,0,0.2)", "rgba(0,0,0,0.85)"]}
+                          colors={focused ? ["rgba(0,0,0,0.2)", "rgba(0,0,0,0.4)"] : ["rgba(0,0,0,0.4)", "rgba(0,0,0,0.95)"]}
                           style={StyleSheet.absoluteFillObject}
                         />
-                        <View style={S.browseCardContent}>
-                          <Ionicons name={cat.icon as any} size={ps(2.2)} color="#fff" />
-                          <Text style={S.browseCardTitle}>{cat.title}</Text>
+                        <View style={[S.browseCardContent, { backgroundColor: "transparent" }, isMobile && { padding: 16, borderBottomLeftRadius: 16, borderBottomRightRadius: 16 }]}>
+                          <Ionicons name={cat.icon as any} size={isMobile ? ps(3) : ps(2.2)} color="#fff" />
+                          <Text style={[S.browseCardTitle, isMobile && { fontSize: ps(2.4) }]}>{cat.title}</Text>
                         </View>
                       </View>
                     </LinearGradient>
@@ -406,40 +416,42 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        <View style={S.railsPadding}>
-          {indianChannels.length > 0 && (
-            <ContentSection
-              title="Indian Television"
-              data={indianChannels}
-              type="landscape"
-              onFocus={(img: string) => setFocusedImage(img)}
-              onPress={(c: any) => router.push({ pathname: "/player", params: { url: c.streamUrl, title: c.name, type: "live" } })}
-            />
-          )}
+        {!isMobile && (
+          <View style={S.railsPadding}>
+            {indianChannels.length > 0 && (
+              <ContentSection
+                title="Indian Television"
+                data={indianChannels}
+                type="landscape"
+                onFocus={(img: string) => setFocusedImage(img)}
+                onPress={(c: any) => router.push({ pathname: "/player", params: { url: c.streamUrl, title: c.name, type: "live" } })}
+              />
+            )}
 
-          {movieRails.length > 0 && (
-            <ContentSection
-              title="Must-Watch Movies"
-              data={movieRails}
-              type="portrait"
-              onFocus={(img: string) => setFocusedImage(img)}
-              onPress={(m: any) => {
-                setSelectedItem(m);
-                setPlayModalVisible(true);
-              }}
-            />
-          )}
+            {movieRails.length > 0 && (
+              <ContentSection
+                title="Must-Watch Movies"
+                data={movieRails}
+                type="portrait"
+                onFocus={(img: string) => setFocusedImage(img)}
+                onPress={(m: any) => {
+                  setSelectedItem(m);
+                  setPlayModalVisible(true);
+                }}
+              />
+            )}
 
-          {seriesRails.length > 0 && (
-            <ContentSection
-              title="Compelling Series"
-              data={seriesRails}
-              type="portrait"
-              onFocus={(img: string) => setFocusedImage(img)}
-              onPress={(s: any) => router.push({ pathname: "/series-details", params: { id: s.id, name: s.name, logo: s.logo } })}
-            />
-          )}
-        </View>
+            {seriesRails.length > 0 && (
+              <ContentSection
+                title="Compelling Series"
+                data={seriesRails}
+                type="portrait"
+                onFocus={(img: string) => setFocusedImage(img)}
+                onPress={(s: any) => router.push({ pathname: "/series-details", params: { id: s.id, name: s.name, logo: s.logo } })}
+              />
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* ── Play Modal ────────────────────────────────────────────────────── */}
@@ -447,6 +459,7 @@ export default function DashboardScreen() {
         visible={playModalVisible}
         onClose={() => setPlayModalVisible(false)}
         contentStyle={S.modalContainer}
+        position={isMobile ? "bottom" : "center"}
       >
         <View style={isTV ? S.modalTVContent : null}>
           <View style={S.modalLeft}>
@@ -579,7 +592,7 @@ const S = StyleSheet.create({
   logoTitle: {
     color: "#fff",
     fontSize: ps(2.8),
-    fontWeight: "500",
+    fontWeight: fw("500"),
     letterSpacing: 5,
   },
   headerActions: {
@@ -607,13 +620,13 @@ const S = StyleSheet.create({
   },
   heroTagline: {
     fontSize: ps(1.1),
-    fontWeight: "900",
+    fontWeight: fw("900"),
     letterSpacing: 2.5,
   },
   heroTitle: {
     fontSize: ps(4.2),
     color: "#fff",
-    fontWeight: "700",
+    fontWeight: fw("700"),
     marginVertical: ph(1),
   },
   heroDesc: {
@@ -652,7 +665,7 @@ const S = StyleSheet.create({
   },
   heroPillText: {
     color: "#fff",
-    fontWeight: "600",
+    fontWeight: fw("600"),
     fontSize: ps(1.2),
     letterSpacing: 0.5,
   },
@@ -699,7 +712,7 @@ const S = StyleSheet.create({
   browseCardTitle: {
     color: "#fff",
     fontSize: ps(1.8),
-    fontWeight: "700",
+    fontWeight: fw("700"),
   },
 
   // ── Rails ──
@@ -719,7 +732,7 @@ const S = StyleSheet.create({
   sectionTitle: {
     color: "#fff",
     fontSize: ps(1.8),
-    fontWeight: "600",
+    fontWeight: fw("600"),
   },
   viewAllBtn: {
     flexDirection: "row",
@@ -769,12 +782,13 @@ const S = StyleSheet.create({
   },
   cardTitle: {
     color: "#fff",
-    fontSize: ps(1.15),
-    fontWeight: "700",
+    fontSize: ps(1.4),
+    fontWeight: fw("700"),
   },
   cardSubtitle: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: ps(0.85),
+    color: "rgba(255,255,255,0.7)",
+    fontSize: ps(1.0),
+    fontWeight: fw("500"),
     marginTop: 2,
   },
   focusBorder: {
@@ -796,11 +810,11 @@ const S = StyleSheet.create({
   modalTVContent: { flexDirection: "row" },
   modalLeft: { flex: 1.4, padding: ps(1.5) },
   modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.015)", padding: ps(2), borderRadius: 20, justifyContent: "center", gap: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" },
-  modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", marginBottom: 12 },
+  modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), marginBottom: 12 },
   modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.95), lineHeight: ps(1.4), marginBottom: 18 },
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
   modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "700" },
+  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: fw("700") },
   modalBtnWrapper: { borderRadius: 12, overflow: "visible" },
   modalBtnBorder: { padding: 1.5, borderRadius: 12 },
   modalBtnBorderFocused: {
@@ -813,6 +827,6 @@ const S = StyleSheet.create({
   },
   modalBtnPrimaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
   modalBtnSecondaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#0d0d12" },
-  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1 },
-  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5 },
+  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: fw("900"), letterSpacing: 1 },
+  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: fw("700"), letterSpacing: 0.5 },
 });

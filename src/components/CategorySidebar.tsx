@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { THEME, pw, ph, ps } from "../theme/tokens";
+import { THEME, pw, ph, ps , fw } from '../theme/tokens';
 import { Focusable } from "../tv";
 
 interface Category {
@@ -21,15 +21,23 @@ interface CategorySidebarProps {
   selectedId: string;
   onSelect: (id: string) => void;
   width?: number;
+  mode?: "vertical" | "horizontal";
 }
 
 // ─────────────────────────────────────────────
 // Styles Defined at Top to Prevent Hoisting Issues
 // ─────────────────────────────────────────────
+const auto: any = "auto";
+
 const S = StyleSheet.create({
   container: {
     backgroundColor: "transparent",
     paddingTop: ph(1),
+  },
+  containerHorizontal: {
+    paddingTop: ph(0.5),
+    paddingBottom: ph(0.5),
+    flexDirection: "row",
   },
   sidebarHeader: {
     paddingHorizontal: pw(3),
@@ -39,15 +47,25 @@ const S = StyleSheet.create({
   sidebarLabel: {
     color: "rgba(255,255,255,0.25)",
     fontSize: ps(0.95),
-    fontWeight: "900",
+    fontWeight: fw("900"),
     letterSpacing: 2,
   },
   listContent: {
     paddingHorizontal: pw(1),
     paddingBottom: ph(4),
   },
+  listContentHorizontal: {
+    paddingHorizontal: pw(2),
+    paddingBottom: 0,
+    alignItems: "center",
+    gap: pw(2),
+  },
   itemWrapper: {
     marginBottom: ph(0.8),
+  },
+  itemWrapperHorizontal: {
+    marginBottom: 0,
+    marginRight: pw(1),
   },
   itemContainer: {
     height: ph(6.4),
@@ -57,8 +75,16 @@ const S = StyleSheet.create({
     paddingLeft: pw(2),
     overflow: "visible",
   },
-  itemActiveContainer: {
-    // shadow styling if needed
+  itemContainerHorizontal: {
+    height: ph(4.5),
+    borderRadius: 100,
+    paddingHorizontal: pw(2.5),
+    justifyContent: "center",
+    borderTopRightRadius: 100,
+    borderBottomRightRadius: 100,
+    paddingLeft: pw(2.5),
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   itemGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -66,6 +92,11 @@ const S = StyleSheet.create({
     borderBottomRightRadius: ps(2),
     justifyContent: "center",
     paddingLeft: pw(2),
+  },
+  itemGradientHorizontal: {
+    borderRadius: 100,
+    borderTopRightRadius: 100,
+    borderBottomRightRadius: 100,
   },
   itemInner: {
     flexDirection: "row",
@@ -78,17 +109,27 @@ const S = StyleSheet.create({
     justifyContent: "center",
     overflow: "visible",
   },
+  iconWrapperHorizontal: {
+    marginRight: pw(0.8),
+    width: "auto",
+  },
   itemText: {
     color: "rgba(255,255,255,0.45)",
     fontSize: ps(1.25),
-    fontWeight: "600",
+    fontWeight: fw("600"),
     letterSpacing: 0.3,
+  },
+  itemTextHorizontal: {
+    fontSize: ps(1.1),
   },
   itemTextActive: {
     color: "#fff",
     fontSize: ps(1.35),
-    fontWeight: "800",
+    fontWeight: fw("800"),
     letterSpacing: 0.5,
+  },
+  itemTextActiveHorizontal: {
+    fontSize: ps(1.2),
   },
   focusIndicatorBar: {
     position: "absolute",
@@ -100,6 +141,17 @@ const S = StyleSheet.create({
     borderTopRightRadius: 2,
     borderBottomRightRadius: 2,
   },
+  focusIndicatorHorizontal: {
+    top: auto,
+    bottom: -4,
+    left: "20%",
+    right: "20%",
+    width: "60%",
+    height: 3,
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 0,
+    borderTopLeftRadius: 2,
+  }
 });
 
 // ─────────────────────────────────────────────
@@ -129,18 +181,21 @@ const CategoryItem = React.memo(function CategoryItem({
   onSelect,
   onFocus,
   index,
+  mode,
 }: {
   item: Category;
   isActive: boolean;
   onSelect: () => void;
   onFocus: (index: number) => void;
   index: number;
+  mode: "vertical" | "horizontal";
 }) {
   const iconData = useMemo(() => getCategoryIcon(item.name), [item.name]);
   const IconLib = iconData.lib;
+  const isHorz = mode === "horizontal";
 
   return (
-    <View style={[S.itemWrapper, { overflow: "visible" }]}>
+    <View style={[S.itemWrapper, isHorz && S.itemWrapperHorizontal, { overflow: "visible" }]}>
       <Focusable
         onPress={onSelect}
         onFocus={() => onFocus(index)}
@@ -150,13 +205,15 @@ const CategoryItem = React.memo(function CategoryItem({
         {(focused) => {
           const containerStyle = [
             S.itemContainer,
+            isHorz && S.itemContainerHorizontal,
             focused && {
               transform: [{ scale: 1.05 }],
               backgroundColor: "rgba(255,255,255,0.08)",
             },
             isActive && {
               backgroundColor: "transparent",
-            }
+            },
+            focused && isHorz && { borderColor: "#6b6b6bff" }
           ];
 
           return (
@@ -166,24 +223,26 @@ const CategoryItem = React.memo(function CategoryItem({
                   colors={[THEME.colors.primary, THEME.colors.secondary]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
-                  style={S.itemGradient}
+                  style={[S.itemGradient, isHorz && S.itemGradientHorizontal]}
                 />
               )}
               {focused && (
-                <View style={S.focusIndicatorBar} />
+                <View style={[S.focusIndicatorBar, isHorz && S.focusIndicatorHorizontal]} />
               )}
-              <View style={[S.itemInner, { paddingLeft: focused ? pw(0.5) : 0 }]}>
-                <View style={S.iconWrapper}>
+              <View style={[S.itemInner, { paddingLeft: focused && !isHorz ? pw(0.5) : 0 }]}>
+                <View style={[S.iconWrapper, isHorz && S.iconWrapperHorizontal]}>
                   <IconLib
                     name={iconData.name}
-                    size={ps(1.3)}
+                    size={isHorz ? ps(1.1) : ps(1.3)}
                     color={isActive || focused ? "#fff" : "rgba(255,255,255,0.3)"}
                   />
                 </View>
                 <Text
                   style={[
                     S.itemText,
-                    (isActive || focused) && S.itemTextActive
+                    isHorz && S.itemTextHorizontal,
+                    (isActive || focused) && S.itemTextActive,
+                    (isActive || focused) && isHorz && S.itemTextActiveHorizontal
                   ]}
                   numberOfLines={1}
                 >
@@ -203,6 +262,7 @@ export default function CategorySidebar({
   selectedId,
   onSelect,
   width = 240,
+  mode = "vertical",
 }: CategorySidebarProps) {
   const flatListRef = useRef<FlatList>(null);
   const isMounted = useRef(true);
@@ -231,27 +291,32 @@ export default function CategorySidebar({
   }, [selectedId, categories, scrollToIndex]);
 
   const ITEM_HEIGHT = ph(7.2);
+  const isHorz = mode === "horizontal";
 
   return (
-    <View style={[S.container, { width }]}>
-      <View style={S.sidebarHeader}>
-        <Text style={S.sidebarLabel}>CATEGORIES</Text>
-      </View>
+    <View style={[S.container, isHorz && S.containerHorizontal, !isHorz && { width }]}>
+      {!isHorz && (
+        <View style={S.sidebarHeader}>
+          <Text style={S.sidebarLabel}>CATEGORIES</Text>
+        </View>
+      )}
 
-      <View style={{ height: ITEM_HEIGHT * 10 }}>
+      <View style={isHorz ? { flex: 1, height: ph(6) } : { height: ITEM_HEIGHT * 10 }}>
         <FlatList
+          horizontal={isHorz}
           ref={flatListRef}
           data={categories}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={S.listContent}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={[S.listContent, isHorz && S.listContentHorizontal]}
           removeClippedSubviews={false}
           initialNumToRender={20}
           maxToRenderPerBatch={10}
           windowSize={5}
           updateCellsBatchingPeriod={50}
           keyboardShouldPersistTaps="always"
-          getItemLayout={(_, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
+          getItemLayout={isHorz ? undefined : (_, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
           onScrollToIndexFailed={(info) => {
             setTimeout(() => {
               if (isMounted.current && flatListRef.current) {
@@ -266,10 +331,11 @@ export default function CategorySidebar({
               onSelect={() => onSelect(item.id)}
               onFocus={(i) => scrollToIndex(i)}
               index={index}
+              mode={mode}
             />
           )}
         />
       </View>
     </View>
   );
-}
+}

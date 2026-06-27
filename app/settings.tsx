@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePortalStore } from '../src/store/portalStore';
 import { isTV } from '../src/utils/tvUtils';
 import { LinearGradient } from 'expo-linear-gradient';
-import { THEME } from '../src/theme/tokens';
+import { THEME , fw } from '../src/theme/tokens';
 import { BlurView } from 'expo-blur';
 import MaskedView from "@react-native-masked-view/masked-view";
 import { Focusable, FocusGroup } from "../src/tv";
@@ -184,21 +184,21 @@ export default function SettingsScreen() {
       </View>
 
       {/* Modern Centered Header */}
-      <View style={S.headerBranding}>
-        <View style={S.headerTopRow}>
+      <View style={[S.headerBranding, { flexDirection: "row", paddingHorizontal: pw(4), alignItems: "center", gap: 16 }]}>
+        {W >= 768 && (
           <Focusable
             ringOnFocus={false}
             onPress={() => router.back()}
             style={S.backBtn}
             focusStyle={S.backBtnFocused}
           >
-            <Ionicons name="chevron-back" size={ps(2.5)} color="#fff" />
+            {() => <Ionicons name="chevron-back" size={ps(2)} color="#fff" />}
           </Focusable>
-          <View style={{ flex: 1 }} />
+        )}
+        <View style={{ alignItems: "flex-start" }}>
+          <Text style={[S.brandingText, { marginBottom: 0 }]}>IPTV HUB</Text>
+          <Text style={[S.headerSubtitle, { textAlign: "left", marginBottom: 0 }]}>SETTINGS CONTROL PANEL</Text>
         </View>
-        <Text style={S.brandingText}>IPTV HUB</Text>
-        <Text style={S.headerSubtitle}>APPLICATION PREFERENCES & SYSTEM</Text>
-        <Text style={S.headerSubtitleAccent}>SETTINGS CONTROL PANEL</Text>
       </View>
 
       <ScrollView
@@ -395,7 +395,7 @@ const S = StyleSheet.create({
   },
   brandingText: {
     fontSize: isTV ? ps(2.5) : ps(2.2),
-    fontWeight: "500",
+    fontWeight: fw("500"),
     color: "#fff",
     letterSpacing: 5,
     marginBottom: ph(1),
@@ -404,7 +404,7 @@ const S = StyleSheet.create({
   headerSubtitle: {
     fontSize: isTV ? ps(1.2) : ps(0.9),
     color: "rgba(255,255,255,0.4)",
-    fontWeight: "400",
+    fontWeight: fw("400"),
     letterSpacing: 1.5,
     textAlign: "center",
     marginBottom: ph(0.5),
@@ -412,7 +412,7 @@ const S = StyleSheet.create({
   headerSubtitleAccent: {
     fontSize: isTV ? ps(1.2) : ps(0.9),
     color: THEME.colors.primary,
-    fontWeight: "600",
+    fontWeight: fw("600"),
     letterSpacing: 2,
     textAlign: "center",
   },
@@ -472,7 +472,7 @@ const S = StyleSheet.create({
   },
   settingTitle: {
     fontSize: ps(1.8),
-    fontWeight: '300',
+    fontWeight: fw('300'),
     color: '#fff',
     letterSpacing: 1,
   },
@@ -482,7 +482,7 @@ const S = StyleSheet.create({
   settingSubtitle: {
     fontSize: ps(1.1),
     color: 'rgba(255,255,255,0.3)',
-    fontWeight: '300',
+    fontWeight: fw('300'),
     marginTop: 4,
     letterSpacing: 0.5,
   },
@@ -491,7 +491,7 @@ const S = StyleSheet.create({
   },
   sectionLabel: {
     fontSize: isTV ? ps(1.2) : ps(1),
-    fontWeight: '700',
+    fontWeight: fw('700'),
     color: 'rgba(255,255,255,0.2)',
     letterSpacing: 1.5,
     marginBottom: ph(2),
@@ -514,13 +514,13 @@ const S = StyleSheet.create({
   tinyLabel: {
     fontSize: isTV ? ps(1.1) : ps(0.9),
     color: 'rgba(255,255,255,0.3)',
-    fontWeight: '600',
+    fontWeight: fw('600'),
     marginBottom: ph(0.5),
   },
   largeValue: {
     fontSize: ps(1.8),
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: fw('700'),
   },
   disconnectBtnWrapper: {
     alignSelf: 'flex-start',
@@ -548,7 +548,7 @@ const S = StyleSheet.create({
   disconnectBtnText: {
     color: '#fff',
     fontSize: ps(1.4),
-    fontWeight: '700',
+    fontWeight: fw('700'),
   },
 
   // Grouped Card
@@ -583,7 +583,7 @@ const S = StyleSheet.create({
   innerTitle: {
     fontSize: ps(1.6),
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: fw('700'),
   },
   innerSubtitle: {
     fontSize: isTV ? ps(1.2) : ps(1.1),
@@ -641,7 +641,7 @@ const S = StyleSheet.create({
   bentoTitle: {
     fontSize: ps(1.6),
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: fw('700'),
   },
   bentoSubtitle: {
     fontSize: isTV ? ps(1.1) : ps(1),
@@ -682,7 +682,7 @@ const S = StyleSheet.create({
   },
   statValue: {
     fontSize: ps(4),
-    fontWeight: '300',
+    fontWeight: fw('300'),
     color: THEME.colors.primary,
   },
   statLabel: {
@@ -699,7 +699,7 @@ const S = StyleSheet.create({
   footerText: {
     fontSize: ps(1.2),
     color: 'rgba(255,255,255,0.2)',
-    fontWeight: '700',
+    fontWeight: fw('700'),
     letterSpacing: 2,
   },
   footerSubtext: {

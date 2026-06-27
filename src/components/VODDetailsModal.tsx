@@ -13,7 +13,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as IntentLauncher from "expo-intent-launcher";
 import { LinearGradient } from "expo-linear-gradient";
-import { THEME, pw, ph, ps } from "../theme/tokens";
+import { THEME, pw, ph, ps , fw } from '../theme/tokens';
 import { isTV } from "../utils/tvUtils";
 import { launchExternalPlayer } from "../utils/externalPlayer";
 
@@ -244,7 +244,7 @@ const S = StyleSheet.create({
   title: {
     color: "#fff",
     fontSize: ps(1.3),
-    fontWeight: "800",
+    fontWeight: fw("800"),
     marginBottom: ph(0.8),
     fontFamily: THEME.fonts.bold,
   },
@@ -325,13 +325,13 @@ const S = StyleSheet.create({
   btnText: {
     color: "#fff",
     fontSize: ps(1.0),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     fontFamily: THEME.fonts.bold,
     letterSpacing: 0.5,
   },
   btnTextGhost: {
     color: "rgba(255,255,255,0.4)",
     fontSize: ps(0.9),
-    fontWeight: "500",
+    fontWeight: fw("500"),
   },
 });

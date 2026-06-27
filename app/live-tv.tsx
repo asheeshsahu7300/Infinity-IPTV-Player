@@ -5,11 +5,11 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
   StatusBar,
   TextInput,
   RefreshControl,
   FlatList,
+  useWindowDimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -22,13 +22,12 @@ import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { StreamManager } from "../src/services/StreamManager";
-import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { THEME, pw, ph, ps , fw } from '../src/theme/tokens';
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import CategorySidebar from "../src/components/CategorySidebar";
 import { Focusable, FocusGroup } from "../src/tv";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 // ─────────────────────────────────────────────
 // Channel Card — single Focusable, no per-item TVEventHandler
@@ -111,6 +110,8 @@ const ChannelCard = React.memo(function ChannelCard({
 export default function LiveTVScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
+  const isMobile = SCREEN_WIDTH < 768;
 
   const safeGoBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -419,15 +420,52 @@ export default function LiveTVScreen() {
     ),
   ];
 
-  const SIDEBAR_WIDTH = isTV ? 260 : 220;
-  const numColumns = isTV ? 5 : (SCREEN_WIDTH >= 1024 ? 5 : (SCREEN_WIDTH >= 768 ? 4 : 3));
+  const SIDEBAR_WIDTH = isTV ? 260 : (isMobile ? SCREEN_WIDTH : 220);
+  const numColumns = isMobile ? 3 : (isTV ? 5 : (SCREEN_WIDTH >= 1024 ? 5 : 4));
   // Subtract the grid's own horizontal padding (pw(1.5) per side) plus a small
   // safety margin, then floor — so sub-pixel rounding can't push the
   // rightmost card past the viewport edge.
   const GRID_H_PADDING = pw(1.5) * 2;
   const SAFETY_MARGIN = 4;
   const itemWidth = Math.floor(
-    (SCREEN_WIDTH - SIDEBAR_WIDTH - GRID_H_PADDING - SAFETY_MARGIN) / numColumns
+    (SCREEN_WIDTH - (isMobile ? 0 : SIDEBAR_WIDTH) - GRID_H_PADDING - SAFETY_MARGIN) / numColumns
+  );
+
+  const renderSearchBar = () => (
+    <Focusable
+      onPress={() => searchInputRef.current?.focus()}
+      ringOnFocus={false}
+      style={[S.searchWrapper, isMobile && { marginTop: 12, height: 50, flex: 0 }]}
+    >
+      {(focused) => (
+        <LinearGradient
+          colors={focused || searchFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={[S.searchGradient, (focused || searchFocused) && S.searchFocused]}
+        >
+          <View style={[
+            S.searchInner,
+            { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
+            (focused || searchFocused) && { backgroundColor: "#0b0b10" }
+          ]}>
+            <Ionicons name="search" size={ps(1.1)} color={focused || searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
+            <TextInput
+              ref={searchInputRef}
+              style={S.searchInput}
+              placeholder="Search channels..."
+              placeholderTextColor="rgba(255,255,255,0.2)"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="none"
+              autoCorrect={false}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+            />
+          </View>
+        </LinearGradient>
+      )}
+    </Focusable>
   );
 
   return (
@@ -436,69 +474,44 @@ export default function LiveTVScreen() {
       <StatusBar hidden />
 
       {/* ─── Header ─── */}
-      <View style={S.header}>
-        <Focusable
-          ringOnFocus={false}
-          focusStyle={{ borderWidth: 2, borderColor: "rgba(255,255,255,0.5)", borderRadius: ps(2) }}
-          onPress={safeGoBack}
-          style={S.iconBtn}
-        >
-          {() => <Ionicons name="chevron-back" size={ps(1.4)} color="#fff" />}
-        </Focusable>
+      <View style={[S.header, isMobile && { flexDirection: "column", alignItems: "stretch", paddingBottom: 16 }]}>
+        <View style={{ flexDirection: "row", alignItems: "center", width: "100%", justifyContent: "space-between" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            {!isMobile && (
+              <Focusable
+                ringOnFocus={false}
+                focusStyle={{ borderWidth: 2, borderColor: "rgba(255,255,255,0.5)", borderRadius: ps(2) }}
+                onPress={safeGoBack}
+                style={S.iconBtn}
+              >
+                {() => <Ionicons name="chevron-back" size={ps(1.4)} color="#fff" />}
+              </Focusable>
+            )}
+            <Text style={S.headerTitle}>Live TV</Text>
+          </View>
 
-        <Text style={S.headerTitle}>Live TV</Text>
+          {!isMobile && renderSearchBar()}
 
-        <Focusable
-          onPress={() => searchInputRef.current?.focus()}
-          ringOnFocus={false}
-          style={S.searchWrapper}
-        >
-          {(focused) => (
-            <LinearGradient
-              colors={focused || searchFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[S.searchGradient, (focused || searchFocused) && S.searchFocused]}
-            >
-              <View style={[
-                S.searchInner,
-                { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
-                (focused || searchFocused) && { backgroundColor: "#0b0b10" }
-              ]}>
-                <Ionicons name="search" size={ps(1.1)} color={focused || searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
-                <TextInput
-                  ref={searchInputRef}
-                  style={S.searchInput}
-                  placeholder="Search channels..."
-                  placeholderTextColor="rgba(255,255,255,0.2)"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
-                />
-              </View>
-            </LinearGradient>
-          )}
-        </Focusable>
-
-        <View style={S.countBadge}>
-          <Text style={S.countText}>
-            {isLoading ? "..." : String(filteredChannels.length)}
-          </Text>
+          <View style={S.countBadge}>
+            <Text style={S.countText}>
+              {isLoading ? "..." : String(filteredChannels.length)}
+            </Text>
+          </View>
         </View>
+
+        {isMobile && renderSearchBar()}
       </View>
 
       {/* ─── Body: Sidebar + Grid ─── */}
-      <View style={S.body}>
-        {/* Left sidebar */}
-        <FocusGroup style={{ width: SIDEBAR_WIDTH }}>
+      <View style={[S.body, { flexDirection: isMobile ? "column" : "row" }]}>
+        {/* Left sidebar / Top bar */}
+        <FocusGroup style={isMobile ? { width: '100%' } : { width: SIDEBAR_WIDTH }}>
           <CategorySidebar
             categories={sidebarCategories}
             selectedId={selectedCategory}
             onSelect={setSelectedCategory}
-            width={SIDEBAR_WIDTH}
+            width={isMobile ? SCREEN_WIDTH : SIDEBAR_WIDTH}
+            mode={isMobile ? "horizontal" : "vertical"}
           />
         </FocusGroup>
 
@@ -599,7 +612,7 @@ const S = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.03)",
   },
-  headerTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", minWidth: pw(10) },
+  headerTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), minWidth: pw(10) },
   searchWrapper: {
     flex: 1,
     height: ph(6.5),
@@ -632,7 +645,7 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(1.5),
     paddingVertical: ph(0.6),
   },
-  countText: { color: THEME.colors.primary, fontSize: ps(1), fontWeight: "800" },
+  countText: { color: THEME.colors.primary, fontSize: ps(1), fontWeight: fw("800") },
 
   // ── Body ──
   body: {
@@ -686,13 +699,13 @@ const S = StyleSheet.create({
   cardTitle: {
     color: "#fff",
     fontSize: ps(0.9),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     textAlign: "center",
   },
   cardCategory: {
     color: "rgba(255,255,255,0.28)",
     fontSize: ps(0.72),
-    fontWeight: "600",
+    fontWeight: fw("600"),
     textAlign: "center",
     marginTop: 2,
   },
@@ -716,7 +729,7 @@ const S = StyleSheet.create({
   loadingText: {
     color: "rgba(255,255,255,0.35)",
     fontSize: ps(1),
-    fontWeight: "600",
+    fontWeight: fw("600"),
   },
   emptyState: {
     flex: 1,
@@ -728,7 +741,7 @@ const S = StyleSheet.create({
   emptyTitle: {
     color: "rgba(255,255,255,0.45)",
     fontSize: ps(1.4),
-    fontWeight: "700",
+    fontWeight: fw("700"),
   },
   emptySubtitle: {
     color: "rgba(255,255,255,0.22)",
@@ -775,7 +788,7 @@ const S = StyleSheet.create({
   loadMoreBtnText: {
     color: "#fff",
     fontSize: ps(1),
-    fontWeight: "900",
+    fontWeight: fw("900"),
     letterSpacing: 1.5,
   },
 });

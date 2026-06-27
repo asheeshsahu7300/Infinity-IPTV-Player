@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, ActivityIndicator, Text, StyleSheet, ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { THEME, ps, ph, pw } from '../theme/tokens';
+import { THEME, ps, ph, pw , fw } from '../theme/tokens';
 import { LinearGradient } from 'expo-linear-gradient';
 import GradientLoader from './GradientLoader';
 
@@ -50,7 +50,7 @@ const styles = StyleSheet.create({
   text: {
     color: '#fff',
     fontSize: ps(1),
-    fontWeight: '700',
+    fontWeight: fw('700'),
     marginTop: ph(2),
     opacity: 0.8,
     letterSpacing: 0.5,

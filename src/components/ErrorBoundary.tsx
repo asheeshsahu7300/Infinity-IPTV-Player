@@ -1,7 +1,7 @@
 import React, { Component, ReactNode } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { THEME } from '../theme/tokens';
+import { THEME , fw } from '../theme/tokens';
 
 interface Props {
   children: ReactNode;
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: fw('600'),
     color: '#fff',
     marginTop: 24,
     marginBottom: 12,
@@ -146,6 +146,6 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: fw('600'),
   },
 });

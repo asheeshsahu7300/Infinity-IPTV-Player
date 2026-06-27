@@ -27,7 +27,7 @@ import { ThemeProvider } from "../src/context/ThemeContext";
 import { AppBootManager } from "../src/services/AppBootManager";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
-import { THEME, ps, ph, pw } from "../src/theme/tokens";
+import { THEME, ps, ph, pw , fw } from '../src/theme/tokens';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Google TV Typography Monkey-Patch (Global Font Family Enforcer)
@@ -242,11 +242,11 @@ const styles = StyleSheet.create({
   splashLogoTVWrapper: { width: pw(12), height: pw(12), borderRadius: pw(3), overflow: "hidden", marginBottom: ph(5) },
   logoImage: { width: "120%", height: "120%", borderRadius: pw(3) },
   splashTextGroup: { alignItems: "center", marginBottom: ph(2), justifyContent: "flex-end" },
-  splashTitle: { color: "#ffffff", fontSize: ps(1.6), fontWeight: "500", letterSpacing: pw(0.2) },
+  splashTitle: { color: "#ffffff", fontSize: ps(1.6), fontWeight: fw("500"), letterSpacing: pw(0.2) },
   splashTitleTV: { fontSize: ps(2.2), letterSpacing: pw(0.5) },
-  tagline: { color: THEME.colors.primary, fontSize: ps(0.7), fontWeight: "800", letterSpacing: pw(0.3), marginTop: ph(1), opacity: 0.8 },
+  tagline: { color: THEME.colors.primary, fontSize: ps(0.7), fontWeight: fw("800"), letterSpacing: pw(0.3), marginTop: ph(1), opacity: 0.8 },
   taglineTV: { fontSize: ps(1), letterSpacing: pw(0.5), marginTop: ph(1.5) },
   loaderGroup: { alignItems: "center", position: "absolute", bottom: ph(8) },
-  splashSubtext: { color: "rgba(255,255,255,0.4)", fontSize: ps(0.8), fontWeight: "400", marginTop: ph(2), letterSpacing: pw(0.1) },
+  splashSubtext: { color: "rgba(255,255,255,0.4)", fontSize: ps(0.8), fontWeight: fw("400"), marginTop: ph(2), letterSpacing: pw(0.1) },
   splashSubtextTV: { fontSize: ps(1), marginTop: ph(2.5) },
 });

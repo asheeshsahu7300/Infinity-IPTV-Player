@@ -11,6 +11,8 @@ import {
   Platform,
   Linking,
   Alert,
+  Keyboard,
+  useWindowDimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -26,7 +28,7 @@ import { XtreamApi } from "../src/services/xtreamApi";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
-import { THEME } from "../src/theme/tokens";
+import { THEME , fw } from '../src/theme/tokens';
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 
 const { width: W, height: H } = Dimensions.get("window");
@@ -138,6 +140,8 @@ const ResultCard = ({ item, onPress, onFocus }: any) => (
 export default function SearchScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
   const { activePortal, channels, vodItems, series } = usePortalStore();
   const searchTimeout = useRef<any>(null);
 
@@ -334,6 +338,16 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
       {/* Header Bar */}
       <FocusGroup>
         <View style={S.headerRow}>
+          {!isMobile && (
+            <Focusable
+              ringOnFocus={false}
+              focusStyle={{ borderWidth: 2, borderColor: "rgba(255,255,255,0.5)", borderRadius: ps(2) }}
+              onPress={() => router.back()}
+              style={[S.settingsBtn, { marginRight: 8 }]}
+            >
+              {() => <Ionicons name="chevron-back" size={ps(1.8)} color="#fff" />}
+            </Focusable>
+          )}
           <Focusable
             hasTVPreferredFocus
             onPress={() => inputRef.current?.focus()}
@@ -482,6 +496,7 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
         visible={playModalVisible}
         onClose={() => setPlayModalVisible(false)}
         contentStyle={S.modalContainer}
+        position={isMobile ? "bottom" : "center"}
       >
         <View style={isTV ? S.modalTVContent : null}>
           <View style={S.modalLeft}>
@@ -617,7 +632,7 @@ const S = StyleSheet.create({
     paddingVertical: 0,
     paddingLeft: 4,
     textAlignVertical: "center",
-    fontWeight: "400",
+    fontWeight: fw("400"),
   },
   settingsBtn: {
     padding: ps(1),
@@ -646,7 +661,7 @@ const S = StyleSheet.create({
   sectionLabel: {
     color: "#fff",
     fontSize: ps(1.4),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     letterSpacing: 1,
   },
   pillRow: {
@@ -669,7 +684,7 @@ const S = StyleSheet.create({
   pillText: {
     color: "rgba(255,255,255,0.5)",
     fontSize: ps(1.1),
-    fontWeight: "600",
+    fontWeight: fw("600"),
   },
   pillTextFocused: {
     color: "#fff",
@@ -701,7 +716,7 @@ const S = StyleSheet.create({
   filterText: {
     color: "rgba(255,255,255,0.4)",
     fontSize: ps(1.1),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     letterSpacing: 0.5,
   },
   filterTextActive: {
@@ -735,7 +750,7 @@ const S = StyleSheet.create({
   cardTitle: {
     color: "#fff",
     fontSize: isTV ? ps(1.15) : ps(1.2),
-    fontWeight: "700",
+    fontWeight: fw("700"),
   },
   cardSub: {
     color: "rgba(255,255,255,0.5)",
@@ -754,7 +769,7 @@ const S = StyleSheet.create({
   badgeText: {
     color: "#fff",
     fontSize: isTV ? ps(0.55) : ps(0.7),
-    fontWeight: "800",
+    fontWeight: fw("800"),
   },
 
   emptyState: {
@@ -775,11 +790,11 @@ const S = StyleSheet.create({
   modalTVContent: { flexDirection: "row" },
   modalLeft: { flex: 1.4, padding: ps(1.5) },
   modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.015)", padding: ps(2), borderRadius: 20, justifyContent: "center", gap: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" },
-  modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", marginBottom: 12 },
+  modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), marginBottom: 12 },
   modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.95), lineHeight: ps(1.4), marginBottom: 18 },
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
   modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "700" },
+  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: fw("700") },
   modalBtnWrapper: { borderRadius: 12, overflow: "visible" },
   modalBtnBorder: { padding: 1.5, borderRadius: 12 },
   modalBtnBorderFocused: {
@@ -792,6 +807,6 @@ const S = StyleSheet.create({
   },
   modalBtnPrimaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
   modalBtnSecondaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#0d0d12" },
-  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1 },
-  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5 },
+  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: fw("900"), letterSpacing: 1 },
+  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: fw("700"), letterSpacing: 0.5 },
 });

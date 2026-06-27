@@ -26,7 +26,7 @@ import { useKeepAwake } from "expo-keep-awake";
 import { StreamManager } from "../src/services/StreamManager";
 import { usePortalStore } from "../src/store/portalStore";
 import { isTV } from "../src/utils/tvUtils";
-import { THEME, ps, pw, ph } from "../src/theme/tokens";
+import { THEME, ps, pw, ph , fw } from '../src/theme/tokens';
 import { Focusable, FocusGroup, Overlay, useDPad } from "../src/tv";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -915,9 +915,9 @@ const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
   video: { ...StyleSheet.absoluteFillObject },
   loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "center", alignItems: "center" },
-  loadingText: { color: "#fff", marginTop: 10, fontSize: ps(1.1), fontWeight: "600", fontFamily: THEME.fonts.medium },
+  loadingText: { color: "#fff", marginTop: 10, fontSize: ps(1.1), fontWeight: fw("600"), fontFamily: THEME.fonts.medium },
   centerIndicator: { position: "absolute", top: "50%", alignSelf: "center", backgroundColor: "rgba(0,0,0,0.7)", padding: 25, borderRadius: 20, alignItems: "center", marginTop: -60 },
-  indicatorText: { color: "#fff", fontSize: 18, fontWeight: "bold", fontFamily: THEME.fonts.bold, marginTop: 10 },
+  indicatorText: { color: "#fff", fontSize: 18, fontWeight: fw("bold"), fontFamily: THEME.fonts.bold, marginTop: 10 },
   barContainer: { height: 4, width: 100, backgroundColor: "rgba(255,255,255,0.2)", borderRadius: 2, marginTop: 15 },
   barFill: { height: "100%", backgroundColor: THEME.colors.primary, borderRadius: 2 },
 
@@ -940,7 +940,7 @@ const S = StyleSheet.create({
   seekIndicatorText: {
     color: "#fff",
     fontSize: ps(1.6),
-    fontWeight: "900",
+    fontWeight: fw("900"),
     fontFamily: THEME.fonts.bold,
     marginTop: 4,
     letterSpacing: 1,
@@ -953,11 +953,11 @@ const S = StyleSheet.create({
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 20, flex: 1 },
   backBtn: { width: ps(3.5), height: ps(3.5), borderRadius: 25, backgroundColor: "rgba(255,255,255,0.1)", alignItems: "center", justifyContent: "center" },
   headerInfo: { gap: 4, flex: 1 },
-  mainTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", fontFamily: THEME.fonts.bold, letterSpacing: -0.5 },
-  subTitle: { color: "rgba(255,255,255,0.6)", fontSize: ps(0.9), fontWeight: "600", fontFamily: THEME.fonts.medium },
+  mainTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), fontFamily: THEME.fonts.bold, letterSpacing: -0.5 },
+  subTitle: { color: "rgba(255,255,255,0.6)", fontSize: ps(0.9), fontWeight: fw("600"), fontFamily: THEME.fonts.medium },
   headerRight: { paddingTop: 8 },
   qualityBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.1)", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
-  qualityBadgeText: { color: "#fff", fontSize: ps(0.7), fontWeight: "900", fontFamily: THEME.fonts.bold, letterSpacing: 1 },
+  qualityBadgeText: { color: "#fff", fontSize: ps(0.7), fontWeight: fw("900"), fontFamily: THEME.fonts.bold, letterSpacing: 1 },
   centerRow: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: pw(8) },
   playBtnContainer: { width: ps(5.5), height: ps(5.5), alignItems: "center", justifyContent: "center" },
   playGlow: { position: "absolute", width: ps(8.2), height: ps(8.2), borderRadius: ps(4.1), backgroundColor: THEME.colors.primary, opacity: 0.2 },
@@ -966,13 +966,13 @@ const S = StyleSheet.create({
   mainPlayGradient: { flex: 1, alignItems: "center", justifyContent: "center" },
   skipBtn: { padding: 16, borderRadius: ps(3), borderWidth: 2, borderColor: "transparent" },
   skipInner: { alignItems: "center", gap: 4 },
-  skipLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.75), fontWeight: "700", fontFamily: THEME.fonts.bold },
+  skipLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.75), fontWeight: fw("700"), fontFamily: THEME.fonts.bold },
   controlFocused: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.08)" },
   bottomOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: pw(5), zIndex: 10 },
   glassControls: { backgroundColor: "rgba(25,25,30,0.85)", borderRadius: 16, paddingVertical: 8, paddingHorizontal: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)" },
   progressSection: { gap: 4, marginBottom: 4 },
   timeRow: { flexDirection: "row", justifyContent: "space-between" },
-  timeText: { color: "#fff", fontSize: ps(0.8), fontWeight: "700", fontFamily: THEME.fonts.bold },
+  timeText: { color: "#fff", fontSize: ps(0.8), fontWeight: fw("700"), fontFamily: THEME.fonts.bold },
 
   // Progress bar — focusable on TV
   progressBarWrapper: {
@@ -994,21 +994,21 @@ const S = StyleSheet.create({
   scrubber: { position: "absolute", top: -6, width: 14, height: 14, borderRadius: 7, backgroundColor: "white", borderWidth: 3, borderColor: "rgba(255,27,138,0.8)", marginLeft: -7 },
   scrubberFocused: { width: 20, height: 20, borderRadius: 10, top: -8, marginLeft: -10, borderWidth: 4, borderColor: "#fff", shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 10 },
   seekHint: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
-  seekHintText: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.7), fontWeight: "600", fontFamily: THEME.fonts.medium },
+  seekHintText: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.7), fontWeight: fw("600"), fontFamily: THEME.fonts.medium },
 
   liveBadgeRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#ff2d55" },
-  liveText: { color: "#fff", fontSize: ps(0.85), fontWeight: "900", fontFamily: THEME.fonts.bold, letterSpacing: 1 },
+  liveText: { color: "#fff", fontSize: ps(0.85), fontWeight: fw("900"), fontFamily: THEME.fonts.bold, letterSpacing: 1 },
   actionsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   actionsLeft: { flexDirection: "row", alignItems: "center", gap: pw(1) },
   iconChip: { padding: 6, borderRadius: 6, borderWidth: 2, borderColor: "transparent" },
   iconChipFocused: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.1)" },
   vSeparator: { width: 1, height: 12, backgroundColor: "rgba(255,255,255,0.2)" },
   actionLabelBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
-  actionLabel: { color: "#fff", fontSize: ps(0.75), fontWeight: "900", fontFamily: THEME.fonts.bold },
+  actionLabel: { color: "#fff", fontSize: ps(0.75), fontWeight: fw("900"), fontFamily: THEME.fonts.bold },
   actionsRight: { flexDirection: "row", alignItems: "center", gap: pw(1) },
   settingBtn: { alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, borderWidth: 2, borderColor: "transparent" },
-  settingLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.9), fontWeight: "900", fontFamily: THEME.fonts.bold },
+  settingLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.9), fontWeight: fw("900"), fontFamily: THEME.fonts.bold },
 
   // ─── Premium Modal Styles ─────────────────────────────────────────────
   modalContent: {
@@ -1038,7 +1038,7 @@ const S = StyleSheet.create({
   modalTitle: {
     color: "#fff",
     fontSize: ps(2),
-    fontWeight: "900",
+    fontWeight: fw("900"),
     fontFamily: THEME.fonts.bold,
     letterSpacing: -0.5,
     textAlign: "center",
@@ -1046,7 +1046,7 @@ const S = StyleSheet.create({
   modalSubtitle: {
     color: "rgba(255,255,255,0.4)",
     fontSize: ps(1),
-    fontWeight: "600",
+    fontWeight: fw("600"),
     fontFamily: THEME.fonts.medium,
     marginTop: 4,
     textAlign: "center",
@@ -1068,7 +1068,7 @@ const S = StyleSheet.create({
   emptyText: {
     color: "rgba(255,255,255,0.3)",
     fontSize: ps(1.2),
-    fontWeight: "600",
+    fontWeight: fw("600"),
     fontFamily: THEME.fonts.medium,
   },
   modalOption: {
@@ -1116,7 +1116,7 @@ const S = StyleSheet.create({
   trackIndexText: {
     color: "rgba(255,255,255,0.5)",
     fontSize: ps(1),
-    fontWeight: "900",
+    fontWeight: fw("900"),
     fontFamily: THEME.fonts.bold,
   },
   trackIndexTextActive: {
@@ -1125,7 +1125,7 @@ const S = StyleSheet.create({
   modalOptionText: {
     color: "#fff",
     fontSize: ps(1.6),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     fontFamily: THEME.fonts.bold,
     flex: 1,
   },
@@ -1162,7 +1162,7 @@ const S = StyleSheet.create({
   modalCloseBtnText: {
     color: "rgba(255,255,255,0.6)",
     fontSize: ps(1.2),
-    fontWeight: "900",
+    fontWeight: fw("900"),
     fontFamily: THEME.fonts.bold,
     letterSpacing: 2,
   },

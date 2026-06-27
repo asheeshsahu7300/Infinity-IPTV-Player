@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, FlatList, Platform, Animated } from 'react-native';
 import { Category } from '../store/portalStore';
-import { THEME } from '../theme/tokens';
+import { THEME , fw } from '../theme/tokens';
 
 interface CategoryPillsProps {
   categories: Category[];
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   pillText: {
     color: "#888",
     fontSize: 15,
-    fontWeight: "500",
+    fontWeight: fw("500"),
     lineHeight: 18,
   },
 

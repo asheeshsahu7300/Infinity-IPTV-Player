@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar } from 'r
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { THEME, ps, pw, ph, fw } from "../theme/tokens";
 
 interface HeaderProps {
   title: string;
@@ -65,7 +66,7 @@ const styles = StyleSheet.create({
   title: {
     flex: 1,
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: fw('600'),
     color: '#fff',
     textAlign: 'center',
   },

@@ -22,7 +22,7 @@ import {
 } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
 import { isTV } from "../src/utils/tvUtils";
-import { THEME } from "../src/theme/tokens";
+import { THEME , fw } from '../src/theme/tokens';
 
 type FavoriteType = "channels" | "vod" | "series";
 
@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: fw("600"),
     color: "#fff",
     textAlign: "center",
   },
@@ -479,7 +479,7 @@ const styles = StyleSheet.create({
   typeButtonText: {
     color: "#888",
     fontSize: 12,
-    fontWeight: "500",
+    fontWeight: fw("500"),
   },
   typeButtonTextActive: {
     color: "#fff",
@@ -496,7 +496,7 @@ const styles = StyleSheet.create({
   countText: {
     color: "#fff",
     fontSize: 10,
-    fontWeight: "600",
+    fontWeight: fw("600"),
   },
   list: {
     padding: 16,
@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
   },
   itemName: {
     fontSize: 15,
-    fontWeight: "500",
+    fontWeight: fw("500"),
     color: "#fff",
     marginBottom: 4,
   },
@@ -570,7 +570,7 @@ const styles = StyleSheet.create({
   emptyText: {
     color: "#666",
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: fw("600"),
     marginTop: 16,
   },
   emptySubtext: {

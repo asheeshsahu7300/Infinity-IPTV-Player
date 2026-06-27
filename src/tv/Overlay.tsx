@@ -17,6 +17,7 @@ export interface OverlayProps {
   contentStyle?: StyleProp<ViewStyle>;
   trapFocus?: boolean;
   closeOnBack?: boolean;
+  position?: "center" | "bottom";
 }
 
 /**
@@ -32,6 +33,7 @@ export function Overlay({
   contentStyle,
   trapFocus = true,
   closeOnBack = true,
+  position = "center",
 }: OverlayProps) {
   React.useEffect(() => {
     if (!visible || !closeOnBack) return;
@@ -52,14 +54,18 @@ export function Overlay({
   if (!visible) return null;
 
   return (
-    <View style={[styles.backdrop, style]} pointerEvents="auto">
+    <View style={[styles.backdrop, position === "bottom" && styles.backdropBottom, style]} pointerEvents="auto">
       <TVFocusGuideView
         autoFocus
         trapFocusUp={trapFocus}
         trapFocusDown={trapFocus}
         trapFocusLeft={trapFocus}
         trapFocusRight={trapFocus}
-        style={[styles.content, contentStyle]}
+        style={[
+          styles.content,
+          position === "bottom" && styles.contentBottom,
+          contentStyle
+        ]}
       >
         {children}
       </TVFocusGuideView>
@@ -76,9 +82,19 @@ const styles = StyleSheet.create({
     zIndex: 9999,
     elevation: 30,
   },
+  backdropBottom: {
+    justifyContent: "flex-end",
+    paddingBottom: 20,
+  },
   content: {
     maxWidth: "92%",
     maxHeight: "92%",
+  },
+  contentBottom: {
+    maxWidth: "100%",
+    width: "100%",
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
 });
 

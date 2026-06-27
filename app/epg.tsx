@@ -20,7 +20,7 @@ import { usePortalStore, Channel, EPGProgram } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
 import LoadingOverlay from "../src/components/LoadingOverlay";
 import { CinematicBackground } from "../src/components/CinematicBackground";
-import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { THEME, pw, ph, ps , fw } from '../src/theme/tokens';
 import { isTV } from "../src/utils/tvUtils";
 import { Focusable, FocusGroup } from "../src/tv";
 
@@ -366,7 +366,7 @@ const S = StyleSheet.create({
   heroTitle: {
     color: "#fff",
     fontSize: ps(3.5),
-    fontWeight: "800",
+    fontWeight: fw("800"),
     marginBottom: ph(1),
   },
   heroMeta: {
@@ -378,7 +378,7 @@ const S = StyleSheet.create({
   heroMetaText: {
     color: THEME.colors.accent,
     fontSize: ps(1.2),
-    fontWeight: "700",
+    fontWeight: fw("700"),
   },
   heroDesc: {
     color: THEME.colors.textMuted,
@@ -412,7 +412,7 @@ const S = StyleSheet.create({
   heroBtnText: {
     color: "#fff",
     fontSize: ps(1),
-    fontWeight: "800",
+    fontWeight: fw("800"),
     letterSpacing: 1,
   },
   heroPreview: {
@@ -451,7 +451,7 @@ const S = StyleSheet.create({
   channelsLabel: {
     color: THEME.colors.textDim,
     fontSize: ps(1),
-    fontWeight: "800",
+    fontWeight: fw("800"),
     letterSpacing: 1,
   },
   timeSlotsRow: {
@@ -465,7 +465,7 @@ const S = StyleSheet.create({
   timeSlotText: {
     color: THEME.colors.textMuted,
     fontSize: ps(1.2),
-    fontWeight: "600",
+    fontWeight: fw("600"),
   },
 
   // Channel & Program Rows
@@ -499,7 +499,7 @@ const S = StyleSheet.create({
   channelLabel: {
     color: THEME.colors.textMuted,
     fontSize: ps(0.8),
-    fontWeight: "600",
+    fontWeight: fw("600"),
   },
   programsContainer: {
     flex: 1,
@@ -527,7 +527,7 @@ const S = StyleSheet.create({
   programTitle: {
     color: "#fff",
     fontSize: ps(1.3),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     marginBottom: 2,
   },
   programTime: {
@@ -551,7 +551,7 @@ const S = StyleSheet.create({
   liveBadgeText: {
     color: "#fff",
     fontSize: ps(0.7),
-    fontWeight: "900",
+    fontWeight: fw("900"),
   },
 
   // Extras
@@ -564,7 +564,7 @@ const S = StyleSheet.create({
   badgeText: {
     color: "#fff",
     fontSize: ps(0.8),
-    fontWeight: "800",
+    fontWeight: fw("800"),
   },
   currentTimeLine: {
     position: "absolute",
@@ -597,7 +597,7 @@ const S = StyleSheet.create({
   statusText: {
     color: THEME.colors.textMuted,
     fontSize: ps(1),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     letterSpacing: 1,
   },
 });

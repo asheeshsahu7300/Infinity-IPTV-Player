@@ -13,6 +13,7 @@ import {
   Linking,
   Alert,
   FlatList,
+  useWindowDimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -25,14 +26,13 @@ import { usePortalStore, VODItem, Category } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
-import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { THEME, pw, ph, ps , fw } from '../src/theme/tokens';
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import CategorySidebar from "../src/components/CategorySidebar";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
 
-const { width: SCREEN_WIDTH_VAL } = Dimensions.get("window");
 
 // ─────────────────────────────────────────────
 // Styles Defined at Top
@@ -48,7 +48,7 @@ const S = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.03)",
   },
-  headerTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", minWidth: pw(10) },
+  headerTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), minWidth: pw(10) },
   searchWrapper: {
     flex: 1,
     height: ph(6.5),
@@ -81,7 +81,7 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(1.5),
     paddingVertical: ph(0.6),
   },
-  countText: { color: THEME.colors.primary, fontSize: ps(1), fontWeight: "800", fontFamily: THEME.fonts.bold },
+  countText: { color: THEME.colors.primary, fontSize: ps(1), fontWeight: fw("800"), fontFamily: THEME.fonts.bold },
   body: { flex: 1, flexDirection: "row" },
   gridArea: { flex: 1 },
   list: { padding: pw(1), paddingBottom: ph(10) },
@@ -104,12 +104,12 @@ const S = StyleSheet.create({
   posterPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#1c1c2b" },
   textOverlay: { display: "none" },
   cardContent: { padding: ps(0.7), backgroundColor: "#161622", borderBottomLeftRadius: ps(1.2), borderBottomRightRadius: ps(1.2) },
-  vodTitle: { color: "#fff", fontSize: ps(0.95), fontWeight: "700", fontFamily: THEME.fonts.bold },
+  vodTitle: { color: "#fff", fontSize: ps(0.95), fontWeight: fw("700"), fontFamily: THEME.fonts.bold },
   metaRow: { flexDirection: "row", alignItems: "center", marginTop: 6, height: ps(1.6) },
-  vodMetaText: { color: "rgba(255,255,255,0.6)", fontSize: ps(0.8), fontWeight: "600", fontFamily: THEME.fonts.medium },
+  vodMetaText: { color: "rgba(255,255,255,0.6)", fontSize: ps(0.8), fontWeight: fw("600"), fontFamily: THEME.fonts.medium },
   metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.3)", marginHorizontal: 6 },
   ratingWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 215, 0, 0.08)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  ratingText: { color: "#FFD700", fontSize: ps(0.8), fontWeight: "700", marginLeft: 3, fontFamily: THEME.fonts.bold },
+  ratingText: { color: "#FFD700", fontSize: ps(0.8), fontWeight: fw("700"), marginLeft: 3, fontFamily: THEME.fonts.bold },
   favoriteBtn: { position: "absolute", top: 10, right: 10, backgroundColor: "rgba(0,0,0,0.5)", borderRadius: 10, padding: 6 },
   loadingCenter: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: { color: "rgba(255,255,255,0.4)", marginTop: 15, fontSize: ps(1), fontFamily: THEME.fonts.regular },
@@ -122,11 +122,11 @@ const S = StyleSheet.create({
   modalTVContent: { flexDirection: "row" },
   modalLeft: { flex: 1.4, padding: ps(1.5) },
   modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.015)", padding: ps(2), borderRadius: 20, justifyContent: "center", gap: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" },
-  modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", marginBottom: 12, fontFamily: THEME.fonts.bold },
+  modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), marginBottom: 12, fontFamily: THEME.fonts.bold },
   modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.95), lineHeight: ps(1.4), marginBottom: 18, fontFamily: THEME.fonts.regular },
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
   modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "700", fontFamily: THEME.fonts.bold },
+  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: fw("700"), fontFamily: THEME.fonts.bold },
   // ── Play-modal buttons: gradient acts as the border ──
   modalBtnWrapper: { borderRadius: 12, overflow: "visible" },
   modalBtnBorder: { padding: 1.5, borderRadius: 12 },
@@ -140,12 +140,12 @@ const S = StyleSheet.create({
   },
   modalBtnPrimaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
   modalBtnSecondaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#0d0d12" },
-  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1, fontFamily: THEME.fonts.bold },
-  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5, fontFamily: THEME.fonts.bold },
+  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: fw("900"), letterSpacing: 1, fontFamily: THEME.fonts.bold },
+  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: fw("700"), letterSpacing: 0.5, fontFamily: THEME.fonts.bold },
   loadMoreFooter: { paddingVertical: ph(3), alignItems: "center", justifyContent: "center" },
   loadMoreBtn: { flexDirection: "row", alignItems: "center", gap: pw(0.8), paddingHorizontal: pw(3), paddingVertical: ph(1.4), backgroundColor: "rgba(255,255,255,0.06)", borderRadius: ps(1), borderWidth: 2, borderColor: "transparent" },
   loadMoreBtnFocused: { borderColor: "#fff", backgroundColor: THEME.colors.primary, shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 12, elevation: 12 },
-  loadMoreBtnText: { color: "#fff", fontSize: ps(1), fontWeight: "900", letterSpacing: 1.5, fontFamily: THEME.fonts.bold },
+  loadMoreBtnText: { color: "#fff", fontSize: ps(1), fontWeight: fw("900"), letterSpacing: 1.5, fontFamily: THEME.fonts.bold },
 });
 
 // ─────────────────────────────────────────────
@@ -298,6 +298,8 @@ const pickDescription = (v: any) =>
 export default function VODScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: SCREEN_WIDTH_VAL } = useWindowDimensions();
+  const isMobile = SCREEN_WIDTH_VAL < 768;
 
   const safeGoBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -343,8 +345,8 @@ export default function VODScreen() {
 
   const PAGE_SIZE = 28;
 
-  const numColumns = isTV ? 5 : (SCREEN_WIDTH_VAL >= 768 ? 4 : 3);
-  const SIDEBAR_WIDTH_VAL = isTV ? 240 : 200;
+  const numColumns = isMobile ? 3 : (isTV ? 5 : (SCREEN_WIDTH_VAL >= 768 ? 4 : 3));
+  const SIDEBAR_WIDTH_VAL = isTV ? 240 : (isMobile ? SCREEN_WIDTH_VAL : 200);
   // The FlatList's contentContainerStyle (S.list) adds pw(1) horizontal
   // padding on each side. Subtract that plus a small safety margin and
   // floor — so sub-pixel rounding never pushes the rightmost card past the
@@ -352,7 +354,7 @@ export default function VODScreen() {
   const GRID_H_PADDING = pw(1) * 2;
   const SAFETY_MARGIN = 4;
   const itemWidth = Math.floor(
-    (SCREEN_WIDTH_VAL - SIDEBAR_WIDTH_VAL - GRID_H_PADDING - SAFETY_MARGIN) / numColumns
+    (SCREEN_WIDTH_VAL - (isMobile ? 0 : SIDEBAR_WIDTH_VAL) - GRID_H_PADDING - SAFETY_MARGIN) / numColumns
   );
   const [playModalVisible, setPlayModalVisible] = useState(false);
   const [selectedVod, setSelectedVod] = useState<VODItem | null>(null);
@@ -651,65 +653,80 @@ export default function VODScreen() {
     ),
   ];
 
+  const renderSearchBar = () => (
+    <Focusable
+      onPress={() => searchInputRef.current?.focus()}
+      ringOnFocus={false}
+      style={[S.searchWrapper, isMobile && { marginTop: 12, height: 50, flex: 0 }]}
+    >
+      {(focused) => (
+        <LinearGradient
+          colors={focused || searchFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={[S.searchGradient, (focused || searchFocused) && S.searchFocused]}
+        >
+          <View style={[
+            S.searchInner,
+            { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
+            (focused || searchFocused) && { backgroundColor: "#0b0b10" }
+          ]}>
+            <Ionicons name="search" size={ps(1.1)} color={focused || searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
+            <TextInput
+              ref={searchInputRef}
+              style={S.searchInput}
+              placeholder="Search movies..."
+              placeholderTextColor="rgba(255,255,255,0.2)"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+            />
+          </View>
+        </LinearGradient>
+      )}
+    </Focusable>
+  );
+
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground uri={focusedImage} />
       <StatusBar hidden />
 
-      <View style={S.header}>
-        <Focusable
-          ringOnFocus={false}
-          focusStyle={{ borderWidth: 2, borderColor: "rgba(255,255,255,0.5)", borderRadius: ps(2) }}
-          onPress={safeGoBack}
-          style={S.iconBtn}
-        >
-          {() => <Ionicons name="chevron-back" size={ps(1.4)} color="#fff" />}
-        </Focusable>
-        <Text style={S.headerTitle}>Movies</Text>
-        <Focusable
-          onPress={() => searchInputRef.current?.focus()}
-          ringOnFocus={false}
-          style={S.searchWrapper}
-        >
-          {(focused) => (
-            <LinearGradient
-              colors={focused || searchFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[S.searchGradient, (focused || searchFocused) && S.searchFocused]}
-            >
-              <View style={[
-                S.searchInner,
-                { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
-                (focused || searchFocused) && { backgroundColor: "#0b0b10" }
-              ]}>
-                <Ionicons name="search" size={ps(1.1)} color={focused || searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
-                <TextInput
-                  ref={searchInputRef}
-                  style={S.searchInput}
-                  placeholder="Search movies..."
-                  placeholderTextColor="rgba(255,255,255,0.2)"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
-                />
-              </View>
-            </LinearGradient>
-          )}
-        </Focusable>
-        <View style={S.countBadge}>
-          <Text style={S.countText}>{isLoading ? "..." : String(filteredMovies.length)}</Text>
+      <View style={[S.header, isMobile && { flexDirection: "column", alignItems: "stretch", paddingBottom: 16 }]}>
+        <View style={{ flexDirection: "row", alignItems: "center", width: "100%", justifyContent: "space-between" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            {!isMobile && (
+              <Focusable
+                ringOnFocus={false}
+                focusStyle={{ borderWidth: 2, borderColor: "rgba(255,255,255,0.5)", borderRadius: ps(2) }}
+                onPress={safeGoBack}
+                style={S.iconBtn}
+              >
+                {() => <Ionicons name="chevron-back" size={ps(1.4)} color="#fff" />}
+              </Focusable>
+            )}
+            <Text style={S.headerTitle}>Movies</Text>
+          </View>
+          
+          {!isMobile && renderSearchBar()}
+
+          <View style={S.countBadge}>
+            <Text style={S.countText}>{isLoading ? "..." : String(filteredMovies.length)}</Text>
+          </View>
         </View>
+
+        {isMobile && renderSearchBar()}
       </View>
 
-      <View style={S.body}>
-        <FocusGroup style={{ width: SIDEBAR_WIDTH_VAL }}>
+      <View style={[S.body, { flexDirection: isMobile ? "column" : "row" }]}>
+        <FocusGroup style={isMobile ? { width: '100%' } : { width: SIDEBAR_WIDTH_VAL }}>
           <CategorySidebar
             categories={sidebarCategories}
             selectedId={selectedCategory || "all"}
             onSelect={setSelectedCategory}
-            width={SIDEBAR_WIDTH_VAL}
+            width={isMobile ? SCREEN_WIDTH_VAL : SIDEBAR_WIDTH_VAL}
+            mode={isMobile ? "horizontal" : "vertical"}
           />
         </FocusGroup>
         <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapUp={trappingFocus}>
@@ -801,6 +818,7 @@ export default function VODScreen() {
         visible={playModalVisible}
         onClose={() => setPlayModalVisible(false)}
         contentStyle={S.modalContainer}
+        position={isMobile ? "bottom" : "center"}
       >
         <View style={isTV ? S.modalTVContent : null}>
           <View style={S.modalLeft}>

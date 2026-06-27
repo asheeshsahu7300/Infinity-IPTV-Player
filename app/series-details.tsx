@@ -12,6 +12,7 @@ import {
   StatusBar,
   ActivityIndicator,
   FlatList,
+  useWindowDimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -24,13 +25,12 @@ import { usePortalStore, Season, Episode } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
-import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { THEME, pw, ph, ps , fw } from '../src/theme/tokens';
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 // ─────────────────────────────────────────────
 // Episode Tile Component
@@ -182,6 +182,8 @@ const SeasonPill = React.memo(function SeasonPill({
 export default function SeriesDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
+  const isMobile = SCREEN_WIDTH < 768;
   const params = useLocalSearchParams<{
     id: string;
     name: string;
@@ -298,7 +300,7 @@ export default function SeriesDetailsScreen() {
 
   const currentSeason = seasons.find((s) => s.id === selectedSeasonId);
   const isFavorite = favorites.series.includes(params.id || "");
-  const numColumns = isTV ? 7 : 3;
+  const numColumns = isMobile ? 3 : (isTV ? 7 : 4);
 
   const CARD_SPACING = 12;
   const GRID_H_PADDING = pw(4) * 2;
@@ -468,6 +470,7 @@ export default function SeriesDetailsScreen() {
         visible={playModalVisible}
         onClose={() => setPlayModalVisible(false)}
         contentStyle={S.modalContainer}
+        position={isMobile ? "bottom" : "center"}
       >
         <View style={isTV ? S.modalTVContent : null}>
           <View style={S.modalLeft}>
@@ -569,10 +572,10 @@ const S = StyleSheet.create({
   poster: { ...StyleSheet.absoluteFillObject },
   posterPlaceholder: { backgroundColor: "#1a1a20", alignItems: "center", justifyContent: "center" },
   infoArea: { flex: 1, paddingTop: isTV ? ph(2) : 0 },
-  title: { color: "#fff", fontSize: ps(2.2), fontWeight: "900", marginBottom: ph(1.5), textAlign: isTV ? "left" : "center" },
+  title: { color: "#fff", fontSize: ps(2.2), fontWeight: fw("900"), marginBottom: ph(1.5), textAlign: isTV ? "left" : "center" },
   badgesRow: { flexDirection: "row", gap: 10, marginBottom: ph(2.5), justifyContent: isTV ? "flex-start" : "center" },
   metaBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.05)", flexDirection: "row", alignItems: "center" },
-  metaBadgeText: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.9), fontWeight: "700" },
+  metaBadgeText: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.9), fontWeight: fw("700") },
   description: { color: "rgba(255,255,255,0.45)", fontSize: ps(1.15), lineHeight: ps(1.8), marginBottom: ph(4), textAlign: isTV ? "left" : "center" },
   favoriteBtnInner: {
     flexDirection: "row",
@@ -592,11 +595,11 @@ const S = StyleSheet.create({
     shadowRadius: 12,
     elevation: 12,
   },
-  favoriteText: { color: "#fff", fontSize: ps(0.9), fontWeight: "800" },
+  favoriteText: { color: "#fff", fontSize: ps(0.9), fontWeight: fw("800") },
 
   episodesSection: { paddingHorizontal: pw(4) },
   sectionHeader: { marginBottom: ph(2) },
-  sectionTitle: { color: "#fff", fontSize: ps(1.5), fontWeight: "900", opacity: 0.9, marginBottom: ph(1.5) },
+  sectionTitle: { color: "#fff", fontSize: ps(1.5), fontWeight: fw("900"), opacity: 0.9, marginBottom: ph(1.5) },
   seasonsList: { gap: 12, paddingVertical: 10, paddingBottom: ph(2), paddingRight: pw(10) },
 
   // ── Season pill: gradient acts as the border ──
@@ -627,7 +630,7 @@ const S = StyleSheet.create({
   seasonPillInnerActive: {
     backgroundColor: "transparent",
   },
-  seasonPillText: { color: "rgba(255,255,255,0.5)", fontSize: ps(1), fontWeight: "900", letterSpacing: 0.5 },
+  seasonPillText: { color: "rgba(255,255,255,0.5)", fontSize: ps(1), fontWeight: fw("900"), letterSpacing: 0.5 },
   seasonPillTextActive: { color: "#fff" },
 
   listArea: { flex: 1, minHeight: ph(40), marginTop: ph(2) },
@@ -684,13 +687,13 @@ const S = StyleSheet.create({
   epTileNum: {
     color: THEME.colors.primary,
     fontSize: ps(0.8),
-    fontWeight: "800",
+    fontWeight: fw("800"),
     fontFamily: THEME.fonts.bold,
   },
   epTileTitle: {
     color: "#fff",
     fontSize: ps(0.95),
-    fontWeight: "700",
+    fontWeight: fw("700"),
     fontFamily: THEME.fonts.bold,
     marginTop: 2,
   },
@@ -703,7 +706,7 @@ const S = StyleSheet.create({
   epTileMetaText: {
     color: "rgba(255,255,255,0.6)",
     fontSize: ps(0.8),
-    fontWeight: "600",
+    fontWeight: fw("600"),
     fontFamily: THEME.fonts.medium,
   },
   epTileMetaDot: {
@@ -720,11 +723,11 @@ const S = StyleSheet.create({
   modalTVContent: { flexDirection: "row" },
   modalLeft: { flex: 1.4, padding: ps(1.5) },
   modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.015)", padding: ps(2), borderRadius: 20, justifyContent: "center", gap: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" },
-  modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", marginBottom: 12 },
+  modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), marginBottom: 12 },
   modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.95), lineHeight: ps(1.4), marginBottom: 18 },
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
   modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "700" },
+  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: fw("700") },
   // ── Play-modal buttons: gradient acts as the border ──
   modalBtnWrapper: {
     borderRadius: 12,
@@ -758,6 +761,6 @@ const S = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#0d0d12",
   },
-  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1 },
-  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5 },
+  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: fw("900"), letterSpacing: 1 },
+  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: fw("700"), letterSpacing: 0.5 },
 });
