@@ -23,6 +23,7 @@ import {
 import { portalApi } from "../src/services/portalApi";
 import { isTV } from "../src/utils/tvUtils";
 import { THEME , fw } from '../src/theme/tokens';
+import { useResponsive } from "../src/theme/responsive";
 
 type FavoriteType = "channels" | "vod" | "series";
 
@@ -140,6 +141,10 @@ const FavoriteListItem = ({
 export default function FavoritesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // Single column on phones; two columns on tablet/TV so wide rows don't
+  // stretch the full viewport and waste horizontal space.
+  const { isTablet } = useResponsive();
+  const favColumns = isTV || isTablet ? 2 : 1;
   const {
     activePortal,
     favorites,
@@ -308,15 +313,17 @@ export default function FavoritesScreen() {
   // RENDER ITEM - Now uses separate component
   // --------------------------------------------------
   const renderItem = ({ item }: { item: FavoriteItem }) => (
-    <FavoriteListItem
-      item={item}
-      isFocused={focusedId === `item-${item.type}-${item.id}`}
-      isRemoveFocused={focusedId === `remove-${item.type}-${item.id}`}
-      onFocus={() => setFocusedId(`item-${item.type}-${item.id}`)}
-      onRemoveFocus={() => setFocusedId(`remove-${item.type}-${item.id}`)}
-      onPress={() => handleItemPress(item)}
-      onRemove={() => handleRemoveFavorite(item)}
-    />
+    <View style={favColumns > 1 ? { flex: 1, marginHorizontal: 6 } : undefined}>
+      <FavoriteListItem
+        item={item}
+        isFocused={focusedId === `item-${item.type}-${item.id}`}
+        isRemoveFocused={focusedId === `remove-${item.type}-${item.id}`}
+        onFocus={() => setFocusedId(`item-${item.type}-${item.id}`)}
+        onRemoveFocus={() => setFocusedId(`remove-${item.type}-${item.id}`)}
+        onPress={() => handleItemPress(item)}
+        onRemove={() => handleRemoveFavorite(item)}
+      />
+    </View>
   );
 
   const totalCount =
@@ -403,6 +410,8 @@ export default function FavoritesScreen() {
       <FlashList
         data={favoriteItems}
         renderItem={renderItem}
+        numColumns={favColumns}
+        key={`fav-${favColumns}`}
         keyExtractor={(item) => `${item.type}-${item.id}`}
         contentContainerStyle={[styles.list, isTV && { paddingBottom: 60 }]}
         showsVerticalScrollIndicator={false}
@@ -446,7 +455,10 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: isTV ? 16 : 8,
-    width: isTV ? 60 : 44,
+    width: isTV ? 60 : 48,
+    height: isTV ? 60 : 48,
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerTitle: {
     flex: 1,
@@ -456,7 +468,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   placeholder: {
-    width: isTV ? 60 : 44,
+    width: isTV ? 60 : 48,
   },
   typeSelector: {
     flexDirection: "row",
@@ -468,6 +480,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    minHeight: 48,
     gap: isTV ? 8 : 6,
     backgroundColor: "#111827",
     paddingVertical: 10,

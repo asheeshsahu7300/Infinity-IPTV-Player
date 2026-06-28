@@ -13,7 +13,6 @@ import {
   Linking,
   Alert,
   FlatList,
-  useWindowDimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -28,6 +27,8 @@ import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { THEME, pw, ph, ps , fw } from '../src/theme/tokens';
 import { isTV } from "../src/utils/tvUtils";
+import { hasMeaningfulText } from "../src/utils/text";
+import { useResponsive } from "../src/theme/responsive";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import CategorySidebar from "../src/components/CategorySidebar";
@@ -48,7 +49,7 @@ const S = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.03)",
   },
-  headerTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), minWidth: pw(10) },
+  headerTitle: { color: "#fff", fontSize: ps(1.6), fontWeight: fw("600"), minWidth: pw(10) },
   searchWrapper: {
     flex: 1,
     height: ph(6.5),
@@ -118,10 +119,17 @@ const S = StyleSheet.create({
 
   // Modal Styles
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "center", alignItems: "center" },
-  modalContainer: { backgroundColor: "#111", width: isTV ? ps(65) : "92%", borderRadius: 24, padding: ps(2), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
+  modalContainer: { backgroundColor: "#111", width: isTV ? ps(65) : "94%", borderRadius: 24, padding: isTV ? ps(2) : 18, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
+  // Mobile: dock the sheet flush to both side edges and the bottom — rounded
+  // top corners only, square bottom so it reads as an attached bottom sheet.
+  modalContainerBottom: { width: "100%", borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderBottomWidth: 0 },
   modalTVContent: { flexDirection: "row" },
+  // Phone: stack the panes in a column. Panes must drop their row `flex`
+  // (flexBasis:0 collapses to 0 height in an auto-height column → invisible).
+  modalStackMobile: { flexDirection: "column", gap: 14 },
+  modalPaneMobile: { flex: 0, flexBasis: "auto", width: "100%", padding: 12 },
   modalLeft: { flex: 1.4, padding: ps(1.5) },
-  modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.015)", padding: ps(2), borderRadius: 20, justifyContent: "center", gap: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" },
+  modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.015)", padding: ps(2), borderRadius: 20, justifyContent: "center", gap: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" },
   modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), marginBottom: 12, fontFamily: THEME.fonts.bold },
   modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.95), lineHeight: ps(1.4), marginBottom: 18, fontFamily: THEME.fonts.regular },
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
@@ -138,10 +146,10 @@ const S = StyleSheet.create({
     shadowRadius: 14,
     elevation: 14,
   },
-  modalBtnPrimaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
-  modalBtnSecondaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#0d0d12" },
-  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: fw("900"), letterSpacing: 1, fontFamily: THEME.fonts.bold },
-  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: fw("700"), letterSpacing: 0.5, fontFamily: THEME.fonts.bold },
+  modalBtnPrimaryInner: { paddingVertical: 9, paddingHorizontal: 14, minHeight: 38, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
+  modalBtnSecondaryInner: { paddingVertical: 9, paddingHorizontal: 14, minHeight: 38, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#0d0d12" },
+  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.85), fontWeight: fw("900"), letterSpacing: 1, fontFamily: THEME.fonts.bold },
+  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.82), fontWeight: fw("700"), letterSpacing: 0.5, fontFamily: THEME.fonts.bold },
   loadMoreFooter: { paddingVertical: ph(3), alignItems: "center", justifyContent: "center" },
   loadMoreBtn: { flexDirection: "row", alignItems: "center", gap: pw(0.8), paddingHorizontal: pw(3), paddingVertical: ph(1.4), backgroundColor: "rgba(255,255,255,0.06)", borderRadius: ps(1), borderWidth: 2, borderColor: "transparent" },
   loadMoreBtnFocused: { borderColor: "#fff", backgroundColor: THEME.colors.primary, shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 12, elevation: 12 },
@@ -298,8 +306,9 @@ const pickDescription = (v: any) =>
 export default function VODScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: SCREEN_WIDTH_VAL } = useWindowDimensions();
-  const isMobile = SCREEN_WIDTH_VAL < 768;
+  // Phone (smallest-width < 600dp) → stacked layout; tablet/TV → sidebar.
+  const { width: SCREEN_WIDTH_VAL, isPhone, isLandscape } = useResponsive();
+  const isMobile = isPhone;
 
   const safeGoBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -345,8 +354,15 @@ export default function VODScreen() {
 
   const PAGE_SIZE = 28;
 
-  const numColumns = isMobile ? 3 : (isTV ? 5 : (SCREEN_WIDTH_VAL >= 768 ? 4 : 3));
-  const SIDEBAR_WIDTH_VAL = isTV ? 240 : (isMobile ? SCREEN_WIDTH_VAL : 200);
+  // TV unchanged (5). Phone landscape fits 5; tablet adds a column in landscape.
+  const numColumns = isMobile
+    ? (isLandscape ? 5 : 3)
+    : (isTV ? 5 : (isLandscape ? 6 : 4));
+  const SIDEBAR_WIDTH_VAL = isTV
+    ? 240
+    : isMobile
+      ? SCREEN_WIDTH_VAL
+      : Math.min(280, Math.max(200, Math.round(SCREEN_WIDTH_VAL * 0.24)));
   // The FlatList's contentContainerStyle (S.list) adds pw(1) horizontal
   // padding on each side. Subtract that plus a small safety margin and
   // floor — so sub-pixel rounding never pushes the rightmost card past the
@@ -499,7 +515,30 @@ export default function VODScreen() {
   const handleVodPress = useCallback(async (vod: VODItem) => {
     setSelectedVod(vod);
     setPlayModalVisible(true);
-  }, []);
+
+    // The VOD list (get_vod_streams) usually omits the plot. If we don't yet
+    // have a real description, pull the full record from get_vod_info and merge
+    // whatever the server actually has (description / year / rating).
+    if (activePortal?.type === "xtream" && !hasMeaningfulText(vod.description) && xtreamApiRef.current) {
+      try {
+        const info = await xtreamApiRef.current.getVodInfo(String(vod.id));
+        if (info && (hasMeaningfulText(info.description) || info.year || info.rating)) {
+          setSelectedVod(prev =>
+            prev && String(prev.id) === String(vod.id)
+              ? {
+                  ...prev,
+                  description: hasMeaningfulText(info.description) ? info.description : prev.description,
+                  year: prev.year || info.year,
+                  rating: prev.rating || info.rating,
+                }
+              : prev
+          );
+        }
+      } catch (e) {
+        console.warn("getVodInfo failed:", e);
+      }
+    }
+  }, [activePortal]);
 
   const handleVodFocus = useCallback((vod: VODItem) => {
     setFocusedImage(vod.logo || null);
@@ -648,6 +687,7 @@ export default function VODScreen() {
   const sidebarCategories: Category[] = [
     { id: "all", name: "All Movies", type: "vod" },
     ...categories.filter(c =>
+      c.type === "vod" &&
       c.name.toLowerCase() !== "all" &&
       c.name.toLowerCase() !== "all movies"
     ),
@@ -657,7 +697,7 @@ export default function VODScreen() {
     <Focusable
       onPress={() => searchInputRef.current?.focus()}
       ringOnFocus={false}
-      style={[S.searchWrapper, isMobile && { marginTop: 12, height: 50, flex: 0 }]}
+      style={[S.searchWrapper, isMobile && { marginTop: 10, height: 44, flex: 0 }]}
     >
       {(focused) => (
         <LinearGradient
@@ -671,7 +711,7 @@ export default function VODScreen() {
             { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
             (focused || searchFocused) && { backgroundColor: "#0b0b10" }
           ]}>
-            <Ionicons name="search" size={ps(1.1)} color={focused || searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
+            <Ionicons name="search" size={isMobile ? 18 : ps(1.1)} color={focused || searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
             <TextInput
               ref={searchInputRef}
               style={S.searchInput}
@@ -693,9 +733,9 @@ export default function VODScreen() {
       <CinematicBackground uri={focusedImage} />
       <StatusBar hidden />
 
-      <View style={[S.header, isMobile && { flexDirection: "column", alignItems: "stretch", paddingBottom: 16 }]}>
+      <View style={[S.header, isMobile && { flexDirection: "column", alignItems: "stretch", paddingTop: 0, paddingBottom: 10 }]}>
         <View style={{ flexDirection: "row", alignItems: "center", width: "100%", justifyContent: "space-between" }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={[{ flexDirection: "row", alignItems: "center", gap: 12 }, isMobile && { flex: 1 }]}>
             {!isMobile && (
               <Focusable
                 ringOnFocus={false}
@@ -706,7 +746,7 @@ export default function VODScreen() {
                 {() => <Ionicons name="chevron-back" size={ps(1.4)} color="#fff" />}
               </Focusable>
             )}
-            <Text style={S.headerTitle}>Movies</Text>
+            <Text style={[S.headerTitle, isMobile && { flex: 1, textAlign: "center" }]}>Movies</Text>
           </View>
           
           {!isMobile && renderSearchBar()}
@@ -817,14 +857,16 @@ export default function VODScreen() {
       <Overlay
         visible={playModalVisible}
         onClose={() => setPlayModalVisible(false)}
-        contentStyle={S.modalContainer}
+        contentStyle={[S.modalContainer, isMobile && S.modalContainerBottom, isMobile && { paddingBottom: insets.bottom + 14 }]}
         position={isMobile ? "bottom" : "center"}
       >
-        <View style={isTV ? S.modalTVContent : null}>
-          <View style={S.modalLeft}>
+        <View style={isMobile ? S.modalStackMobile : S.modalTVContent}>
+          <View style={[S.modalLeft, isMobile && S.modalPaneMobile]}>
             <Text style={S.modalTitle} numberOfLines={2}>{selectedVod?.name}</Text>
             <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-              {selectedVod?.description || "Experience this cinematic masterpiece. Dive into a world of high-quality streaming entertainment."}
+              {hasMeaningfulText(selectedVod?.description)
+                ? selectedVod!.description
+                : "Experience this cinematic masterpiece. Dive into a world of high-quality streaming entertainment."}
             </Text>
             <View style={S.modalMetaRow}>
               {selectedVod?.rating && (
@@ -842,7 +884,7 @@ export default function VODScreen() {
             </View>
           </View>
 
-          <View style={S.modalRight}>
+          <View style={[S.modalRight, isMobile && S.modalPaneMobile]}>
             <Focusable
               hasTVPreferredFocus
               ringOnFocus={false}
@@ -883,27 +925,31 @@ export default function VODScreen() {
                 </LinearGradient>
               )}
             </Focusable>
-            <Focusable
-              ringOnFocus={false}
-              onPress={() => setPlayModalVisible(false)}
-              style={S.modalBtnWrapper}
-            >
-              {(focused) => (
-                <LinearGradient
-                  colors={focused
-                    ? [THEME.colors.primary, THEME.colors.secondary]
-                    : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnSecondaryInner}>
-                    <Text style={S.modalBtnSecondaryText}>CLOSE</Text>
-                  </View>
-                </LinearGradient>
-              )}
-            </Focusable>
+            {/* Mobile dismisses by tapping outside the sheet; CLOSE is only
+                needed on TV/tablet where there's no backdrop tap. */}
+            {!isMobile && (
+              <Focusable
+                ringOnFocus={false}
+                onPress={() => setPlayModalVisible(false)}
+                style={S.modalBtnWrapper}
+              >
+                {(focused) => (
+                  <LinearGradient
+                    colors={focused
+                      ? [THEME.colors.primary, THEME.colors.secondary]
+                      : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
+                  >
+                    <View style={S.modalBtnSecondaryInner}>
+                      <Text style={S.modalBtnSecondaryText}>CLOSE</Text>
+                    </View>
+                  </LinearGradient>
+                )}
+              </Focusable>
+            )}
           </View>
         </View>
       </Overlay>

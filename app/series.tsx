@@ -10,7 +10,6 @@ import {
   StatusBar,
   TextInput,
   FlatList,
-  useWindowDimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -24,6 +23,7 @@ import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { THEME, pw, ph, ps , fw } from '../src/theme/tokens';
 import { isTV } from "../src/utils/tvUtils";
+import { useResponsive } from "../src/theme/responsive";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import CategorySidebar from "../src/components/CategorySidebar";
 import { Focusable, FocusGroup } from "../src/tv";
@@ -43,7 +43,7 @@ const S = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.03)",
   },
-  headerTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), minWidth: pw(10) },
+  headerTitle: { color: "#fff", fontSize: ps(1.6), fontWeight: fw("600"), minWidth: pw(10) },
   searchWrapper: {
     flex: 1,
     height: ph(6.5),
@@ -266,8 +266,9 @@ const pickDescription = (v: any) =>
 export default function SeriesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: SCREEN_WIDTH_VAL } = useWindowDimensions();
-  const isMobile = SCREEN_WIDTH_VAL < 768;
+  // Phone (smallest-width < 600dp) → stacked layout; tablet/TV → sidebar.
+  const { width: SCREEN_WIDTH_VAL, isPhone, isLandscape } = useResponsive();
+  const isMobile = isPhone;
 
   const safeGoBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -314,8 +315,15 @@ export default function SeriesScreen() {
 
   const PAGE_SIZE = 28;
 
-  const numColumns = isMobile ? 3 : (isTV ? 5 : (SCREEN_WIDTH_VAL >= 768 ? 4 : 3));
-  const SIDEBAR_WIDTH_VAL = isTV ? 240 : (isMobile ? SCREEN_WIDTH_VAL : 200);
+  // TV unchanged (5). Phone landscape fits 5; tablet adds a column in landscape.
+  const numColumns = isMobile
+    ? (isLandscape ? 5 : 3)
+    : (isTV ? 5 : (isLandscape ? 6 : 4));
+  const SIDEBAR_WIDTH_VAL = isTV
+    ? 240
+    : isMobile
+      ? SCREEN_WIDTH_VAL
+      : Math.min(280, Math.max(200, Math.round(SCREEN_WIDTH_VAL * 0.24)));
   // The FlatList's contentContainerStyle (S.list) adds pw(1) horizontal
   // padding on each side. Subtract that plus a small safety margin and
   // floor — so sub-pixel rounding never pushes the rightmost card past the
@@ -579,6 +587,7 @@ export default function SeriesScreen() {
   const sidebarCategories: Category[] = [
     { id: "all", name: "All Series", type: "series" },
     ...categories.filter(c =>
+      c.type === "series" &&
       c.name.toLowerCase() !== "all" &&
       c.name.toLowerCase() !== "all series"
     ),
@@ -590,7 +599,7 @@ export default function SeriesScreen() {
     <Focusable
       onPress={() => searchInputRef.current?.focus()}
       ringOnFocus={false}
-      style={[S.searchWrapper, isMobile && { marginTop: 12, height: 50, flex: 0 }]}
+      style={[S.searchWrapper, isMobile && { marginTop: 10, height: 44, flex: 0 }]}
     >
       {(focused) => (
         <LinearGradient
@@ -604,7 +613,7 @@ export default function SeriesScreen() {
             { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
             (focused || searchFocused) && { backgroundColor: "#0b0b10" }
           ]}>
-            <Ionicons name="search" size={ps(1.1)} color={focused || searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
+            <Ionicons name="search" size={isMobile ? 18 : ps(1.1)} color={focused || searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
             <TextInput
               ref={searchInputRef}
               style={S.searchInput}
@@ -626,9 +635,9 @@ export default function SeriesScreen() {
       <CinematicBackground uri={focusedImage} />
       <StatusBar hidden />
 
-      <View style={[S.header, isMobile && { flexDirection: "column", alignItems: "stretch", paddingBottom: 16 }]}>
+      <View style={[S.header, isMobile && { flexDirection: "column", alignItems: "stretch", paddingTop: 0, paddingBottom: 10 }]}>
         <View style={{ flexDirection: "row", alignItems: "center", width: "100%", justifyContent: "space-between" }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={[{ flexDirection: "row", alignItems: "center", gap: 12 }, isMobile && { flex: 1 }]}>
             {!isMobile && (
               <Focusable
                 ringOnFocus={false}
@@ -639,7 +648,7 @@ export default function SeriesScreen() {
                 {() => <Ionicons name="chevron-back" size={ps(1.4)} color="#fff" />}
               </Focusable>
             )}
-            <Text style={S.headerTitle}>Series</Text>
+            <Text style={[S.headerTitle, isMobile && { flex: 1, textAlign: "center" }]}>Series</Text>
           </View>
           
           {!isMobile && renderSearchBar()}

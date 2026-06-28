@@ -12,7 +12,6 @@ import {
   StatusBar,
   ActivityIndicator,
   FlatList,
-  useWindowDimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -25,11 +24,16 @@ import { usePortalStore, Season, Episode } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
-import { THEME, pw, ph, ps , fw } from '../src/theme/tokens';
+import { THEME, pw, ph, ps , fw, isTablet } from '../src/theme/tokens';
 import { isTV } from "../src/utils/tvUtils";
+import { hasMeaningfulText } from "../src/utils/text";
+import { useResponsive } from "../src/theme/responsive";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
+
+// Tablet & TV use the wide two-pane hero (poster left, info right).
+const WIDE_HERO = isTV || isTablet;
 
 
 // ─────────────────────────────────────────────
@@ -182,8 +186,8 @@ const SeasonPill = React.memo(function SeasonPill({
 export default function SeriesDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: SCREEN_WIDTH } = useWindowDimensions();
-  const isMobile = SCREEN_WIDTH < 768;
+  const { width: SCREEN_WIDTH, isPhone, isLandscape } = useResponsive();
+  const isMobile = isPhone;
   const params = useLocalSearchParams<{
     id: string;
     name: string;
@@ -300,7 +304,8 @@ export default function SeriesDetailsScreen() {
 
   const currentSeason = seasons.find((s) => s.id === selectedSeasonId);
   const isFavorite = favorites.series.includes(params.id || "");
-  const numColumns = isMobile ? 3 : (isTV ? 7 : 4);
+  // TV unchanged (7). Phone 3 portrait / 5 landscape; tablet 4 / 6.
+  const numColumns = isMobile ? (isLandscape ? 5 : 3) : (isTV ? 7 : (isLandscape ? 6 : 4));
 
   const CARD_SPACING = 12;
   const GRID_H_PADDING = pw(4) * 2;
@@ -323,9 +328,13 @@ export default function SeriesDetailsScreen() {
     <>
       {/* --- Header Section --- */}
       <View style={S.heroSection}>
-        <Focusable style={S.backBtn} ringOnFocus={false} focusStyle={{ borderColor: "#fff", borderWidth: 2 }} onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={ps(1.8)} color="#fff" />
-        </Focusable>
+        {/* Phones use the system/hardware back gesture; hide the on-screen
+            back button there to reclaim the space. */}
+        {!isMobile && (
+          <Focusable style={S.backBtn} ringOnFocus={false} focusStyle={{ borderColor: "#fff", borderWidth: 2 }} onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={ps(1.8)} color="#fff" />
+          </Focusable>
+        )}
 
         <View style={S.metaContent}>
           <View style={S.posterWrapper}>
@@ -359,13 +368,15 @@ export default function SeriesDetailsScreen() {
             </View>
 
             <Text style={S.description} numberOfLines={isTV ? 8 : 6}>
-              {params.description || "No description available for this series. Immerse yourself in the story as it unfolds in this high-quality streaming experience."}
+              {hasMeaningfulText(params.description)
+                ? params.description
+                : "No description available for this series. Immerse yourself in the story as it unfolds in this high-quality streaming experience."}
             </Text>
 
             <Focusable
               ringOnFocus={false}
               onPress={() => toggleFavorite("series", params.id || "")}
-              style={{ alignSelf: isTV ? "flex-start" : "center", borderRadius: 12, overflow: "visible" }}
+              style={{ alignSelf: WIDE_HERO ? "flex-start" : "center", borderRadius: 12, overflow: "visible" }}
             >
               {(focused) => (
                 <LinearGradient
@@ -469,16 +480,20 @@ export default function SeriesDetailsScreen() {
       <Overlay
         visible={playModalVisible}
         onClose={() => setPlayModalVisible(false)}
-        contentStyle={S.modalContainer}
+        contentStyle={[S.modalContainer, isMobile && S.modalContainerBottom, isMobile && { paddingBottom: insets.bottom + 14 }]}
         position={isMobile ? "bottom" : "center"}
       >
-        <View style={isTV ? S.modalTVContent : null}>
-          <View style={S.modalLeft}>
+        <View style={isMobile ? S.modalStackMobile : S.modalTVContent}>
+          <View style={[S.modalLeft, isMobile && S.modalPaneMobile]}>
             <Text style={S.modalTitle} numberOfLines={2}>
               {`S${currentSeason?.seasonNumber || ""} E${selectedEpisode?.episodeNum || ""} : ${selectedEpisode?.name || ""}`}
             </Text>
             <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-              {selectedEpisode?.description || params.description || "Continue your journey with this episode. High-definition streaming ready for playback."}
+              {hasMeaningfulText(selectedEpisode?.description)
+                ? selectedEpisode!.description
+                : hasMeaningfulText(params.description)
+                  ? params.description
+                  : "Continue your journey with this episode. High-definition streaming ready for playback."}
             </Text>
             <View style={S.modalMetaRow}>
               {selectedEpisode?.duration && (
@@ -494,7 +509,7 @@ export default function SeriesDetailsScreen() {
             </View>
           </View>
 
-          <View style={S.modalRight}>
+          <View style={[S.modalRight, isMobile && S.modalPaneMobile]}>
             <Focusable
               hasTVPreferredFocus
               ringOnFocus={false}
@@ -535,27 +550,31 @@ export default function SeriesDetailsScreen() {
                 </LinearGradient>
               )}
             </Focusable>
-            <Focusable
-              ringOnFocus={false}
-              onPress={() => setPlayModalVisible(false)}
-              style={S.modalBtnWrapper}
-            >
-              {(focused) => (
-                <LinearGradient
-                  colors={focused
-                    ? [THEME.colors.primary, THEME.colors.secondary]
-                    : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnSecondaryInner}>
-                    <Text style={S.modalBtnSecondaryText}>CLOSE</Text>
-                  </View>
-                </LinearGradient>
-              )}
-            </Focusable>
+            {/* Mobile dismisses by tapping outside the sheet; CLOSE is only
+                needed on TV/tablet where there's no backdrop tap. */}
+            {!isMobile && (
+              <Focusable
+                ringOnFocus={false}
+                onPress={() => setPlayModalVisible(false)}
+                style={S.modalBtnWrapper}
+              >
+                {(focused) => (
+                  <LinearGradient
+                    colors={focused
+                      ? [THEME.colors.primary, THEME.colors.secondary]
+                      : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
+                  >
+                    <View style={S.modalBtnSecondaryInner}>
+                      <Text style={S.modalBtnSecondaryText}>CLOSE</Text>
+                    </View>
+                  </LinearGradient>
+                )}
+              </Focusable>
+            )}
           </View>
         </View>
       </Overlay>
@@ -567,16 +586,16 @@ const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: THEME.colors.background },
   heroSection: { padding: pw(4), marginBottom: ph(2) },
   backBtn: { width: ps(3.5), height: ps(3.5), borderRadius: 20, backgroundColor: "rgba(255,255,255,0.05)", alignItems: "center", justifyContent: "center", marginBottom: ph(3) },
-  metaContent: { flexDirection: isTV ? "row" : "column", alignItems: isTV ? "flex-start" : "center", gap: pw(4) },
-  posterWrapper: { width: isTV ? pw(18) : pw(45), aspectRatio: 2/3, borderRadius: 20, overflow: "hidden", elevation: 20, shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 20 },
+  metaContent: { flexDirection: WIDE_HERO ? "row" : "column", alignItems: WIDE_HERO ? "flex-start" : "center", gap: pw(4) },
+  posterWrapper: { width: isTV ? pw(18) : isTablet ? pw(28) : pw(45), aspectRatio: 2/3, borderRadius: 20, overflow: "hidden", elevation: 20, shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 20 },
   poster: { ...StyleSheet.absoluteFillObject },
   posterPlaceholder: { backgroundColor: "#1a1a20", alignItems: "center", justifyContent: "center" },
-  infoArea: { flex: 1, paddingTop: isTV ? ph(2) : 0 },
-  title: { color: "#fff", fontSize: ps(2.2), fontWeight: fw("900"), marginBottom: ph(1.5), textAlign: isTV ? "left" : "center" },
-  badgesRow: { flexDirection: "row", gap: 10, marginBottom: ph(2.5), justifyContent: isTV ? "flex-start" : "center" },
+  infoArea: { flex: 1, paddingTop: WIDE_HERO ? ph(2) : 0 },
+  title: { color: "#fff", fontSize: ps(2.2), fontWeight: fw("900"), marginBottom: ph(1.5), textAlign: WIDE_HERO ? "left" : "center" },
+  badgesRow: { flexDirection: "row", gap: 10, marginBottom: ph(2.5), justifyContent: WIDE_HERO ? "flex-start" : "center" },
   metaBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.05)", flexDirection: "row", alignItems: "center" },
   metaBadgeText: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.9), fontWeight: fw("700") },
-  description: { color: "rgba(255,255,255,0.45)", fontSize: ps(1.15), lineHeight: ps(1.8), marginBottom: ph(4), textAlign: isTV ? "left" : "center" },
+  description: { color: "rgba(255,255,255,0.45)", fontSize: ps(1.15), lineHeight: ps(1.8), marginBottom: ph(4), textAlign: WIDE_HERO ? "left" : "center" },
   favoriteBtnInner: {
     flexDirection: "row",
     alignItems: "center",
@@ -719,10 +738,16 @@ const S = StyleSheet.create({
 
   // Modal
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "center", alignItems: "center" },
-  modalContainer: { backgroundColor: "#111", width: isTV ? ps(65) : "92%", borderRadius: 24, padding: ps(2), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
+  modalContainer: { backgroundColor: "#111", width: isTV ? ps(65) : "94%", borderRadius: 24, padding: isTV ? ps(2) : 18, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
+  // Mobile: dock the sheet flush to both side edges and the bottom — rounded
+  // top corners only, square bottom so it reads as an attached bottom sheet.
+  modalContainerBottom: { width: "100%", borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderBottomWidth: 0 },
   modalTVContent: { flexDirection: "row" },
+  // Phone: stack panes; drop the row `flex` so they don't collapse to 0 height.
+  modalStackMobile: { flexDirection: "column", gap: 14 },
+  modalPaneMobile: { flex: 0, flexBasis: "auto", width: "100%", padding: 12 },
   modalLeft: { flex: 1.4, padding: ps(1.5) },
-  modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.015)", padding: ps(2), borderRadius: 20, justifyContent: "center", gap: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" },
+  modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.015)", padding: ps(2), borderRadius: 20, justifyContent: "center", gap: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" },
   modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), marginBottom: 12 },
   modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.95), lineHeight: ps(1.4), marginBottom: 18 },
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
@@ -746,21 +771,23 @@ const S = StyleSheet.create({
     elevation: 14,
   },
   modalBtnPrimaryInner: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    minHeight: 38,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
   },
   modalBtnSecondaryInner: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    minHeight: 38,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0d0d12",
   },
-  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: fw("900"), letterSpacing: 1 },
-  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: fw("700"), letterSpacing: 0.5 },
+  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.85), fontWeight: fw("900"), letterSpacing: 1 },
+  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.82), fontWeight: fw("700"), letterSpacing: 0.5 },
 });

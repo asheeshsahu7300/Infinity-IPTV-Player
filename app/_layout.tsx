@@ -17,7 +17,6 @@ import {
   Dimensions,
   Animated,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 
 import ErrorBoundary from "../src/components/ErrorBoundary";
@@ -26,7 +25,6 @@ import { usePortalStore } from "../src/store/portalStore";
 import { ThemeProvider } from "../src/context/ThemeContext";
 import { AppBootManager } from "../src/services/AppBootManager";
 import { isTV } from "../src/utils/tvUtils";
-import { CinematicBackground } from "../src/components/CinematicBackground";
 import { THEME, ps, ph, pw , fw } from '../src/theme/tokens';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,12 +95,6 @@ function SplashScreen() {
 
   return (
     <View style={styles.splash}>
-      <CinematicBackground />
-      <LinearGradient
-        colors={["rgba(0,0,0,0.4)", "rgba(0, 0, 0, 1)"]}
-        style={StyleSheet.absoluteFill}
-      />
-
       <Animated.View style={[styles.splashContent, { opacity: fadeAnim }]}>
         <Animated.View
           style={[
@@ -110,25 +102,13 @@ function SplashScreen() {
             { transform: [{ scale: pulseAnim }] },
           ]}
         >
-
           <Image
             source={require("../assets/images/icon.png")}
             style={styles.logoImage}
             resizeMode="contain"
           />
         </Animated.View>
-
-        <View style={styles.splashTextGroup}>
-          <Text style={[styles.splashTitle, isTV && styles.splashTitleTV]}>
-            IPTV HUB
-          </Text>
-          <Text style={[styles.tagline, isTV && styles.taglineTV]}>
-            PREMIUM STREAMING EXPERIENCE
-          </Text>
-        </View>
       </Animated.View>
-
-
     </View>
   );
 }
@@ -238,9 +218,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000000" },
   splash: { flex: 1, backgroundColor: "#000000", justifyContent: "center", alignItems: "center" },
   splashContent: { alignItems: "center", justifyContent: "center" },
-  splashLogoWrapper: { width: pw(18), height: pw(18), borderRadius: pw(4), overflow: "hidden", marginBottom: ph(4) },
-  splashLogoTVWrapper: { width: pw(12), height: pw(12), borderRadius: pw(3), overflow: "hidden", marginBottom: ph(5) },
-  logoImage: { width: "120%", height: "120%", borderRadius: pw(3) },
+  splashLogoWrapper: { width: pw(48), height: pw(48), justifyContent: "center", alignItems: "center" },
+  splashLogoTVWrapper: { width: pw(28), height: pw(28), justifyContent: "center", alignItems: "center" },
+  logoImage: { width: "100%", height: "100%" },
   splashTextGroup: { alignItems: "center", marginBottom: ph(2), justifyContent: "flex-end" },
   splashTitle: { color: "#ffffff", fontSize: ps(1.6), fontWeight: fw("500"), letterSpacing: pw(0.2) },
   splashTitleTV: { fontSize: ps(2.2), letterSpacing: pw(0.5) },

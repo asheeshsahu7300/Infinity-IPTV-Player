@@ -3,6 +3,7 @@ import axios from "axios";
 import { cacheManager, CACHE_TTL } from "./cacheManager";
 import { requestManager } from "./requestManager";
 import { Portal } from "../store/portalStore";
+import { hasMeaningfulText } from "../utils/text";
 
 export class XtreamApi {
   constructor(
@@ -201,6 +202,45 @@ export class XtreamApi {
   }
 
   // ============================================================
+  // VOD INFO (full plot / metadata)
+  // get_vod_streams frequently omits `plot`; the real synopsis only comes back
+  // from get_vod_info. Fetched lazily when a movie's modal is opened.
+  // ============================================================
+  async getVodInfo(vodId: string) {
+    const cacheKey = this.getCacheKey("vod_info", vodId);
+
+    return requestManager.request(cacheKey, async () => {
+      const cached = await cacheManager.get<any>(cacheKey);
+      if (cached) return cached;
+
+      const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_vod_info&vod_id=${vodId}`;
+      const res = await requestManager.axiosWithRetry<any>({
+        method: "get",
+        url,
+        timeout: 15000,
+      });
+
+      const info = res.data?.info || {};
+      const result = {
+        description: hasMeaningfulText(info.plot)
+          ? info.plot
+          : hasMeaningfulText(info.description)
+            ? info.description
+            : undefined,
+        year: info.releasedate || info.year || undefined,
+        rating: info.rating || undefined,
+        duration: info.duration || undefined,
+        genre: info.genre || undefined,
+        cast: info.cast || info.actors || undefined,
+        director: info.director || undefined,
+      };
+
+      await cacheManager.set(cacheKey, result, CACHE_TTL.VOD);
+      return result;
+    });
+  }
+
+  // ============================================================
   // SERIES CATEGORIES
   // ============================================================
   async getSeriesCategories() {
@@ -295,6 +335,15 @@ export class XtreamApi {
       });
 
       const episodes = res.data?.episodes || {};
+      // get_series_info also carries the series-level synopsis. Use it as a
+      // fallback so episodes whose own plot is missing still show the server's
+      // description rather than a generic placeholder.
+      const seriesInfo = res.data?.info || {};
+      const seriesPlot = hasMeaningfulText(seriesInfo.plot)
+        ? seriesInfo.plot
+        : hasMeaningfulText(seriesInfo.description)
+          ? seriesInfo.description
+          : undefined;
 
       const seasons = Object.keys(episodes).map((seasonNum) => ({
         id: seasonNum,
@@ -306,7 +355,11 @@ export class XtreamApi {
           name: ep.title,
           episodeNum: ep.episode_num,
           streamUrl: this.buildSeriesUrl(ep.id, ep.container_extension),
-          description: ep.info?.plot || ep.info?.description || undefined,
+          description: hasMeaningfulText(ep.info?.plot)
+            ? ep.info.plot
+            : hasMeaningfulText(ep.info?.description)
+              ? ep.info.description
+              : seriesPlot,
           duration: ep.info?.duration || ep.info?.duration_secs ? `${ep.info.duration || ep.info.duration_secs}` : undefined,
         })),
       }));

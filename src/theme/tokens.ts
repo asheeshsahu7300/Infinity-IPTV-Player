@@ -2,16 +2,27 @@ import { Dimensions, Platform } from 'react-native';
 
 const { width: W, height: H } = Dimensions.get("window");
 
+// Orientation-invariant smallest width (Android `sw` concept) so device class
+// is stable across rotation — see src/utils/tvUtils.ts for the rationale.
+const SHORTEST_SIDE = Math.min(W, H);
+
 const IS_TV =
   Platform.isTV ||
-  (Platform.OS === 'android' && W > 1000) ||
-  (Platform.OS === 'web' && W > 800);
+  (Platform.OS === 'android' && SHORTEST_SIDE > 1000) ||
+  (Platform.OS === 'web' && SHORTEST_SIDE > 800);
 
-const IS_MOBILE = W < 768;
+// Tablet: non-TV with smallest width ≥ 600dp. Phone: everything else.
+const IS_TABLET = !IS_TV && SHORTEST_SIDE >= 600;
+const IS_PHONE = !IS_TV && !IS_TABLET;
 
-const TV_SCALE = IS_TV ? 1.3 : 1;
-const MOBILE_SCALE = IS_MOBILE ? 2.2 : 1;
-const SCALE = IS_TV ? TV_SCALE : MOBILE_SCALE;
+// Per-device scale applied to typography/radii. Phone (2.2) and TV (1.3) are
+// unchanged; tablets previously fell through to 1.0 (undersized text) and now
+// get a dedicated tier.
+const SCALE = IS_TV ? 1.3 : IS_PHONE ? 2.2 : 1.5;
+
+export const isPhone = IS_PHONE;
+export const isTablet = IS_TABLET;
+export const isTVDevice = IS_TV;
 
 export const pw = (pct: number) => (W * pct) / 100;
 export const ph = (pct: number) => (H * pct) / 100;

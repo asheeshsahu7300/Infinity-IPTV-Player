@@ -4,6 +4,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { THEME, ps, pw, ph, fw } from "../theme/tokens";
+import { isTV } from "../utils/tvUtils";
+import { MIN_TOUCH } from "../theme/responsive";
+
+// Touch targets honour the 48dp Material minimum; TV scales up via ps().
+const TAP = Math.max(MIN_TOUCH, isTV ? ps(3) : 0);
+const ICON = isTV ? ps(1.8) : 26;
 
 interface HeaderProps {
   title: string;
@@ -23,17 +29,17 @@ export default function Header({ title, showBack = true, rightAction }: HeaderPr
       <View style={styles.content}>
         {showBack ? (
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={28} color="#fff" />
+            <Ionicons name="chevron-back" size={ICON} color="#fff" />
           </TouchableOpacity>
         ) : (
           <View style={styles.placeholder} />
         )}
-        
+
         <Text style={styles.title} numberOfLines={1}>{title}</Text>
-        
+
         {rightAction ? (
           <TouchableOpacity onPress={rightAction.onPress} style={styles.rightButton}>
-            <Ionicons name={rightAction.icon} size={24} color="#fff" />
+            <Ionicons name={rightAction.icon} size={ICON} color="#fff" />
           </TouchableOpacity>
         ) : (
           <View style={styles.placeholder} />
@@ -53,32 +59,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingVertical: 12,
+    paddingHorizontal: pw(2),
+    paddingVertical: ph(1),
   },
   backButton: {
-    padding: 8,
-    width: 44,
-    height: 44,
+    width: TAP,
+    height: TAP,
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: {
     flex: 1,
-    fontSize: 18,
+    fontSize: isTV ? ps(1.7) : 18,
     fontWeight: fw('600'),
     color: '#fff',
     textAlign: 'center',
   },
   rightButton: {
-    padding: 8,
-    width: 44,
-    height: 44,
+    width: TAP,
+    height: TAP,
     alignItems: 'center',
     justifyContent: 'center',
   },
   placeholder: {
-    width: 44,
-    height: 44,
+    width: TAP,
+    height: TAP,
   },
 });

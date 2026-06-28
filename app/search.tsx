@@ -8,53 +8,32 @@ import {
   ActivityIndicator,
   Dimensions,
   FlatList,
-  Platform,
-  Linking,
   Alert,
-  Keyboard,
-  useWindowDimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from 'expo-linear-gradient';
-import * as IntentLauncher from "expo-intent-launcher";
 
 import { usePortalStore } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { isTV } from "../src/utils/tvUtils";
+import { useResponsive } from "../src/theme/responsive";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
-import { THEME , fw } from '../src/theme/tokens';
+import { THEME , fw, isPhone } from '../src/theme/tokens';
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 
 const { width: W, height: H } = Dimensions.get("window");
 const pw = (pct: number) => (W * pct) / 100;
 const ph = (pct: number) => (H * pct) / 100;
-const ps = (pct: number) => (pw(pct) + ph(pct)) / 2;
-
-const TRENDING = [
-  "Last of Us Season 2",
-  "Live Formula 1",
-  "Cyberpunk 2077 Anime",
-  "Avatar 3 Trailer"
-];
-
-const TrendingPill = ({ text, onPress }: { text: string; onPress: (t: string) => void }) => (
-  <Focusable
-    onPress={() => onPress(text)}
-    ringOnFocus={false}
-    style={S.pill}
-    focusStyle={S.pillFocused}
-  >
-    {(focused) => (
-      <Text style={[S.pillText, focused && S.pillTextFocused]}>{text}</Text>
-    )}
-  </Focusable>
-);
+// Font scale by device — TV stays 1× (unchanged), phone 2.2×, tablet 1.5× —
+// so this screen's text is no longer undersized on touch devices.
+const PS_SCALE = isTV ? 1.3 : isPhone ? 2.2 : 1.5;
+const ps = (pct: number) => ((pw(pct) + ph(pct)) / 2) * PS_SCALE;
 
 // ─────────────────────────────────────────────
 // Metadata Pick Helpers
@@ -98,12 +77,12 @@ const pickYear = (v: any) => {
   return match ? match[0] : s;
 };
 
-const ResultCard = ({ item, onPress, onFocus }: any) => (
+const ResultCard = ({ item, onPress, onFocus, cardWidth }: any) => (
   <Focusable
     onPress={onPress}
     onFocus={onFocus}
     ringOnFocus={false}
-    style={[S.cardWrapper, { overflow: "visible" }]}
+    style={[S.cardWrapper, cardWidth ? { width: cardWidth, maxWidth: cardWidth } : null, { overflow: "visible" }]}
   >
     {(focused) => (
       <LinearGradient
@@ -140,8 +119,8 @@ const ResultCard = ({ item, onPress, onFocus }: any) => (
 export default function SearchScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const isMobile = width < 768;
+  const { width, isPhone, isLandscape } = useResponsive();
+  const isMobile = isPhone;
   const { activePortal, channels, vodItems, series } = usePortalStore();
   const searchTimeout = useRef<any>(null);
 
@@ -328,8 +307,13 @@ export default function SearchScreen() {
       router.push({ pathname: "/player", params: { url: streamUrl, title: selectedItem.name, type: "vod" } });
     }
   };
-const RESULT_COLUMNS = isTV ? 6 : 3;
-  const CARD_WIDTH = (W - pw(4)) / RESULT_COLUMNS;
+  // TV unchanged (6). Phone: 3 portrait / 5 landscape; tablet: 4 / 6.
+  const RESULT_COLUMNS = isTV ? 6 : isMobile ? (isLandscape ? 5 : 3) : (isLandscape ? 6 : 4);
+  // Reserve the outer padding and the inter-tile gaps so every tile is sized to
+  // leave a real gap between neighbours instead of butting up against them.
+  const GRID_PAD = pw(2);
+  const TILE_GAP = isTV ? pw(1.2) : pw(2);
+  const CARD_WIDTH = (width - GRID_PAD * 2 - TILE_GAP * (RESULT_COLUMNS - 1)) / RESULT_COLUMNS;
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
@@ -355,14 +339,14 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
             style={S.searchBarWrapper}
           >
             {(focused) => (
-              <LinearGradient
-                colors={focused || searchFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[S.searchBarGradient, (focused || searchFocused) && S.searchBarFocused]}
+              <View
+                style={[
+                  S.searchBarInner,
+                  { borderWidth: 1.5, borderColor: (focused || searchFocused) ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.12)" },
+                  (focused || searchFocused) && S.searchBarFocused,
+                ]}
               >
-                <View style={[S.searchBarInner, { borderRadius: (focused || searchFocused) ? ps(1) - 1.5 : ps(1) }]}>
-                  <Ionicons name="search" size={ps(2.2)} color="rgba(255,255,255,0.5)" />
+                  <Ionicons name="search" size={ps(1.1)} color="rgba(255,255,255,0.5)" />
                   <TextInput
                     ref={inputRef}
                     style={S.searchInput}
@@ -378,20 +362,11 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
                   />
                   {query.length > 0 && (
                     <TouchableOpacity onPress={() => setQuery("")} style={{ padding: 8 }}>
-                      <Ionicons name="close-circle" size={ps(1.6)} color="rgba(255,255,255,0.5)" />
+                      <Ionicons name="close-circle" size={ps(1.2)} color="rgba(255,255,255,0.5)" />
                     </TouchableOpacity>
                   )}
-                </View>
-              </LinearGradient>
+              </View>
             )}
-          </Focusable>
-          <Focusable
-            ringOnFocus={false}
-            focusStyle={S.settingsBtnFocused}
-            style={S.settingsBtn}
-            onPress={() => router.push("/settings")}
-          >
-            <Ionicons name="settings" size={ps(2)} color="rgba(255,255,255,0.7)" />
           </Focusable>
         </View>
       </FocusGroup>
@@ -417,16 +392,8 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
                   <View style={[
                     S.filterPill,
                     focused && S.filterPillFocused,
-                    isActive && { borderColor: "transparent" }
+                    isActive && S.filterPillActive
                   ]}>
-                    {isActive && (
-                      <LinearGradient
-                        colors={[THEME.colors.primary, THEME.colors.secondary]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={StyleSheet.absoluteFillObject}
-                      />
-                    )}
                     <Text style={[S.filterText, (isActive || focused) && S.filterTextActive]}>
                       {filter.label}
                     </Text>
@@ -437,23 +404,6 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
           })}
         </View>
       </FocusGroup>
-
-      {/* Trending suggestions appear when no query */}
-      {!query.trim() && (
-        <FocusGroup>
-          <View style={S.trendingInline}>
-            <View style={S.sectionLabelRow}>
-              <MaterialCommunityIcons name="trending-up" size={ps(1.6)} color={THEME.colors.primary} />
-              <Text style={S.sectionLabel}>Trending Searches</Text>
-            </View>
-            <View style={S.pillRow}>
-              {TRENDING.map((term) => (
-                <TrendingPill key={term} text={term} onPress={setQuery} />
-              ))}
-            </View>
-          </View>
-        </FocusGroup>
-      )}
 
       {/* Results below */}
       <FocusGroup style={S.resultsArea}>
@@ -467,14 +417,15 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
           numColumns={RESULT_COLUMNS}
           key={`results-${RESULT_COLUMNS}`}
           keyExtractor={(item: any) => `${item.type}-${item.id}`}
-          contentContainerStyle={{ paddingHorizontal: pw(2), paddingBottom: ph(6) }}
-          columnWrapperStyle={{ justifyContent: 'center' }}
+          contentContainerStyle={{ paddingHorizontal: GRID_PAD, paddingBottom: ph(6) }}
+          columnWrapperStyle={{ gap: TILE_GAP, marginBottom: TILE_GAP }}
           removeClippedSubviews={false}
           initialNumToRender={RESULT_COLUMNS * 4}
           maxToRenderPerBatch={RESULT_COLUMNS * 4}
           renderItem={({ item }: any) => (
             <ResultCard
               item={item}
+              cardWidth={CARD_WIDTH}
               onPress={() => handleResultPress(item)}
               onFocus={() => item.logo && setFocusedImage(item.logo)}
             />
@@ -603,11 +554,11 @@ const S = StyleSheet.create({
   },
   searchBarWrapper: {
     flex: 1,
-    height: ph(8),
+    height: ph(5),
   },
   searchBarGradient: {
     flex: 1,
-    borderRadius: ps(1),
+    borderRadius: 999,
     padding: 1.5,
   },
   searchBarFocused: {
@@ -618,8 +569,8 @@ const S = StyleSheet.create({
   },
   searchBarInner: {
     flex: 1,
-    backgroundColor: "#111015",
-    borderRadius: ps(1) - 1.5,
+    backgroundColor: "rgba(10,10,16,0.61)",
+    borderRadius: 999,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: pw(2),
@@ -627,8 +578,8 @@ const S = StyleSheet.create({
   searchInput: {
     flex: 1,
     color: "#fff",
-    fontSize: ps(1.4),
-    marginLeft: 14,
+    fontSize: ps(0.95),
+    marginLeft: 8,
     paddingVertical: 0,
     paddingLeft: 4,
     textAlignVertical: "center",
@@ -637,14 +588,7 @@ const S = StyleSheet.create({
   settingsBtn: {
     padding: ps(1),
   },
-  settingsBtnFocused: {
-    transform: [{ scale: 1.2 }],
-  },
 
-  trendingInline: {
-    paddingHorizontal: pw(5),
-    paddingVertical: ph(2),
-  },
   resultsArea: {
     flex: 1,
   },
@@ -652,47 +596,11 @@ const S = StyleSheet.create({
     paddingVertical: ph(2),
     alignItems: "center",
   },
-  sectionLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: pw(0.8),
-    marginBottom: ph(1.5),
-  },
-  sectionLabel: {
-    color: "#fff",
-    fontSize: ps(1.4),
-    fontWeight: fw("700"),
-    letterSpacing: 1,
-  },
-  pillRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: pw(1),
-  },
-  pill: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-    paddingHorizontal: pw(2),
-    paddingVertical: ph(1.2),
-    borderRadius: ps(1),
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  pillFocused: {
-    backgroundColor: "rgba(255,255,255,0.1)",
-    borderColor: "rgba(255,255,255,0.2)",
-  },
-  pillText: {
-    color: "rgba(255,255,255,0.5)",
-    fontSize: ps(1.1),
-    fontWeight: fw("600"),
-  },
-  pillTextFocused: {
-    color: "#fff",
-  },
 
   filterRow: {
     flexDirection: "row",
-    gap: pw(0.8),
+    flexWrap: "wrap",
+    gap: isTV ? pw(0.8) : pw(2.5),
     paddingHorizontal: pw(5),
     paddingVertical: ph(1),
   },
@@ -700,24 +608,29 @@ const S = StyleSheet.create({
     paddingVertical: ph(0.5),
   },
   filterPill: {
-    paddingHorizontal: pw(1.6),
-    paddingVertical: ph(1),
-    borderRadius: ps(2),
+    paddingHorizontal: isTV ? pw(1.6) : pw(3),
+    paddingVertical: isTV ? ph(1) : ph(0.6),
+    borderRadius: 100,
     borderWidth: 1.2,
     borderColor: "rgba(255,255,255,0.12)",
     overflow: "hidden",
-    minWidth: pw(6),
+    minHeight: isTV ? undefined : 38,
+    justifyContent: "center",
     alignItems: "center",
   },
   filterPillFocused: {
     borderColor: "#fff",
     backgroundColor: "rgba(255,255,255,0.1)",
   },
+  filterPillActive: {
+    backgroundColor: THEME.colors.primary,
+    borderColor: "transparent",
+  },
   filterText: {
     color: "rgba(255,255,255,0.4)",
-    fontSize: ps(1.1),
-    fontWeight: fw("700"),
-    letterSpacing: 0.5,
+    fontSize: ps(1.0),
+    fontWeight: fw("600"),
+    letterSpacing: 0.3,
   },
   filterTextActive: {
     color: "#fff",
@@ -726,7 +639,6 @@ const S = StyleSheet.create({
   cardWrapper: {
     width: (W - pw(4)) / (isTV ? 6 : 3),
     maxWidth: (W - pw(4)) / (isTV ? 6 : 3),
-    padding: isTV ? pw(1.0) : pw(0.4),
   },
   card: {
     flex: 1,
@@ -749,13 +661,13 @@ const S = StyleSheet.create({
   },
   cardTitle: {
     color: "#fff",
-    fontSize: isTV ? ps(1.15) : ps(1.2),
+    fontSize: isTV ? ps(1.0) : ps(0.9),
     fontWeight: fw("700"),
   },
   cardSub: {
     color: "rgba(255,255,255,0.5)",
-    fontSize: isTV ? ps(0.9) : ps(0.8),
-    marginTop: 4,
+    fontSize: isTV ? ps(0.8) : ps(0.62),
+    marginTop: 3,
   },
   badge: {
     position: "absolute",

@@ -1,12 +1,13 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Alert,
-  Pressable,
   Dimensions,
   Animated,
+  ScrollView,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,82 +17,122 @@ import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import LoadingOverlay from "../src/components/LoadingOverlay";
+import { CinematicBackground } from "../src/components/CinematicBackground";
 import { isTV } from "../src/utils/tvUtils";
-import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
-import MaskedView from "@react-native-masked-view/masked-view";
 import { Focusable } from "../src/tv";
-import { THEME , fw } from '../src/theme/tokens';
+import { THEME, fw, isTablet, isPhone } from '../src/theme/tokens';
 
-// ─── Percentage helpers ───────────────────────────────────────────────────────
 const { width: W, height: H } = Dimensions.get("window");
-
-/** % of screen width  */
 const pw = (pct: number) => (W * pct) / 100;
-/** % of screen height */
 const ph = (pct: number) => (H * pct) / 100;
-/** averaged scale — good for font sizes */
-const ps = (pct: number) => (pw(pct) + ph(pct)) / 2;
+const PS_SCALE = isTV ? 1.3 : isPhone ? 1.55 : 1.35;
+const ps = (pct: number) => ((pw(pct) + ph(pct)) / 2) * PS_SCALE;
 
-// ─── Carousel geometry (all percentage-based) ────────────────────────────────
-const CARD_WIDTH = isTV ? pw(28) : pw(85);
-const CARD_MARGIN = pw(1.5);
-const ITEM_SIZE = CARD_WIDTH + CARD_MARGIN * 2;
-const SPACER_WIDTH = (W - ITEM_SIZE) / 2;
+const CONTENT_MAX = isTV ? 880 : isTablet ? 620 : 560;
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+// Per-card icon accents so stacked portals are easy to tell apart.
+const ACCENTS: [string, string][] = [
+  [THEME.colors.primary, THEME.colors.secondary], // brand red → blue
+  ["#3B82F6", "#06B6D4"], // blue → cyan
+  ["#F59E0B", "#EF4444"], // amber → red
+  ["#10B981", "#3B82F6"], // emerald → blue
+];
+
+const TYPE_INFO = (type: string) => {
+  switch (type) {
+    case "m3u": return { icon: "play-circle", label: "M3U Playlist" };
+    case "xtream": return { icon: "cloud-download", label: "Xtream Codes" };
+    case "mag": return { icon: "tv", label: "MAC Portal" };
+    default: return { icon: "server", label: "Portal" };
+  }
+};
+
+const getDomain = (url?: string) => {
+  if (!url) return "";
+  try {
+    const s = url.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
+    return s.split("/")[0] || url;
+  } catch {
+    return url;
+  }
+};
+
+const formatLastConnected = (ts?: number): string | null => {
+  if (!ts) return null;
+  try {
+    const d = new Date(ts);
+    const now = new Date();
+    const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (d.toDateString() === now.toDateString()) return `Today • ${time}`;
+    const y = new Date(now);
+    y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return `Yesterday • ${time}`;
+    return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} • ${time}`;
+  } catch {
+    return null;
+  }
+};
+
 export default function PortalsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-
   const { portals, activePortal, loadPortals, setActivePortal, updatePortal, deletePortal } =
     usePortalStore();
 
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
-  const [focusedPortalId, setFocusedPortalId] = useState<string | null>(null);
-  const [focusedHeader, setFocusedHeader] = useState<"back" | "add" | null>(null);
 
-  const scrollX = useRef(new Animated.Value(0)).current;
-  const flatListRef = useRef<any>(null);
+  const enter = useRef(new Animated.Value(0)).current;
 
-  const focusedPortalIdRef = useRef<string | null>(null);
-  const focusedHeaderRef = useRef<"back" | "add" | null>(null);
+  useEffect(() => { loadPortals(); }, [loadPortals]);
 
-  useEffect(() => { focusedPortalIdRef.current = focusedPortalId; }, [focusedPortalId]);
-  useEffect(() => { focusedHeaderRef.current = focusedHeader; }, [focusedHeader]);
-  useEffect(() => { loadPortals(); }, []);
+  useEffect(() => {
+    enter.setValue(0);
+    Animated.timing(enter, { toValue: 1, duration: 420, useNativeDriver: true }).start();
+  }, [portals.length, enter]);
 
-  // ── Connect ────────────────────────────────────────────────────────────────
+  const goDashboard = useCallback((portal: Portal) => {
+    
+    router.replace("/dashboard");
+  }, [router, updatePortal]);
+
   const connectToPortal = async (portal: Portal) => {
-    if (activePortal?.id === portal.id) { router.replace("/dashboard"); return; }
+    if (activePortal?.id === portal.id) { goDashboard(portal); return; }
 
     setIsLoading(true);
     setLoadingMessage("Connecting...");
     try {
+      let connected: Portal = portal;
       if (portal.type === "m3u") {
         const api = new M3UApi({ url: portal.config.url });
         const result = await api.login();
         if (!result.ok) throw new Error(result.error);
-        await setActivePortal(portal);
-        router.replace("/dashboard");
-        return;
-      }
-      if (portal.type === "xtream") {
+      } else if (portal.type === "xtream") {
         const api = new XtreamApi({
           url: portal.config.url,
           username: portal.config.username!,
           password: portal.config.password!,
         });
         await api.login();
-        await setActivePortal(portal);
-        router.replace("/dashboard");
+      } else {
+        const { token, serverInfo } = await portalApi.authenticate(portal);
+        await updatePortal(portal.id, { config: { ...portal.config, token, serverInfo } });
+        connected = { ...portal, config: { ...portal.config, token, serverInfo } };
+      }
+
+      // Fetch the portal's content (also primes the store the dashboard reads).
+      // If it has no channels, movies or series, don't proceed.
+      setLoadingMessage("Loading content...");
+      await portalApi.refreshPortalData(connected);
+      const s = usePortalStore.getState();
+      const total = (s.channels?.length || 0) + (s.vodItems?.length || 0) + (s.series?.length || 0);
+      if (total === 0) {
+        Alert.alert("No Content", "This portal returned no channels, movies, or series.");
         return;
       }
-      const { token, serverInfo } = await portalApi.authenticate(portal);
-      await updatePortal(portal.id, { config: { ...portal.config, token, serverInfo } });
-      await setActivePortal({ ...portal, config: { ...portal.config, token, serverInfo } });
-      router.replace("/dashboard");
+
+      await setActivePortal(connected);
+      goDashboard(connected);
     } catch (e: any) {
       Alert.alert("Connection Failed", e.message || "Unable to connect");
     } finally {
@@ -99,522 +140,433 @@ export default function PortalsScreen() {
     }
   };
 
-  // OK/select is handled natively by each focusable's onPress — no global
-  // listener needed (and a global one would double-fire on Android TV).
+  const handleDeletePortal = useCallback((portal: Portal) => {
+    Alert.alert("Delete Portal", `Delete "${portal.name}"?`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => deletePortal(portal.id) },
+    ]);
+  }, [deletePortal]);
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  const handleDeletePortal = useCallback(
-    (portal: Portal) => {
-      Alert.alert("Delete Portal", `Delete "${portal.name}"?`, [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => deletePortal(portal.id) },
-      ]);
-    },
-    [deletePortal]
+  // ── Header ──
+  const headerIcon = (icon: any, onPress: () => void) => (
+    <Focusable ringOnFocus={false} onPress={onPress} style={S.headerIcon} focusStyle={S.headerIconFocused}>
+      {() => <Ionicons name={icon} size={ps(1.6)} color="#fff" />}
+    </Focusable>
   );
 
-  const getPortalTypeInfo = (type: string) => {
-    switch (type) {
-      case "m3u": return { icon: "play-circle-outline", color: "#10b981" };
-      case "xtream": return { icon: "cloud-download-outline", color: "#3b82f6" };
-      case "mag": return { icon: "tv-outline", color: "#f59e0b" };
-      default: return { icon: "server-outline", color: THEME.colors.primary };
-    }
-  };
-
-  // ── Card ───────────────────────────────────────────────────────────────────
-  const renderCardContent = (item: Portal, isActive: boolean) => {
-    const config = item.config || {};
-    const detail = (config as any).url || (config as any).mac || "--";
-
-    return (
-      <>
-        <View style={S.cardHeader}>
-          <View style={[S.cardIconBox, { backgroundColor: isActive ? THEME.colors.primary + '20' : "rgba(255,255,255,0.03)" }]}>
-            <Ionicons
-              name={getPortalTypeInfo(item.type).icon as any}
-              size={ps(3.5)}
-              color={isActive ? THEME.colors.primary : "#9ca3af"}
-            />
-          </View>
-          {isActive && (
-            <View style={S.activeBadge}>
-              <View style={S.badgeDot} />
-              <Text style={S.activeBadgeText}>ACTIVE</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={S.cardMain}>
-          <MaskedView maskElement={<Text style={S.cardName} numberOfLines={1}>{item.name}</Text>}>
-            <LinearGradient
-              colors={["#fff", "rgba(255,255,255,0.4)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <Text style={[S.cardName, { opacity: 0 }]} numberOfLines={1}>{item.name}</Text>
-            </LinearGradient>
-          </MaskedView>
-          <Text style={S.cardDetailText} numberOfLines={1}>{detail}</Text>
-          <Text style={S.cardTypeLabel}>
-            {item.type === "m3u"
-              ? "M3U PLAYLIST"
-              : item.type === "xtream"
-                ? "XTREAM CODES API"
-                : "MAC PORTAL"}
-          </Text>
-        </View>
-      </>
-    );
-  };
-
-  const renderPortal = ({ item, index }: { item: Portal; index: number }) => {
-    const isFocused = focusedPortalId === item.id;
+  // ── Card ──
+  const renderCard = (item: Portal, index: number) => {
     const isActive = activePortal?.id === item.id;
-
-    const inputRange = [(index - 1) * ITEM_SIZE, index * ITEM_SIZE, (index + 1) * ITEM_SIZE];
-    const scale = scrollX.interpolate({ inputRange, outputRange: [0.95, 1.05, 0.95], extrapolate: "clamp" });
-    const opacity = scrollX.interpolate({ inputRange, outputRange: [0.7, 1, 0.7], extrapolate: "clamp" });
-
-    const useStaticFocus = portals.length <= 3;
+    const info = TYPE_INFO(item.type);
+    const accent = ACCENTS[index % ACCENTS.length];
+    const detail = getDomain(item.config?.url) || item.config?.mac || "--";
 
     return (
-      <Animated.View
-        key={item.id}
-        style={[
-          S.cardWrapper,
-          {
-            transform: [{ scale: useStaticFocus ? (isFocused ? 1.05 : 1) : (isTV ? scale : isFocused ? 1.05 : 1) }],
-            opacity: useStaticFocus ? (isFocused ? 1 : 0.8) : (isTV ? opacity : 1),
-            zIndex: isFocused ? 100 : index,
-          },
-        ]}
-      >
-        <Focusable
-          hasTVPreferredFocus={index === 0}
-          onFocus={() => {
-            setFocusedPortalId(item.id);
-            if (isTV) flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
-          }}
-          onBlur={() => setFocusedPortalId(null)}
-          onPress={() => connectToPortal(item)}
-          ringOnFocus={false}
-          style={S.pressable}
-        >
-          {isFocused ? (
-            <LinearGradient
-              colors={[THEME.colors.primary, THEME.colors.secondary]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={S.gradientBorder}
-            >
-              <View style={[S.portalCard, S.portalCardFocused, isActive && S.portalCardActive]}>
-                {renderCardContent(item, isActive)}
-              </View>
-            </LinearGradient>
-          ) : (
-            <View style={[S.portalCard, isActive && S.portalCardActive]}>
-              {renderCardContent(item, isActive)}
-            </View>
-          )}
-        </Focusable>
-      </Animated.View>
-    );
-  };
-
-  // ── Header ─────────────────────────────────────────────────────────────────
-  const renderHeader = () => (
-    <View style={[S.header, { flexDirection: "row", paddingHorizontal: pw(4), alignItems: "center", gap: 16 }]}>
-      {Dimensions.get("window").width >= 768 && router.canGoBack() && (
-        <Focusable
-          ringOnFocus={false}
-          onPress={() => router.back()}
-          style={{ width: ps(5), height: ps(5), borderRadius: ps(2.5), backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center' }}
-          focusStyle={{ backgroundColor: THEME.colors.primary, transform: [{ scale: 1.1 }] }}
-        >
-          {() => <Ionicons name="chevron-back" size={ps(2)} color="#fff" />}
-        </Focusable>
-      )}
-      <View style={{ alignItems: "flex-start" }}>
-        <Text style={[S.brandingText, { marginBottom: 0 }]}>IPTV HUB</Text>
-        <Text style={[S.headerSubtitle, { textAlign: "left", marginBottom: 0 }]}>SELECT YOUR PORTAL CONNECTION</Text>
-      </View>
-    </View>
-  );
-
-  // ── Add Button ─────────────────────────────────────────────────────────────
-  const renderAddButton = () => (
-    <View style={S.actionArea}>
       <Focusable
+        key={item.id}
+        hasTVPreferredFocus={index === 0}
         ringOnFocus={false}
-        onPress={() => router.push("/add-portal")}
-        style={{ borderRadius: ps(1), overflow: "visible" }}
+        onPress={() => connectToPortal(item)}
+        onLongPress={() => handleDeletePortal(item)}
+        style={S.cardPressable}
       >
-        {(focused) => (
-          <LinearGradient
-            colors={focused ? [THEME.colors.primary, THEME.colors.secondary] : ["transparent", "transparent"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[
-              { padding: focused ? 1.5 : 0, borderRadius: ps(1) },
-              focused && {
-                transform: [{ scale: 1.06 }],
-                shadowColor: THEME.colors.primary,
-                shadowOpacity: 0.6,
-                shadowRadius: 12,
-                elevation: 12,
-              },
-            ]}
-          >
-            <View style={S.addBtn}>
-              <Ionicons name="add" size={ps(1.8)} color="#fff" />
-              <Text style={S.addBtnText}>ADD NEW PORTAL</Text>
+        {(focused: boolean) => (
+          <View style={[S.cardBorder, focused && S.cardBorderFocused]}>
+            <View style={S.card}>
+              {/* Top row: icon + active badge */}
+              <View style={S.cardTop}>
+                <View style={S.iconCircle}>
+                  <Ionicons name={info.icon as any} size={ps(2.4)} color={THEME.colors.secondary} />
+                </View>
+                {isActive && (
+                  <View style={S.activeBadge}>
+                    <View style={S.activeDot} />
+                    <Text style={S.activeText}>Active</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Info */}
+              <Text style={S.cardName} numberOfLines={1}>{item.name}</Text>
+              <Text style={S.cardUrl} numberOfLines={1}>{detail}</Text>
+              <Text style={[S.cardType, { color: accent[1] }]}>{info.label}</Text>
+
+            
+
+              <View style={S.cardDivider} />
+
+              {/* Connect affordance (whole card is tappable) */}
+              <View style={S.connectBtn}>
+                <Text style={S.connectText}>{isActive ? "Continue" : "Connect"}</Text>
+                <Ionicons name="arrow-forward" size={ps(1.5)} color="#000" />
+              </View>
             </View>
-          </LinearGradient>
+          </View>
         )}
       </Focusable>
-    </View>
-  );
+    );
+  };
 
-  // ── Root ───────────────────────────────────────────────────────────────────
+  const isEmpty = portals.length === 0;
+
   return (
     <View style={S.container}>
-      {/* Background gradients */}
-      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-        <LinearGradient
-          colors={["#2a0845", "transparent"]}
-          start={{ x: 1, y: 0 }}
-          end={{ x: 0.5, y: 0.5 }}
-          style={{ position: "absolute", top: 0, right: 0, width: "100%", height: "100%", opacity: 0.3 }}
-        />
-        <LinearGradient
-          colors={["#6441a5", "transparent"]}
-          start={{ x: 0, y: 1 }}
-          end={{ x: 0.3, y: 0.7 }}
-          style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: "100%", opacity: 0.15 }}
-        />
-      </View>
+      <CinematicBackground />
 
       {isLoading && <LoadingOverlay message={loadingMessage} />}
 
-      {renderHeader()}
+      {/* Header */}
+      <View style={[S.header, { paddingTop: insets.top + (isPhone ? 10 : ph(1.5)) }]}>
+        <View style={S.headerText}>
+          <Text style={S.title}>IPTV Hub</Text>
+          <Text style={S.subtitle}>Choose a portal to continue</Text>
+        </View>
+        {!isEmpty && (
+          <View style={S.headerActions}>
+            {headerIcon("settings", () => router.push("/settings"))}
+          </View>
+        )}
+      </View>
 
-      <View style={S.carouselContainer}>
-        {portals.length === 0 ? (
-          <View style={S.emptyState}>
-            <Ionicons name="tv-outline" size={ps(8)} color="rgba(255,255,255,0.1)" />
-            <Text style={S.emptyTitle}>Securely connect your first streaming source</Text>
+      {isEmpty ? (
+        <View style={S.emptyWrap}>
+          <Animated.View style={[S.emptyInner, { opacity: enter, transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }] }]}>
+            <View style={S.emptyIcon}>
+              <Ionicons name="tv-outline" size={ps(5)} color="rgba(255,255,255,0.5)" />
+            </View>
+            <Text style={S.emptyTitle}>No portals yet</Text>
+            <Text style={S.emptySubtitle}>Add your first IPTV portal to start watching.</Text>
             <Focusable
               hasTVPreferredFocus
               ringOnFocus={false}
               onPress={() => router.push("/add-portal")}
-              style={{ borderRadius: ps(1), overflow: "visible", marginTop: ph(3) }}
+              style={S.emptyBtnPressable}
             >
-              {(focused) => (
-                <LinearGradient
-                  colors={[THEME.colors.primary, THEME.colors.secondary]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[
-                    S.addButtonLarge,
-                    focused && { transform: [{ scale: 1.06 }], shadowColor: THEME.colors.primary, shadowOpacity: 0.7, shadowRadius: 14, elevation: 14 },
-                  ]}
-                >
-                  <Text style={S.addButtonText}>GET STARTED</Text>
-                </LinearGradient>
+              {(focused: boolean) => (
+                <View style={[S.ctaBtn, focused && S.ctaBtnFocused]}>
+                  <Ionicons name="add" size={ps(1.8)} color="#000" />
+                  <Text style={S.ctaText}>Add Portal</Text>
+                </View>
+              )}
+            </Focusable>
+          </Animated.View>
+        </View>
+      ) : (
+        <>
+          <ScrollView
+            style={S.scroll}
+            horizontal={isTV}
+            contentContainerStyle={isTV ? S.scrollContentTV : S.scrollContent}
+            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
+          >
+            <Animated.View
+              style={[
+                isTV ? S.listTV : S.list,
+                { opacity: enter, transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] },
+              ]}
+            >
+              {portals.map((item, index) => renderCard(item, index))}
+            </Animated.View>
+          </ScrollView>
+
+          {/* Floating Add CTA */}
+          <View style={[S.addBar, { paddingBottom: insets.bottom + ph(1.5) }]}>
+            <Focusable
+              ringOnFocus={false}
+              onPress={() => router.push("/add-portal")}
+              style={S.addPressable}
+            >
+              {(focused: boolean) => (
+                <View style={[S.ctaBtn, focused && S.ctaBtnFocused]}>
+                  <Ionicons name="add" size={ps(1.8)} color="#000" />
+                  <Text style={S.ctaText}>Add Portal</Text>
+                </View>
               )}
             </Focusable>
           </View>
-        ) : portals.length <= 3 ? (
-          <View style={S.centeredGrid}>
-            {portals.map((item, index) => renderPortal({ item, index }))}
-          </View>
-        ) : (
-          <Animated.FlatList
-            ref={flatListRef}
-            data={portals}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={ITEM_SIZE}
-            decelerationRate="fast"
-            contentContainerStyle={[
-              S.carouselList,
-              { paddingHorizontal: SPACER_WIDTH, flexGrow: 1 }
-            ]}
-            onScroll={Animated.event(
-              [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-              { useNativeDriver: true }
-            )}
-            renderItem={renderPortal}
-            keyExtractor={(item) => item.id}
-            getItemLayout={(_, index) => ({ length: ITEM_SIZE, offset: ITEM_SIZE * index, index })}
-          />
-        )}
-      </View>
-      {portals.length > 0 && renderAddButton()}
-
+        </>
+      )}
     </View>
   );
 }
 
-// ─── StyleSheet ───────────────────────────────────────────────────────────────
-// Rules:
-//   • All layout sizes  → pw() / ph() / ps()
-//   • borderWidth 1–2   → absolute hairlines
-//   • elevation         → absolute Android Z
-//   • letterSpacing     → small absolute sub-pixel values
-//   • opacity / scale   → unitless ratios
 const S = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#09090B" },
 
-  // ── Root ──────────────────────────────────────────────────────────────────
-  container: {
-    flex: 1,
-    backgroundColor: "#08080a",
-  },
-
-  // ── Header ────────────────────────────────────────────────────────────────
+  // Header
   header: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingTop: ph(8),
-    marginBottom: ph(5),
+    justifyContent: "space-between",
+    paddingHorizontal: pw(5),
+    paddingBottom: ph(1.5),
+    gap: pw(3),
   },
-  brandingText: {
-    fontSize: isTV ? ps(2.5) : ps(2.2),
+  headerText: { flex: 1 },
+  title: {
+    fontSize: isTV ? ps(2) : ps(2.4),
     fontWeight: fw("500"),
     color: "#fff",
-    letterSpacing: 5,
-    marginBottom: ph(1),
+    letterSpacing: 0.3,
   },
-  headerSubtitle: {
-    fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: "rgba(255,255,255,0.4)",
-    fontWeight: fw("400"),
-    letterSpacing: 1.5,
-    textAlign: "center",
-    marginBottom: ph(0.5),
+  subtitle: {
+    fontSize: isTV ? ps(1) : ps(1.2),
+    color: "#9CA3AF",
+    marginTop: 3,
   },
-  headerSubtitleAccent: {
-    fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: THEME.colors.primary,
-    fontWeight: fw('600'),
-    letterSpacing: 2,
-    textAlign: 'center',
-  },
-  actionArea: {
+  headerActions: { flexDirection: "row", gap: pw(2.5) },
+  headerIcon: {
+    width: ps(4.4),
+    height: ps(4.4),
+    borderRadius: ps(2.2),
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
     alignItems: "center",
-    paddingBottom: ph(10), // Vertical spacing at bottom
+    justifyContent: "center",
   },
-  addBtnWrapper: {
-    borderRadius: ps(1),
+  headerIconFocused: {
+    borderColor: "#fff",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    transform: [{ scale: 1.08 }],
+  },
+
+  // List
+  scroll: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: pw(5),
+    paddingTop: ph(1.5),
+    paddingBottom: ph(3),
+    alignItems: "center",
+  },
+  list: {
+    width: "100%",
+    maxWidth: CONTENT_MAX,
+    gap: ph(2.2),
+  },
+  // TV: a centered horizontal row of cards (10-foot friendly, D-pad left/right).
+  scrollContentTV: {
+    flexGrow: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: pw(5),
+  },
+  listTV: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: pw(2.5),
+  },
+
+  // Card
+  cardPressable: {
+    width: isTV ? pw(26) : "100%",
+    borderRadius: 28,
+  },
+  cardBorder: {
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    padding: 0,
     overflow: "hidden",
   },
-  addBtn: {
+  cardBorderFocused: {
+    // Focus cue that's identical on both platforms: brighter border + scale.
+    // The soft colored glow is iOS-only (Android elevation can't tint and would
+    // draw a mismatched grey box).
+    borderColor: THEME.colors.secondary,
+    transform: [{ scale: 1.01 }],
+    ...Platform.select({
+      ios: {
+        shadowColor: THEME.colors.primary,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.5,
+        shadowRadius: 20,
+      },
+      default: {},
+    }),
+  },
+  card: {
+    borderRadius: 28,
+    padding: ps(2.4),
+  },
+  cardTop: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.03)",
-    paddingHorizontal: pw(2.5),
-    paddingVertical: ph(1.5),
+    justifyContent: "space-between",
+    marginBottom: ph(2),
+  },
+  iconCircle: {
+    width: ps(6),
+    height: ps(6),
+    borderRadius: ps(3),
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
-    gap: pw(1),
-    borderRadius: ps(1),
-  },
-  addBtnText: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: ps(1.1),
-    fontWeight: fw("500"),
-    letterSpacing: 2,
   },
 
-  // ── Carousel ──────────────────────────────────────────────────────────────
-  carouselContainer: {
-    flex: 1,
-    paddingVertical: ph(4),
-    justifyContent: "center",
-  },
-  carouselList: {
-    alignItems: "center",
-  },
-  centeredGrid: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    width: "100%",
-  },
-  cardWrapper: {
-    width: CARD_WIDTH,
-    height: isTV ? ph(40) : ph(45),
-    marginHorizontal: CARD_MARGIN,
-  },
-  pressable: {
-    flex: 1,
-    borderRadius: ps(1.5),
-    overflow: "hidden",
-  },
-  gradientBorder: {
-    flex: 1,
-    padding: 1, // Razor-thin border
-    borderRadius: ps(1.5),
-  },
-
-  // ── Portal card ───────────────────────────────────────────────────────────
-  portalCard: {
-    flex: 1,
-    backgroundColor: "#1D1B20",
-    borderRadius: ps(1.4),
-    padding: ps(1.8),
-    justifyContent: "space-between",
-    // Base shadow
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 15,
-    elevation: 8,
-  },
-  portalCardFocused: {
-    backgroundColor: "#222026",
-    // Intense focus glow
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 25,
-    elevation: 15,
-  },
-  portalCardActive: {
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.2)",
-  },
-
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  cardIconBox: {
-    width: ps(7),
-    height: ps(7),
-    borderRadius: ps(2),
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  // ── Active badge ──────────────────────────────────────────────────────────
+  // Active badge
   activeBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.4)",
-    paddingHorizontal: pw(1.2),
-    paddingVertical: ph(0.7),
-    borderRadius: pw(5),          // pill
-    gap: pw(0.6),
+    gap: pw(1.4),
+    paddingHorizontal: pw(3),
+    paddingVertical: ph(0.9),
+    borderRadius: 999,
+    backgroundColor: "rgba(52,211,153,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(52,211,153,0.35)",
   },
-  badgeDot: {
-    width: pw(0.6),
-    height: pw(0.6),
-    borderRadius: pw(0.3),
-    backgroundColor: "#70de5b",
-  },
-  activeBadgeText: {
-    color: "#fff",
-    fontSize: ps(0.8),
-    fontWeight: fw("600"),
-    letterSpacing: 1,
-  },
-
-  // ── Card body ─────────────────────────────────────────────────────────────
-  cardMain: {
-    flex: 1.5,
-    justifyContent: "center",
-  },
-  cardName: {
-    fontSize: ps(3.2),
-    fontWeight: fw("300"),
-    color: "#fff",
-    marginBottom: ph(0.5),
-    letterSpacing: 2,
-  },
-  cardDetailText: {
-    fontSize: ps(1.4),
-    color: "rgba(255,255,255,0.3)",
-    fontWeight: fw("300"),
-    marginBottom: ph(1.5),
-    letterSpacing: 1,
-  },
-  cardTypeLabel: {
-    fontSize: ps(1.6),
-    color: THEME.colors.primary,
-    fontWeight: fw("500"),
-    letterSpacing: 4,
-  },
-
-  // ── Card actions ──────────────────────────────────────────────────────────
-  cardActionsRow: {
-    flexDirection: "row",
-    gap: pw(1.2),
-  },
-  exploreBtn: {
-    flex: 1,
-    height: ph(5.5),
-    backgroundColor: "rgba(255,255,255,0.05)",
+  activeDot: {
+    width: ps(0.8),
+    height: ps(0.8),
     borderRadius: ps(0.8),
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#34D399",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#34D399",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.9,
+        shadowRadius: 6,
+      },
+      default: {},
+    }),
   },
-  exploreBtnFocused: {
-    borderColor: THEME.colors.primary,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    transform: [{ scale: 1.05 }],
+  activeText: {
+    color: "#34D399",
+    fontSize: ps(1),
+    fontWeight: fw("700"),
+    letterSpacing: 0.5,
   },
-  exploreBtnText: {
+
+  // Card text
+  cardName: {
+    fontSize: isTV ? ps(2) : ps(2.4),
+    fontWeight: fw("800"),
     color: "#fff",
-    fontSize: ps(1.1),
+    letterSpacing: 0.2,
+  },
+  cardUrl: {
+    fontSize: ps(1.3),
+    color: "#9CA3AF",
+    marginTop: 4,
+  },
+  cardType: {
+    fontSize: ps(1.2),
     fontWeight: fw("700"),
     letterSpacing: 1,
+    marginTop: ph(1),
+    textTransform: "uppercase",
   },
-  settingsBtn: {
-    width: ph(5.5),
-    height: ph(5.5),
-    borderRadius: ps(0.8),
-    backgroundColor: "rgba(255,255,255,0.03)",
+  lastRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: pw(1.4),
+    marginTop: ph(1.2),
+  },
+  lastText: {
+    fontSize: ps(1.05),
+    color: "#6B7280",
+  },
+  cardDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    marginVertical: ph(2),
+  },
+  connectBtn: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.05)",
+    gap: pw(1.6),
+    paddingVertical: ph(1.6),
+    borderRadius: 16,
+    backgroundColor: "#E6E6EB",
+  },
+  connectText: {
+    color: "#000",
+    fontSize: ps(1.4),
+    fontWeight: fw("800"),
+    letterSpacing: 0.5,
   },
 
-  // ── Empty state ───────────────────────────────────────────────────────────
-  emptyState: {
+  // Add CTA (shared by floating bar + empty state)
+  addBar: {
+    paddingHorizontal: pw(5),
+    paddingTop: ph(1.2),
+  },
+  addPressable: {
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: CONTENT_MAX,
+    borderRadius: 18,
+  },
+  ctaBtn: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: pw(1.6),
+    paddingVertical: ph(2),
+    borderRadius: 18,
+    backgroundColor: "#E6E6EB",
+    borderWidth: 2,
+    borderColor: "transparent",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  ctaBtnFocused: {
+    transform: [{ scale: 1.03 }],
+    borderColor: "#000",
+  },
+  ctaText: {
+    color: "#000",
+    fontSize: ps(1.5),
+    fontWeight: fw("800"),
+    letterSpacing: 0.5,
+  },
+
+  // Empty state
+  emptyWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: pw(8),
+  },
+  emptyInner: {
+    alignItems: "center",
+    width: "100%",
+    maxWidth: CONTENT_MAX,
+  },
+  emptyIcon: {
+    width: ps(11),
+    height: ps(11),
+    borderRadius: ps(5.5),
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: ph(3),
   },
   emptyTitle: {
-    fontSize: ps(2),
-    color: "rgba(255,255,255,0.4)",
-    textAlign: "center",
-    width: pw(40),
-    marginVertical: ph(4),
-  },
-  addButtonWrapper: {
-    borderRadius: ps(4),
-    overflow: "hidden",
-    marginTop: ph(4),
-  },
-  addButtonLarge: {
-    paddingHorizontal: pw(4),
-    paddingVertical: ph(2),
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: ps(1),
-  },
-  addButtonText: {
+    fontSize: ps(2.2),
+    fontWeight: fw("800"),
     color: "#fff",
-    fontSize: ps(1.5),
-    fontWeight: fw("700"),
-    letterSpacing: 2,
+    marginBottom: ph(1),
   },
-
-
-
+  emptySubtitle: {
+    fontSize: ps(1.3),
+    color: "#9CA3AF",
+    textAlign: "center",
+    marginBottom: ph(4),
+    lineHeight: ps(1.9),
+  },
+  emptyBtnPressable: {
+    width: "100%",
+    borderRadius: 18,
+  },
 });

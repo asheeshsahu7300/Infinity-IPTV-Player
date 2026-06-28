@@ -55,7 +55,7 @@ export default function GradientLoader({
           style={[StyleSheet.absoluteFill, { transform: [{ rotate: spin }] }]}
         >
           <LinearGradient
-            colors={[THEME.colors.secondary, THEME.colors.primary, "transparent"]}
+            colors={[THEME.colors.secondary, "#5AA9FF", "transparent"]}
             start={{ x: 0, y: 1 }}
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}

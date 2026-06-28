@@ -26,8 +26,10 @@ import { Focusable, FocusGroup } from "../src/tv";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const HOUR_WIDTH = pw(40); // 40vw per hour
-const CHANNEL_SIDEBAR_WIDTH = pw(12);
-const ROW_HEIGHT = ph(10);
+// pw(12) collapses to ~48px on a phone (unreadable channel names) — give touch
+// devices a usable minimum. ROW_HEIGHT likewise stays ≥ the 48dp touch target.
+const CHANNEL_SIDEBAR_WIDTH = Math.max(pw(12), isTV ? 0 : 110);
+const ROW_HEIGHT = Math.max(ph(10), isTV ? 0 : 64);
 const HEADER_HEIGHT = ph(35);
 
 const TIME_SLOTS = 24; // Show 24 hours starting from now

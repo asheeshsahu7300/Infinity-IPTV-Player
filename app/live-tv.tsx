@@ -9,7 +9,6 @@ import {
   TextInput,
   RefreshControl,
   FlatList,
-  useWindowDimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -24,6 +23,7 @@ import { XtreamApi } from "../src/services/xtreamApi";
 import { StreamManager } from "../src/services/StreamManager";
 import { THEME, pw, ph, ps , fw } from '../src/theme/tokens';
 import { isTV } from "../src/utils/tvUtils";
+import { useResponsive } from "../src/theme/responsive";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import CategorySidebar from "../src/components/CategorySidebar";
 import { Focusable, FocusGroup } from "../src/tv";
@@ -110,8 +110,10 @@ const ChannelCard = React.memo(function ChannelCard({
 export default function LiveTVScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: SCREEN_WIDTH } = useWindowDimensions();
-  const isMobile = SCREEN_WIDTH < 768;
+  // Phone (smallest-width < 600dp, any orientation) gets the stacked layout;
+  // tablet & TV get the sidebar layout. Reactive so rotation re-lays-out.
+  const { width: SCREEN_WIDTH, isPhone, isLandscape } = useResponsive();
+  const isMobile = isPhone;
 
   const safeGoBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -420,8 +422,17 @@ export default function LiveTVScreen() {
     ),
   ];
 
-  const SIDEBAR_WIDTH = isTV ? 260 : (isMobile ? SCREEN_WIDTH : 220);
-  const numColumns = isMobile ? 3 : (isTV ? 5 : (SCREEN_WIDTH >= 1024 ? 5 : 4));
+  // Tablet sidebar scales with viewport (clamped) instead of a fixed 220px.
+  const SIDEBAR_WIDTH = isTV
+    ? 260
+    : isMobile
+      ? SCREEN_WIDTH
+      : Math.min(280, Math.max(200, Math.round(SCREEN_WIDTH * 0.24)));
+  // TV column count unchanged (5). Phone landscape now fits 5 instead of
+  // collapsing into the desktop branch; tablet adds a column in landscape.
+  const numColumns = isMobile
+    ? (isLandscape ? 5 : 3)
+    : (isTV ? 5 : (isLandscape ? 6 : 4));
   // Subtract the grid's own horizontal padding (pw(1.5) per side) plus a small
   // safety margin, then floor — so sub-pixel rounding can't push the
   // rightmost card past the viewport edge.
@@ -435,7 +446,7 @@ export default function LiveTVScreen() {
     <Focusable
       onPress={() => searchInputRef.current?.focus()}
       ringOnFocus={false}
-      style={[S.searchWrapper, isMobile && { marginTop: 12, height: 50, flex: 0 }]}
+      style={[S.searchWrapper, isMobile && { marginTop: 10, height: 44, flex: 0 }]}
     >
       {(focused) => (
         <LinearGradient
@@ -449,7 +460,7 @@ export default function LiveTVScreen() {
             { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
             (focused || searchFocused) && { backgroundColor: "#0b0b10" }
           ]}>
-            <Ionicons name="search" size={ps(1.1)} color={focused || searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
+            <Ionicons name="search" size={isMobile ? 18 : ps(1.1)} color={focused || searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
             <TextInput
               ref={searchInputRef}
               style={S.searchInput}
@@ -474,9 +485,9 @@ export default function LiveTVScreen() {
       <StatusBar hidden />
 
       {/* ─── Header ─── */}
-      <View style={[S.header, isMobile && { flexDirection: "column", alignItems: "stretch", paddingBottom: 16 }]}>
+      <View style={[S.header, isMobile && { flexDirection: "column", alignItems: "stretch", paddingTop: 0, paddingBottom: 10 }]}>
         <View style={{ flexDirection: "row", alignItems: "center", width: "100%", justifyContent: "space-between" }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={[{ flexDirection: "row", alignItems: "center", gap: 12 }, isMobile && { flex: 1 }]}>
             {!isMobile && (
               <Focusable
                 ringOnFocus={false}
@@ -487,7 +498,7 @@ export default function LiveTVScreen() {
                 {() => <Ionicons name="chevron-back" size={ps(1.4)} color="#fff" />}
               </Focusable>
             )}
-            <Text style={S.headerTitle}>Live TV</Text>
+            <Text style={[S.headerTitle, isMobile && { flex: 1, textAlign: "center" }]}>Live TV</Text>
           </View>
 
           {!isMobile && renderSearchBar()}
@@ -612,7 +623,7 @@ const S = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.03)",
   },
-  headerTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), minWidth: pw(10) },
+  headerTitle: { color: "#fff", fontSize: ps(1.6), fontWeight: fw("600"), minWidth: pw(10) },
   searchWrapper: {
     flex: 1,
     height: ph(6.5),

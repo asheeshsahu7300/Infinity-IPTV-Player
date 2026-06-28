@@ -3,7 +3,7 @@
     "name": "IPTV Hub",
     "slug": "frontend",
     "version": "1.0.4",
-    "orientation": "automatic",
+    "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "iptv",
     "userInterfaceStyle": "automatic",

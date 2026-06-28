@@ -8,7 +8,6 @@ import {
   Image,
   Dimensions,
   Alert,
-  useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -21,9 +20,11 @@ import { XtreamApi } from "../src/services/xtreamApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import LoadingOverlay from "../src/components/LoadingOverlay";
+import { CinematicBackground } from "../src/components/CinematicBackground";
 import { isTV } from "../src/utils/tvUtils";
 import { Focusable, Overlay } from "../src/tv";
-import { THEME , fw } from '../src/theme/tokens';
+import { THEME , fw, isTablet } from '../src/theme/tokens';
+import { useResponsive } from "../src/theme/responsive";
 
 // ─── Percentage helpers ───────────────────────────────────────────────────────
 const { width: W, height: H } = Dimensions.get("window");
@@ -170,35 +171,37 @@ const HeroPill = ({
   iconType?: "ionicons" | "material";
   autoFocus?: boolean;
 }) => {
-  const { width } = useWindowDimensions();
-  const isMobile = width < 768;
+  const { isPhone } = useResponsive();
+  const isMobile = isPhone;
 
   return (
     <Focusable
       hasTVPreferredFocus={autoFocus}
       onPress={onPress}
       ringOnFocus={false}
-      style={S.heroPillWrapper}
+      style={[S.heroPillWrapper, isMobile && { borderRadius: 16 }]}
     >
       {(focused) => (
         <View style={[
           S.heroPillContainer,
-          isMobile && { borderWidth: 0 },
+          isMobile && { borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", borderRadius: 16 },
           focused && S.heroPillContainerFocused,
           focused && { transform: [{ scale: 1.08 }] }
         ]}>
           <LinearGradient
-            colors={[THEME.colors.primary, THEME.colors.secondary]}
+            colors={isMobile
+              ? ["rgba(255,255,255,0.10)", "rgba(255,255,255,0.06)"]
+              : [THEME.colors.primary, THEME.colors.secondary]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={[S.heroPillGradient, isMobile && { paddingHorizontal: 12, paddingVertical: 8 }]}
+            style={[S.heroPillGradient, isMobile && { flexDirection: "column", paddingHorizontal: 22, paddingVertical: 14, justifyContent: "center" }]}
           >
             {iconType === "material" ? (
-              <MaterialCommunityIcons name={icon as any} size={isMobile ? 16 : ps(1.8)} color="#fff" style={{ marginRight: isMobile ? 6 : pw(0.8) }} />
+              <MaterialCommunityIcons name={icon as any} size={isMobile ? 22 : ps(1.8)} color="#fff" style={isMobile ? { marginBottom: 6 } : { marginRight: pw(0.8) }} />
             ) : (
-              <Ionicons name={icon as any} size={isMobile ? 16 : ps(1.8)} color="#fff" style={{ marginRight: isMobile ? 6 : pw(0.8) }} />
+              <Ionicons name={icon as any} size={isMobile ? 22 : ps(1.8)} color="#fff" style={isMobile ? { marginBottom: 6 } : { marginRight: pw(0.8) }} />
             )}
-            <Text style={[S.heroPillText, isMobile && { fontSize: ps(1.4) }]}>{text}</Text>
+            <Text style={[S.heroPillText, isMobile && { fontSize: 14 }]}>{text}</Text>
           </LinearGradient>
         </View>
       )}
@@ -209,8 +212,8 @@ const HeroPill = ({
 export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const isMobile = width < 768;
+  const { isPhone, isLandscape } = useResponsive();
+  const isMobile = isPhone;
   const { activePortal, channels, vodItems, series, favorites, loadFavorites, setActivePortal, updatePortal } = usePortalStore();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -319,19 +322,15 @@ export default function DashboardScreen() {
 
   return (
     <View style={S.container}>
-      {/* Cinematic Background */}
-      <View style={S.backgroundArea}>
-        <Image source={{ uri: focusedImage || "https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?q=80&w=1200" }} style={S.bgImage} resizeMode="cover" blurRadius={20} />
-        <LinearGradient colors={["rgba(8,8,10,0.5)", "#08080a"]} style={S.bgGradient} />
-        <LinearGradient colors={["transparent", "#08080a"]} style={S.bgBottomFade} />
-      </View>
+      {/* Cinematic Background (shared with live-tv / search) */}
+      <CinematicBackground uri={focusedImage} />
 
       {isLoading && <LoadingOverlay message="Refreshing your library..." />}
 
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: isMobile ? insets.top : insets.top + ph(2), paddingBottom: isMobile ? 120 : ph(10) }}
+        contentContainerStyle={{ paddingTop: isMobile ? insets.top : insets.top + ph(2), paddingBottom: isMobile ? insets.bottom + 16 : ph(10), flexGrow: isMobile ? 1 : undefined }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ff1b8a" />}
       >
         {/* Cinematic Header Branding */}
@@ -340,34 +339,39 @@ export default function DashboardScreen() {
             <Text style={[S.logoTitle, isMobile && { fontSize: ps(3.2) }]}>IPTV HUB</Text>
           </View>
           <View style={S.headerActions}>
-            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={handleFullRefresh} style={[S.roundBtn, isMobile && { width: 36, height: 36, borderRadius: 18 }]}>
+            {isMobile && (
+              <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/search")} style={[S.roundBtn, { width: 48, height: 48, borderRadius: 24 }]}>
+                <Ionicons name="search" size={20} color="#fff" />
+              </Focusable>
+            )}
+            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={handleFullRefresh} style={[S.roundBtn, isMobile && { width: 48, height: 48, borderRadius: 24 }]}>
               <Ionicons name="refresh" size={isMobile ? 20 : ps(2)} color="#fff" />
             </Focusable>
-            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/portals")} style={[S.roundBtn, isMobile && { width: 36, height: 36, borderRadius: 18 }]}>
+            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/portals")} style={[S.roundBtn, isMobile && { width: 48, height: 48, borderRadius: 24 }]}>
               <Ionicons name="apps" size={isMobile ? 20 : ps(2)} color="#fff" />
             </Focusable>
-            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/settings")} style={[S.roundBtn, isMobile && { width: 36, height: 36, borderRadius: 18 }]}>
+            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/settings")} style={[S.roundBtn, isMobile && { width: 48, height: 48, borderRadius: 24 }]}>
               <Ionicons name="settings" size={isMobile ? 20 : ps(2)} color="#fff" />
             </Focusable>
           </View>
         </View>
 
-        <View style={[S.heroSection, isMobile && { maxWidth: "100%", marginBottom: 10 }]}>
-          {!isMobile && (
-            <>
-              <GradientText text="PREMIUM STREAMING" style={[S.heroTagline, isMobile && { fontSize: ps(1.6) }]} />
-              <Text style={[S.heroTitle, isMobile && { fontSize: ps(5) }]}>Unlimited Entertainment</Text>
-              <Text style={[S.heroDesc, isMobile && { fontSize: ps(1.8), lineHeight: 28 }]}>Access thousands of Indian channels, global movies and exclusive series directly on your screen.</Text>
-            </>
-          )}
-          <View style={[S.heroButtons, isMobile && { flexWrap: "wrap", gap: 12 }]}>
-            <HeroPill icon="search" text="Search Content" autoFocus onPress={() => router.push("/search")} />
+        {/* On phone, search lives in the header as a round button (above);
+            the hero pitch + search CTA is kept for tablet/TV only. */}
+        {!isMobile && (
+          <View style={S.heroSection}>
+            <GradientText text="PREMIUM STREAMING" style={S.heroTagline} />
+            <Text style={S.heroTitle}>Unlimited Entertainment</Text>
+            <Text style={S.heroDesc}>Access thousands of Indian channels, global movies and exclusive series directly on your screen.</Text>
+            <View style={S.heroButtons}>
+              <HeroPill icon="search" text="Search Content" autoFocus onPress={() => router.push("/search")} />
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Browse Category Cards */}
-        <View style={S.browseSection}>
-          <View style={[S.browseContainer, isMobile && { gap: 16 }]}>
+        <View style={[S.browseSection, isMobile && { flex: 1, marginBottom: 0 }, isMobile && isLandscape && { flex: 0, marginBottom: ph(4) }]}>
+          <View style={[S.browseContainer, isMobile && { gap: 14, flex: 1 }, isMobile && isLandscape && { flexDirection: "row", flex: 0, gap: 12 }]}>
             {(
               [
                 { id: "cat-live", title: "Live TV", icon: "tv", img: "https://i.pinimg.com/1200x/c2/f5/f5/c2f5f508392fc27ab89483fe3037fd30.jpg", route: "/live-tv" },
@@ -380,7 +384,7 @@ export default function DashboardScreen() {
                 onFocus={() => setFocusedImage(cat.img)}
                 onPress={() => router.push(cat.route as any)}
                 ringOnFocus={false}
-                style={[S.browseCardWrapper, { overflow: "visible" }, isMobile && { flex: 0, height: 220, minHeight: 220 }]}
+                style={[S.browseCardWrapper, { overflow: "visible" }, isMobile && { flex: 1, height: undefined, minHeight: 0 }, isMobile && isLandscape && { height: ph(22), minHeight: ph(22) }]}
               >
                 {(focused) => (
                   <View style={[S.browseCard, focused && {
@@ -405,7 +409,7 @@ export default function DashboardScreen() {
                         />
                         <View style={[S.browseCardContent, { backgroundColor: "transparent" }, isMobile && { padding: 16, borderBottomLeftRadius: 16, borderBottomRightRadius: 16 }]}>
                           <Ionicons name={cat.icon as any} size={isMobile ? ps(3) : ps(2.2)} color="#fff" />
-                          <Text style={[S.browseCardTitle, isMobile && { fontSize: ps(2.4) }]}>{cat.title}</Text>
+                          <Text style={[S.browseCardTitle, isMobile && { fontSize: 18, fontWeight: fw("600") }]}>{cat.title}</Text>
                         </View>
                       </View>
                     </LinearGradient>
@@ -461,8 +465,8 @@ export default function DashboardScreen() {
         contentStyle={S.modalContainer}
         position={isMobile ? "bottom" : "center"}
       >
-        <View style={isTV ? S.modalTVContent : null}>
-          <View style={S.modalLeft}>
+        <View style={isMobile ? S.modalStackMobile : S.modalTVContent}>
+          <View style={[S.modalLeft, isMobile && S.modalPaneMobile]}>
             <Text style={S.modalTitle} numberOfLines={2}>{selectedItem?.name}</Text>
             <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
               {selectedItem?.description || "Experience this cinematic masterpiece. Dive into a world of high-quality streaming entertainment."}
@@ -483,7 +487,7 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          <View style={S.modalRight}>
+          <View style={[S.modalRight, isMobile && S.modalPaneMobile]}>
             <Focusable
               hasTVPreferredFocus
               ringOnFocus={false}
@@ -600,9 +604,10 @@ const S = StyleSheet.create({
     gap: pw(1.5),
   },
   roundBtn: {
-    width: pw(5),
-    height: pw(5),
-    borderRadius: pw(2.5),
+    // Clamp to the 48dp touch minimum on phone/tablet; pw(5) stays large on TV.
+    width: Math.max(pw(5), isTV ? 0 : 48),
+    height: Math.max(pw(5), isTV ? 0 : 48),
+    borderRadius: Math.max(pw(5), isTV ? 0 : 48) / 2,
     backgroundColor: "rgba(255,255,255,0.08)",
     justifyContent: "center",
     alignItems: "center",
@@ -676,7 +681,8 @@ const S = StyleSheet.create({
     marginBottom: ph(6),
   },
   browseContainer: {
-    flexDirection: isTV ? "row" : "column",
+    // Phones stack the 3 cards vertically; tablets & TV place them in a row.
+    flexDirection: (isTV || isTablet) ? "row" : "column",
     gap: pw(2),
   },
   browseCardWrapper: {
@@ -806,8 +812,10 @@ const S = StyleSheet.create({
   },
 
   // ── Play Modal ── (identical to vod.tsx)
-  modalContainer: { backgroundColor: "#111", width: isTV ? ps(65) : "92%", borderRadius: 24, padding: ps(2), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
+  modalContainer: { backgroundColor: "#111", width: isTV ? ps(65) : "94%", borderRadius: 24, padding: isTV ? ps(2) : 18, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
   modalTVContent: { flexDirection: "row" },
+  modalStackMobile: { flexDirection: "column", gap: 14 },
+  modalPaneMobile: { flex: 0, flexBasis: "auto", width: "100%", padding: 12 },
   modalLeft: { flex: 1.4, padding: ps(1.5) },
   modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.015)", padding: ps(2), borderRadius: 20, justifyContent: "center", gap: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" },
   modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), marginBottom: 12 },

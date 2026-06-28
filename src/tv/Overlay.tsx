@@ -1,12 +1,14 @@
 import React from "react";
 import {
   BackHandler,
+  Pressable,
   StyleProp,
   StyleSheet,
   TVFocusGuideView,
   View,
   ViewStyle,
 } from "react-native";
+import { isTV } from "../utils/tvUtils";
 import { useDPad } from "./useDPad";
 
 export interface OverlayProps {
@@ -55,6 +57,13 @@ export function Overlay({
 
   return (
     <View style={[styles.backdrop, position === "bottom" && styles.backdropBottom, style]} pointerEvents="auto">
+      {/* Touch devices: tapping the dimmed area outside the content closes the
+          overlay. Sits behind the content (rendered first), so taps on the
+          content itself never reach it. Skipped on TV — there's no pointer and
+          a focusable backdrop would steal focus from the action buttons. */}
+      {!isTV && onClose && (
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      )}
       <TVFocusGuideView
         autoFocus
         trapFocusUp={trapFocus}
@@ -84,7 +93,7 @@ const styles = StyleSheet.create({
   },
   backdropBottom: {
     justifyContent: "flex-end",
-    paddingBottom: 20,
+    paddingBottom: 0,
   },
   content: {
     maxWidth: "92%",

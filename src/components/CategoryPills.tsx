@@ -1,7 +1,9 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, FlatList, Platform, Animated } from 'react-native';
 import { Category } from '../store/portalStore';
-import { THEME , fw } from '../theme/tokens';
+import { THEME , fw, ps } from '../theme/tokens';
+import { isTV } from '../utils/tvUtils';
+import { MIN_TOUCH } from '../theme/responsive';
 
 interface CategoryPillsProps {
   categories: Category[];
@@ -9,7 +11,8 @@ interface CategoryPillsProps {
   onSelect: (id: string) => void;
 }
 
-const isTV = Platform.isTV || (Platform.OS === "android" && Platform.isTV);
+// 48dp touch minimum on phone/tablet; scales up on TV for the 10-ft UI.
+const PILL_HEIGHT = isTV ? ps(4) : MIN_TOUCH;
 
 const PillItem = React.memo(({ item, selectedId, focusedId, onSelect, onFocus, onBlur, index }: {
   item: Category;
@@ -149,7 +152,7 @@ export default function CategoryPills({ categories, selectedId, onSelect }: Cate
 const styles = StyleSheet.create({
   container: {
     backgroundColor: "transparent",
-    minHeight: 60,
+    minHeight: PILL_HEIGHT + 20,
   },
 
   content: {
@@ -159,10 +162,10 @@ const styles = StyleSheet.create({
   },
 
   pill: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    height: 40,
+    paddingHorizontal: isTV ? ps(1.6) : 18,
+    borderRadius: PILL_HEIGHT / 2,
+    height: PILL_HEIGHT,
+    minWidth: MIN_TOUCH,
     backgroundColor: "#111827",
     marginRight: 12,
     justifyContent: "center",
@@ -183,9 +186,8 @@ const styles = StyleSheet.create({
 
   pillText: {
     color: "#888",
-    fontSize: 15,
+    fontSize: isTV ? ps(1.1) : 15,
     fontWeight: fw("500"),
-    lineHeight: 18,
   },
 
   pillTextActive: {

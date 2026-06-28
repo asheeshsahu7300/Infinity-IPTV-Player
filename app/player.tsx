@@ -26,7 +26,7 @@ import { useKeepAwake } from "expo-keep-awake";
 import { StreamManager } from "../src/services/StreamManager";
 import { usePortalStore } from "../src/store/portalStore";
 import { isTV } from "../src/utils/tvUtils";
-import { THEME, ps, pw, ph , fw } from '../src/theme/tokens';
+import { THEME, ps, pw, ph , fw, isPhone } from '../src/theme/tokens';
 import { Focusable, FocusGroup, Overlay, useDPad } from "../src/tv";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -136,7 +136,12 @@ export default function PlayerScreen() {
 
   useEffect(() => {
     if (Platform.OS === "web") return;
-    ScreenOrientation.unlockAsync();
+    // The player is a landscape-first experience — force landscape on open so
+    // the video fills the screen no matter the device's current orientation.
+    // (TV is already landscape and doesn't rotate, so skip it there.)
+    if (!isTV) {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+    }
     Brightness.getBrightnessAsync().then(b => {
       if (!isNaN(b)) brightnessRef.current = b;
     });
@@ -594,16 +599,20 @@ export default function PlayerScreen() {
             pointerEvents="none"
           />
 
-          <View style={[S.header, { paddingTop: insets.top + (isTV ? ph(2) : ph(1)) }]}>
+          <View style={[S.header, { paddingTop: insets.top + (isTV ? ph(2) : ph(1)), paddingLeft: insets.left + pw(5), paddingRight: insets.right + pw(5) }]}>
             <View style={S.headerLeft}>
-              <Focusable
-                ringOnFocus={false}
-                focusStyle={S.controlFocused}
-                style={S.backBtn}
-                onPress={handleBack}
-              >
-                <Ionicons name="arrow-back" size={ps(1.8)} color="#fff" />
-              </Focusable>
+              {/* Phones use the hardware/gesture back (handled in the back
+                  handler); hide the on-screen button there. */}
+              {!isPhone && (
+                <Focusable
+                  ringOnFocus={false}
+                  focusStyle={S.controlFocused}
+                  style={S.backBtn}
+                  onPress={handleBack}
+                >
+                  <Ionicons name="arrow-back" size={ps(1.8)} color="#fff" />
+                </Focusable>
+              )}
               <View style={S.headerInfo}>
                 <Text style={S.mainTitle} numberOfLines={1}>{params.title || "Unknown Content"}</Text>
                 <Text style={S.subTitle}>{isLive ? "LIVE STREAM" : ""}</Text>
@@ -630,7 +639,6 @@ export default function PlayerScreen() {
                 </Focusable>
               )}
               <View style={S.playBtnContainer}>
-                <View style={S.playGlow} />
                 <Focusable
                   hasTVPreferredFocus
                   ringOnFocus={false}
@@ -669,7 +677,7 @@ export default function PlayerScreen() {
           />
 
           {(!isLocked || isTV) && (
-            <View style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2) }]}>
+            <View style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2), paddingLeft: insets.left + pw(5), paddingRight: insets.right + pw(5) }]}>
               <View style={S.glassControls}>
                 {!isLive && duration > 0 && (
                   <View style={S.progressSection}>
@@ -746,7 +754,7 @@ export default function PlayerScreen() {
                       onPress={cyclePlaybackSpeed}
                     >
                       <Ionicons name="speedometer-outline" size={ps(1.4)} color="white" />
-                      <Text style={S.settingLabel}>{playbackSpeed.toFixed(2)}x</Text>
+                      <Text style={[S.settingLabel, S.speedValue]} numberOfLines={1}>{playbackSpeed.toFixed(2)}x</Text>
                     </Focusable>
                     <Focusable
                       ringOnFocus={false}
@@ -791,7 +799,7 @@ export default function PlayerScreen() {
 
 function TrackSelectionModal({ visible, title, icon, options, selected, onSelect, onClose, isSubtitle = false }: any) {
   return (
-    <Overlay visible={visible} onClose={onClose} contentStyle={S.modalContent}>
+    <Overlay visible={visible} onClose={onClose} position={isPhone ? "bottom" : "center"} contentStyle={[S.modalContent, isPhone && S.modalContentBottom]}>
       {/* Modal header */}
       <View style={S.modalHeader}>
         <LinearGradient
@@ -800,7 +808,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
           end={{ x: 1, y: 0 }}
           style={S.modalIconBg}
         >
-          <Ionicons name={icon || "settings"} size={ps(2)} color="#fff" />
+          <Ionicons name={icon || "settings"} size={isPhone ? ps(1.4) : ps(2)} color="#fff" />
         </LinearGradient>
         <Text style={S.modalTitle}>{title}</Text>
         <Text style={S.modalSubtitle}>
@@ -815,7 +823,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
       <ScrollView style={S.modalScroll} showsVerticalScrollIndicator={false}>
         {options.length === 0 ? (
           <View style={S.emptyState}>
-            <Ionicons name="alert-circle-outline" size={ps(3)} color="rgba(255,255,255,0.2)" />
+            <Ionicons name="alert-circle-outline" size={isPhone ? ps(2.2) : ps(3)} color="rgba(255,255,255,0.2)" />
             <Text style={S.emptyText}>No tracks found</Text>
           </View>
         ) :
@@ -853,7 +861,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
                     </View>
                     {isSelected && (
                       <View style={S.checkBadge}>
-                        <Ionicons name="checkmark" size={ps(1.4)} color="#fff" />
+                        <Ionicons name="checkmark" size={isPhone ? ps(1) : ps(1.4)} color="#fff" />
                       </View>
                     )}
                   </View>
@@ -886,7 +894,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
                 </View>
                 {selected === -1 && (
                   <View style={S.checkBadge}>
-                    <Ionicons name="checkmark" size={ps(1.4)} color="#fff" />
+                    <Ionicons name="checkmark" size={isPhone ? ps(1) : ps(1.4)} color="#fff" />
                   </View>
                 )}
               </View>
@@ -953,17 +961,18 @@ const S = StyleSheet.create({
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 20, flex: 1 },
   backBtn: { width: ps(3.5), height: ps(3.5), borderRadius: 25, backgroundColor: "rgba(255,255,255,0.1)", alignItems: "center", justifyContent: "center" },
   headerInfo: { gap: 4, flex: 1 },
-  mainTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: fw("900"), fontFamily: THEME.fonts.bold, letterSpacing: -0.5 },
-  subTitle: { color: "rgba(255,255,255,0.6)", fontSize: ps(0.9), fontWeight: fw("600"), fontFamily: THEME.fonts.medium },
+  mainTitle: { color: "#fff", fontSize: isTV ? ps(1.8) : ps(1.1), fontWeight: fw("900"), fontFamily: THEME.fonts.bold, letterSpacing: -0.5 },
+  subTitle: { color: "rgba(255,255,255,0.6)", fontSize: isTV ? ps(0.9) : ps(0.7), fontWeight: fw("600"), fontFamily: THEME.fonts.medium },
   headerRight: { paddingTop: 8 },
   qualityBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.1)", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
   qualityBadgeText: { color: "#fff", fontSize: ps(0.7), fontWeight: fw("900"), fontFamily: THEME.fonts.bold, letterSpacing: 1 },
   centerRow: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: pw(8) },
   playBtnContainer: { width: ps(5.5), height: ps(5.5), alignItems: "center", justifyContent: "center" },
-  playGlow: { position: "absolute", width: ps(8.2), height: ps(8.2), borderRadius: ps(4.1), backgroundColor: THEME.colors.primary, opacity: 0.2 },
-  mainPlayBtn: { width: ps(4.8), height: ps(4.8), borderRadius: ps(2.4), overflow: "hidden", elevation: 20, borderWidth: 3, borderColor: "transparent" },
+  // Round the gradient itself (borderRadius = half its size) instead of relying
+  // on overflow:"hidden", which on Android clips a circle into an octagon.
+  mainPlayBtn: { width: ps(4.8), height: ps(4.8), borderRadius: ps(2.4), borderWidth: 3, borderColor: "transparent" },
   mainPlayBtnFocused: { borderColor: "#fff", transform: [{ scale: 1.08 }] },
-  mainPlayGradient: { flex: 1, alignItems: "center", justifyContent: "center" },
+  mainPlayGradient: { flex: 1, borderRadius: ps(2.4), alignItems: "center", justifyContent: "center" },
   skipBtn: { padding: 16, borderRadius: ps(3), borderWidth: 2, borderColor: "transparent" },
   skipInner: { alignItems: "center", gap: 4 },
   skipLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.75), fontWeight: fw("700"), fontFamily: THEME.fonts.bold },
@@ -999,16 +1008,21 @@ const S = StyleSheet.create({
   liveBadgeRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#ff2d55" },
   liveText: { color: "#fff", fontSize: ps(0.85), fontWeight: fw("900"), fontFamily: THEME.fonts.bold, letterSpacing: 1 },
-  actionsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  // On phone the 6 control buttons can't fit one row — let them wrap instead of
+  // overflowing off-screen, and keep both groups tappable.
+  actionsRow: { flexDirection: "row", flexWrap: "wrap", rowGap: 8, columnGap: 8, justifyContent: "space-between", alignItems: "center" },
   actionsLeft: { flexDirection: "row", alignItems: "center", gap: pw(1) },
-  iconChip: { padding: 6, borderRadius: 6, borderWidth: 2, borderColor: "transparent" },
+  iconChip: { padding: isPhone ? 10 : 6, minWidth: isPhone ? 44 : undefined, minHeight: isPhone ? 44 : undefined, alignItems: "center", justifyContent: "center", borderRadius: 6, borderWidth: 2, borderColor: "transparent" },
   iconChipFocused: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.1)" },
   vSeparator: { width: 1, height: 12, backgroundColor: "rgba(255,255,255,0.2)" },
   actionLabelBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
   actionLabel: { color: "#fff", fontSize: ps(0.75), fontWeight: fw("900"), fontFamily: THEME.fonts.bold },
-  actionsRight: { flexDirection: "row", alignItems: "center", gap: pw(1) },
-  settingBtn: { alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, borderWidth: 2, borderColor: "transparent" },
+  actionsRight: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: pw(1) },
+  settingBtn: { alignItems: "center", justifyContent: "center", gap: 4, paddingHorizontal: isPhone ? 10 : 12, paddingVertical: isPhone ? 8 : 4, minHeight: isPhone ? 44 : undefined, borderRadius: 8, borderWidth: 2, borderColor: "transparent" },
   settingLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.9), fontWeight: fw("900"), fontFamily: THEME.fonts.bold },
+  // Fixed, centered width so cycling 1.00x→1.25x→0.75x etc. (variable-width
+  // digits in a proportional font) can't resize the button and re-flow the row.
+  speedValue: { minWidth: ps(3.4), textAlign: "center" },
 
   // ─── Premium Modal Styles ─────────────────────────────────────────────
   modalContent: {
@@ -1021,23 +1035,35 @@ const S = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.08)",
     overflow: "hidden",
   },
+  // Phone: dock flush to both side edges and the bottom as a sheet.
+  modalContentBottom: {
+    width: "100%",
+    maxWidth: "100%",
+    maxHeight: "88%",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottomWidth: 0,
+    paddingBottom: 14,
+  },
   modalHeader: {
     alignItems: "center",
-    paddingTop: ps(2),
-    paddingBottom: ps(1.2),
+    paddingTop: isPhone ? ps(1.2) : ps(2),
+    paddingBottom: isPhone ? ps(0.8) : ps(1.2),
     paddingHorizontal: 20,
   },
   modalIconBg: {
-    width: ps(4),
-    height: ps(4),
-    borderRadius: ps(2),
+    width: isPhone ? ps(2.6) : ps(4),
+    height: isPhone ? ps(2.6) : ps(4),
+    borderRadius: isPhone ? ps(1.3) : ps(2),
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: ps(0.8),
+    marginBottom: isPhone ? ps(0.5) : ps(0.8),
   },
   modalTitle: {
     color: "#fff",
-    fontSize: ps(2),
+    fontSize: isPhone ? ps(1.4) : ps(2),
     fontWeight: fw("900"),
     fontFamily: THEME.fonts.bold,
     letterSpacing: -0.5,
@@ -1045,7 +1071,7 @@ const S = StyleSheet.create({
   },
   modalSubtitle: {
     color: "rgba(255,255,255,0.4)",
-    fontSize: ps(1),
+    fontSize: isPhone ? ps(0.8) : ps(1),
     fontWeight: fw("600"),
     fontFamily: THEME.fonts.medium,
     marginTop: 4,
@@ -1075,7 +1101,7 @@ const S = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 16,
-    paddingVertical: ps(1),
+    paddingVertical: isPhone ? ps(0.7) : ps(1),
     paddingHorizontal: 16,
     marginBottom: 6,
     borderWidth: 2,
@@ -1103,9 +1129,9 @@ const S = StyleSheet.create({
     flex: 1,
   },
   trackIndexBadge: {
-    width: ps(2.5),
-    height: ps(2.5),
-    borderRadius: ps(1.25),
+    width: isPhone ? ps(1.8) : ps(2.5),
+    height: isPhone ? ps(1.8) : ps(2.5),
+    borderRadius: isPhone ? ps(0.9) : ps(1.25),
     backgroundColor: "rgba(255,255,255,0.08)",
     alignItems: "center",
     justifyContent: "center",
@@ -1115,7 +1141,7 @@ const S = StyleSheet.create({
   },
   trackIndexText: {
     color: "rgba(255,255,255,0.5)",
-    fontSize: ps(1),
+    fontSize: isPhone ? ps(0.85) : ps(1),
     fontWeight: fw("900"),
     fontFamily: THEME.fonts.bold,
   },
@@ -1124,7 +1150,7 @@ const S = StyleSheet.create({
   },
   modalOptionText: {
     color: "#fff",
-    fontSize: ps(1.6),
+    fontSize: isPhone ? ps(1.05) : ps(1.6),
     fontWeight: fw("700"),
     fontFamily: THEME.fonts.bold,
     flex: 1,
@@ -1138,18 +1164,18 @@ const S = StyleSheet.create({
     fontFamily: THEME.fonts.bold,
   },
   checkBadge: {
-    width: ps(2.2),
-    height: ps(2.2),
-    borderRadius: ps(1.1),
+    width: isPhone ? ps(1.6) : ps(2.2),
+    height: isPhone ? ps(1.6) : ps(2.2),
+    borderRadius: isPhone ? ps(0.8) : ps(1.1),
     backgroundColor: THEME.colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
   modalCloseBtn: {
     alignItems: "center",
-    paddingVertical: ps(1.2),
+    paddingVertical: isPhone ? ps(0.9) : ps(1.2),
     marginHorizontal: 16,
-    marginVertical: 12,
+    marginVertical: isPhone ? 8 : 12,
     borderRadius: 14,
     backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 2,
@@ -1161,7 +1187,7 @@ const S = StyleSheet.create({
   },
   modalCloseBtnText: {
     color: "rgba(255,255,255,0.6)",
-    fontSize: ps(1.2),
+    fontSize: isPhone ? ps(0.95) : ps(1.2),
     fontWeight: fw("900"),
     fontFamily: THEME.fonts.bold,
     letterSpacing: 2,

@@ -8,10 +8,12 @@ import {
   ScrollView,
   Dimensions,
   TouchableOpacity,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePortalStore } from "../src/store/portalStore";
@@ -23,7 +25,35 @@ import { CinematicBackground } from "../src/components/CinematicBackground";
 import { isTV } from "../src/utils/tvUtils";
 import { Focusable } from "../src/tv";
 
-import { THEME, pw, ph, ps , fw } from '../src/theme/tokens';
+import { THEME, pw, ph, fw, isTablet, isPhone } from '../src/theme/tokens';
+
+// Touch screens use a tighter scale; TV keeps the original 1.3× so the
+// TV layout is unchanged.
+const PS_SCALE = isTV ? 1.3 : isPhone ? 1.55 : 1.35;
+const ps = (pct: number) => ((pw(pct) + ph(pct)) / 2) * PS_SCALE;
+
+// ─── Glass surface ────────────────────────────────────────────────────────────
+// iOS gets a real frosted blur; Android's expo-blur renders poorly, so it falls
+// back to a clean solid translucent surface (the `style` may carry a faint white
+// tint for iOS — we override it with a readable dark fill on Android).
+const GlassView = ({
+  intensity = 30,
+  style,
+  children,
+}: {
+  intensity?: number;
+  style?: any;
+  children?: React.ReactNode;
+}) => {
+  if (Platform.OS === "ios") {
+    return (
+      <BlurView intensity={intensity} tint="dark" style={style}>
+        {children}
+      </BlurView>
+    );
+  }
+  return <View style={[style, { backgroundColor: "rgba(24,24,30,0.96)" }]}>{children}</View>;
+};
 
 // ─── Gradient text ────────────────────────────────────────────────────────────
 const GradientText = ({
@@ -56,6 +86,14 @@ const GradientText = ({
 // ─── Card with gradient border on focus ──────────────────────────────────────
 type CardType = "m3u" | "xtream" | "mag";
 
+// Per-type accent (icon only) so the three connection methods are easy to tell
+// apart; the primary action gradient stays the brand red→blue everywhere else.
+const TYPE_ACCENT: Record<CardType, string> = {
+  m3u: "#8B5CF6",    // purple
+  xtream: "#3B82F6", // blue
+  mag: "#ff002b",    // red
+};
+
 const GradientBorderCard = ({
   id,
   focusedField,
@@ -72,7 +110,7 @@ const GradientBorderCard = ({
   children: React.ReactNode;
 }) => {
   const focused = focusedField === id;
-  const RADIUS = pw(2);
+  const RADIUS = isTV ? pw(2) : 24;
   const BORDER = pw(0.2); // ~2 px on a 1080p TV
 
   return (
@@ -83,21 +121,41 @@ const GradientBorderCard = ({
       ringOnFocus={false}
       style={[
         {
-          width: isTV ? "30%" : "100%",
+          width: isTV ? "30%" : isTablet ? "60%" : "100%",
           aspectRatio: isTV ? 1 : undefined,
-          minHeight: isTV ? undefined : ph(28),
+          // Phone cards were forced to ~236px (ph(28)) leaving big empty space
+          // and pushing the 3rd option off-screen — let content drive height.
+          minHeight: isTV ? undefined : isPhone ? ph(11) : ph(16),
           borderRadius: RADIUS,
         },
         focused && {
           transform: [{ scale: 1.05 }],
-          shadowColor: THEME.colors.primary,
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.55,
-          shadowRadius: pw(1.2),
-          elevation: 10,
+          // iOS gets a soft native glow; Android uses the colored halo layers
+          // below (elevation can't reliably tint on a transparent view).
+          ...Platform.select({
+            ios: {
+              shadowColor: THEME.colors.primary,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.55,
+              shadowRadius: pw(1.2),
+            },
+            default: {},
+          }),
         },
       ]}
     >
+      {focused && (
+        <>
+          <View
+            pointerEvents="none"
+            style={{ position: "absolute", top: -14, left: -14, right: -14, bottom: -14, borderRadius: RADIUS + 14, backgroundColor: THEME.colors.primary, opacity: 0.16 }}
+          />
+          <View
+            pointerEvents="none"
+            style={{ position: "absolute", top: -6, left: -6, right: -6, bottom: -6, borderRadius: RADIUS + 6, backgroundColor: THEME.colors.primary, opacity: 0.3 }}
+          />
+        </>
+      )}
       <LinearGradient
         colors={
           focused ? [THEME.colors.primary, THEME.colors.secondary] : ["transparent", "transparent"]
@@ -110,18 +168,22 @@ const GradientBorderCard = ({
           padding: focused ? BORDER : 0,
         }}
       >
-        <View
+        <GlassView
+          intensity={focused ? 45 : 28}
           style={{
             flex: 1,
-            backgroundColor: THEME.colors.surface,
+            backgroundColor: "rgba(255,255,255,0.05)",
             borderRadius: focused ? RADIUS - BORDER : RADIUS,
-            alignItems: "center",
+            borderWidth: focused ? 0 : 1,
+            borderColor: "rgba(255,255,255,0.1)",
+            alignItems: isTV ? "center" : "stretch",
             justifyContent: "center",
             padding: pw(2.8),
+            overflow: "hidden",
           }}
         >
           {children}
-        </View>
+        </GlassView>
       </LinearGradient>
     </Focusable>
   );
@@ -137,28 +199,27 @@ const GradientBorderInput = ({
   children: React.ReactNode;
   style?: any;
 }) => {
-  const RADIUS = pw(1.2);
-  const BORDER = 1.5;
+  const RADIUS = 16;
 
   return (
-    <LinearGradient
-      colors={isFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["transparent", "transparent"]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
-      style={[{ borderRadius: RADIUS, padding: isFocused ? BORDER : 0 }, style]}
-    >
-      <View
-        style={{
+    <GlassView
+      intensity={isFocused ? 40 : 24}
+      style={[
+        {
           flexDirection: "row",
           alignItems: "center",
-          backgroundColor: "#141318",
-          borderRadius: isFocused ? RADIUS - BORDER : RADIUS,
+          backgroundColor: "rgba(255,255,255,0.05)",
+          borderRadius: RADIUS,
           paddingHorizontal: pw(2),
-        }}
-      >
-        {children}
-      </View>
-    </LinearGradient>
+          borderWidth: 1,
+          borderColor: isFocused ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.1)",
+          overflow: "hidden",
+        },
+        style,
+      ]}
+    >
+      {children}
+    </GlassView>
   );
 };
 
@@ -263,10 +324,20 @@ export default function AddPortalScreen() {
           config: { url: url.trim(), mac: formattedMac, token, serverInfo },
         };
       }
+      // Fetch the portal's content first. If it has nothing, don't save or
+      // proceed — just tell the user there's no content.
+      setLoadingMessage("Loading content...");
+      await portalApi.refreshPortalData(portal);
+      const s = usePortalStore.getState();
+      const total = (s.channels?.length || 0) + (s.vodItems?.length || 0) + (s.series?.length || 0);
+      if (total === 0) {
+        setIsLoading(false);
+        Alert.alert("No Content", "This portal returned no channels, movies, or series.");
+        return;
+      }
+
       await addPortal(portal);
       await setActivePortal(portal);
-      setLoadingMessage("Fetching categories...");
-      await portalApi.refreshPortalData(portal);
       setIsLoading(false);
       router.replace("/dashboard");
     } catch (e: any) {
@@ -283,72 +354,68 @@ export default function AddPortalScreen() {
   // OK is delivered via each Pressable's onPress when focused.
 
   // ── STEP 1 ──────────────────────────────────────────────────────────────────
-  const renderStep1 = () => (
-    <View style={S.step1Container}>
-      <View style={S.logoRow}>
-        <Text style={S.logoTitle}>IPTV HUB</Text>
-      </View>
+  const renderStep1 = () => {
+    const items: { id: string; icon: any; title: string; desc: string; t: CardType }[] = [
+      { id: "select-type-m3u", icon: "format-list-bulleted", title: "M3U Playlist", desc: "Upload an M3U file or provide a remote URL.", t: "m3u" },
+      { id: "select-type-xtream", icon: "cloud-sync", title: "Xtream Codes API", desc: "Log in with your server URL, username and password.", t: "xtream" },
+      { id: "select-type-mag", icon: "router-wireless", title: "MAC Portal", desc: "Connect via MAC address and portal URL.", t: "mag" },
+    ];
+    return (
+      <View style={S.step1Container}>
+        <View style={S.logoRow}>
+          <Text style={S.logoTitle}>IPTV HUB</Text>
+        </View>
 
-      <Text style={S.step1Subtitle}>
-        Select your preferred connection method to begin your{"\n"}
-        <Text style={S.premiumText}>premium streaming experience</Text>.
-      </Text>
+        <Text style={S.step1Subtitle}>
+          Choose the connection method that matches your IPTV provider.
+        </Text>
 
-      <View style={S.cardsContainer}>
-        {(
-          [
-            {
-              id: "select-type-m3u",
-              icon: "format-list-bulleted",
-              title: "M3U Playlist",
-              desc: "Upload an M3U file or provide a remote URL to load your channel lists.",
-              t: "m3u",
-            },
-            {
-              id: "select-type-xtream",
-              icon: "cloud-sync",
-              title: "Xtream Codes API",
-              desc: "Log in with your server URL, username, and password for a fully synced experience.",
-              t: "xtream",
-            },
-            {
-              id: "select-type-mag",
-              icon: "router-wireless",
-              title: "MAC Portal",
-              desc: "Connect via MAC address and portal URL. Optimised for legacy STB setups.",
-              t: "mag",
-            },
-          ] as { id: string; icon: any; title: string; desc: string; t: CardType }[]
-        ).map(({ id, icon, title, desc, t }) => (
-          <GradientBorderCard
-            key={id}
-            id={id}
-            focusedField={focusedField}
-            onPress={() => { setType(t); setStep(2); }}
-            onFocus={() => setFocusedField(id)}
-            onBlur={() => setFocusedField(null)}
-          >
-            <View style={S.darkCardIconWrapper}>
-              <MaterialCommunityIcons name={icon} size={ps(2.4)} color="#f0b6d5" />
-            </View>
-            <GradientText
-              text={title}
-              isActive={focusedField === id}
-              style={S.darkCardTitle}
-            />
-            <Text style={S.darkCardDesc}>{desc}</Text>
-          </GradientBorderCard>
-        ))}
+        <View style={S.cardsContainer}>
+          {items.map(({ id, icon, title, desc, t }) => {
+            const accent = TYPE_ACCENT[t];
+            return (
+              <GradientBorderCard
+                key={id}
+                id={id}
+                focusedField={focusedField}
+                onPress={() => { setType(t); setStep(2); }}
+                onFocus={() => setFocusedField(id)}
+                onBlur={() => setFocusedField(null)}
+              >
+                {isTV ? (
+                  <>
+                    <View style={[S.darkCardIconWrapper, { backgroundColor: accent + "22" }]}>
+                      <MaterialCommunityIcons name={icon} size={ps(2.4)} color={accent} />
+                    </View>
+                    <GradientText text={title} isActive={focusedField === id} style={S.darkCardTitle} />
+                    <Text style={S.darkCardDesc}>{desc}</Text>
+                  </>
+                ) : (
+                  <View style={S.cardRow}>
+                    <View style={[S.cardRowIcon, { backgroundColor: accent + "22" }]}>
+                      <MaterialCommunityIcons name={icon} size={ps(2.4)} color={accent} />
+                    </View>
+                    <View style={S.cardRowText}>
+                      <Text style={S.cardRowTitle} numberOfLines={1}>{title}</Text>
+                      <Text style={S.cardRowDesc} numberOfLines={2}>{desc}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={ps(2)} color="#6b7280" />
+                  </View>
+                )}
+              </GradientBorderCard>
+            );
+          })}
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   // ── STEP 2 ──────────────────────────────────────────────────────────────────
   const renderStep2 = () => {
     const titleMap = { m3u: "M3U Playlist", xtream: "Xtream Codes API", mag: "MAC Portal" };
     return (
       <View style={S.premiumStep2Container}>
-        <View style={S.premiumFormCard}>
+        <GlassView intensity={50} style={S.premiumFormCard}>
           <Text style={S.premiumFormTitle}>Connect via {titleMap[type]}</Text>
           <Text style={S.premiumFormSubtitle}>
             Enter your streaming credentials
@@ -357,7 +424,7 @@ export default function AddPortalScreen() {
 
           {/* Name */}
           <View style={S.premiumInputGroup}>
-            <Text style={S.premiumLabel}>{type === "m3u" ? "PLAYLIST NAME" : "PORTAL NAME"}</Text>
+            <Text style={S.premiumLabel}>{type === "m3u" ? "Playlist name" : "Portal name"}</Text>
             <Focusable
               onPress={() => nameInputRef.current?.focus()}
               ringOnFocus={false}
@@ -383,7 +450,7 @@ export default function AddPortalScreen() {
 
           {/* URL */}
           <View style={S.premiumInputGroup}>
-            <Text style={S.premiumLabel}>{type === "m3u" ? "M3U URL" : "PORTAL URL"}</Text>
+            <Text style={S.premiumLabel}>{type === "m3u" ? "M3U URL" : "Portal URL"}</Text>
             <Focusable
               onPress={() => urlInputRef.current?.focus()}
               ringOnFocus={false}
@@ -406,12 +473,9 @@ export default function AddPortalScreen() {
                     onFocus={() => setFocusedField("url")}
                     onBlur={() => setFocusedField(null)}
                   />
-                  <Ionicons
-                    name="link"
-                    size={ps(1.8)}
-                    color="#555"
-                    style={{ marginLeft: pw(1) }}
-                  />
+                  <View style={S.urlIconBtn}>
+                    <Ionicons name="link" size={ps(1.6)} color="#9ca3af" />
+                  </View>
                 </GradientBorderInput>
               )}
             </Focusable>
@@ -423,7 +487,7 @@ export default function AddPortalScreen() {
               const ref = field === "username" ? userInputRef : passInputRef;
               return (
                 <View key={field} style={S.premiumInputGroup}>
-                  <Text style={S.premiumLabel}>{field.toUpperCase()}</Text>
+                  <Text style={S.premiumLabel}>{field === "username" ? "Username" : "Password"}</Text>
                   <Focusable
                     onPress={() => ref.current?.focus()}
                     ringOnFocus={false}
@@ -453,7 +517,7 @@ export default function AddPortalScreen() {
           {/* MAG */}
           {type === "mag" && (
             <View style={S.premiumInputGroup}>
-              <Text style={S.premiumLabel}>MAC ADDRESS</Text>
+              <Text style={S.premiumLabel}>MAC address</Text>
               <Focusable
                 onPress={() => macInputRef.current?.focus()}
                 ringOnFocus={false}
@@ -505,7 +569,7 @@ export default function AddPortalScreen() {
                 <MaterialCommunityIcons
                   name="file-upload"
                   size={ps(1.8)}
-                  color="#f0b6d5"
+                  color="#8B5CF6"
                   style={{ marginRight: pw(1) }}
                 />
                 <Text style={S.premiumBrowseBtnText}>Browse Playlist File</Text>
@@ -526,15 +590,12 @@ export default function AddPortalScreen() {
                 focusedField === "save-connect" && { transform: [{ scale: 1.04 }] },
               ]}
             >
-              {(focused) => (
-                <LinearGradient
-                  colors={[THEME.colors.primary, THEME.colors.secondary]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0.5 }}
-                  style={S.connectBtnGradient}
-                >
-                  <Text style={S.connectBtnText}>Connect Playlist</Text>
-                </LinearGradient>
+              {() => (
+                <View style={S.connectBtnGradient}>
+                  <Text style={S.connectBtnText}>
+                    {type === "m3u" ? "Connect Playlist" : type === "mag" ? "Connect Portal" : "Connect"}
+                  </Text>
+                </View>
               )}
             </Focusable>
 
@@ -544,18 +605,24 @@ export default function AddPortalScreen() {
               onFocus={() => setFocusedField("save")}
               onBlur={() => setFocusedField(null)}
               ringOnFocus={false}
-              style={[S.saveOnlyBtn, focusedField === "save" && S.saveOnlyBtnFocused]}
+              style={S.saveOnlyBtnWrapper}
             >
               {(focused) => (
-                <Text style={S.saveOnlyBtnText}>Save Configuration</Text>
+                <View style={[S.saveOnlyBtn, focused && S.saveOnlyBtnFocused]}>
+                  <Ionicons name="save-outline" size={ps(1.5)} color="#cbd5e1" style={{ marginRight: pw(1.2) }} />
+                  <Text style={S.saveOnlyBtnText}>Save Configuration</Text>
+                </View>
               )}
             </Focusable>
           </View>
 
-          <Text style={S.premiumFooterWarning}>
-            IPTV HUB DOES NOT HOST ANY CONTENT. ENSURE YOU HAVE THE LEGAL RIGHT TO USE YOUR PLAYLIST.
-          </Text>
-        </View>
+          <View style={S.disclaimer}>
+            <Text style={S.disclaimerTitle}>Content Responsibility</Text>
+            <Text style={S.disclaimerText}>
+              IPTV Hub does not provide or host media. Please ensure you have permission to access your content.
+            </Text>
+          </View>
+        </GlassView>
       </View>
     );
   };
@@ -590,28 +657,7 @@ export default function AddPortalScreen() {
             <Text style={S.premiumHeaderTitle}>IPTV HUB</Text>
           </View>
 
-          <Focusable
-            onPress={() => Alert.alert("Support", "Please visit our website for support.")}
-            onFocus={() => setFocusedField("support")}
-            onBlur={() => setFocusedField(null)}
-            ringOnFocus={false}
-            style={[
-              S.premiumSupportBtn,
-              focusedField === "support" && S.premiumSupportBtnFocused,
-            ]}
-          >
-            {(focused) => (
-              <>
-                <Ionicons
-                  name="help-circle"
-                  size={ps(1.8)}
-                  color={focusedField === "support" ? "#fff" : "#b0b0b0"}
-                  style={{ marginRight: pw(0.5) }}
-                />
-                <Text style={[S.premiumSupportText, focusedField === "support" && { color: "#fff" }]}>SUPPORT</Text>
-              </>
-            )}
-          </Focusable>
+         
         </View>
       )}
 
@@ -654,7 +700,7 @@ const S = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: "center",
+    justifyContent: "flex-start",
     alignItems: "center",
     paddingBottom: ph(4),
     width: "100%",
@@ -675,9 +721,9 @@ const S = StyleSheet.create({
   // ── Step 1 ───────────────────────────────────────────────────────────────
   step1Container: {
     alignItems: "center",
-    marginTop: ph(4),
+    marginTop: ph(3),
     width: "100%",
-    maxWidth: isTV ? pw(90) : "100%",
+    maxWidth: isTV ? pw(90) : isTablet ? pw(80) : "100%",
     alignSelf: "center",
     paddingBottom: ph(2),
   },
@@ -685,20 +731,21 @@ const S = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: pw(1),
-    marginBottom: ph(1.8),
+    marginBottom: ph(0.6),
   },
   logoTitle: {
     color: "#fff",
-    fontSize: ps(3.2),
-    fontWeight: fw("500"),
-    letterSpacing: 5,
+    fontSize: ps(2.2),
+    fontWeight: fw("600"),
+    letterSpacing: 3,
   },
   step1Subtitle: {
-    fontSize: ps(1.6),
-    color: "#a0a4b8",
+    fontSize: ps(1.3),
+    color: "#9ca3af",
     textAlign: "center",
-    marginBottom: ph(6),
-    lineHeight: ph(3.2),
+    marginBottom: isPhone ? ph(2.5) : ph(5),
+    lineHeight: ph(2.6),
+    paddingHorizontal: pw(6),
   },
   premiumText: {
     color: THEME.colors.primary,
@@ -715,13 +762,15 @@ const S = StyleSheet.create({
 
   // ── Card internals ───────────────────────────────────────────────────────
   darkCardIconWrapper: {
-    width: pw(7),
-    height: pw(7),
-    borderRadius: pw(3.5),
+    // pw(7) (~28px) was smaller than the ps(2.4) icon (~33px) on phone, so the
+    // icon overflowed its circle. Give touch devices a circle that fits.
+    width: Math.max(pw(7), isTV ? 0 : 60),
+    height: Math.max(pw(7), isTV ? 0 : 60),
+    borderRadius: Math.max(pw(7), isTV ? 0 : 60) / 2,
     backgroundColor: "rgba(255,255,255,0.04)",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: ph(3),
+    marginBottom: isPhone ? ph(1.5) : ph(3),
   },
   darkCardTitle: {
     fontSize: isTV ? ps(2.2) : ps(1.8),
@@ -736,6 +785,35 @@ const S = StyleSheet.create({
     textAlign: "center",
     lineHeight: isTV ? ph(3) : ph(2.4),
     paddingHorizontal: pw(1),
+  },
+
+  // Phone/tablet: row card (icon · text · trailing chevron)
+  cardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: pw(3.5),
+    width: "100%",
+  },
+  cardRowIcon: {
+    width: Math.max(pw(8), 56),
+    height: Math.max(pw(8), 56),
+    borderRadius: Math.max(pw(8), 56) / 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardRowText: {
+    flex: 1,
+  },
+  cardRowTitle: {
+    fontSize: ps(1.7),
+    fontWeight: fw("700"),
+    color: "#fff",
+    marginBottom: ph(0.4),
+  },
+  cardRowDesc: {
+    fontSize: ps(1.15),
+    color: "#7e8299",
+    lineHeight: ph(2.2),
   },
 
   // ── Premium header (step 2) ──────────────────────────────────────────────
@@ -789,11 +867,14 @@ const S = StyleSheet.create({
     width: "100%",
   },
   premiumFormCard: {
-    backgroundColor: "#1D1B20",
-    borderRadius: pw(2),
-    padding: pw(2.2),
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    padding: pw(4.5),
     width: "100%",
-    maxWidth: isTV ? pw(40) : pw(90),
+    maxWidth: isTV ? pw(40) : isTablet ? pw(60) : pw(92),
+    overflow: "hidden",
   },
   premiumFormTitle: {
     fontSize: isTV ? ps(2.0) : ps(1.8),
@@ -808,18 +889,27 @@ const S = StyleSheet.create({
     marginBottom: ph(2.0),
   },
   premiumInputGroup: {
-    marginBottom: ph(1.5),
+    marginBottom: ph(2.2),
   },
   premiumLabel: {
     fontSize: ps(1.1),
-    fontWeight: fw("700"),
-    color: "#b0b0b0",
-    letterSpacing: 1.2,
-    marginBottom: ph(1),
+    fontWeight: fw("600"),
+    color: "#9ca3af",
+    letterSpacing: 0.3,
+    marginBottom: ph(0.8),
+  },
+  urlIconBtn: {
+    width: ps(3.4),
+    height: ps(3.4),
+    borderRadius: pw(1),
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: pw(1),
   },
   premiumInput: {
     flex: 1,
-    paddingVertical: isTV ? ph(1.6) : ph(1.4),
+    paddingVertical: isTV ? ph(2) : ph(1.9),
     color: "#fff",
     fontSize: isTV ? ps(1.5) : ps(1.3),
   },
@@ -850,7 +940,7 @@ const S = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.03)",
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.08)",
-    borderRadius: pw(1.2),
+    borderRadius: 16,
     paddingVertical: isTV ? ph(1.6) : ph(1.4),
   },
   premiumBrowseBtnText: {
@@ -859,7 +949,7 @@ const S = StyleSheet.create({
     fontWeight: fw("600"),
   },
   premiumInputWrapperFocused: {
-    borderColor: "#ff1b8a",
+    borderColor: THEME.colors.primary,
     backgroundColor: "rgba(255,255,255,0.08)",
   },
 
@@ -870,45 +960,62 @@ const S = StyleSheet.create({
     marginTop: ph(2.5),
     alignItems: "stretch",
   },
+  saveOnlyBtnWrapper: {
+    borderRadius: 16,
+  },
   saveOnlyBtn: {
-    paddingVertical: ph(1.2),
-    borderRadius: pw(1.2),
+    flexDirection: "row",
+    paddingVertical: isTV ? ph(1.8) : ph(1.5),
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: ph(1),
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
   saveOnlyBtnFocused: {
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: "#fff",
+    backgroundColor: "rgba(255,255,255,0.1)",
   },
   saveOnlyBtnText: {
-    color: "#777",
+    color: "#cbd5e1",
     fontSize: ps(1.3),
-    fontWeight: fw("600"),
-    textDecorationLine: "underline",
+    fontWeight: fw("700"),
   },
   connectBtnWrapper: {
-    borderRadius: pw(1.2),
+    borderRadius: 18,
     overflow: "hidden",
   },
   connectBtnGradient: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: isTV ? ph(2.0) : ph(1.6),
+    borderRadius: 18,
+    backgroundColor: "#E6E6EB",
   },
   connectBtnText: {
-    color: "#fff",
+    color: "#000",
     fontSize: isTV ? ps(1.8) : ps(1.5),
     fontWeight: fw("700"),
     letterSpacing: 0.5,
   },
 
   // ── Footer ───────────────────────────────────────────────────────────────
-  premiumFooterWarning: {
-    color: "#555",
-    fontSize: ps(1.0),
+  disclaimer: {
+    marginTop: ph(3),
+    alignItems: "center",
+    paddingHorizontal: pw(2),
+  },
+  disclaimerTitle: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: ps(1.05),
+    fontWeight: fw("700"),
+    marginBottom: ph(0.5),
+  },
+  disclaimerText: {
+    color: "rgba(255,255,255,0.3)",
+    fontSize: ps(0.95),
     textAlign: "center",
-    marginTop: ph(4),
-    fontWeight: fw("600"),
-    letterSpacing: 0.8,
+    lineHeight: ph(2),
   },
 });

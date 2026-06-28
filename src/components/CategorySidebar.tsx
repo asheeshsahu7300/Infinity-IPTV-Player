@@ -9,6 +9,8 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { THEME, pw, ph, ps , fw } from '../theme/tokens';
+import { isTV } from "../utils/tvUtils";
+import { MIN_TOUCH } from "../theme/responsive";
 import { Focusable } from "../tv";
 
 interface Category {
@@ -68,7 +70,9 @@ const S = StyleSheet.create({
     marginRight: pw(1),
   },
   itemContainer: {
-    height: ph(6.4),
+    // ph(6.4) is generous on TV/tablet; clamp to the 48dp touch minimum so the
+    // row stays tappable on short viewports (e.g. tablet/phone in landscape).
+    height: Math.max(ph(6.4), isTV ? 0 : MIN_TOUCH),
     borderTopRightRadius: ps(2),
     borderBottomRightRadius: ps(2),
     justifyContent: "center",
@@ -76,13 +80,16 @@ const S = StyleSheet.create({
     overflow: "visible",
   },
   itemContainerHorizontal: {
-    height: ph(4.5),
+    // Phone/tablet category chips — compact (~40px) but kept off the tiny end
+    // (ph is height-based and collapses in landscape).
+    height: Math.max(ph(4.5), isTV ? 0 : 40),
+    minHeight: isTV ? undefined : 40,
     borderRadius: 100,
-    paddingHorizontal: pw(2.5),
+    paddingHorizontal: pw(2.2),
     justifyContent: "center",
     borderTopRightRadius: 100,
     borderBottomRightRadius: 100,
-    paddingLeft: pw(2.5),
+    paddingLeft: pw(2.2),
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
   },
@@ -120,7 +127,7 @@ const S = StyleSheet.create({
     letterSpacing: 0.3,
   },
   itemTextHorizontal: {
-    fontSize: ps(1.1),
+    fontSize: ps(1.0),
   },
   itemTextActive: {
     color: "#fff",
@@ -129,7 +136,7 @@ const S = StyleSheet.create({
     letterSpacing: 0.5,
   },
   itemTextActiveHorizontal: {
-    fontSize: ps(1.2),
+    fontSize: ps(1.1),
   },
   focusIndicatorBar: {
     position: "absolute",
@@ -230,13 +237,16 @@ const CategoryItem = React.memo(function CategoryItem({
                 <View style={[S.focusIndicatorBar, isHorz && S.focusIndicatorHorizontal]} />
               )}
               <View style={[S.itemInner, { paddingLeft: focused && !isHorz ? pw(0.5) : 0 }]}>
-                <View style={[S.iconWrapper, isHorz && S.iconWrapperHorizontal]}>
-                  <IconLib
-                    name={iconData.name}
-                    size={isHorz ? ps(1.1) : ps(1.3)}
-                    color={isActive || focused ? "#fff" : "rgba(255,255,255,0.3)"}
-                  />
-                </View>
+                {/* Icons only in the vertical sidebar; horizontal chip bar is text-only. */}
+                {!isHorz && (
+                  <View style={S.iconWrapper}>
+                    <IconLib
+                      name={iconData.name}
+                      size={ps(1.3)}
+                      color={isActive || focused ? "#fff" : "rgba(255,255,255,0.3)"}
+                    />
+                  </View>
+                )}
                 <Text
                   style={[
                     S.itemText,
@@ -301,7 +311,7 @@ export default function CategorySidebar({
         </View>
       )}
 
-      <View style={isHorz ? { flex: 1, height: ph(6) } : { height: ITEM_HEIGHT * 10 }}>
+      <View style={isHorz ? { flex: 1, height: Math.max(ph(6), isTV ? 0 : 52) } : { height: ITEM_HEIGHT * 10 }}>
         <FlatList
           horizontal={isHorz}
           ref={flatListRef}
