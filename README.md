@@ -10,10 +10,11 @@ Optimized for performance, dynamic media loading, fast pagination, and smooth pl
 ## 📸 Screenshots (Mobile Experience)
 
 <p align="center">
-  <img src="./assets/screenshots/dashboard.png" width="23%" alt="Dashboard Categories" />
-  <img src="./assets/screenshots/livetv.png" width="23%" alt="Live TV Channels" />
-  <img src="./assets/screenshots/movies.png" width="23%" alt="Movies Grid" />
-  <img src="./assets/screenshots/series.png" width="23%" alt="Series Details" />
+<img width="590" height="1280" alt="image" src="https://github.com/user-attachments/assets/8e5bdf02-0f4d-4949-88dd-cc1ee2067e46" />
+<img width="590" height="1280" alt="image" src="https://github.com/user-attachments/assets/cdca60f0-bf37-4d86-bfd1-defa93c14e22" />
+<img width="590" height="1280" alt="image" src="https://github.com/user-attachments/assets/ade19036-9b4f-4c23-9ff0-b6c5830fb384" />
+<img width="590" height="1280" alt="image" src="https://github.com/user-attachments/assets/ae8bb1f0-cd3d-41ad-8b02-bb1866bd2faa" />
+
 </p>
 
 ---
