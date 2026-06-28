@@ -577,6 +577,7 @@ export default function SeriesScreen() {
   const sidebarCategories: Category[] = [
     { id: "all", name: "All Series", type: "series" },
     ...categories.filter(c =>
+      c.type === "series" &&
       c.name.toLowerCase() !== "all" &&
       c.name.toLowerCase() !== "all series"
     ),

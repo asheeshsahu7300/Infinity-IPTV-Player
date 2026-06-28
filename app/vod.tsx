@@ -646,6 +646,7 @@ export default function VODScreen() {
   const sidebarCategories: Category[] = [
     { id: "all", name: "All Movies", type: "vod" },
     ...categories.filter(c =>
+      c.type === "vod" &&
       c.name.toLowerCase() !== "all" &&
       c.name.toLowerCase() !== "all movies"
     ),

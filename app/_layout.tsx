@@ -17,7 +17,6 @@ import {
   Dimensions,
   Animated,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 
 import ErrorBoundary from "../src/components/ErrorBoundary";
@@ -26,7 +25,6 @@ import { usePortalStore } from "../src/store/portalStore";
 import { ThemeProvider } from "../src/context/ThemeContext";
 import { AppBootManager } from "../src/services/AppBootManager";
 import { isTV } from "../src/utils/tvUtils";
-import { CinematicBackground } from "../src/components/CinematicBackground";
 import { THEME, ps, ph, pw } from "../src/theme/tokens";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,12 +95,6 @@ function SplashScreen() {
 
   return (
     <View style={styles.splash}>
-      <CinematicBackground />
-      <LinearGradient
-        colors={["rgba(0,0,0,0.4)", "rgba(0, 0, 0, 1)"]}
-        style={StyleSheet.absoluteFill}
-      />
-
       <Animated.View style={[styles.splashContent, { opacity: fadeAnim }]}>
         <Animated.View
           style={[
@@ -110,25 +102,13 @@ function SplashScreen() {
             { transform: [{ scale: pulseAnim }] },
           ]}
         >
-
           <Image
             source={require("../assets/images/icon.png")}
             style={styles.logoImage}
             resizeMode="contain"
           />
         </Animated.View>
-
-        <View style={styles.splashTextGroup}>
-          <Text style={[styles.splashTitle, isTV && styles.splashTitleTV]}>
-            IPTV HUB
-          </Text>
-          <Text style={[styles.tagline, isTV && styles.taglineTV]}>
-            PREMIUM STREAMING EXPERIENCE
-          </Text>
-        </View>
       </Animated.View>
-
-
     </View>
   );
 }

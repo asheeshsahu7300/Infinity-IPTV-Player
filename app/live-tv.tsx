@@ -414,6 +414,7 @@ export default function LiveTVScreen() {
   const sidebarCategories: Category[] = [
     { id: "all", name: "All Channels", type: "live" },
     ...localCategories.filter(c =>
+      c.type === "live" &&
       c.name.toLowerCase() !== "all" &&
       c.name.toLowerCase() !== "all channels"
     ),
