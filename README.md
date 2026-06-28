@@ -9,12 +9,11 @@ Optimized for performance, dynamic media loading, fast pagination, and smooth pl
 
 ## 📸 Screenshots (Mobile Experience)
 
-<p align="center">
-<img width="590" height="1280" alt="image" src="https://github.com/user-attachments/assets/8e5bdf02-0f4d-4949-88dd-cc1ee2067e46" />
-<img width="590" height="1280" alt="image" src="https://github.com/user-attachments/assets/cdca60f0-bf37-4d86-bfd1-defa93c14e22" />
-<img width="590" height="1280" alt="image" src="https://github.com/user-attachments/assets/ade19036-9b4f-4c23-9ff0-b6c5830fb384" />
-<img width="590" height="1280" alt="image" src="https://github.com/user-attachments/assets/ae8bb1f0-cd3d-41ad-8b02-bb1866bd2faa" />
-
+<p align="center" style="display: flex; justify-content: center; gap: 10px; flex-wrap: nowrap;">
+  <img width="220" alt="image1" src="https://github.com/user-attachments/assets/8e5bdf02-0f4d-4949-88dd-cc1ee2067e46" />
+  <img width="220" alt="image2" src="https://github.com/user-attachments/assets/cdca60f0-bf37-4d86-bfd1-defa93c14e22" />
+  <img width="220" alt="image3" src="https://github.com/user-attachments/assets/ade19036-9b4f-4c23-9ff0-b6c5830fb384" />
+  <img width="220" alt="image4" src="https://github.com/user-attachments/assets/ae8bb1f0-cd3d-41ad-8b02-bb1866bd2faa" />
 </p>
 
 ---
