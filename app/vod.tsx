@@ -807,7 +807,7 @@ export default function VODScreen() {
           <View style={S.modalLeft}>
             <Text style={S.modalTitle} numberOfLines={2}>{selectedVod?.name}</Text>
             <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-              {selectedVod?.description || "Experience this cinematic masterpiece. Dive into a world of high-quality streaming entertainment."}
+              {selectedVod?.description || "Custom"}
             </Text>
             <View style={S.modalMetaRow}>
               {selectedVod?.rating && (

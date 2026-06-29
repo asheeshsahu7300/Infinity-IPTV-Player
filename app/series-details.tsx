@@ -357,7 +357,7 @@ export default function SeriesDetailsScreen() {
             </View>
 
             <Text style={S.description} numberOfLines={isTV ? 8 : 6}>
-              {params.description || "No description available for this series. Immerse yourself in the story as it unfolds in this high-quality streaming experience."}
+              {params.description || "Custom"}
             </Text>
 
             <Focusable
@@ -475,7 +475,7 @@ export default function SeriesDetailsScreen() {
               {`S${currentSeason?.seasonNumber || ""} E${selectedEpisode?.episodeNum || ""} : ${selectedEpisode?.name || ""}`}
             </Text>
             <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-              {selectedEpisode?.description || params.description || "Continue your journey with this episode. High-definition streaming ready for playback."}
+              {selectedEpisode?.description || params.description || "Custom"}
             </Text>
             <View style={S.modalMetaRow}>
               {selectedEpisode?.duration && (

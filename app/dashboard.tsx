@@ -452,7 +452,7 @@ export default function DashboardScreen() {
           <View style={S.modalLeft}>
             <Text style={S.modalTitle} numberOfLines={2}>{selectedItem?.name}</Text>
             <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-              {selectedItem?.description || "Experience this cinematic masterpiece. Dive into a world of high-quality streaming entertainment."}
+              {selectedItem?.description || "Custom"}
             </Text>
             <View style={S.modalMetaRow}>
               {selectedItem?.rating ? (
