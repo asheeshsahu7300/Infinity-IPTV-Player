@@ -93,11 +93,7 @@ android {
         minSdkVersion 26
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0.4"
-
-        ndk {
-            abiFilters "armeabi-v7a", "arm64-v8a"
-        }
+        versionName "1.0.5"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -133,6 +129,29 @@ android {
     }
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+    
+    // Generate separate APKs per ABI to reduce APK size
+    // VLC adds ~50MB per architecture, so this is critical for size optimization
+    splits {
+        abi {
+            enable true
+            reset()
+            include "arm64-v8a", "armeabi-v7a"
+            universalApk false  // Set to true if you also want a universal APK
+        }
+    }
+    
+    // Assign unique versionCodes per ABI for Play Store
+    project.ext.abiCodes = ['armeabi-v7a': 1, 'arm64-v8a': 2]
+    
+    applicationVariants.all { variant ->
+        variant.outputs.each { output ->
+            def abiVersionCode = project.ext.abiCodes.get(output.getFilter(com.android.build.OutputFile.ABI))
+            if (abiVersionCode != null) {
+                output.versionCodeOverride = abiVersionCode * 1000 + variant.versionCode
+            }
+        }
     }
 }
 
