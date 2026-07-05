@@ -158,7 +158,7 @@ const MovieItem = React.memo(function MovieItem({
   onFavoritePress,
   isFavorite,
   itemWidth,
-  autoFocus,
+  isFocusedItem,
 }: {
   item: VODItem;
   onPress: (item: VODItem) => void;
@@ -166,7 +166,7 @@ const MovieItem = React.memo(function MovieItem({
   onFavoritePress: (item: VODItem) => void;
   isFavorite: boolean;
   itemWidth: number;
-  autoFocus?: boolean;
+  isFocusedItem?: boolean;
 }) {
   const handlePress = useCallback(() => {
     onPress(item);
@@ -179,13 +179,16 @@ const MovieItem = React.memo(function MovieItem({
   const handleFavoritePress = useCallback(() => {
     onFavoritePress(item);
   }, [onFavoritePress, item]);
+
+
+
   return (
     <View style={{ width: itemWidth, padding: pw(1), overflow: "visible" }}>
       <Focusable
         onPress={handlePress}
         onFocus={handleFocus}
         onLongPress={handleFavoritePress}
-        hasTVPreferredFocus={autoFocus}
+        hasTVPreferredFocus={isFocusedItem}
         ringOnFocus={false}
       >
         {(focused) => (
@@ -289,8 +292,15 @@ const pickYear = (v: any) => {
   return match ? match[0] : s;
 };
 
-const pickDescription = (v: any) =>
-  v?.description ?? v?.descr ?? v?.plot ?? v?.info ?? v?.storyline ?? v?.short_description ?? "";
+const pickDescription = (v: any) => {
+  const desc = v?.description ?? v?.descr ?? v?.plot ?? v?.info ?? v?.storyline ?? v?.short_description ?? "";
+  if (!desc) return "No description available for this content.";
+  const lower = String(desc).trim().toLowerCase();
+  if (lower === "na" || lower === "n/a" || lower === "null" || lower === "undefined" || lower === "") {
+    return "No description available for this content.";
+  }
+  return String(desc).trim();
+};
 
 // ─────────────────────────────────────────────
 // Main Screen
@@ -341,9 +351,8 @@ export default function VODScreen() {
 
 
 
-  const PAGE_SIZE = 28;
-
   const numColumns = isTV ? 5 : (SCREEN_WIDTH_VAL >= 768 ? 4 : 3);
+  const PAGE_SIZE = numColumns * Math.ceil(28 / numColumns);
   const SIDEBAR_WIDTH_VAL = isTV ? 240 : 200;
   // The FlatList's contentContainerStyle (S.list) adds pw(1) horizontal
   // padding on each side. Subtract that plus a small safety margin and
@@ -502,24 +511,51 @@ export default function VODScreen() {
   const handleVodFocus = useCallback((vod: VODItem) => {
     setFocusedImage(vod.logo || null);
     focusedIdRef.current = String(vod.id);
+    
+    if (flatListRef.current) {
+      const data = flatListRef.current.props.data as any[];
+      if (data && data.length > 0) {
+        let foundNearEnd = false;
+        const checkCount = Math.min(3, data.length);
+        for (let i = data.length - checkCount; i < data.length; i++) {
+          if (data[i].items?.some((m: VODItem) => m.id === vod.id)) {
+            foundNearEnd = true;
+            break;
+          }
+        }
+        if (foundNearEnd && flatListRef.current.props.onEndReached) {
+          flatListRef.current.props.onEndReached({ distanceFromEnd: 0 });
+        }
+      }
+    }
   }, []);
 
   // After a refresh/reset, scroll the list back to the previously focused item
   const restoreFocusPosition = useCallback((items: VODItem[]) => {
     if (!focusedIdRef.current || !flatListRef.current) return;
-    // With multi-column grids, scrollToIndex needs the flat index
+    // With chunked rows, scrollToIndex needs the row index
     const idx = items.findIndex(v => String(v.id) === focusedIdRef.current);
     if (idx > 0) {
+      const rowIndex = Math.floor(idx / numColumns);
       setTimeout(() => {
         try {
-          flatListRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.3 });
+          flatListRef.current?.scrollToIndex({ index: rowIndex, animated: false, viewPosition: 0.3 });
         } catch { /* ignore if out of range */ }
       }, 120);
     }
-  }, []);
+  }, [numColumns]);
 
-  const handleFavoritePress = useCallback((vod: VODItem) => {
-    toggleFavorite("vod", vod.id);
+  const getDisplayDescription = (desc: string | undefined | null) => {
+    if (!desc) return "No description available for this content.";
+    const lower = desc.trim().toLowerCase();
+    if (lower === "n/a" || lower === "na" || lower === "undefined" || lower === "null" || lower === "") {
+      return "No description available for this content.";
+    }
+    return desc.trim();
+  };
+
+  const handleFavoritePress = useCallback((item: VODItem) => {
+    toggleFavorite("vod", item.id);
   }, [toggleFavorite]);
 
   const startPlayback = async (url: string | null, isExternal: boolean = false, title?: string) => {
@@ -562,21 +598,29 @@ export default function VODScreen() {
     startPlayback(streamUrl, isExternal, titleSnapshot);
   };
 
-  const renderMovieItem = useCallback(({ item, index }: { item: VODItem; index: number }) => (
-    <MovieItem
-      item={item}
-      onPress={handleVodPress}
-      onFocus={handleVodFocus}
-      onFavoritePress={handleFavoritePress}
-      isFavorite={favorites.vod.includes(item.id)}
-      itemWidth={itemWidth}
-      autoFocus={
-        focusedIdRef.current
-          ? String(item.id) === focusedIdRef.current
-          : index === 0 && !searchFocused
-      }
-    />
-  ), [favorites.vod, itemWidth, searchFocused]);
+  const renderRow = useCallback(({ item: row, index: rowIndex }: { item: { id: string; items: VODItem[] }; index: number }) => (
+    <View style={{ flexDirection: "row" }}>
+      {row.items.map((movie, colIndex) => {
+        const itemIndex = rowIndex * numColumns + colIndex;
+        return (
+          <MovieItem
+            key={movie.id}
+            item={movie}
+            onPress={handleVodPress}
+            onFocus={handleVodFocus}
+            onFavoritePress={handleFavoritePress}
+            isFavorite={favorites.vod.includes(movie.id)}
+            itemWidth={itemWidth}
+            isFocusedItem={
+              focusedIdRef.current
+                ? String(movie.id) === focusedIdRef.current
+                : itemIndex === 0 && !searchFocused
+            }
+          />
+        );
+      })}
+    </View>
+  ), [favorites.vod, itemWidth, searchFocused, numColumns]);
 
 
 
@@ -642,6 +686,17 @@ export default function VODScreen() {
     // Default: return the category-filtered and paginated items
     return vodItems;
   }, [vodItems, debouncedQuery, isXtreamOrM3U, searchResults]);
+
+  const chunkedMovies = useMemo(() => {
+    const chunks = [];
+    for (let i = 0; i < filteredMovies.length; i += numColumns) {
+      chunks.push({
+        id: `row-${i}`,
+        items: filteredMovies.slice(i, i + numColumns),
+      });
+    }
+    return chunks;
+  }, [filteredMovies, numColumns]);
 
   const sidebarCategories: Category[] = [
     { id: "all", name: "All Movies", type: "vod" },
@@ -714,87 +769,57 @@ export default function VODScreen() {
           />
         </FocusGroup>
         <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapUp={trappingFocus}>
-          {isLoading && vodItems.length === 0 ? (
-            <View style={S.loadingCenter}>
-              <ActivityIndicator color={THEME.colors.primary} size="large" />
-              <Text style={S.loadingText}>Brewing cinematic magic...</Text>
-            </View>
-          ) : (
-            <FlatList
-              ref={flatListRef}
-              onScrollToIndexFailed={() => {}}
-              data={filteredMovies}
-              renderItem={renderMovieItem}
-              keyExtractor={(item) => String(item.id)}
-              numColumns={numColumns}
-              key={`vod-grid-${numColumns}`}
-              contentContainerStyle={S.list}
-              removeClippedSubviews={false}
-
-              initialNumToRender={numColumns * 6}
-              maxToRenderPerBatch={numColumns * 6}
-              windowSize={11}
-              onEndReached={() => {
-                if (isLoading || loadingMore || !hasMore || debouncedQuery) return;
-                trapFocusBriefly();
-                if (isXtreamOrM3U) {
-                  // Grow the slice from the cached full list — no network.
-                  const nextPage = page + 1;
-                  const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
-                  setVodItems(sliced);
-                  setPage(nextPage);
-                  setHasMore(fullListRef.current.length > sliced.length);
-                } else {
-                  loadVodItems(selectedCategory, page + 1);
-                }
-              }}
-              onEndReachedThreshold={1.5}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
-              ListEmptyComponent={
-                isLoading ? (
-                  <View style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }}>
-                    <ActivityIndicator color={THEME.colors.primary} size="large" />
-                    <Text style={[S.loadingText, { marginTop: 10 }]}>Searching...</Text>
-                  </View>
-                ) : (
-                  <View style={S.emptyState}>
-                    <MaterialCommunityIcons name="movie-filter-outline" size={ps(4)} color="rgba(255,255,255,0.05)" />
-                    <Text style={S.emptyTitle}>Nothing Found</Text>
-                  </View>
-                )
+          <FlatList
+            ref={flatListRef}
+            data={chunkedMovies}
+            renderItem={renderRow}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={[S.list, (isLoading || chunkedMovies.length === 0) && { flexGrow: 1 }]}
+            removeClippedSubviews={false}
+            extraData={filteredMovies.length}
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            windowSize={5}
+            updateCellsBatchingPeriod={50}
+            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+            onEndReached={() => {
+              if (isLoading || loadingMore || !hasMore || debouncedQuery) return;
+              trapFocusBriefly();
+              if (isXtreamOrM3U) {
+                // Grow the slice from the cached full list — no network.
+                const nextPage = page + 1;
+                const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
+                setVodItems(sliced);
+                setPage(nextPage);
+                setHasMore(fullListRef.current.length > sliced.length);
+              } else {
+                loadVodItems(selectedCategory, page + 1);
               }
-              ListFooterComponent={
-                loadingMore && filteredMovies.length > 0 ? (
-                  <View style={{ width: "100%", paddingVertical: ph(3), alignItems: "center", justifyContent: "center", flexDirection: "row", gap: pw(1) }}>
-                    <ActivityIndicator color={THEME.colors.primary} size="small" />
-                    <Text style={{ color: "rgba(255,255,255,0.3)", fontSize: ps(0.9) }}>Loading more...</Text>
-                  </View>
-                ) : (hasMore && filteredMovies.length > 0 && !debouncedQuery) ? (
-                  <View style={S.loadMoreFooter}>
-                    <Focusable
-                      onPress={() => {
-                        const nextPage = page + 1;
-                        if (isXtreamOrM3U) {
-                          const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
-                          setVodItems(sliced);
-                          setPage(nextPage);
-                          setHasMore(fullListRef.current.length > sliced.length);
-                        } else {
-                          loadVodItems(selectedCategory, nextPage);
-                        }
-                      }}
-                      ringOnFocus={false}
-                      focusStyle={S.loadMoreBtnFocused}
-                      style={S.loadMoreBtn}
-                    >
-                      <Ionicons name="chevron-down" size={ps(1.4)} color="#fff" />
-                      <Text style={S.loadMoreBtnText}>LOAD MORE</Text>
-                    </Focusable>
-                  </View>
-                ) : null
-              }
-            />
-          )}
+            }}
+            onEndReachedThreshold={1.5}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
+            ListEmptyComponent={
+              isLoading ? (
+                <Focusable hasTVPreferredFocus={!searchFocused} style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }} ringOnFocus={false}>
+                  <ActivityIndicator color={THEME.colors.primary} size="large" />
+                  <Text style={[S.loadingText, { marginTop: 10 }]}>Brewing cinematic magic...</Text>
+                </Focusable>
+              ) : (
+                <View style={S.emptyState}>
+                  <MaterialCommunityIcons name="movie-filter-outline" size={ps(4)} color="rgba(255,255,255,0.05)" />
+                  <Text style={S.emptyTitle}>Nothing Found</Text>
+                </View>
+              )
+            }
+            ListFooterComponent={
+              loadingMore && filteredMovies.length > 0 ? (
+                <View style={{ width: "100%", paddingVertical: ph(3), alignItems: "center", justifyContent: "center", flexDirection: "row", gap: pw(1) }}>
+                  <ActivityIndicator color={THEME.colors.primary} size="small" />
+                  <Text style={{ color: "rgba(255,255,255,0.3)", fontSize: ps(0.9) }}>Loading more...</Text>
+                </View>
+              ) : null
+            }
+          />
         </FocusGroup>
       </View>
 
@@ -807,7 +832,7 @@ export default function VODScreen() {
           <View style={S.modalLeft}>
             <Text style={S.modalTitle} numberOfLines={2}>{selectedVod?.name}</Text>
             <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-              {selectedVod?.description || "Custom"}
+              {getDisplayDescription(selectedVod?.description)}
             </Text>
             <View style={S.modalMetaRow}>
               {selectedVod?.rating && (

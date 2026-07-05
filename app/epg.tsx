@@ -64,12 +64,22 @@ const ProgramBlock = ({
   const durationMin = (end.getTime() - start.getTime()) / (1000 * 60);
   const width = (durationMin / 60) * HOUR_WIDTH;
 
+  const [shouldFocus, setShouldFocus] = useState(autoFocus);
+  useEffect(() => {
+    if (autoFocus) {
+      setShouldFocus(true);
+      const timer = setTimeout(() => setShouldFocus(false), 500);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <View style={{ width: width - pw(0.5), paddingVertical: ph(0.75), paddingHorizontal: pw(0.25), overflow: "visible" }}>
       <Focusable
         onFocus={onFocusProgram}
         onPress={onPress}
-        hasTVPreferredFocus={autoFocus}
+        hasTVPreferredFocus={shouldFocus}
         ringOnFocus={false}
         style={{ overflow: "visible" }}
       >
@@ -224,6 +234,15 @@ export default function EPGScreen() {
     });
   };
 
+  const getDisplayDescription = (desc: string | undefined | null) => {
+    if (!desc) return "Select a program below to see details and schedule information.";
+    const lower = desc.trim().toLowerCase();
+    if (lower === "n/a" || lower === "na" || lower === "undefined" || lower === "null" || lower === "") {
+      return "Select a program below to see details and schedule information.";
+    }
+    return desc.trim();
+  };
+
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
@@ -242,7 +261,7 @@ export default function EPGScreen() {
             <Text style={S.heroMetaText}>Action, Sci-Fi</Text>
           </View>
           <Text style={S.heroDesc} numberOfLines={3}>
-            {selectedProgram?.description || "Select a program below to see details and schedule information."}
+            {getDisplayDescription(selectedProgram?.description)}
           </Text>
           <FocusGroup>
             <View style={S.heroActions}>

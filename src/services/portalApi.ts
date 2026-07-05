@@ -187,13 +187,15 @@ const pickYear = (v: any) => {
   return match ? match[0] : s;
 };
 
-const pickDescription = (v: any) =>
-  v?.description ??
-  v?.descr ??
-  v?.plot ??
-  v?.info ??
-  v?.storyline ??
-  v?.short_description;
+const pickDescription = (v: any): string => {
+  const desc = v?.description ??
+    v?.plot ??
+    v?.desc ??
+    v?.info ??
+    v?.storyline ??
+    v?.short_description;
+  return desc || "No description available for this content.";
+};
 
 // 🔁 Token refresh with deduplication & global state sync
 const tokenRefreshMap = new Map<string, Promise<Portal>>();
@@ -704,7 +706,7 @@ export const portalApi = {
           id: String(p.id ?? `${cid}-${p.start}`),
           channelId: cid,
           title: p.name ?? p.title ?? "",
-          description: p.descr ?? p.description ?? "",
+          description: (p.descr ?? p.description) || "No description available for this content.",
           start: toMs(p.start_timestamp ?? p.start),
           end: toMs(p.stop_timestamp ?? p.end),
         });
@@ -961,7 +963,7 @@ export const portalApi = {
                 id: String(p.id ?? `${cid}-${p.start}`),
                 channelId: cid,
                 title: p.name ?? p.title ?? "",
-                description: p.descr ?? p.description ?? "",
+                description: (p.descr ?? p.description) || "No description available for this content.",
                 start: toMs(p.start_timestamp ?? p.start),
                 end: toMs(p.stop_timestamp ?? p.end),
               });
@@ -1177,7 +1179,7 @@ export const portalApi = {
             id: String(p.id ?? `${cid}-${p.start}`),
             channelId: cid,
             title: p.name ?? p.title ?? "",
-            description: p.descr ?? p.description ?? "",
+            description: (p.descr ?? p.description) || "No description available for this content.",
             start: toMs(p.start_timestamp ?? p.start),
             end: toMs(p.stop_timestamp ?? p.end),
           });

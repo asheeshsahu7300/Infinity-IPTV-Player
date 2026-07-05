@@ -171,6 +171,16 @@ export default function PortalsScreen() {
   const renderPortal = ({ item, index }: { item: Portal; index: number }) => {
     const isFocused = focusedPortalId === item.id;
     const isActive = activePortal?.id === item.id;
+    
+    // Disable TV preferred focus after initial mount to prevent stealing focus on re-renders
+    const [shouldFocus, setShouldFocus] = useState(index === 0);
+    useEffect(() => {
+      if (index === 0) {
+        setShouldFocus(true);
+        const timer = setTimeout(() => setShouldFocus(false), 500);
+        return () => clearTimeout(timer);
+      }
+    }, [index === 0]);
 
     const inputRange = [(index - 1) * ITEM_SIZE, index * ITEM_SIZE, (index + 1) * ITEM_SIZE];
     const scale = scrollX.interpolate({ inputRange, outputRange: [0.95, 1.05, 0.95], extrapolate: "clamp" });
@@ -191,7 +201,7 @@ export default function PortalsScreen() {
         ]}
       >
         <Focusable
-          hasTVPreferredFocus={index === 0}
+          hasTVPreferredFocus={shouldFocus}
           onFocus={() => {
             setFocusedPortalId(item.id);
             if (isTV) flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });

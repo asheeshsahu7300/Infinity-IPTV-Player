@@ -39,14 +39,14 @@ const EpisodeTile = React.memo(function EpisodeTile({
   item,
   index,
   onPress,
-  autoFocus,
+  isFocusedItem,
   seriesLogo,
   itemWidth,
 }: {
   item: Episode;
   index: number;
   onPress: () => void;
-  autoFocus?: boolean;
+  isFocusedItem?: boolean;
   seriesLogo?: string;
   itemWidth: number;
 }) {
@@ -59,10 +59,12 @@ const EpisodeTile = React.memo(function EpisodeTile({
     epName.toLowerCase() === `e${epNum}`.toLowerCase() ||
     epName.toLowerCase() === `${epNum}`.toLowerCase();
 
+
+
   return (
     <Focusable
       onPress={onPress}
-      hasTVPreferredFocus={autoFocus}
+      hasTVPreferredFocus={isFocusedItem}
       ringOnFocus={false}
       style={[S.epTileWrapper, { width: itemWidth }]}
     >
@@ -141,17 +143,19 @@ const SeasonPill = React.memo(function SeasonPill({
   season,
   isActive,
   onPress,
-  autoFocus,
+  isFocusedItem,
 }: {
   season: Season;
   isActive: boolean;
   onPress: () => void;
-  autoFocus?: boolean;
+  isFocusedItem?: boolean;
 }) {
+
+
   return (
     <Focusable
       onPress={onPress}
-      hasTVPreferredFocus={autoFocus}
+      hasTVPreferredFocus={isFocusedItem}
       ringOnFocus={false}
       style={S.seasonPillWrapper}
     >
@@ -296,6 +300,15 @@ export default function SeriesDetailsScreen() {
     }
   };
 
+  const getDisplayDescription = (desc: string | undefined | null) => {
+    if (!desc) return "No description available for this content.";
+    const lower = desc.trim().toLowerCase();
+    if (lower === "n/a" || lower === "na" || lower === "undefined" || lower === "null" || lower === "") {
+      return "No description available for this content.";
+    }
+    return desc.trim();
+  };
+
   const currentSeason = seasons.find((s) => s.id === selectedSeasonId);
   const isFavorite = favorites.series.includes(params.id || "");
   const numColumns = isTV ? 7 : 3;
@@ -311,7 +324,7 @@ export default function SeriesDetailsScreen() {
       item={item}
       index={index}
       onPress={() => handleEpisodeClick(item)}
-      autoFocus={index === 0}
+      isFocusedItem={index === 0}
       seriesLogo={params.logo}
       itemWidth={itemWidth}
     />
@@ -357,7 +370,7 @@ export default function SeriesDetailsScreen() {
             </View>
 
             <Text style={S.description} numberOfLines={isTV ? 8 : 6}>
-              {params.description || "Custom"}
+              {getDisplayDescription(params.description)}
             </Text>
 
             <Focusable
@@ -412,7 +425,7 @@ export default function SeriesDetailsScreen() {
                 key={s.id}
                 season={s}
                 isActive={selectedSeasonId === s.id}
-                autoFocus={i === 0 && !selectedSeasonId}
+                isFocusedItem={i === 0 && !selectedSeasonId}
                 onPress={() => {
                   if (s.id !== selectedSeasonId) trapUpBriefly();
                   setSelectedSeasonId(s.id);
@@ -475,7 +488,9 @@ export default function SeriesDetailsScreen() {
               {`S${currentSeason?.seasonNumber || ""} E${selectedEpisode?.episodeNum || ""} : ${selectedEpisode?.name || ""}`}
             </Text>
             <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-              {selectedEpisode?.description || params.description || "Custom"}
+              {getDisplayDescription(selectedEpisode?.description) !== "No description available for this content." 
+                ? getDisplayDescription(selectedEpisode?.description) 
+                : getDisplayDescription(params.description)}
             </Text>
             <View style={S.modalMetaRow}>
               {selectedEpisode?.duration && (

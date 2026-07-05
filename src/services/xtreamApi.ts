@@ -189,7 +189,7 @@ export class XtreamApi {
         logo: v.stream_icon,
         categoryId: v.category_id,
         streamUrl: this.buildMovieUrl(v.stream_id, v.container_extension),
-        description: v.plot,
+        description: v.plot || "No description available for this content.",
         year: v.year,
         rating: v.rating,
         duration: v.duration,
@@ -267,7 +267,7 @@ export class XtreamApi {
         name: s.name,
         logo: s.cover,
         categoryId: s.category_id,
-        description: s.plot,
+        description: s.plot || "No description available for this content.",
         year: s.releaseDate,
         rating: s.rating,
       }));
@@ -306,7 +306,7 @@ export class XtreamApi {
           name: ep.title,
           episodeNum: ep.episode_num,
           streamUrl: this.buildSeriesUrl(ep.id, ep.container_extension),
-          description: ep.info?.plot || ep.info?.description || undefined,
+          description: ep.info?.plot || ep.info?.description || "No description available for this content.",
           duration: ep.info?.duration || ep.info?.duration_secs ? `${ep.info.duration || ep.info.duration_secs}` : undefined,
         })),
       }));

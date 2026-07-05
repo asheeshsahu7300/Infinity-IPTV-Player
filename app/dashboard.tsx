@@ -169,9 +169,19 @@ const HeroPill = ({
   iconType?: "ionicons" | "material";
   autoFocus?: boolean;
 }) => {
+  const [shouldFocus, setShouldFocus] = useState(autoFocus);
+  useEffect(() => {
+    if (autoFocus) {
+      setShouldFocus(true);
+      const timer = setTimeout(() => setShouldFocus(false), 500);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <Focusable
-      hasTVPreferredFocus={autoFocus}
+      hasTVPreferredFocus={shouldFocus}
       onPress={onPress}
       ringOnFocus={false}
       style={S.heroPillWrapper}
@@ -452,7 +462,7 @@ export default function DashboardScreen() {
           <View style={S.modalLeft}>
             <Text style={S.modalTitle} numberOfLines={2}>{selectedItem?.name}</Text>
             <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-              {selectedItem?.description || "Custom"}
+              {selectedItem?.description || "No description available for this content."}
             </Text>
             <View style={S.modalMetaRow}>
               {selectedItem?.rating ? (

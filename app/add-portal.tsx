@@ -166,7 +166,7 @@ const GradientBorderInput = ({
 export default function AddPortalScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { addPortal, setActivePortal } = usePortalStore();
+  const { addPortal, setActivePortal, deletePortal } = usePortalStore();
 
   const [step, setStep] = useState<1 | 2>(1);
   const [type, setType] = useState<CardType>("m3u");
@@ -267,13 +267,22 @@ export default function AddPortalScreen() {
       await setActivePortal(portal);
       setLoadingMessage("Fetching categories...");
       await portalApi.refreshPortalData(portal);
+      
+      const store = usePortalStore.getState();
+      const hasContent = store.categories.length > 0 || store.channels.length > 0 || store.vodItems.length > 0 || store.series.length > 0;
+      
+      if (!hasContent) {
+        await deletePortal(portal.id);
+        throw new Error("This playlist contains no content.");
+      }
+
       setIsLoading(false);
       router.replace("/dashboard");
     } catch (e: any) {
       setIsLoading(false);
       Alert.alert("Error", e.message || "Failed to connect");
     }
-  }, [validateInputs, type, url, username, password, name, mac, formatMac, addPortal, setActivePortal, router]);
+  }, [validateInputs, type, url, username, password, name, mac, formatMac, addPortal, setActivePortal, deletePortal, router]);
 
   const handleBack = useCallback(() => {
     if (step === 2) setStep(1);
@@ -538,18 +547,6 @@ export default function AddPortalScreen() {
               )}
             </Focusable>
 
-            {/* Save Only (Secondary) */}
-            <Focusable
-              onPress={handleSave}
-              onFocus={() => setFocusedField("save")}
-              onBlur={() => setFocusedField(null)}
-              ringOnFocus={false}
-              style={[S.saveOnlyBtn, focusedField === "save" && S.saveOnlyBtnFocused]}
-            >
-              {(focused) => (
-                <Text style={S.saveOnlyBtnText}>Save Configuration</Text>
-              )}
-            </Focusable>
           </View>
 
           <Text style={S.premiumFooterWarning}>

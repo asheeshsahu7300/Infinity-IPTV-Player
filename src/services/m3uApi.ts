@@ -368,7 +368,7 @@ export class M3UApi {
         logo: v.logo ?? undefined,
         categoryId: v.category,
         streamUrl: v.streamUrl,
-        description: undefined,
+        description: "No description available for this content.",
         year: parseYearFromName(v.name),
         rating: parseRatingFromName(v.name),
       }));

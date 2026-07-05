@@ -3,7 +3,7 @@
  * Aspect ratios: 16:9 (channels), 2:3 (VOD/Series), 1:1 (logos)
  * Implements: focus scale 1.06×, gradient border, glow shadow, 3 states
  */
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -56,12 +56,20 @@ export default function ContentCard({
   itemWidth,
   autoFocus = false,
 }: ContentCardProps) {
+  const [shouldFocus, setShouldFocus] = useState(autoFocus);
+  useEffect(() => {
+    if (autoFocus) {
+      setShouldFocus(true);
+      const timer = setTimeout(() => setShouldFocus(false), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus]);
   return (
     <View style={[S.outer, itemWidth ? { width: itemWidth } : {}]}>
       <Focusable
         onPress={onPress}
         onLongPress={onFavorite}
-        hasTVPreferredFocus={autoFocus}
+        hasTVPreferredFocus={shouldFocus}
         ringOnFocus={false}
         style={{ overflow: "visible" }}
       >

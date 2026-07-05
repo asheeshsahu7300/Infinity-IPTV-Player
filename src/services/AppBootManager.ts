@@ -3,7 +3,6 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { usePortalStore, Portal } from "../store/portalStore";
-import { cacheManager } from "./cacheManager";
 
 export interface BootResult {
     isReady: boolean;
@@ -32,7 +31,6 @@ class AppBootManagerClass {
 
     private async _doInitialize(): Promise<BootResult> {
         try {
-            console.log("🚀 AppBootManager: Starting initialization...");
 
             // 1. Load all portals from AsyncStorage
             const portalsData = await AsyncStorage.getItem("portals");
@@ -69,11 +67,9 @@ class AppBootManagerClass {
                     currentState.series.length > 0;
 
                 if (!hasData) {
-                    console.log("⚠️ No cached data found. Fetching from network (blocking)...");
                     try {
                         const { portalApi } = await import("./portalApi");
                         await portalApi.warmPortalData(activePortal);
-                        console.log("✅ Network warming complete.");
                     } catch (e) {
                         console.warn("❌ Network warming failed during boot:", e);
                     }
@@ -88,11 +84,9 @@ class AppBootManagerClass {
                 // 7. Mark hydration complete
                 usePortalStore.setState({ isHydrated: true });
 
-                console.log("✅ AppBootManager: Initialized with active portal:", activePortal.name);
             } else {
                 // No active portal - mark hydrated anyway
                 usePortalStore.setState({ isHydrated: true });
-                console.log("✅ AppBootManager: Initialized without active portal");
             }
 
             this.isInitialized = true;
@@ -104,7 +98,6 @@ class AppBootManagerClass {
                 error: null,
             };
         } catch (error: any) {
-            console.error("❌ AppBootManager: Initialization failed:", error);
 
             // Even on error, mark as hydrated so UI can render
             usePortalStore.setState({ isHydrated: true });
@@ -130,7 +123,6 @@ class AppBootManagerClass {
             // Use portalApi's restore function which uses correct cache keys
             await portalApi.restoreCachedPortalData(portal);
 
-            console.log("📦 Loaded cached portal data from cacheManager");
         } catch (e) {
             console.warn("Failed to load portal data from cache:", e);
         }
@@ -148,13 +140,12 @@ class AppBootManagerClass {
             const now = Date.now();
 
             // Only sync if last sync was more than 30 minutes ago
-            const SYNC_INTERVAL = 30 * 60 * 1000; // 30 minutes
+            const SYNC_INTERVAL = 10 * 60 * 1000; // 30 minutes
             if (now - lastSync < SYNC_INTERVAL) {
                 console.log("⏭️ Skipping background sync - recently synced");
                 return;
             }
 
-            console.log("🔄 Starting background sync...");
 
             // Import portalApi dynamically to avoid circular deps
             const { portalApi } = await import("./portalApi");

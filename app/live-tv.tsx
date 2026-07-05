@@ -37,13 +37,13 @@ const ChannelCard = React.memo(function ChannelCard({
   item,
   onPress,
   onFocus,
-  autoFocus,
+  isFocusedItem,
   itemWidth,
 }: {
   item: Channel;
   onPress: (item: Channel) => void;
   onFocus?: (item: Channel) => void;
-  autoFocus?: boolean;
+  isFocusedItem?: boolean;
   itemWidth: number;
 }) {
   const handlePress = useCallback(() => {
@@ -53,12 +53,15 @@ const ChannelCard = React.memo(function ChannelCard({
   const handleFocus = useCallback(() => {
     onFocus?.(item);
   }, [onFocus, item]);
+
+
+
   return (
     <View style={{ width: itemWidth, padding: pw(0.6) }}>
       <Focusable
         onPress={handlePress}
         onFocus={handleFocus}
-        hasTVPreferredFocus={autoFocus}
+        hasTVPreferredFocus={isFocusedItem}
         ringOnFocus={false}
         style={S.cardWrapper}
       >
@@ -162,7 +165,8 @@ export default function LiveTVScreen() {
     [storeCategories]
   );
 
-  const PAGE_SIZE = 28;
+  const numColumns = isTV ? 5 : (SCREEN_WIDTH >= 1024 ? 5 : (SCREEN_WIDTH >= 768 ? 4 : 3));
+  const PAGE_SIZE = numColumns * Math.ceil(28 / numColumns);
 
   const xtreamApiRef = useRef<XtreamApi | null>(null);
   // Raw, unfiltered cache (Xtream / M3U).
@@ -324,6 +328,23 @@ export default function LiveTVScreen() {
   const handleChannelFocus = useCallback((channel: Channel) => {
     setFocusedImage(channel.logo || null);
     focusedIdRef.current = String(channel.id);
+
+    if (flatListRef.current) {
+      const data = flatListRef.current.props.data as any[];
+      if (data && data.length > 0) {
+        let foundNearEnd = false;
+        const checkCount = Math.min(3, data.length);
+        for (let i = data.length - checkCount; i < data.length; i++) {
+          if (data[i].items?.some((c: Channel) => c.id === channel.id)) {
+            foundNearEnd = true;
+            break;
+          }
+        }
+        if (foundNearEnd && flatListRef.current.props.onEndReached) {
+          flatListRef.current.props.onEndReached({ distanceFromEnd: 0 });
+        }
+      }
+    }
   }, []);
 
   // After a refresh/reset, scroll the list back to the previously focused item
@@ -406,9 +427,20 @@ export default function LiveTVScreen() {
       const matchBySearch =
         !debouncedQuery || c.name.toLowerCase().includes(debouncedQuery.toLowerCase());
 
-      return matchByCategory && matchBySearch;
+    return matchByCategory && matchBySearch;
     });
   }, [storeChannels, selectedCategory, debouncedQuery, activePortal?.type]);
+
+  const chunkedChannels = useMemo(() => {
+    const chunks = [];
+    for (let i = 0; i < filteredChannels.length; i += numColumns) {
+      chunks.push({
+        id: `row-${i}`,
+        items: filteredChannels.slice(i, i + numColumns),
+      });
+    }
+    return chunks;
+  }, [filteredChannels, numColumns]);
 
   // Build sidebar categories with "All" at top
   const sidebarCategories: Category[] = [
@@ -421,7 +453,7 @@ export default function LiveTVScreen() {
   ];
 
   const SIDEBAR_WIDTH = isTV ? 260 : 220;
-  const numColumns = isTV ? 5 : (SCREEN_WIDTH >= 1024 ? 5 : (SCREEN_WIDTH >= 768 ? 4 : 3));
+
   // Subtract the grid's own horizontal padding (pw(1.5) per side) plus a small
   // safety margin, then floor — so sub-pixel rounding can't push the
   // rightmost card past the viewport edge.
@@ -505,42 +537,48 @@ export default function LiveTVScreen() {
 
         {/* Right channel grid */}
         <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapUp={trappingFocus}>
-          {isLoading && storeChannels.length === 0 ? (
-            <View style={S.loadingCenter}>
-              <ActivityIndicator size="large" color={THEME.colors.primary} />
-              <Text style={S.loadingText}>Loading channels...</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={filteredChannels}
-              numColumns={numColumns}
-              key={`grid-${numColumns}`}
-              keyExtractor={(item) => String(item.id)}
-              onEndReached={onEndReached}
-              onEndReachedThreshold={1.5}
-              removeClippedSubviews={false}
-
-              initialNumToRender={numColumns * 6}
-              maxToRenderPerBatch={numColumns * 6}
-              windowSize={11}
-              ref={flatListRef}
-              onScrollToIndexFailed={() => {}}
-              renderItem={({ item, index }) => (
-                <ChannelCard
-                  item={item}
-                  itemWidth={itemWidth}
-                  autoFocus={
-                    focusedIdRef.current
-                      ? String(item.id) === focusedIdRef.current
-                      : index === 0 && !searchFocused
-                  }
-                  onPress={handleChannelPress}
-                  onFocus={handleChannelFocus}
-                />
-              )}
-              contentContainerStyle={S.gridContent}
-              columnWrapperStyle={S.gridRow}
-              ListEmptyComponent={
+          <FlatList
+            data={chunkedChannels}
+            keyExtractor={(item) => item.id}
+            onEndReached={onEndReached}
+            onEndReachedThreshold={0.5}
+            removeClippedSubviews={false}
+            contentContainerStyle={[S.gridContent, (isLoading || chunkedChannels.length === 0) && { flexGrow: 1 }]}
+            extraData={filteredChannels.length}
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            windowSize={5}
+            updateCellsBatchingPeriod={50}
+            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+            ref={flatListRef}
+            renderItem={({ item: row, index: rowIndex }: { item: { id: string; items: Channel[] }; index: number }) => (
+              <View style={{ flexDirection: "row" }}>
+                {row.items.map((channel, colIndex) => {
+                  const itemIndex = rowIndex * numColumns + colIndex;
+                  return (
+                    <ChannelCard
+                      key={channel.id}
+                      item={channel}
+                      itemWidth={itemWidth}
+                      isFocusedItem={
+                        focusedIdRef.current
+                          ? String(channel.id) === focusedIdRef.current
+                          : itemIndex === 0 && !searchFocused
+                      }
+                      onPress={handleChannelPress}
+                      onFocus={handleChannelFocus}
+                    />
+                  );
+                })}
+              </View>
+            )}
+            ListEmptyComponent={
+              isLoading ? (
+                <Focusable hasTVPreferredFocus={!searchFocused} style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }} ringOnFocus={false}>
+                  <ActivityIndicator color={THEME.colors.primary} size="large" />
+                  <Text style={[S.loadingText, { marginTop: 10 }]}>Loading channels...</Text>
+                </Focusable>
+              ) : (
                 <View style={S.emptyState}>
                   <Ionicons name="tv-outline" size={64} color="rgba(255,255,255,0.08)" />
                   <Text style={S.emptyTitle}>No Channels Found</Text>
@@ -548,36 +586,24 @@ export default function LiveTVScreen() {
                     {searchQuery ? "Try a different search term" : "No channels in this category"}
                   </Text>
                 </View>
-              }
-              ListFooterComponent={
-                loadingMore && filteredChannels.length > 0 ? (
-                  <View style={S.loadingMore}>
-                    <ActivityIndicator color={THEME.colors.primary} size="small" />
-                    <Text style={S.loadingMoreText}>Loading more...</Text>
-                  </View>
-                ) : hasMore && filteredChannels.length > 0 ? (
-                  <View style={S.loadMoreFooter}>
-                    <Focusable
-                      onPress={onEndReached}
-                      ringOnFocus={false}
-                      focusStyle={S.loadMoreBtnFocused}
-                      style={S.loadMoreBtn}
-                    >
-                      <Ionicons name="chevron-down" size={ps(1.4)} color="#fff" />
-                      <Text style={S.loadMoreBtnText}>LOAD MORE</Text>
-                    </Focusable>
-                  </View>
-                ) : null
-              }
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={onRefresh}
-                  tintColor={THEME.colors.primary}
-                />
-              }
-            />
-          )}
+              )
+            }
+            ListFooterComponent={
+              loadingMore && filteredChannels.length > 0 ? (
+                <View style={S.loadingMore}>
+                  <ActivityIndicator color={THEME.colors.primary} size="small" />
+                  <Text style={S.loadingMoreText}>Loading more...</Text>
+                </View>
+              ) : null
+            }
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={THEME.colors.primary}
+              />
+            }
+          />
         </FocusGroup>
       </View>
     </View>

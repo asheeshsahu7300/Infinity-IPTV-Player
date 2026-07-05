@@ -487,7 +487,7 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
           <View style={S.modalLeft}>
             <Text style={S.modalTitle} numberOfLines={2}>{selectedItem?.name}</Text>
             <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-              {selectedItem?.description || "Custom"}
+              {selectedItem?.description || "No description available for this content."}
             </Text>
             <View style={S.modalMetaRow}>
               {selectedItem?.rating ? (

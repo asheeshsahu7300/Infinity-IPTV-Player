@@ -126,7 +126,7 @@ const SeriesItem = React.memo(function SeriesItem({
   onFavoritePress,
   isFavorite,
   itemWidth,
-  autoFocus,
+  isFocusedItem,
 }: {
   item: Series;
   onPress: (item: Series) => void;
@@ -134,7 +134,7 @@ const SeriesItem = React.memo(function SeriesItem({
   onFavoritePress: (item: Series) => void;
   isFavorite: boolean;
   itemWidth: number;
-  autoFocus?: boolean;
+  isFocusedItem?: boolean;
 }) {
   const handlePress = useCallback(() => {
     onPress(item);
@@ -147,13 +147,16 @@ const SeriesItem = React.memo(function SeriesItem({
   const handleFavoritePress = useCallback(() => {
     onFavoritePress(item);
   }, [onFavoritePress, item]);
+
+
+
   return (
     <View style={{ width: itemWidth, padding: pw(1), overflow: "visible" }}>
       <Focusable
         onPress={handlePress}
         onFocus={handleFocus}
         onLongPress={handleFavoritePress}
-        hasTVPreferredFocus={autoFocus}
+        hasTVPreferredFocus={isFocusedItem}
         ringOnFocus={false}
       >
         {(focused) => (
@@ -257,8 +260,15 @@ const pickYear = (v: any) => {
   return match ? match[0] : s;
 };
 
-const pickDescription = (v: any) =>
-  v?.description ?? v?.descr ?? v?.plot ?? v?.info ?? v?.storyline ?? v?.short_description ?? "";
+const pickDescription = (v: any) => {
+  const desc = v?.description ?? v?.descr ?? v?.plot ?? v?.info ?? v?.storyline ?? v?.short_description ?? "";
+  if (!desc) return "No description available for this content.";
+  const lower = String(desc).trim().toLowerCase();
+  if (lower === "na" || lower === "n/a" || lower === "null" || lower === "undefined" || lower === "") {
+    return "No description available for this content.";
+  }
+  return String(desc).trim();
+};
 
 // ─────────────────────────────────────────────
 // Main Screen
@@ -310,9 +320,8 @@ export default function SeriesScreen() {
 
 
 
-  const PAGE_SIZE = 28;
-
   const numColumns = isTV ? 5 : (SCREEN_WIDTH_VAL >= 768 ? 4 : 3);
+  const PAGE_SIZE = numColumns * Math.ceil(28 / numColumns);
   const SIDEBAR_WIDTH_VAL = isTV ? 240 : 200;
   // The FlatList's contentContainerStyle (S.list) adds pw(1) horizontal
   // padding on each side. Subtract that plus a small safety margin and
@@ -474,41 +483,67 @@ export default function SeriesScreen() {
   const handleSeriesFocus = useCallback((item: Series) => {
     setFocusedImage(item.logo || null);
     focusedIdRef.current = String(item.id);
+
+    if (flatListRef.current) {
+      const data = flatListRef.current.props.data as any[];
+      if (data && data.length > 0) {
+        let foundNearEnd = false;
+        const checkCount = Math.min(3, data.length);
+        for (let i = data.length - checkCount; i < data.length; i++) {
+          if (data[i].items?.some((s: Series) => s.id === item.id)) {
+            foundNearEnd = true;
+            break;
+          }
+        }
+        if (foundNearEnd && flatListRef.current.props.onEndReached) {
+          flatListRef.current.props.onEndReached({ distanceFromEnd: 0 });
+        }
+      }
+    }
   }, []);
 
   // After a refresh/reset, scroll the list back to the previously focused item
   const restoreFocusPosition = useCallback((items: Series[]) => {
     if (!focusedIdRef.current || !flatListRef.current) return;
-    // With multi-column grids, scrollToIndex needs the flat index
+    // With chunked rows, scrollToIndex needs the row index
     const idx = items.findIndex(s => String(s.id) === focusedIdRef.current);
     if (idx > 0) {
+      const rowIndex = Math.floor(idx / numColumns);
       setTimeout(() => {
         try {
-          flatListRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.3 });
+          flatListRef.current?.scrollToIndex({ index: rowIndex, animated: false, viewPosition: 0.3 });
         } catch { /* ignore if out of range */ }
       }, 120);
     }
-  }, []);
+  }, [numColumns]);
 
   const handleFavoritePress = useCallback((item: Series) => {
     toggleFavorite("series", item.id);
   }, [toggleFavorite]);
 
-  const renderSeriesItem = useCallback(({ item, index }: { item: Series; index: number }) => (
-    <SeriesItem
-      item={item}
-      onPress={handleSeriesPress}
-      onFocus={handleSeriesFocus}
-      onFavoritePress={handleFavoritePress}
-      isFavorite={favorites.series.includes(item.id)}
-      itemWidth={itemWidth}
-      autoFocus={
-        focusedIdRef.current
-          ? String(item.id) === focusedIdRef.current
-          : index === 0 && !searchFocused
-      }
-    />
-  ), [favorites.series, itemWidth, searchFocused, handleSeriesPress]);
+  const renderRow = useCallback(({ item: row, index: rowIndex }: { item: { id: string; items: Series[] }; index: number }) => (
+    <View style={{ flexDirection: "row" }}>
+      {row.items.map((seriesItem, colIndex) => {
+        const itemIndex = rowIndex * numColumns + colIndex;
+        return (
+          <SeriesItem
+            key={seriesItem.id}
+            item={seriesItem}
+            onPress={() => handleSeriesPress(seriesItem)}
+            onFocus={handleSeriesFocus}
+            onFavoritePress={handleFavoritePress}
+            isFavorite={favorites.series.includes(seriesItem.id)}
+            itemWidth={itemWidth}
+            isFocusedItem={
+              focusedIdRef.current
+                ? String(seriesItem.id) === focusedIdRef.current
+                : itemIndex === 0 && !searchFocused
+            }
+          />
+        );
+      })}
+    </View>
+  ), [favorites.series, itemWidth, searchFocused, handleSeriesPress, numColumns]);
 
 
 
@@ -573,6 +608,17 @@ export default function SeriesScreen() {
     // Default: return the category-filtered and paginated items
     return series;
   }, [series, debouncedQuery, isXtreamOrM3U, searchResults]);
+
+  const chunkedSeries = useMemo(() => {
+    const chunks = [];
+    for (let i = 0; i < filteredSeries.length; i += numColumns) {
+      chunks.push({
+        id: `row-${i}`,
+        items: filteredSeries.slice(i, i + numColumns),
+      });
+    }
+    return chunks;
+  }, [filteredSeries, numColumns]);
 
   const sidebarCategories: Category[] = [
     { id: "all", name: "All Series", type: "series" },
@@ -647,87 +693,57 @@ export default function SeriesScreen() {
           />
         </FocusGroup>
         <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapUp={trappingFocus}>
-          {isLoading && series.length === 0 ? (
-            <View style={S.loadingCenter}>
-              <ActivityIndicator color={THEME.colors.primary} size="large" />
-              <Text style={S.loadingText}>Loading series library...</Text>
-            </View>
-          ) : (
-            <FlatList
-              ref={flatListRef}
-              onScrollToIndexFailed={() => {}}
-              data={filteredSeries}
-              renderItem={renderSeriesItem}
-              keyExtractor={(item) => String(item.id)}
-              numColumns={numColumns}
-              key={`series-grid-${numColumns}`}
-              contentContainerStyle={S.list}
-              removeClippedSubviews={false}
-
-              initialNumToRender={numColumns * 6}
-              maxToRenderPerBatch={numColumns * 6}
-              windowSize={11}
-              onEndReached={() => {
-                if (isLoading || loadingMore || !hasMore || debouncedQuery) return;
-                trapFocusBriefly();
-                if (isXtreamOrM3U) {
-                  // Grow the slice from the cached full list — no network.
-                  const nextPage = page + 1;
-                  const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
-                  setSeries(sliced);
-                  setPage(nextPage);
-                  setHasMore(fullListRef.current.length > sliced.length);
-                } else {
-                  loadSeries(selectedCategory, page + 1);
-                }
-              }}
-              onEndReachedThreshold={1.5}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
-              ListEmptyComponent={
-                isLoading ? (
-                  <View style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }}>
-                    <ActivityIndicator color={THEME.colors.primary} size="large" />
-                    <Text style={[S.loadingText, { marginTop: 10 }]}>Searching...</Text>
-                  </View>
-                ) : (
-                  <View style={S.emptyState}>
-                    <Ionicons name="tv-outline" size={ps(4)} color="rgba(255,255,255,0.05)" />
-                    <Text style={S.emptyTitle}>No Series Available</Text>
-                  </View>
-                )
+          <FlatList
+            ref={flatListRef}
+            data={chunkedSeries}
+            renderItem={renderRow}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={[S.list, (isLoading || chunkedSeries.length === 0) && { flexGrow: 1 }]}
+            removeClippedSubviews={false}
+            extraData={filteredSeries.length}
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            windowSize={5}
+            updateCellsBatchingPeriod={50}
+            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+            onEndReached={() => {
+              if (isLoading || loadingMore || !hasMore || debouncedQuery) return;
+              trapFocusBriefly();
+              if (isXtreamOrM3U) {
+                // Grow the slice from the cached full list — no network.
+                const nextPage = page + 1;
+                const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
+                setSeries(sliced);
+                setPage(nextPage);
+                setHasMore(fullListRef.current.length > sliced.length);
+              } else {
+                loadSeries(selectedCategory, page + 1);
               }
-              ListFooterComponent={
-                loadingMore && filteredSeries.length > 0 ? (
-                  <View style={{ width: "100%", paddingVertical: ph(3), alignItems: "center", flexDirection: "row", justifyContent: "center", gap: pw(1) }}>
-                    <ActivityIndicator color={THEME.colors.primary} size="small" />
-                    <Text style={{ color: "rgba(255,255,255,0.3)", fontSize: ps(0.9) }}>Loading more...</Text>
-                  </View>
-                ) : (hasMore && filteredSeries.length > 0 && !debouncedQuery) ? (
-                  <View style={S.loadMoreFooter}>
-                    <Focusable
-                      onPress={() => {
-                        const nextPage = page + 1;
-                        if (isXtreamOrM3U) {
-                          const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
-                          setSeries(sliced);
-                          setPage(nextPage);
-                          setHasMore(fullListRef.current.length > sliced.length);
-                        } else {
-                          loadSeries(selectedCategory, nextPage);
-                        }
-                      }}
-                      ringOnFocus={false}
-                      focusStyle={S.loadMoreBtnFocused}
-                      style={S.loadMoreBtn}
-                    >
-                      <Ionicons name="chevron-down" size={ps(1.4)} color="#fff" />
-                      <Text style={S.loadMoreBtnText}>LOAD MORE</Text>
-                    </Focusable>
-                  </View>
-                ) : null
-              }
-            />
-          )}
+            }}
+            onEndReachedThreshold={0.5}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
+            ListEmptyComponent={
+              isLoading ? (
+                <Focusable hasTVPreferredFocus={!searchFocused} style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }} ringOnFocus={false}>
+                  <ActivityIndicator color={THEME.colors.primary} size="large" />
+                  <Text style={[S.loadingText, { marginTop: 10 }]}>Loading series library...</Text>
+                </Focusable>
+              ) : (
+                <View style={S.emptyState}>
+                  <Ionicons name="tv-outline" size={ps(4)} color="rgba(255,255,255,0.05)" />
+                  <Text style={S.emptyTitle}>No Series Available</Text>
+                </View>
+              )
+            }
+            ListFooterComponent={
+              loadingMore && filteredSeries.length > 0 ? (
+                <View style={{ width: "100%", paddingVertical: ph(3), alignItems: "center", flexDirection: "row", justifyContent: "center", gap: pw(1) }}>
+                  <ActivityIndicator color={THEME.colors.primary} size="small" />
+                  <Text style={{ color: "rgba(255,255,255,0.3)", fontSize: ps(0.9) }}>Loading more...</Text>
+                </View>
+              ) : null
+            }
+          />
         </FocusGroup>
       </View>
     </View>
