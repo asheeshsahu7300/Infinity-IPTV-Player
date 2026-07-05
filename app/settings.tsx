@@ -350,14 +350,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <View style={S.footer}>
-          <Text style={S.footerText}>
-            IPTV HUB SYSTEM INTERFACE
-          </Text>
-          <Text style={S.footerSubtext}>
-            PRECISION ETHEREAL DESIGN v3
-          </Text>
-        </View>
+
       </ScrollView>
     </View>
   );

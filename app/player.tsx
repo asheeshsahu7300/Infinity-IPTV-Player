@@ -12,6 +12,7 @@ import {
   PanResponder,
   ScrollView,
   BackHandler,
+  findNodeHandle,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -64,6 +65,8 @@ export default function PlayerScreen() {
   }, [isLive]);
   // Core player state
   const [streamUrl, setStreamUrl] = useState(params.url || "");
+  const [seekBarNode, setSeekBarNode] = useState<number | undefined>(undefined);
+  const seekBarRef = useRef<any>(null);
   const [showControls, setShowControls] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -133,6 +136,12 @@ export default function PlayerScreen() {
   useEffect(() => { showAudioModalRef.current = showAudioModal; }, [showAudioModal]);
   useEffect(() => { showSubtitleModalRef.current = showSubtitleModal; }, [showSubtitleModal]);
   useEffect(() => { seekBarFocusedRef.current = seekBarFocused; }, [seekBarFocused]);
+
+  useEffect(() => {
+    if (showControls && seekBarRef.current) {
+      setSeekBarNode(findNodeHandle(seekBarRef.current) ?? undefined);
+    }
+  }, [showControls]);
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -688,6 +697,9 @@ export default function PlayerScreen() {
                     </View>
                     {/* Seekable progress bar — focusable on TV for D-pad scrub */}
                     <Focusable
+                      ref={seekBarRef}
+                      nextFocusLeft={seekBarNode}
+                      nextFocusRight={seekBarNode}
                       ringOnFocus={false}
                       focusStyle={S.progressBarFocused}
                       style={S.progressBarWrapper}

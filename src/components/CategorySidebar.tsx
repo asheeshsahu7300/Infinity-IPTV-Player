@@ -136,8 +136,6 @@ const CategoryItem = React.memo(function CategoryItem({
   onFocus: (index: number) => void;
   index: number;
 }) {
-  const iconData = useMemo(() => getCategoryIcon(item.name), [item.name]);
-  const IconLib = iconData.lib;
 
   return (
     <View style={[S.itemWrapper, { overflow: "visible" }]}>
@@ -173,13 +171,6 @@ const CategoryItem = React.memo(function CategoryItem({
                 <View style={S.focusIndicatorBar} />
               )}
               <View style={[S.itemInner, { paddingLeft: focused ? pw(0.5) : 0 }]}>
-                <View style={S.iconWrapper}>
-                  <IconLib
-                    name={iconData.name}
-                    size={ps(1.3)}
-                    color={isActive || focused ? "#fff" : "rgba(255,255,255,0.3)"}
-                  />
-                </View>
                 <Text
                   style={[
                     S.itemText,

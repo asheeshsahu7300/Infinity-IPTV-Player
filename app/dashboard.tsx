@@ -361,7 +361,6 @@ export default function DashboardScreen() {
           <Text style={S.heroDesc}>Access thousands of Indian channels, global movies and exclusive series directly on your screen.</Text>
           <View style={S.heroButtons}>
             <HeroPill icon="search" text="Search Content" autoFocus onPress={() => router.push("/search")} />
-            <HeroPill icon="settings" text="Preferences" onPress={() => router.push("/settings")} />
           </View>
         </View>
 
