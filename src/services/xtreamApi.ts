@@ -81,44 +81,42 @@ export class XtreamApi {
     page: number = 1,
     pageSize: number = 100
   ) {
-    const cacheKey = this.getCacheKey(
-      "live_channels",
-      `${categoryId || "all"}:${page}`
-    );
+    const rawCacheKey = this.getCacheKey("raw_live_streams");
 
-    return requestManager.request(cacheKey, async () => {
-      const cached = await cacheManager.get<any[]>(cacheKey);
+    const rows = await requestManager.request(rawCacheKey, async () => {
+      const cached = await cacheManager.get<any[]>(rawCacheKey);
       if (cached) return cached;
 
       const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_live_streams`;
       const res = await requestManager.axiosWithRetry<any[]>({
         method: "get",
         url,
-        timeout: 15000,
+        timeout: 60000,
       });
 
-      let rows = res.data || [];
-
-      if (categoryId && categoryId !== "all") {
-        rows = rows.filter((c: any) => c.category_id == categoryId);
-      }
-
-      // Pagination
-      const start = (page - 1) * pageSize;
-      const paginatedRows = rows.slice(start, start + pageSize);
-
-      const channels = paginatedRows.map((c: any) => ({
-        id: c.stream_id,
-        name: c.name,
-        logo: c.stream_icon,
-        categoryId: c.category_id,
-        streamUrl: this.builditvUrl(c.stream_id),
-        epgId: c.epg_channel_id,
-      }));
-
-      await cacheManager.set(cacheKey, channels, CACHE_TTL.CHANNELS);
-      return channels;
+      const data = res.data || [];
+      await cacheManager.set(rawCacheKey, data, CACHE_TTL.CHANNELS);
+      return data;
     });
+
+    let filteredRows = rows;
+    if (categoryId && categoryId !== "all") {
+      filteredRows = rows.filter((c: any) => c.category_id == categoryId);
+    }
+
+    const start = (page - 1) * pageSize;
+    const paginatedRows = filteredRows.slice(start, start + pageSize);
+
+    const channels = paginatedRows.map((c: any) => ({
+      id: c.stream_id,
+      name: c.name,
+      logo: c.stream_icon,
+      categoryId: c.category_id,
+      streamUrl: this.builditvUrl(c.stream_id),
+      epgId: c.epg_channel_id,
+    }));
+
+    return channels;
   }
 
   // ============================================================
@@ -157,47 +155,45 @@ export class XtreamApi {
     page: number = 1,
     pageSize: number = 50
   ) {
-    const cacheKey = this.getCacheKey(
-      "vod_items",
-      `${categoryId || "all"}:${page}`
-    );
+    const rawCacheKey = this.getCacheKey("raw_vod_streams");
 
-    return requestManager.request(cacheKey, async () => {
-      const cached = await cacheManager.get<any[]>(cacheKey);
+    const rows = await requestManager.request(rawCacheKey, async () => {
+      const cached = await cacheManager.get<any[]>(rawCacheKey);
       if (cached) return cached;
 
       const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_vod_streams`;
       const res = await requestManager.axiosWithRetry<any[]>({
         method: "get",
         url,
-        timeout: 15000,
+        timeout: 60000,
       });
 
-      let rows = res.data || [];
-
-      if (categoryId && categoryId !== "all") {
-        rows = rows.filter((v: any) => v.category_id == categoryId);
-      }
-
-      // Pagination
-      const start = (page - 1) * pageSize;
-      const paginatedRows = rows.slice(start, start + pageSize);
-
-      const items = paginatedRows.map((v: any) => ({
-        id: v.stream_id,
-        name: v.name,
-        logo: v.stream_icon,
-        categoryId: v.category_id,
-        streamUrl: this.buildMovieUrl(v.stream_id, v.container_extension),
-        description: v.plot || "No description available for this content.",
-        year: v.year,
-        rating: v.rating,
-        duration: v.duration,
-      }));
-
-      await cacheManager.set(cacheKey, items, CACHE_TTL.VOD);
-      return items;
+      const data = res.data || [];
+      await cacheManager.set(rawCacheKey, data, CACHE_TTL.VOD);
+      return data;
     });
+
+    let filteredRows = rows;
+    if (categoryId && categoryId !== "all") {
+      filteredRows = rows.filter((v: any) => v.category_id == categoryId);
+    }
+
+    const start = (page - 1) * pageSize;
+    const paginatedRows = filteredRows.slice(start, start + pageSize);
+
+    const items = paginatedRows.map((v: any) => ({
+      id: v.stream_id,
+      name: v.name,
+      logo: v.stream_icon,
+      categoryId: v.category_id,
+      streamUrl: this.buildMovieUrl(v.stream_id, v.container_extension),
+      description: v.plot || "No description available for this content.",
+      year: v.year,
+      rating: v.rating,
+      duration: v.duration,
+    }));
+
+    return items;
   }
 
   // ============================================================
@@ -236,45 +232,43 @@ export class XtreamApi {
     page: number = 1,
     pageSize: number = 50
   ) {
-    const cacheKey = this.getCacheKey(
-      "series_list",
-      `${categoryId || "all"}:${page}`
-    );
+    const rawCacheKey = this.getCacheKey("raw_series");
 
-    return requestManager.request(cacheKey, async () => {
-      const cached = await cacheManager.get<any[]>(cacheKey);
+    const rows = await requestManager.request(rawCacheKey, async () => {
+      const cached = await cacheManager.get<any[]>(rawCacheKey);
       if (cached) return cached;
 
       const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_series`;
       const res = await requestManager.axiosWithRetry<any[]>({
         method: "get",
         url,
-        timeout: 15000,
+        timeout: 60000,
       });
 
-      let rows = res.data || [];
-
-      if (categoryId && categoryId !== "all") {
-        rows = rows.filter((s: any) => s.category_id == categoryId);
-      }
-
-      // Pagination
-      const start = (page - 1) * pageSize;
-      const paginatedRows = rows.slice(start, start + pageSize);
-
-      const series = paginatedRows.map((s: any) => ({
-        id: s.series_id,
-        name: s.name,
-        logo: s.cover,
-        categoryId: s.category_id,
-        description: s.plot || "No description available for this content.",
-        year: s.releaseDate,
-        rating: s.rating,
-      }));
-
-      await cacheManager.set(cacheKey, series, CACHE_TTL.SERIES);
-      return series;
+      const data = res.data || [];
+      await cacheManager.set(rawCacheKey, data, CACHE_TTL.SERIES);
+      return data;
     });
+
+    let filteredRows = rows;
+    if (categoryId && categoryId !== "all") {
+      filteredRows = rows.filter((s: any) => s.category_id == categoryId);
+    }
+
+    const start = (page - 1) * pageSize;
+    const paginatedRows = filteredRows.slice(start, start + pageSize);
+
+    const series = paginatedRows.map((s: any) => ({
+      id: s.series_id,
+      name: s.name,
+      logo: s.cover,
+      categoryId: s.category_id,
+      description: s.plot || "No description available for this content.",
+      year: s.releaseDate,
+      rating: s.rating,
+    }));
+
+    return series;
   }
 
   // ============================================================
@@ -375,11 +369,11 @@ export class XtreamApi {
     const keys = [
       this.getCacheKey("auth"),
       this.getCacheKey("live_categories"),
-      this.getCacheKey("live_channels", `all:1`),
+      this.getCacheKey("raw_live_streams"),
       this.getCacheKey("vod_categories"),
-      this.getCacheKey("vod_items", `all:1`),
+      this.getCacheKey("raw_vod_streams"),
       this.getCacheKey("series_categories"),
-      this.getCacheKey("series_list", `all:1`),
+      this.getCacheKey("raw_series"),
       this.getCacheKey("epg"),
     ];
 

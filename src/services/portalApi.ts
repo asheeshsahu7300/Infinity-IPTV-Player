@@ -286,7 +286,7 @@ export const portalApi = {
     const handshake = await axios.get(hURL, {
       ...rmAcceptHeader,
       headers: headers(mac),
-      timeout: 15000,
+      timeout: 60000,
     });
 
     const token =
@@ -298,7 +298,7 @@ export const portalApi = {
     const profile = await axios.get(pURL, {
       ...rmAcceptHeader,
       headers: headers(mac, token),
-      timeout: 15000,
+      timeout: 60000,
     });
 
     return {
@@ -324,7 +324,7 @@ export const portalApi = {
           refreshed.config.mac ?? "",
           refreshed.config.token ?? ""
         ),
-        timeout: 15000,
+        timeout: 60000,
       });
 
       const rows = extract(res);
@@ -361,7 +361,7 @@ export const portalApi = {
           refreshed.config.mac ?? "",
           refreshed.config.token ?? ""
         ),
-        timeout: 15000,
+        timeout: 60000,
       });
 
       const rows = extract(res);
@@ -395,7 +395,7 @@ export const portalApi = {
           refreshed.config.mac ?? "",
           refreshed.config.token ?? ""
         ),
-        timeout: 15000,
+        timeout: 60000,
       });
 
       const rows = extract(res);
@@ -431,7 +431,7 @@ export const portalApi = {
           refreshed.config.mac ?? "",
           refreshed.config.token ?? ""
         ),
-        timeout: 15000,
+        timeout: 60000,
       });
 
       const rows = extract(res);
@@ -468,7 +468,7 @@ export const portalApi = {
           refreshed.config.mac ?? "",
           refreshed.config.token ?? ""
         ),
-        timeout: 15000,
+        timeout: 60000,
       });
 
       const rows = extract(res);
@@ -504,7 +504,7 @@ export const portalApi = {
           refreshed.config.mac ?? "",
           refreshed.config.token ?? ""
         ),
-        timeout: 15000,
+        timeout: 60000,
       });
 
       const rows = extract(res);
@@ -541,7 +541,7 @@ export const portalApi = {
           refreshed.config.mac ?? "",
           refreshed.config.token ?? ""
         ),
-        timeout: 15000,
+        timeout: 60000,
       });
 
       const rows = extract(res);
@@ -682,7 +682,7 @@ export const portalApi = {
         refreshed.config.mac ?? "",
         refreshed.config.token ?? ""
       ),
-      timeout: 15000,
+      timeout: 60000,
     });
 
     const js = res.data?.js ?? {};
@@ -728,7 +728,7 @@ export const portalApi = {
         refreshed.config.mac ?? "",
         refreshed.config.token ?? ""
       ),
-      timeout: 15000,
+      timeout: 60000,
     });
 
     return extract(res);
@@ -749,7 +749,7 @@ export const portalApi = {
           refreshed.config.mac ?? "",
           refreshed.config.token ?? ""
         ),
-        timeout: 20000,
+        timeout: 60000,
       });
 
       const rows = extract(res);
@@ -797,7 +797,7 @@ export const portalApi = {
           const res = await axios.get(url, {
             ...rmAcceptHeader,
             headers: headers(mac, token),
-            timeout: 15000,
+            timeout: 60000,
           });
           const rows = extract(res);
           const result = rows.map((c: any) => ({
@@ -819,7 +819,7 @@ export const portalApi = {
           const res = await axios.get(url, {
             ...rmAcceptHeader,
             headers: headers(mac, token),
-            timeout: 20000,
+            timeout: 60000,
           });
           const rows = extract(res);
           const result = rows.map((c: any) => ({
@@ -845,7 +845,7 @@ export const portalApi = {
           const res = await axios.get(url, {
             ...rmAcceptHeader,
             headers: headers(mac, token),
-            timeout: 15000,
+            timeout: 60000,
           });
           const rows = extract(res);
           const result = rows.map((c: any) => ({
@@ -866,7 +866,7 @@ export const portalApi = {
           const res = await axios.get(url, {
             ...rmAcceptHeader,
             headers: headers(mac, token),
-            timeout: 15000,
+            timeout: 60000,
           });
           const rows = extract(res);
           const result = rows.map((v: any) => ({
@@ -895,7 +895,7 @@ export const portalApi = {
           const res = await axios.get(url, {
             ...rmAcceptHeader,
             headers: headers(mac, token),
-            timeout: 15000,
+            timeout: 60000,
           });
           const rows = extract(res);
           const result = rows.map((c: any) => ({
@@ -916,7 +916,7 @@ export const portalApi = {
           const res = await axios.get(url, {
             ...rmAcceptHeader,
             headers: headers(mac, token),
-            timeout: 15000,
+            timeout: 60000,
           });
           const rows = extract(res);
           const result = rows.map((v: any) => ({
@@ -942,7 +942,7 @@ export const portalApi = {
           const url = `${base}/portal.php?type=itv&action=epg_info&JsHttpRequest=1-xml`;
           const res = await axios.get(url, {
             headers: headers(mac, token),
-            timeout: 15000,
+            timeout: 60000,
           });
           const js = res.data?.js ?? {};
           const out: any[] = [];
@@ -1045,7 +1045,7 @@ export const portalApi = {
       const liveCategoriesRes = await axios.get(liveCategoriesUrl, {
         ...rmAcceptHeader,
         headers: headers(mac, token),
-        timeout: 15000,
+        timeout: 60000,
       });
       const liveCategoriesRows = extract(liveCategoriesRes);
       const liveCategories = liveCategoriesRows.map((c: any) => ({
@@ -1059,7 +1059,7 @@ export const portalApi = {
       const liveChannelsRes = await axios.get(liveChannelsUrl, {
         ...rmAcceptHeader,
         headers: headers(mac, token),
-        timeout: 20000,
+        timeout: 60000,
       });
       const liveChannelsRows = extract(liveChannelsRes);
       const liveChannels: Channel[] = liveChannelsRows.map((c: any) => ({
@@ -1079,7 +1079,7 @@ export const portalApi = {
       const vodCategoriesRes = await axios.get(vodCategoriesUrl, {
         ...rmAcceptHeader,
         headers: headers(mac, token),
-        timeout: 15000,
+        timeout: 60000,
       });
       const vodCategoriesRows = extract(vodCategoriesRes);
       const vodCategories = vodCategoriesRows.map((c: any) => ({
@@ -1093,7 +1093,7 @@ export const portalApi = {
       const vodItemsRes = await axios.get(vodItemsUrl, {
         ...rmAcceptHeader,
         headers: headers(mac, token),
-        timeout: 15000,
+        timeout: 60000,
       });
       const vodItemsRows = extract(vodItemsRes);
       const vodItems: VODItem[] = vodItemsRows.map((v: any) => ({
@@ -1116,7 +1116,7 @@ export const portalApi = {
       const seriesCategoriesRes = await axios.get(seriesCategoriesUrl, {
         ...rmAcceptHeader,
         headers: headers(mac, token),
-        timeout: 15000,
+        timeout: 60000,
       });
       const seriesCategoriesRows = extract(seriesCategoriesRes);
       const seriesCategories = seriesCategoriesRows.map((c: any) => ({
@@ -1130,7 +1130,7 @@ export const portalApi = {
       const seriesListRes = await axios.get(seriesListUrl, {
         ...rmAcceptHeader,
         headers: headers(mac, token),
-        timeout: 15000,
+        timeout: 60000,
       });
       const seriesListRows = extract(seriesListRes);
       const seriesList: Series[] = seriesListRows.map((v: any) => ({
@@ -1158,7 +1158,7 @@ export const portalApi = {
       const epgUrl = `${base}/portal.php?type=itv&action=epg_info&JsHttpRequest=1-xml`;
       const epgRes = await axios.get(epgUrl, {
         headers: headers(mac, token),
-        timeout: 15000,
+        timeout: 60000,
       });
       const js = epgRes.data?.js ?? {};
       const epgPrograms: EPGProgram[] = [];

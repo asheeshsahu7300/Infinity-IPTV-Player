@@ -54,7 +54,7 @@ export class M3UApi {
           url: this.config.url,
           method: "get",
           responseType: "text",
-          timeout: 30000,
+          timeout: 60000,
           validateStatus: () => true, // handle manually
         });
 
@@ -264,38 +264,27 @@ export class M3UApi {
     page: number = 1,
     pageSize: number = 100
   ) {
-    const cacheKey = this.getCacheKey(
-      "live_channels",
-      `${categoryId || "all"}:${page}`
-    );
+    const rows = await this.load();
+    let items = rows.filter((c) => c.type === "live");
 
-    return requestManager.request(cacheKey, async () => {
-      const cached = await cacheManager.get<any[]>(cacheKey);
-      if (cached) return cached;
+    if (categoryId && categoryId !== "all") {
+      items = items.filter((c) => c.category === categoryId);
+    }
 
-      const rows = await this.load();
-      let items = rows.filter((c) => c.type === "live");
+    // Apply pagination
+    const start = (page - 1) * pageSize;
+    const paginatedItems = items.slice(start, start + pageSize);
 
-      if (categoryId && categoryId !== "all") {
-        items = items.filter((c) => c.category === categoryId);
-      }
+    // 🔥 Normalize to Channel[]
+    const result = paginatedItems.map((c) => ({
+      id: c.id,
+      name: c.name,
+      logo: c.logo ?? undefined,
+      category: c.category,
+      streamUrl: c.streamUrl,
+    }));
 
-      // Apply pagination
-      const start = (page - 1) * pageSize;
-      const paginatedItems = items.slice(start, start + pageSize);
-
-      // 🔥 Normalize to Channel[]
-      const result = paginatedItems.map((c) => ({
-        id: c.id,
-        name: c.name,
-        logo: c.logo ?? undefined,
-        category: c.category,
-        streamUrl: c.streamUrl,
-      }));
-
-      await cacheManager.set(cacheKey, result, CACHE_TTL.CHANNELS);
-      return result;
-    });
+    return result;
   }
 
   // ==================================================
@@ -328,54 +317,43 @@ export class M3UApi {
     page: number = 1,
     pageSize: number = 50
   ) {
-    const cacheKey = this.getCacheKey(
-      "vod_items",
-      `${categoryId || "all"}:${page}`
-    );
+    const rows = await this.load();
+    let items = rows.filter((c) => c.type === "vod");
 
-    return requestManager.request(cacheKey, async () => {
-      const cached = await cacheManager.get<any[]>(cacheKey);
-      if (cached) return cached;
+    if (categoryId && categoryId !== "all") {
+      items = items.filter((v) => v.category === categoryId);
+    }
 
-      const rows = await this.load();
-      let items = rows.filter((c) => c.type === "vod");
+    // Apply pagination
+    const start = (page - 1) * pageSize;
+    const paginatedItems = items.slice(start, start + pageSize);
 
-      if (categoryId && categoryId !== "all") {
-        items = items.filter((v) => v.category === categoryId);
-      }
+    // Attempt to extract year/rating from the title when available
+    const parseYearFromName = (name: string | undefined) => {
+      if (!name) return undefined;
+      const m = name.match(/(19|20)\d{2}/);
+      return m ? m[0] : undefined;
+    };
 
-      // Apply pagination
-      const start = (page - 1) * pageSize;
-      const paginatedItems = items.slice(start, start + pageSize);
+    const parseRatingFromName = (name: string | undefined) => {
+      if (!name) return undefined;
+      // Look for patterns like [7.8], (7.8), - 7.8, 7.8/10
+      const m = name.match(/\b(\d(?:\.\d)?)(?:\/10)?\b/);
+      return m ? m[1] : undefined;
+    };
 
-      // Attempt to extract year/rating from the title when available
-      const parseYearFromName = (name: string | undefined) => {
-        if (!name) return undefined;
-        const m = name.match(/(19|20)\d{2}/);
-        return m ? m[0] : undefined;
-      };
+    const result = paginatedItems.map((v) => ({
+      id: v.id,
+      name: v.name,
+      logo: v.logo ?? undefined,
+      categoryId: v.category,
+      streamUrl: v.streamUrl,
+      description: "No description available for this content.",
+      year: parseYearFromName(v.name),
+      rating: parseRatingFromName(v.name),
+    }));
 
-      const parseRatingFromName = (name: string | undefined) => {
-        if (!name) return undefined;
-        // Look for patterns like [7.8], (7.8), - 7.8, 7.8/10
-        const m = name.match(/\b(\d(?:\.\d)?)(?:\/10)?\b/);
-        return m ? m[1] : undefined;
-      };
-
-      const result = paginatedItems.map((v) => ({
-        id: v.id,
-        name: v.name,
-        logo: v.logo ?? undefined,
-        categoryId: v.category,
-        streamUrl: v.streamUrl,
-        description: "No description available for this content.",
-        year: parseYearFromName(v.name),
-        rating: parseRatingFromName(v.name),
-      }));
-
-      await cacheManager.set(cacheKey, result, CACHE_TTL.VOD);
-      return result;
-    });
+    return result;
   }
 
   // ==================================================
@@ -408,46 +386,35 @@ export class M3UApi {
     page: number = 1,
     pageSize: number = 50
   ) {
-    const cacheKey = this.getCacheKey(
-      "series_list",
-      `${categoryId || "all"}:${page}`
-    );
+    const rows = await this.load();
+    let items = rows.filter((c) => c.type === "series");
 
-    return requestManager.request(cacheKey, async () => {
-      const cached = await cacheManager.get<any[]>(cacheKey);
-      if (cached) return cached;
+    if (categoryId && categoryId !== "all") {
+      items = items.filter((v) => v.category === categoryId);
+    }
 
-      const rows = await this.load();
-      let items = rows.filter((c) => c.type === "series");
+    const seriesMap = new Map<string, any>();
 
-      if (categoryId && categoryId !== "all") {
-        items = items.filter((v) => v.category === categoryId);
+    for (const item of items) {
+      const match = item.name.match(/(.*?)(?:[ ._-]*(?:S\d+E\d+|\d+x\d+))/i);
+      const seriesName = match ? match[1].trim() : item.name;
+
+      if (!seriesMap.has(seriesName)) {
+        seriesMap.set(seriesName, {
+          id: seriesName.toLowerCase().replace(/[^a-z0-9]/g, "_"),
+          name: seriesName,
+          logo: item.logo,
+          categoryId: item.category,
+        });
       }
+    }
 
-      const seriesMap = new Map<string, any>();
+    // Apply pagination
+    const seriesArray = [...seriesMap.values()];
+    const start = (page - 1) * pageSize;
+    const paginatedSeries = seriesArray.slice(start, start + pageSize);
 
-      for (const item of items) {
-        const match = item.name.match(/(.*?)(?:[ ._-]*(?:S\d+E\d+|\d+x\d+))/i);
-        const seriesName = match ? match[1].trim() : item.name;
-
-        if (!seriesMap.has(seriesName)) {
-          seriesMap.set(seriesName, {
-            id: seriesName.toLowerCase().replace(/[^a-z0-9]/g, "_"),
-            name: seriesName,
-            logo: item.logo,
-            categoryId: item.category,
-          });
-        }
-      }
-
-      // Apply pagination
-      const seriesArray = [...seriesMap.values()];
-      const start = (page - 1) * pageSize;
-      const paginatedSeries = seriesArray.slice(start, start + pageSize);
-
-      await cacheManager.set(cacheKey, paginatedSeries, CACHE_TTL.SERIES);
-      return paginatedSeries;
-    });
+    return paginatedSeries;
   }
 
   async getSeriesEpisodes(seriesId: string) {
@@ -494,12 +461,7 @@ export class M3UApi {
   async refreshData() {
     // Remove cached keys for first-page/all data
     const keys = [
-      this.getCacheKey("live_categories"),
-      this.getCacheKey("live_channels", `all:1`),
-      this.getCacheKey("vod_categories"),
-      this.getCacheKey("vod_items", `all:1`),
-      this.getCacheKey("series_categories"),
-      this.getCacheKey("series_list", `all:1`),
+      this.getCacheKey("playlist"),
     ];
 
     await Promise.all(keys.map((k) => cacheManager.remove(k).catch(() => { })));
