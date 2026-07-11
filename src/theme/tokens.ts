@@ -35,6 +35,12 @@ export const THEME = {
     // optional TV focus colors
     focusRing: "#FFFFFF",
     focusGlow: "rgba(255, 77, 116, 0.45)",
+
+    // Glassmorphism
+    glassBg: "rgba(255, 255, 255, 0.04)",
+    glassBgFocus: "rgba(255, 255, 255, 0.12)",
+    glassBorder: "rgba(255, 255, 255, 0.18)",
+    glassBorderFocus: "rgba(255, 255, 255, 0.6)",
   },
   spacing: {
     xs: pw(1),

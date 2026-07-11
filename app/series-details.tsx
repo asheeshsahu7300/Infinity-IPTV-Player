@@ -18,6 +18,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import * as IntentLauncher from "expo-intent-launcher";
 
 import { usePortalStore, Season, Episode } from "../src/store/portalStore";
@@ -474,103 +475,97 @@ export default function SeriesDetailsScreen() {
             }
           />
         )}
-      </FocusGroup>
-
-      {/* --- Playback Overlay --- */}
-      <Overlay
-        visible={playModalVisible}
-        onClose={() => setPlayModalVisible(false)}
-        contentStyle={S.modalContainer}
-      >
-        <View style={isTV ? S.modalTVContent : null}>
-          <View style={S.modalLeft}>
-            <Text style={S.modalTitle} numberOfLines={2}>
-              {`S${currentSeason?.seasonNumber || ""} E${selectedEpisode?.episodeNum || ""} : ${selectedEpisode?.name || ""}`}
-            </Text>
-            <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-              {getDisplayDescription(selectedEpisode?.description) !== "No description available for this content." 
-                ? getDisplayDescription(selectedEpisode?.description) 
-                : getDisplayDescription(params.description)}
-            </Text>
-            <View style={S.modalMetaRow}>
-              {selectedEpisode?.duration && (
-                <View style={S.modalBadge}>
-                  <Ionicons name="time-outline" size={ps(1)} color="#fff" />
-                  <Text style={S.modalBadgeText}>{selectedEpisode.duration}</Text>
+        
+        {/* --- Playback Overlay --- */}
+        <Overlay
+          visible={playModalVisible}
+          onClose={() => setPlayModalVisible(false)}
+          style={{ justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' }}
+          contentStyle={{ width: '100%', maxWidth: '100%', margin: 0, padding: 0 }}
+        >
+          <View style={{ width: '100%', borderTopLeftRadius: ps(3), borderTopRightRadius: ps(3), overflow: 'hidden', borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", borderBottomWidth: 0 }}>
+            {params.logo && (
+              <Image 
+                source={{ uri: params.logo }} 
+                style={StyleSheet.absoluteFillObject} 
+                blurRadius={15} 
+                contentFit="cover" 
+              />
+            )}
+            <LinearGradient 
+              colors={['rgba(15,15,20,0.7)', 'rgba(10,10,15,0.95)', '#050505']} 
+              style={StyleSheet.absoluteFillObject} 
+            />
+            <View style={[isTV ? S.modalTVContent : null, { padding: ps(3) }]}>
+              <View style={S.modalLeft}>
+                <Text style={S.modalTitle} numberOfLines={2}>
+                  {`S${currentSeason?.seasonNumber || ""} E${selectedEpisode?.episodeNum || ""} : ${selectedEpisode?.name || ""}`}
+                </Text>
+                <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
+                  {getDisplayDescription(selectedEpisode?.description) !== "No description available for this content." 
+                    ? getDisplayDescription(selectedEpisode?.description) 
+                    : getDisplayDescription(params.description)}
+                </Text>
+                <View style={S.modalMetaRow}>
+                  {selectedEpisode?.duration && (
+                    <View style={S.modalBadge}>
+                      <Ionicons name="time-outline" size={ps(1)} color="#fff" />
+                      <Text style={S.modalBadgeText}>{selectedEpisode.duration}</Text>
+                    </View>
+                  )}
+                  <View style={S.modalBadge}>
+                    <Ionicons name="film-outline" size={ps(1)} color="#fff" />
+                    <Text style={S.modalBadgeText}>HD Ready</Text>
+                  </View>
                 </View>
-              )}
-              <View style={S.modalBadge}>
-                <Ionicons name="film-outline" size={ps(1)} color="#fff" />
-                <Text style={S.modalBadgeText}>HD Ready</Text>
+              </View>
+
+              <View style={S.modalRight}>
+                <Focusable
+                  hasTVPreferredFocus
+                  ringOnFocus={false}
+                  onPress={() => handleModalAction(false)}
+                  style={S.modalBtnWrapper}
+                >
+                  {(focused) => (
+                    <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                      <BlurView intensity={focused ? 0 : 40} tint="light" style={[S.modalBtnPrimaryInner, focused && { backgroundColor: "#fff" }]}>
+                        <Text style={[S.modalBtnPrimaryText, focused && { color: "#000" }]}>WATCH NOW</Text>
+                      </BlurView>
+                    </View>
+                  )}
+                </Focusable>
+                <Focusable
+                  ringOnFocus={false}
+                  onPress={() => handleModalAction(true)}
+                  style={S.modalBtnWrapper}
+                >
+                  {(focused) => (
+                    <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                      <BlurView intensity={focused ? 0 : 40} tint="dark" style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
+                        <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>EXTERNAL PLAYER</Text>
+                      </BlurView>
+                    </View>
+                  )}
+                </Focusable>
+                <Focusable
+                  ringOnFocus={false}
+                  onPress={() => setPlayModalVisible(false)}
+                  style={S.modalBtnWrapper}
+                >
+                  {(focused) => (
+                    <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                      <BlurView intensity={focused ? 0 : 40} tint="dark" style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
+                        <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>CLOSE</Text>
+                      </BlurView>
+                    </View>
+                  )}
+                </Focusable>
               </View>
             </View>
           </View>
-
-          <View style={S.modalRight}>
-            <Focusable
-              hasTVPreferredFocus
-              ringOnFocus={false}
-              onPress={() => handleModalAction(false)}
-              style={S.modalBtnWrapper}
-            >
-              {(focused) => (
-                <LinearGradient
-                  colors={[THEME.colors.primary, THEME.colors.secondary]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnPrimaryInner}>
-                    <Text style={S.modalBtnPrimaryText}>WATCH NOW</Text>
-                  </View>
-                </LinearGradient>
-              )}
-            </Focusable>
-            <Focusable
-              ringOnFocus={false}
-              onPress={() => handleModalAction(true)}
-              style={S.modalBtnWrapper}
-            >
-              {(focused) => (
-                <LinearGradient
-                  colors={focused
-                    ? [THEME.colors.primary, THEME.colors.secondary]
-                    : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnSecondaryInner}>
-                    <Text style={S.modalBtnSecondaryText}>EXTERNAL PLAYER</Text>
-                  </View>
-                </LinearGradient>
-              )}
-            </Focusable>
-            <Focusable
-              ringOnFocus={false}
-              onPress={() => setPlayModalVisible(false)}
-              style={S.modalBtnWrapper}
-            >
-              {(focused) => (
-                <LinearGradient
-                  colors={focused
-                    ? [THEME.colors.primary, THEME.colors.secondary]
-                    : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnSecondaryInner}>
-                    <Text style={S.modalBtnSecondaryText}>CLOSE</Text>
-                  </View>
-                </LinearGradient>
-              )}
-            </Focusable>
-          </View>
-        </View>
-      </Overlay>
+        </Overlay>
+      </FocusGroup>
     </View>
   );
 }
@@ -741,21 +736,23 @@ const S = StyleSheet.create({
   modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "700" },
   // ── Play-modal buttons: gradient acts as the border ──
-  modalBtnWrapper: {
-    borderRadius: 12,
-    overflow: "visible",
-  },
-  modalBtnBorder: {
-    padding: 1.5,
-    borderRadius: 12,
-  },
+  modalBtnWrapper: { borderRadius: 16, overflow: "visible" },
+  modalBtnBorder: { padding: 1, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.15)" },
   modalBtnBorderFocused: {
-    padding: 2.5,
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.7,
-    shadowRadius: 14,
-    elevation: 14,
+    padding: 1,
+    borderColor: "#fff",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
   modalBtnPrimaryInner: {
     paddingVertical: 10,
@@ -764,6 +761,7 @@ const S = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
+    overflow: "hidden",
   },
   modalBtnSecondaryInner: {
     paddingVertical: 10,
@@ -772,6 +770,7 @@ const S = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0d0d12",
+    overflow: "hidden",
   },
   modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1 },
   modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5 },

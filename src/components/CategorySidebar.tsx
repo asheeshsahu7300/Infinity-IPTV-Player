@@ -7,6 +7,7 @@ import {
   Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { THEME, pw, ph, ps } from "../theme/tokens";
 import { Focusable } from "../tv";
@@ -32,73 +33,62 @@ const S = StyleSheet.create({
     paddingTop: ph(1),
   },
   sidebarHeader: {
-    paddingHorizontal: pw(3),
+    paddingHorizontal: pw(2),
     paddingVertical: ph(1.2),
     marginBottom: ph(1),
   },
   sidebarLabel: {
-    color: "rgba(255,255,255,0.25)",
+    color: "rgba(255,255,255,0.4)",
     fontSize: ps(0.95),
     fontWeight: "900",
     letterSpacing: 2,
   },
   listContent: {
-    paddingHorizontal: pw(1),
+    paddingHorizontal: pw(1.5),
     paddingBottom: ph(4),
   },
   itemWrapper: {
-    marginBottom: ph(0.8),
+    marginBottom: ph(1),
   },
   itemContainer: {
-    height: ph(6.4),
-    borderTopRightRadius: ps(2),
-    borderBottomRightRadius: ps(2),
+    height: ph(6),
+    borderRadius: ps(2),
     justifyContent: "center",
     paddingLeft: pw(2),
-    overflow: "visible",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "transparent",
   },
-  itemActiveContainer: {
-    // shadow styling if needed
-  },
-  itemGradient: {
-    ...StyleSheet.absoluteFillObject,
-    borderTopRightRadius: ps(2),
-    borderBottomRightRadius: ps(2),
-    justifyContent: "center",
-    paddingLeft: pw(2),
+  itemContainerFocused: {
+    borderColor: "rgba(255,255,255,0.4)",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
   itemInner: {
     flexDirection: "row",
     alignItems: "center",
   },
-  iconWrapper: {
-    marginRight: pw(1.2),
-    width: ps(2),
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "visible",
-  },
   itemText: {
-    color: "rgba(255,255,255,0.45)",
-    fontSize: ps(1.25),
+    color: "rgba(255,255,255,0.5)",
+    fontSize: ps(1.15),
     fontWeight: "600",
     letterSpacing: 0.3,
   },
   itemTextActive: {
     color: "#fff",
-    fontSize: ps(1.35),
+    fontSize: ps(1.25),
     fontWeight: "800",
     letterSpacing: 0.5,
-  },
-  focusIndicatorBar: {
-    position: "absolute",
-    left: 0,
-    top: "22%",
-    bottom: "22%",
-    width: 4,
-    backgroundColor: "#fff",
-    borderTopRightRadius: 2,
-    borderBottomRightRadius: 2,
   },
 });
 
@@ -146,42 +136,29 @@ const CategoryItem = React.memo(function CategoryItem({
         style={{ overflow: "visible" }}
       >
         {(focused) => {
-          const containerStyle = [
-            S.itemContainer,
-            focused && {
-              transform: [{ scale: 1.05 }],
-              backgroundColor: "rgba(255,255,255,0.08)",
-            },
-            isActive && {
-              backgroundColor: "transparent",
-            }
-          ];
-
           return (
-            <View style={containerStyle}>
-              {isActive && (
-                <LinearGradient
-                  colors={[THEME.colors.primary, THEME.colors.secondary]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={S.itemGradient}
-                />
-              )}
-              {focused && (
-                <View style={S.focusIndicatorBar} />
-              )}
+            <BlurView 
+              intensity={isActive ? 50 : (focused ? 30 : 0)} 
+              tint={isActive ? "light" : "dark"} 
+              style={[
+                S.itemContainer, 
+                focused && S.itemContainerFocused,
+                focused && { transform: [{ scale: 1.05 }] }
+              ]}
+            >
               <View style={[S.itemInner, { paddingLeft: focused ? pw(0.5) : 0 }]}>
                 <Text
                   style={[
                     S.itemText,
-                    (isActive || focused) && S.itemTextActive
+                    (isActive || focused) && S.itemTextActive,
+                    isActive && { color: "#000" }
                   ]}
                   numberOfLines={1}
                 >
                   {item.name}
                 </Text>
               </View>
-            </View>
+            </BlurView>
           );
         }}
       </Focusable>

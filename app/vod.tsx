@@ -19,6 +19,7 @@ import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import * as IntentLauncher from "expo-intent-launcher";
 
 import { usePortalStore, VODItem, Category } from "../src/store/portalStore";
@@ -88,60 +89,78 @@ const S = StyleSheet.create({
   cardBorder: {
     padding: 1,
     borderRadius: ps(1.4),
-    backgroundColor: "transparent",
+    backgroundColor: THEME.colors.glassBg,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
   },
   cardBorderFocused: {
-    padding: 2,
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
+    padding: 1,
+    borderColor: THEME.colors.glassBorderFocus,
+    backgroundColor: THEME.colors.glassBgFocus,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
-  vodItem: { backgroundColor: "#161622", borderRadius: ps(1.2), overflow: "hidden" },
-  posterContainer: { width: "100%", aspectRatio: 2 / 3, backgroundColor: "#1c1c2b", overflow: "hidden", borderTopLeftRadius: ps(1.2), borderTopRightRadius: ps(1.2) },
+  vodItem: { flex: 1, backgroundColor: "transparent", borderRadius: ps(1.1), overflow: "hidden" },
+  posterContainer: { flex: 1, backgroundColor: "rgba(255,255,255,0.03)" },
   poster: { width: "100%", height: "100%" },
-  posterPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#1c1c2b" },
+  posterPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.03)" },
   textOverlay: { display: "none" },
-  cardContent: { padding: ps(0.7), backgroundColor: "#161622", borderBottomLeftRadius: ps(1.2), borderBottomRightRadius: ps(1.2) },
+  cardContent: { position: "absolute", bottom: 0, width: "100%", padding: ps(0.8), borderBottomLeftRadius: ps(1.1), borderBottomRightRadius: ps(1.1), overflow: "hidden" },
   vodTitle: { color: "#fff", fontSize: ps(0.95), fontWeight: "700", fontFamily: THEME.fonts.bold },
   metaRow: { flexDirection: "row", alignItems: "center", marginTop: 6, height: ps(1.6) },
-  vodMetaText: { color: "rgba(255,255,255,0.6)", fontSize: ps(0.8), fontWeight: "600", fontFamily: THEME.fonts.medium },
-  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.3)", marginHorizontal: 6 },
-  ratingWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 215, 0, 0.08)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  ratingText: { color: "#FFD700", fontSize: ps(0.8), fontWeight: "700", marginLeft: 3, fontFamily: THEME.fonts.bold },
-  favoriteBtn: { position: "absolute", top: 10, right: 10, backgroundColor: "rgba(0,0,0,0.5)", borderRadius: 10, padding: 6 },
+  vodMetaText: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.8), fontWeight: "600", fontFamily: THEME.fonts.medium },
+  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.4)", marginHorizontal: 6 },
+  ratingWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 215, 0, 0.15)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  ratingText: { color: "#FFD700", fontSize: ps(0.8), fontWeight: "800", marginLeft: 3, fontFamily: THEME.fonts.bold },
+  favoriteBtn: { position: "absolute", top: 10, right: 10, backgroundColor: "rgba(0,0,0,0.4)", borderRadius: 12, padding: 6 },
   loadingCenter: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { color: "rgba(255,255,255,0.4)", marginTop: 15, fontSize: ps(1), fontFamily: THEME.fonts.regular },
+  loadingText: { color: "rgba(255,255,255,0.5)", marginTop: 15, fontSize: ps(1), fontFamily: THEME.fonts.regular },
   emptyState: { flex: 1, justifyContent: "center", alignItems: "center", opacity: 0.5 },
   emptyTitle: { color: "#fff", fontSize: ps(1.2), marginTop: 10, fontFamily: THEME.fonts.bold },
 
   // Modal Styles
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "center", alignItems: "center" },
-  modalContainer: { backgroundColor: "#111", width: isTV ? ps(65) : "92%", borderRadius: 24, padding: ps(2), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
+  modalContainer: { width: isTV ? ps(65) : "92%", borderRadius: 36, padding: ps(2), borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.3)", overflow: "hidden" },
   modalTVContent: { flexDirection: "row" },
   modalLeft: { flex: 1.4, padding: ps(1.5) },
-  modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.015)", padding: ps(2), borderRadius: 20, justifyContent: "center", gap: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" },
+  modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.05)", padding: ps(2), borderRadius: 28, justifyContent: "center", gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.15)" },
   modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", marginBottom: 12, fontFamily: THEME.fonts.bold },
-  modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.95), lineHeight: ps(1.4), marginBottom: 18, fontFamily: THEME.fonts.regular },
+  modalDescription: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.95), lineHeight: ps(1.4), marginBottom: 18, fontFamily: THEME.fonts.regular },
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
-  modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "700", fontFamily: THEME.fonts.bold },
+  modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.1)", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.2)" },
+  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "800", fontFamily: THEME.fonts.bold },
   // ── Play-modal buttons: gradient acts as the border ──
-  modalBtnWrapper: { borderRadius: 12, overflow: "visible" },
-  modalBtnBorder: { padding: 1.5, borderRadius: 12 },
+  modalBtnWrapper: { borderRadius: 16, overflow: "visible" },
+  modalBtnBorder: { padding: 1, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.15)" },
   modalBtnBorderFocused: {
-    padding: 2.5,
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.7,
-    shadowRadius: 14,
-    elevation: 14,
+    padding: 1,
+    borderColor: "#fff",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
-  modalBtnPrimaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
-  modalBtnSecondaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#0d0d12" },
+  modalBtnPrimaryInner: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "transparent", overflow: "hidden" },
+  modalBtnSecondaryInner: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.3)", overflow: "hidden" },
   modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1, fontFamily: THEME.fonts.bold },
-  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5, fontFamily: THEME.fonts.bold },
+  modalBtnSecondaryText: { color: "rgba(255,255,255,0.9)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5, fontFamily: THEME.fonts.bold },
   loadMoreFooter: { paddingVertical: ph(3), alignItems: "center", justifyContent: "center" },
   loadMoreBtn: { flexDirection: "row", alignItems: "center", gap: pw(0.8), paddingHorizontal: pw(3), paddingVertical: ph(1.4), backgroundColor: "rgba(255,255,255,0.06)", borderRadius: ps(1), borderWidth: 2, borderColor: "transparent" },
   loadMoreBtnFocused: { borderColor: "#fff", backgroundColor: THEME.colors.primary, shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 12, elevation: 12 },
@@ -192,23 +211,13 @@ const MovieItem = React.memo(function MovieItem({
         ringOnFocus={false}
       >
         {(focused) => (
-          <LinearGradient
-            colors={focused
-              ? [THEME.colors.primary, THEME.colors.secondary]
-              : ["transparent", "transparent"]
-            }
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+          <View
             style={[
               S.cardBorder,
+              { height: itemWidth * 1.5 }, // Enforce aspect ratio on wrapper
               focused && S.cardBorderFocused,
               focused && {
                 transform: [{ scale: 1.06 }],
-                shadowColor: THEME.colors.primary,
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.6,
-                shadowRadius: 10,
-                elevation: 14,
               }
             ]}
           >
@@ -229,7 +238,7 @@ const MovieItem = React.memo(function MovieItem({
                 )}
               </View>
 
-              <View style={S.cardContent}>
+              <BlurView intensity={focused ? 50 : 30} tint="dark" style={S.cardContent}>
                 <Text style={S.vodTitle} numberOfLines={1}>{item.name}</Text>
                 <View style={S.metaRow}>
                   {item.year ? <Text style={S.vodMetaText}>{item.year}</Text> : null}
@@ -241,9 +250,9 @@ const MovieItem = React.memo(function MovieItem({
                     </View>
                   ) : null}
                 </View>
-              </View>
+              </BlurView>
             </View>
-          </LinearGradient>
+          </View>
         )}
       </Focusable>
     </View>
@@ -819,101 +828,95 @@ export default function VODScreen() {
               ) : null
             }
           />
+          
+          <Overlay
+            visible={playModalVisible}
+            onClose={() => setPlayModalVisible(false)}
+            style={{ justifyContent: 'flex-end', backgroundColor: 'transparent' }}
+            contentStyle={{ width: '100%', maxWidth: '100%', margin: 0, padding: 0 }}
+          >
+            <BlurView intensity={80} tint="dark" style={{ width: '100%', borderTopLeftRadius: 36, borderTopRightRadius: 36, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.25)", borderBottomWidth: 0 }}>
+              {selectedVod?.logo && (
+                <Image 
+                  source={{ uri: selectedVod.logo }} 
+                  style={[StyleSheet.absoluteFillObject, { opacity: 0.4 }]} 
+                  blurRadius={40} 
+                  contentFit="cover" 
+                />
+              )}
+              <LinearGradient 
+                colors={['rgba(255,255,255,0.1)', 'rgba(0,0,0,0.5)', '#000']} 
+                style={StyleSheet.absoluteFillObject} 
+              />
+              <View style={[isTV ? S.modalTVContent : null, { padding: ps(4) }]}>
+                <View style={S.modalLeft}>
+                  <Text style={S.modalTitle} numberOfLines={2}>{selectedVod?.name}</Text>
+                  <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
+                    {getDisplayDescription(selectedVod?.description)}
+                  </Text>
+                  <View style={S.modalMetaRow}>
+                    {selectedVod?.rating && (
+                      <View style={S.modalBadge}>
+                        <Ionicons name="star" size={ps(1)} color="#FFD700" />
+                        <Text style={S.modalBadgeText}>{selectedVod.rating}</Text>
+                      </View>
+                    )}
+                    {selectedVod?.year && (
+                      <View style={S.modalBadge}>
+                        <Ionicons name="calendar-outline" size={ps(1)} color="#fff" />
+                        <Text style={S.modalBadgeText}>{selectedVod.year}</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                <View style={S.modalRight}>
+                  <Focusable
+                    hasTVPreferredFocus
+                    ringOnFocus={false}
+                    onPress={() => handleModalAction(false)}
+                    style={S.modalBtnWrapper}
+                  >
+                    {(focused) => (
+                      <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                        <BlurView intensity={focused ? 0 : 40} tint="light" style={[S.modalBtnPrimaryInner, focused && { backgroundColor: "#fff" }]}>
+                          <Text style={[S.modalBtnPrimaryText, focused && { color: "#000" }]}>WATCH NOW</Text>
+                        </BlurView>
+                      </View>
+                    )}
+                  </Focusable>
+                  <Focusable
+                    ringOnFocus={false}
+                    onPress={() => handleModalAction(true)}
+                    style={S.modalBtnWrapper}
+                  >
+                    {(focused) => (
+                      <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                        <BlurView intensity={focused ? 0 : 40} tint="dark" style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
+                          <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>EXTERNAL PLAYER</Text>
+                        </BlurView>
+                      </View>
+                    )}
+                  </Focusable>
+                  <Focusable
+                    ringOnFocus={false}
+                    onPress={() => setPlayModalVisible(false)}
+                    style={S.modalBtnWrapper}
+                  >
+                    {(focused) => (
+                      <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                        <BlurView intensity={focused ? 0 : 40} tint="dark" style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
+                          <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>CLOSE</Text>
+                        </BlurView>
+                      </View>
+                    )}
+                  </Focusable>
+                </View>
+              </View>
+            </BlurView>
+          </Overlay>
         </FocusGroup>
       </View>
-
-      <Overlay
-        visible={playModalVisible}
-        onClose={() => setPlayModalVisible(false)}
-        contentStyle={S.modalContainer}
-      >
-        <View style={isTV ? S.modalTVContent : null}>
-          <View style={S.modalLeft}>
-            <Text style={S.modalTitle} numberOfLines={2}>{selectedVod?.name}</Text>
-            <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-              {getDisplayDescription(selectedVod?.description)}
-            </Text>
-            <View style={S.modalMetaRow}>
-              {selectedVod?.rating && (
-                <View style={S.modalBadge}>
-                  <Ionicons name="star" size={ps(1)} color="#FFD700" />
-                  <Text style={S.modalBadgeText}>{selectedVod.rating}</Text>
-                </View>
-              )}
-              {selectedVod?.year && (
-                <View style={S.modalBadge}>
-                  <Ionicons name="calendar-outline" size={ps(1)} color="#fff" />
-                  <Text style={S.modalBadgeText}>{selectedVod.year}</Text>
-                </View>
-              )}
-            </View>
-          </View>
-
-          <View style={S.modalRight}>
-            <Focusable
-              hasTVPreferredFocus
-              ringOnFocus={false}
-              onPress={() => handleModalAction(false)}
-              style={S.modalBtnWrapper}
-            >
-              {(focused) => (
-                <LinearGradient
-                  colors={[THEME.colors.primary, THEME.colors.secondary]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnPrimaryInner}>
-                    <Text style={S.modalBtnPrimaryText}>WATCH NOW</Text>
-                  </View>
-                </LinearGradient>
-              )}
-            </Focusable>
-            <Focusable
-              ringOnFocus={false}
-              onPress={() => handleModalAction(true)}
-              style={S.modalBtnWrapper}
-            >
-              {(focused) => (
-                <LinearGradient
-                  colors={focused
-                    ? [THEME.colors.primary, THEME.colors.secondary]
-                    : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnSecondaryInner}>
-                    <Text style={S.modalBtnSecondaryText}>EXTERNAL PLAYER</Text>
-                  </View>
-                </LinearGradient>
-              )}
-            </Focusable>
-            <Focusable
-              ringOnFocus={false}
-              onPress={() => setPlayModalVisible(false)}
-              style={S.modalBtnWrapper}
-            >
-              {(focused) => (
-                <LinearGradient
-                  colors={focused
-                    ? [THEME.colors.primary, THEME.colors.secondary]
-                    : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnSecondaryInner}>
-                    <Text style={S.modalBtnSecondaryText}>CLOSE</Text>
-                  </View>
-                </LinearGradient>
-              )}
-            </Focusable>
-          </View>
-        </View>
-      </Overlay>
     </View>
   );
 }

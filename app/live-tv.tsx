@@ -10,12 +10,14 @@ import {
   TextInput,
   RefreshControl,
   FlatList,
+  Platform,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 
 import { usePortalStore, Channel, Category } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
@@ -66,26 +68,14 @@ const ChannelCard = React.memo(function ChannelCard({
         style={S.cardWrapper}
       >
         {(focused) => (
-          <LinearGradient
-            colors={focused
-              ? [THEME.colors.primary, THEME.colors.secondary]
-              : ["rgba(255,255,255,0.06)", "rgba(255,255,255,0.03)"]
-            }
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+          <View
             style={[
               S.cardBorder,
-              focused && {
-                transform: [{ scale: 1.06 }],
-                shadowColor: THEME.colors.primary,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.5,
-                shadowRadius: 8,
-                elevation: 10,
-              }
+              focused && S.cardBorderFocused,
+              focused && { transform: [{ scale: 1.06 }] }
             ]}
           >
-            <View style={[S.card, focused && { backgroundColor: "#0a0a10" }]}>
+            <BlurView intensity={focused ? 40 : 20} tint="dark" style={[S.card, focused && { backgroundColor: "rgba(255,255,255,0.05)" }]}>
               <View style={S.cardLogoWrapper}>
                 {item.logo ? (
                   <Image source={{ uri: item.logo }} style={S.cardLogo} contentFit="contain" />
@@ -100,8 +90,8 @@ const ChannelCard = React.memo(function ChannelCard({
                 ) : null}
               </View>
               {focused && <View style={S.focusDot} />}
-            </View>
-          </LinearGradient>
+            </BlurView>
+          </View>
         )}
       </Focusable>
     </View>
@@ -682,16 +672,35 @@ const S = StyleSheet.create({
   },
   cardBorder: {
     flex: 1,
-    padding: 1.5,
-    borderRadius: ps(1),
+    padding: 1,
+    borderRadius: ps(1.2),
+    backgroundColor: THEME.colors.glassBg,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+  },
+  cardBorderFocused: {
+    borderColor: THEME.colors.glassBorderFocus,
+    backgroundColor: THEME.colors.glassBgFocus,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
   card: {
     flex: 1,
-    backgroundColor: "rgba(10, 10, 16, 0.61)",
-    borderRadius: ps(0.9),
+    backgroundColor: "transparent",
+    borderRadius: ps(1.1),
     padding: ps(0.7),
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   cardLogoWrapper: {
     width: "65%",

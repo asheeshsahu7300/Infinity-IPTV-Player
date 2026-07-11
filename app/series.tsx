@@ -10,12 +10,14 @@ import {
   StatusBar,
   TextInput,
   FlatList,
+  Platform,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 
 import { usePortalStore, Series, Category } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
@@ -83,29 +85,39 @@ const S = StyleSheet.create({
   cardBorder: {
     padding: 1,
     borderRadius: ps(1.4),
-    backgroundColor: "transparent",
+    backgroundColor: THEME.colors.glassBg,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
   },
   cardBorderFocused: {
-    padding: 2,
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
+    padding: 1,
+    borderColor: THEME.colors.glassBorderFocus,
+    backgroundColor: THEME.colors.glassBgFocus,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
-  seriesItem: { backgroundColor: "#161622", borderRadius: ps(1.2), overflow: "hidden" },
-  posterContainer: { width: "100%", aspectRatio: 2 / 3, backgroundColor: "#1c1c2b", overflow: "hidden", borderTopLeftRadius: ps(1.2), borderTopRightRadius: ps(1.2) },
+  seriesItem: { flex: 1, backgroundColor: "transparent", borderRadius: ps(1.1), overflow: "hidden" },
+  posterContainer: { flex: 1, backgroundColor: "rgba(255,255,255,0.03)" },
   poster: { width: "100%", height: "100%" },
-  posterPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#1c1c2b" },
+  posterPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.03)" },
   textOverlay: { display: "none" },
-  cardContent: { padding: ps(0.7), backgroundColor: "#161622", borderBottomLeftRadius: ps(1.2), borderBottomRightRadius: ps(1.2) },
+  cardContent: { position: "absolute", bottom: 0, width: "100%", padding: ps(0.8), borderBottomLeftRadius: ps(1.1), borderBottomRightRadius: ps(1.1), overflow: "hidden" },
   seriesTitle: { color: "#fff", fontSize: ps(0.95), fontWeight: "700", fontFamily: THEME.fonts.bold },
   metaRow: { flexDirection: "row", alignItems: "center", marginTop: 6, height: ps(1.6) },
-  seriesMetaText: { color: "rgba(255,255,255,0.6)", fontSize: ps(0.8), fontWeight: "600", fontFamily: THEME.fonts.medium },
-  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.3)", marginHorizontal: 6 },
-  ratingWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 215, 0, 0.08)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  ratingText: { color: "#FFD700", fontSize: ps(0.8), fontWeight: "700", marginLeft: 3, fontFamily: THEME.fonts.bold },
-  favoriteBtn: { position: "absolute", top: 10, right: 10, backgroundColor: "rgba(0,0,0,0.5)", borderRadius: 10, padding: 6 },
+  seriesMetaText: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.8), fontWeight: "600", fontFamily: THEME.fonts.medium },
+  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.4)", marginHorizontal: 6 },
+  ratingWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 215, 0, 0.15)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  ratingText: { color: "#FFD700", fontSize: ps(0.8), fontWeight: "800", marginLeft: 3, fontFamily: THEME.fonts.bold },
+  favoriteBtn: { position: "absolute", top: 10, right: 10, backgroundColor: "rgba(0,0,0,0.4)", borderRadius: 12, padding: 6 },
   loadingCenter: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: { color: "rgba(255,255,255,0.4)", marginTop: 15, fontSize: ps(1), fontFamily: THEME.fonts.regular },
   emptyState: { flex: 1, justifyContent: "center", alignItems: "center", opacity: 0.5 },
@@ -160,23 +172,13 @@ const SeriesItem = React.memo(function SeriesItem({
         ringOnFocus={false}
       >
         {(focused) => (
-          <LinearGradient
-            colors={focused
-              ? [THEME.colors.primary, THEME.colors.secondary]
-              : ["transparent", "transparent"]
-            }
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+          <View
             style={[
               S.cardBorder,
+              { height: itemWidth * 1.5 }, // Enforce aspect ratio on wrapper
               focused && S.cardBorderFocused,
               focused && {
                 transform: [{ scale: 1.06 }],
-                shadowColor: THEME.colors.primary,
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.6,
-                shadowRadius: 10,
-                elevation: 14,
               }
             ]}
           >
@@ -197,7 +199,7 @@ const SeriesItem = React.memo(function SeriesItem({
                 )}
               </View>
 
-              <View style={S.cardContent}>
+              <BlurView intensity={focused ? 50 : 30} tint="dark" style={S.cardContent}>
                 <Text style={S.seriesTitle} numberOfLines={1}>{item.name}</Text>
                 <View style={S.metaRow}>
                   {item.year ? <Text style={S.seriesMetaText}>{item.year}</Text> : null}
@@ -209,9 +211,9 @@ const SeriesItem = React.memo(function SeriesItem({
                     </View>
                   ) : null}
                 </View>
-              </View>
+              </BlurView>
             </View>
-          </LinearGradient>
+          </View>
         )}
       </Focusable>
     </View>
