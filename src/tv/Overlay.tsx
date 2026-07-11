@@ -3,7 +3,8 @@ import {
   BackHandler,
   StyleProp,
   StyleSheet,
-  TVFocusGuideView,
+  TouchableOpacity,
+  Modal,
   View,
   ViewStyle,
 } from "react-native";
@@ -49,21 +50,29 @@ export function Overlay({
     visible
   );
 
-  if (!visible) return null;
-
   return (
-    <View style={[styles.backdrop, style]} pointerEvents="auto">
-      <TVFocusGuideView
-        autoFocus
-        trapFocusUp={trapFocus}
-        trapFocusDown={trapFocus}
-        trapFocusLeft={trapFocus}
-        trapFocusRight={trapFocus}
-        style={[styles.content, contentStyle]}
-      >
-        {children}
-      </TVFocusGuideView>
-    </View>
+    <Modal
+      visible={visible}
+      transparent={true}
+      onRequestClose={() => {
+        if (closeOnBack) onClose?.();
+      }}
+      animationType="fade"
+    >
+      <View style={[styles.backdrop, style]} pointerEvents="auto">
+        <TouchableOpacity 
+          style={StyleSheet.absoluteFillObject} 
+          activeOpacity={1} 
+          onPress={() => {
+            if (closeOnBack) onClose?.();
+          }}
+          tvParallaxProperties={{ enabled: false }}
+        />
+        <View style={[styles.content, contentStyle]}>
+          {children}
+        </View>
+      </View>
+    </Modal>
   );
 }
 

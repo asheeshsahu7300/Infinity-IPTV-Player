@@ -8,6 +8,7 @@ import {
   ScrollView,
   Dimensions,
   TouchableOpacity,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -37,21 +38,7 @@ const GradientText = ({
   style: any;
 }) => {
   if (!isActive) return <Text style={style}>{text}</Text>;
-  return (
-    <MaskedView
-      maskElement={
-        <Text style={[style, { backgroundColor: "transparent" }]}>{text}</Text>
-      }
-    >
-      <LinearGradient
-        colors={[THEME.colors.primary, THEME.colors.secondary]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-      >
-        <Text style={[style, { opacity: 0 }]}>{text}</Text>
-      </LinearGradient>
-    </MaskedView>
-  );
+  return <Text style={[style, { color: "#000" }]}>{text}</Text>;
 };
 
 // ─── Card with gradient border on focus ──────────────────────────────────────
@@ -91,29 +78,36 @@ const GradientBorderCard = ({
         },
         focused && {
           transform: [{ scale: 1.05 }],
-          shadowColor: THEME.colors.primary,
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.55,
-          shadowRadius: pw(1.2),
-          elevation: 10,
+          ...Platform.select({
+            ios: {
+              shadowColor: "#fff",
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.55,
+              shadowRadius: pw(1.2),
+            },
+            android: {
+              elevation: 0,
+            }
+          })
         },
       ]}
     >
       <BlurView
-        intensity={focused ? 0 : 30}
-        tint="dark"
+        intensity={focused ? 70 : 30}
+        tint={focused ? "light" : "dark"}
         style={{
           flex: 1,
           borderRadius: RADIUS,
-          padding: focused ? BORDER : 0,
-          backgroundColor: focused ? "#fff" : "transparent"
+          borderWidth: focused ? BORDER : 0,
+          borderColor: focused ? "rgba(255,255,255,0.8)" : "transparent",
+          overflow: "hidden",
         }}
       >
         <View
           style={{
             flex: 1,
-            backgroundColor: focused ? "transparent" : THEME.colors.surface,
-            borderRadius: focused ? RADIUS - BORDER : RADIUS,
+            backgroundColor: focused ? "rgba(255,255,255,0.3)" : THEME.colors.surface,
+            borderRadius: RADIUS,
             alignItems: "center",
             justifyContent: "center",
             padding: pw(2.8),
@@ -140,23 +134,26 @@ const GradientBorderInput = ({
   const BORDER = 1.5;
 
   return (
-    <BlurView
-      intensity={isFocused ? 0 : 20}
-      tint="dark"
-      style={[{ borderRadius: RADIUS, padding: isFocused ? BORDER : 0, backgroundColor: isFocused ? "#fff" : "transparent" }, style]}
+    <View
+      style={[{
+        borderRadius: RADIUS,
+        borderWidth: isFocused ? BORDER : 0,
+        borderColor: isFocused ? "#fff" : "transparent",
+        overflow: "hidden",
+      }, style]}
     >
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          backgroundColor: isFocused ? "transparent" : "#141318",
+          backgroundColor: "#141318",
           borderRadius: isFocused ? RADIUS - BORDER : RADIUS,
           paddingHorizontal: pw(2),
         }}
       >
         {children}
       </View>
-    </BlurView>
+    </View>
   );
 };
 
@@ -336,14 +333,14 @@ export default function AddPortalScreen() {
             onBlur={() => setFocusedField(null)}
           >
             <View style={S.darkCardIconWrapper}>
-              <MaterialCommunityIcons name={icon} size={ps(2.4)} color="#f0b6d5" />
+              <MaterialCommunityIcons name={icon} size={ps(2.4)} color={focusedField === id ? "#000" : "rgba(255,255,255,0.7)"} />
             </View>
             <GradientText
               text={title}
               isActive={focusedField === id}
               style={S.darkCardTitle}
             />
-            <Text style={S.darkCardDesc}>{desc}</Text>
+            <Text style={[S.darkCardDesc, focusedField === id && { color: "rgba(0,0,0,0.6)" }]}>{desc}</Text>
           </GradientBorderCard>
         ))}
       </View>
@@ -416,7 +413,7 @@ export default function AddPortalScreen() {
                   <Ionicons
                     name="link"
                     size={ps(1.8)}
-                    color="#555"
+                    color={focused || focusedField === "url" ? "#fff" : "#555"}
                     style={{ marginLeft: pw(1) }}
                   />
                 </GradientBorderInput>
@@ -491,34 +488,7 @@ export default function AddPortalScreen() {
             </View>
           )}
 
-          {/* M3U — OR divider + browse */}
-          {type === "m3u" && (
-            <>
-              <View style={S.premiumDividerRow}>
-                <View style={S.premiumDividerLine} />
-                <Text style={S.premiumDividerText}>OR</Text>
-                <View style={S.premiumDividerLine} />
-              </View>
-              <Focusable
-                onPress={() => Alert.alert("Browse", "Feature coming soon!")}
-                onFocus={() => setFocusedField("browse")}
-                onBlur={() => setFocusedField(null)}
-                ringOnFocus={false}
-                style={[
-                  S.premiumBrowseBtn,
-                  focusedField === "browse" && S.premiumInputWrapperFocused,
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name="file-upload"
-                  size={ps(1.8)}
-                  color="#f0b6d5"
-                  style={{ marginRight: pw(1) }}
-                />
-                <Text style={S.premiumBrowseBtnText}>Browse Playlist File</Text>
-              </Focusable>
-            </>
-          )}
+
 
           {/* Action buttons */}
           <View style={S.actionRow}>
@@ -580,28 +550,7 @@ export default function AddPortalScreen() {
 
           <Text style={S.premiumHeaderTitle}>IPTV HUB</Text>
 
-          <Focusable
-            onPress={() => Alert.alert("Support", "Please visit our website for support.")}
-            onFocus={() => setFocusedField("support")}
-            onBlur={() => setFocusedField(null)}
-            ringOnFocus={false}
-            style={[
-              S.premiumSupportBtn,
-              focusedField === "support" && S.premiumSupportBtnFocused,
-            ]}
-          >
-            {(focused) => (
-              <>
-                <Ionicons
-                  name="help-circle"
-                  size={ps(1.8)}
-                  color={focusedField === "support" ? "#fff" : "#b0b0b0"}
-                  style={{ marginRight: pw(0.5) }}
-                />
-                <Text style={[S.premiumSupportText, focusedField === "support" && { color: "#fff" }]}>SUPPORT</Text>
-              </>
-            )}
-          </Focusable>
+
         </View>
       )}
 

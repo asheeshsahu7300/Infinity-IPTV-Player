@@ -97,44 +97,41 @@ const pickYear = (v: any) => {
   return match ? match[0] : s;
 };
 
-const ResultCard = ({ item, onPress, onFocus }: any) => (
-  <Focusable
-    onPress={onPress}
-    onFocus={onFocus}
-    ringOnFocus={false}
-    style={[S.cardWrapper, { overflow: "visible" }]}
-  >
-    {(focused) => (
-      <LinearGradient
-        colors={focused ? [THEME.colors.primary, THEME.colors.secondary] : ["transparent", "transparent"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[
-          { flex: 1, borderRadius: ps(1.2), padding: focused ? 1.5 : 0 },
-          focused && {
-            transform: [{ scale: 1.06 }],
-            shadowColor: THEME.colors.primary,
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.6,
-            shadowRadius: 10,
-            elevation: 14,
-          }
-        ]}
-      >
-        <View style={[S.card, { borderRadius: focused ? ps(1.2) - 1.5 : ps(1.2) }]}>
-          <View style={S.cardImgContainer}>
-            <Image source={{ uri: item.logo }} style={S.cardImg} contentFit="cover" />
-            {item.quality && <View style={S.badge}><Text style={S.badgeText}>{item.quality}</Text></View>}
-          </View>
-          <View style={S.cardInfo}>
-            <Text style={S.cardTitle} numberOfLines={1}>{item.name}</Text>
-            <Text style={S.cardSub}>{item.year ? `${item.year} • ` : ""}{item.type.toUpperCase()}</Text>
+const ResultCard = ({ item, onPress, onFocus }: any) => {
+  // Use a fixed aspect ratio for the entire card to match VOD design
+  const cardHeight = ((W - pw(4)) / (isTV ? 6 : 3)) * 1.5;
+
+  return (
+    <Focusable
+      onPress={onPress}
+      onFocus={onFocus}
+      ringOnFocus={false}
+      style={[S.cardWrapper, { overflow: "visible" }]}
+    >
+      {(focused) => (
+        <View
+          style={[
+            S.cardBorder,
+            { height: cardHeight },
+            focused && S.cardBorderFocused,
+            focused && { transform: [{ scale: 1.06 }] }
+          ]}
+        >
+          <View style={S.card}>
+            <View style={S.cardImgContainer}>
+              <Image source={{ uri: item.logo }} style={S.cardImg} contentFit="cover" />
+              {item.quality && <View style={S.badge}><Text style={S.badgeText}>{item.quality}</Text></View>}
+            </View>
+            <BlurView intensity={focused ? 80 : 60} tint="dark" style={S.cardInfo}>
+              <Text style={S.cardTitle} numberOfLines={1}>{item.name}</Text>
+              <Text style={S.cardSub}>{item.year ? `${item.year} • ` : ""}{item.type.toUpperCase()}</Text>
+            </BlurView>
           </View>
         </View>
-      </LinearGradient>
-    )}
-  </Focusable>
-);
+      )}
+    </Focusable>
+  );
+};
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -249,7 +246,7 @@ export default function SearchScreen() {
 
   useEffect(() => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    
+
     searchTimeout.current = setTimeout(() => {
       performSearch(query, activeType);
     }, 400); // 400ms debounce
@@ -325,159 +322,142 @@ export default function SearchScreen() {
       router.push({ pathname: "/player", params: { url: streamUrl, title: selectedItem.name, type: "vod" } });
     }
   };
-const RESULT_COLUMNS = isTV ? 6 : 3;
+  const RESULT_COLUMNS = isTV ? 6 : 3;
   const CARD_WIDTH = (W - pw(4)) / RESULT_COLUMNS;
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
-      <CinematicBackground uri={focusedImage} />
+      <View
+        style={{ flex: 1 }}
+        accessibilityElementsHidden={playModalVisible}
+        importantForAccessibility={playModalVisible ? "no-hide-descendants" : "auto"}
+      >
+        <CinematicBackground uri={focusedImage} />
 
-      {/* Header Bar */}
-      <FocusGroup>
-        <View style={S.headerRow}>
-          <Focusable
-            hasTVPreferredFocus
-            onPress={() => inputRef.current?.focus()}
-            ringOnFocus={false}
-            style={S.searchBarWrapper}
-          >
-            {(focused) => (
-              <LinearGradient
-                colors={focused || searchFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[S.searchBarGradient, (focused || searchFocused) && S.searchBarFocused]}
-              >
-                <View style={[S.searchBarInner, { borderRadius: (focused || searchFocused) ? ps(1) - 1.5 : ps(1) }]}>
-                  <Ionicons name="search" size={ps(2.2)} color="rgba(255,255,255,0.5)" />
-                  <TextInput
-                    ref={inputRef}
-                    style={S.searchInput}
-                    placeholder="Search movies, shows, and more..."
-                    placeholderTextColor="rgba(255,255,255,0.3)"
-                    value={query}
-                    onChangeText={setQuery}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="search"
-                    onFocus={() => setSearchFocused(true)}
-                    onBlur={() => setSearchFocused(false)}
-                  />
-                  {query.length > 0 && (
-                    <TouchableOpacity onPress={() => setQuery("")} style={{ padding: 8 }}>
-                      <Ionicons name="close-circle" size={ps(1.6)} color="rgba(255,255,255,0.5)" />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </LinearGradient>
-            )}
-          </Focusable>
-          <Focusable
-            ringOnFocus={false}
-            focusStyle={S.settingsBtnFocused}
-            style={S.settingsBtn}
-            onPress={() => router.push("/settings")}
-          >
-            <Ionicons name="settings" size={ps(2)} color="rgba(255,255,255,0.7)" />
-          </Focusable>
-        </View>
-      </FocusGroup>
-
-      {/* Filter row */}
-      <FocusGroup>
-        <View style={S.filterRow}>
-          {[
-            { id: "all", label: "All" },
-            { id: "live", label: "Live TV" },
-            { id: "vod", label: "Movies" },
-            { id: "series", label: "Series" }
-          ].map((filter) => {
-            const isActive = activeType === filter.id;
-            return (
-              <Focusable
-                key={filter.id}
-                onPress={() => setActiveType(filter.id)}
-                ringOnFocus={false}
-                style={S.filterPillWrapper}
-              >
-                {(focused) => (
-                  <View style={[
-                    S.filterPill,
-                    focused && S.filterPillFocused,
-                    isActive && { borderColor: "transparent" }
-                  ]}>
-                    {isActive && (
-                      <LinearGradient
-                        colors={[THEME.colors.primary, THEME.colors.secondary]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={StyleSheet.absoluteFillObject}
-                      />
-                    )}
-                    <Text style={[S.filterText, (isActive || focused) && S.filterTextActive]}>
-                      {filter.label}
-                    </Text>
-                  </View>
-                )}
-              </Focusable>
-            );
-          })}
-        </View>
-      </FocusGroup>
-
-      {/* Trending suggestions appear when no query */}
-      {!query.trim() && (
+        {/* Header Bar */}
         <FocusGroup>
-          <View style={S.trendingInline}>
-            <View style={S.sectionLabelRow}>
-              <MaterialCommunityIcons name="trending-up" size={ps(1.6)} color={THEME.colors.primary} />
-              <Text style={S.sectionLabel}>Trending Searches</Text>
-            </View>
-            <View style={S.pillRow}>
-              {TRENDING.map((term) => (
-                <TrendingPill key={term} text={term} onPress={setQuery} />
-              ))}
-            </View>
+          <View style={S.headerRow}>
+            <Focusable
+              hasTVPreferredFocus
+              onPress={() => inputRef.current?.focus()}
+              ringOnFocus={false}
+              style={S.searchBarWrapper}
+            >
+              {(focused) => (
+                <View
+                  style={[
+                    S.searchBarGradient,
+                    (focused || searchFocused) && S.searchBarFocused,
+                  ]}
+                >
+                  <View style={[S.searchBarInner, { backgroundColor: "#111015" }]}>
+                    <Ionicons name="search" size={ps(2.2)} color="rgba(255,255,255,0.5)" />
+                    <TextInput
+                      ref={inputRef}
+                      style={S.searchInput}
+                      placeholder="Search movies, shows, and more..."
+                      placeholderTextColor="rgba(255,255,255,0.3)"
+                      value={query}
+                      onChangeText={setQuery}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="search"
+                      onFocus={() => setSearchFocused(true)}
+                      onBlur={() => setSearchFocused(false)}
+                    />
+                    {query.length > 0 && (
+                      <TouchableOpacity onPress={() => setQuery("")} style={{ padding: 8 }}>
+                        <Ionicons name="close-circle" size={ps(1.6)} color="rgba(255,255,255,0.5)" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              )}
+            </Focusable>
+            <Focusable
+              ringOnFocus={false}
+              focusStyle={S.settingsBtnFocused}
+              style={S.settingsBtn}
+              onPress={() => router.push("/settings")}
+            >
+              <Ionicons name="settings" size={ps(2)} color="rgba(255,255,255,0.7)" />
+            </Focusable>
           </View>
         </FocusGroup>
-      )}
 
-      {/* Results below */}
-      <FocusGroup style={S.resultsArea}>
-        {isLoading && (
-          <View style={S.loadingInline}>
-            <ActivityIndicator color={THEME.colors.primary} />
+        {/* Filter row */}
+        <FocusGroup>
+          <View style={S.filterRow}>
+            {[
+              { id: "all", label: "All" },
+              { id: "live", label: "Live TV" },
+              { id: "vod", label: "Movies" },
+              { id: "series", label: "Series" }
+            ].map((filter) => {
+              const isActive = activeType === filter.id;
+              return (
+                <Focusable
+                  key={filter.id}
+                  onPress={() => setActiveType(filter.id)}
+                  ringOnFocus={false}
+                  style={S.filterPillWrapper}
+                >
+                  {(focused) => (
+                    <View style={[
+                      S.filterPill,
+                      focused && S.filterPillFocused,
+                      isActive && { borderColor: "#fff" }
+                    ]}>
+                      <Text style={[S.filterText, (isActive || focused) && { color: "#fff" }]}>
+                        {filter.label}
+                      </Text>
+                    </View>
+                  )}
+                </Focusable>
+              );
+            })}
           </View>
-        )}
-        <FlatList
-          data={results}
-          numColumns={RESULT_COLUMNS}
-          key={`results-${RESULT_COLUMNS}`}
-          keyExtractor={(item: any) => `${item.type}-${item.id}`}
-          contentContainerStyle={{ paddingHorizontal: pw(2), paddingBottom: ph(6) }}
-          columnWrapperStyle={{ justifyContent: 'center' }}
-          removeClippedSubviews={false}
-          initialNumToRender={RESULT_COLUMNS * 4}
-          maxToRenderPerBatch={RESULT_COLUMNS * 4}
-          renderItem={({ item }: any) => (
-            <ResultCard
-              item={item}
-              onPress={() => handleResultPress(item)}
-              onFocus={() => item.logo && setFocusedImage(item.logo)}
-            />
+        </FocusGroup>
+
+
+
+        {/* Results below */}
+        <FocusGroup style={S.resultsArea}>
+          {isLoading && (
+            <View style={S.loadingInline}>
+              <ActivityIndicator color={THEME.colors.primary} />
+            </View>
           )}
-          ListEmptyComponent={
-            !isLoading ? (
-              <View style={S.emptyState}>
-                <Ionicons name="search-outline" size={ps(5)} color="rgba(255,255,255,0.08)" />
-                <Text style={S.emptyText}>
-                  {query.trim() ? "No matches found" : "Start typing to discover content"}
-                </Text>
-              </View>
-            ) : null
-          }
-        />
-      </FocusGroup>
+          <FlatList
+            data={results}
+            numColumns={RESULT_COLUMNS}
+            key={`results-${RESULT_COLUMNS}`}
+            keyExtractor={(item: any) => `${item.type}-${item.id}`}
+            contentContainerStyle={{ paddingHorizontal: pw(2), paddingBottom: ph(6) }}
+            columnWrapperStyle={{ justifyContent: 'center' }}
+            removeClippedSubviews={false}
+            initialNumToRender={RESULT_COLUMNS * 4}
+            maxToRenderPerBatch={RESULT_COLUMNS * 4}
+            renderItem={({ item }: any) => (
+              <ResultCard
+                item={item}
+                onPress={() => handleResultPress(item)}
+                onFocus={() => item.logo && setFocusedImage(item.logo)}
+              />
+            )}
+            ListEmptyComponent={
+              !isLoading ? (
+                <View style={S.emptyState}>
+                  <Ionicons name="search-outline" size={ps(5)} color="rgba(255,255,255,0.08)" />
+                  <Text style={S.emptyText}>
+                    {query.trim() ? "No matches found" : "Start typing to discover content"}
+                  </Text>
+                </View>
+              ) : null
+            }
+          />
+        </FocusGroup>
+      </View>
 
       <Overlay
         visible={playModalVisible}
@@ -487,81 +467,81 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
       >
         <BlurView intensity={120} tint="dark" style={{ width: '100%', borderTopLeftRadius: 36, borderTopRightRadius: 36, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.25)", borderBottomWidth: 0 }}>
           {selectedItem?.logo && (
-            <Image 
-              source={{ uri: selectedItem.logo }} 
-              style={[StyleSheet.absoluteFillObject, { opacity: 0.4 }]} 
-              blurRadius={40} 
-              contentFit="cover" 
+            <Image
+              source={{ uri: selectedItem.logo }}
+              style={[StyleSheet.absoluteFillObject, { opacity: 0.4 }]}
+              blurRadius={40}
+              contentFit="cover"
             />
           )}
-          <LinearGradient 
-            colors={['rgba(255,255,255,0.1)', 'rgba(0,0,0,0.5)', '#000']} 
-            style={StyleSheet.absoluteFillObject} 
+          <LinearGradient
+            colors={['rgba(255,255,255,0.1)', 'rgba(0,0,0,0.5)', '#000']}
+            style={StyleSheet.absoluteFillObject}
           />
-          <View style={[isTV ? S.modalTVContent : null, { padding: ps(4) }]}>
+          <View style={[isTV ? S.modalTVContent : null, { padding: ps(3) }]}>
             <View style={S.modalLeft}>
-            <Text style={S.modalTitle} numberOfLines={2}>{selectedItem?.name}</Text>
-            <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-              {selectedItem?.description || "No description available for this content."}
-            </Text>
-            <View style={S.modalMetaRow}>
-              {selectedItem?.rating ? (
-                <View style={S.modalBadge}>
-                  <Ionicons name="star" size={ps(1)} color="#FFD700" />
-                  <Text style={S.modalBadgeText}>{selectedItem.rating}</Text>
-                </View>
-              ) : null}
-              {selectedItem?.year ? (
-                <View style={S.modalBadge}>
-                  <Ionicons name="calendar-outline" size={ps(1)} color="#fff" />
-                  <Text style={S.modalBadgeText}>{selectedItem.year}</Text>
-                </View>
-              ) : null}
+              <Text style={S.modalTitle} numberOfLines={2}>{selectedItem?.name}</Text>
+              <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
+                {selectedItem?.description || "No description available for this content."}
+              </Text>
+              <View style={S.modalMetaRow}>
+                {selectedItem?.rating ? (
+                  <View style={S.modalBadge}>
+                    <Ionicons name="star" size={ps(1)} color="#FFD700" />
+                    <Text style={S.modalBadgeText}>{selectedItem.rating}</Text>
+                  </View>
+                ) : null}
+                {selectedItem?.year ? (
+                  <View style={S.modalBadge}>
+                    <Ionicons name="calendar-outline" size={ps(1)} color="#fff" />
+                    <Text style={S.modalBadgeText}>{selectedItem.year}</Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
-          </View>
 
-          <View style={S.modalRight}>
-            <Focusable
-              hasTVPreferredFocus
-              ringOnFocus={false}
-              onPress={() => handleVodAction(false)}
-              style={S.modalBtnWrapper}
-            >
-              {(focused) => (
-                <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                  <BlurView intensity={focused ? 0 : 40} tint="light" style={[S.modalBtnPrimaryInner, focused && { backgroundColor: "#fff" }]}>
-                    <Text style={[S.modalBtnPrimaryText, focused && { color: "#000" }]}>WATCH NOW</Text>
-                  </BlurView>
-                </View>
-              )}
-            </Focusable>
-            <Focusable
-              ringOnFocus={false}
-              onPress={() => handleVodAction(true)}
-              style={S.modalBtnWrapper}
-            >
-              {(focused) => (
-                <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                  <BlurView intensity={focused ? 0 : 40} tint="dark" style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
-                    <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>EXTERNAL PLAYER</Text>
-                  </BlurView>
-                </View>
-              )}
-            </Focusable>
-            <Focusable
-              ringOnFocus={false}
-              onPress={() => setPlayModalVisible(false)}
-              style={S.modalBtnWrapper}
-            >
-              {(focused) => (
-                <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                  <BlurView intensity={focused ? 0 : 40} tint="dark" style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
-                    <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>CLOSE</Text>
-                  </BlurView>
-                </View>
-              )}
-            </Focusable>
-          </View>
+            <View style={S.modalRight}>
+              <Focusable
+                hasTVPreferredFocus
+                ringOnFocus={false}
+                onPress={() => handleVodAction(false)}
+                style={S.modalBtnWrapper}
+              >
+                {(focused) => (
+                  <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                    <View style={S.modalBtnPrimaryInner}>
+                      <Text style={[S.modalBtnPrimaryText, focused && { color: "#000" }]}>WATCH NOW</Text>
+                    </View>
+                  </View>
+                )}
+              </Focusable>
+              <Focusable
+                ringOnFocus={false}
+                onPress={() => handleVodAction(true)}
+                style={S.modalBtnWrapper}
+              >
+                {(focused) => (
+                  <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                    <View style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
+                      <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>EXTERNAL PLAYER</Text>
+                    </View>
+                  </View>
+                )}
+              </Focusable>
+              <Focusable
+                ringOnFocus={false}
+                onPress={() => setPlayModalVisible(false)}
+                style={S.modalBtnWrapper}
+              >
+                {(focused) => (
+                  <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                    <View style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
+                      <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>CLOSE</Text>
+                    </View>
+                  </View>
+                )}
+              </Focusable>
+            </View>
           </View>
         </BlurView>
       </Overlay>
@@ -583,22 +563,32 @@ const S = StyleSheet.create({
   },
   searchBarWrapper: {
     flex: 1,
-    height: ph(8),
+    height: ps(4.5),
   },
   searchBarGradient: {
     flex: 1,
     borderRadius: ps(1),
-    padding: 1.5,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
   searchBarFocused: {
-    shadowColor: THEME.colors.primary,
-    shadowOpacity: 0.7,
-    shadowRadius: 16,
-    elevation: 12,
+    borderColor: "#fff",
+    backgroundColor: "transparent",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
   searchBarInner: {
     flex: 1,
-    backgroundColor: "#111015",
     borderRadius: ps(1) - 1.5,
     flexDirection: "row",
     alignItems: "center",
@@ -680,22 +670,33 @@ const S = StyleSheet.create({
     paddingVertical: ph(0.5),
   },
   filterPill: {
-    paddingHorizontal: pw(1.6),
-    paddingVertical: ph(1),
-    borderRadius: ps(2),
+    paddingHorizontal: pw(2.5),
+    paddingVertical: ph(1.2),
+    borderRadius: ps(2.5),
     borderWidth: 1.2,
     borderColor: "rgba(255,255,255,0.12)",
     overflow: "hidden",
-    minWidth: pw(6),
+    minWidth: pw(8),
     alignItems: "center",
   },
   filterPillFocused: {
     borderColor: "#fff",
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "transparent",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
   filterText: {
     color: "rgba(255,255,255,0.4)",
-    fontSize: ps(1.1),
+    fontSize: ps(1.3),
     fontWeight: "700",
     letterSpacing: 0.5,
   },
@@ -703,6 +704,29 @@ const S = StyleSheet.create({
     color: "#fff",
   },
 
+  cardBorder: {
+    flex: 1,
+    padding: 1,
+    borderRadius: ps(1.4),
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+  },
+  cardBorderFocused: {
+    borderColor: "#fff",
+    backgroundColor: "transparent",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
+  },
   cardWrapper: {
     width: (W - pw(4)) / (isTV ? 6 : 3),
     maxWidth: (W - pw(4)) / (isTV ? 6 : 3),
@@ -710,22 +734,26 @@ const S = StyleSheet.create({
   },
   card: {
     flex: 1,
-    borderRadius: ps(1.2),
+    borderRadius: ps(1.1),
     overflow: "hidden",
-    backgroundColor: "#161622",
+    backgroundColor: "transparent",
   },
   cardImgContainer: {
-    width: "100%",
-    aspectRatio: 3/4,
-    backgroundColor: "#1c1c2b",
-    overflow: "hidden",
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.03)",
   },
   cardImg: {
     width: "100%",
     height: "100%",
   },
   cardInfo: {
-    padding: ps(0.7),
+    position: "absolute",
+    bottom: 0,
+    width: "100%",
+    padding: ps(1),
+    borderBottomLeftRadius: ps(1.1),
+    borderBottomRightRadius: ps(1.1),
+    overflow: "hidden",
   },
   cardTitle: {
     color: "#fff",
@@ -769,18 +797,18 @@ const S = StyleSheet.create({
   modalContainer: { backgroundColor: "#111", width: isTV ? ps(65) : "92%", borderRadius: 24, padding: ps(2), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
   modalTVContent: { flexDirection: "row" },
   modalLeft: { flex: 1.4, padding: ps(1.5) },
-  modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.015)", padding: ps(2), borderRadius: 20, justifyContent: "center", gap: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" },
-  modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", marginBottom: 12 },
-  modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.95), lineHeight: ps(1.4), marginBottom: 18 },
+  modalRight: { flex: 0.6, padding: ps(2), paddingRight: isTV ? ps(4) : ps(2), justifyContent: "center", gap: 12 },
+  modalTitle: { color: "#fff", fontSize: ps(1.9), fontWeight: "900", marginBottom: 12 },
+  modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(1.2), lineHeight: ps(1.4), marginBottom: 18 },
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
   modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "700" },
-  modalBtnWrapper: { borderRadius: 16, overflow: "visible" },
-  modalBtnBorder: { padding: 1, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.15)" },
+  modalBtnWrapper: { borderRadius: 8, overflow: "visible", width: "100%", maxWidth: 380, alignSelf: "flex-end" },
+  modalBtnBorder: { padding: 1, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.15)" },
   modalBtnBorderFocused: {
     padding: 1,
-    borderColor: "#fff",
-    backgroundColor: "rgba(255,255,255,0.2)",
+    borderWidth: 0,
+    backgroundColor: "#fff",
     ...Platform.select({
       ios: {
         shadowColor: "#fff",
@@ -793,8 +821,8 @@ const S = StyleSheet.create({
       }
     })
   },
-  modalBtnPrimaryInner: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "transparent", overflow: "hidden" },
-  modalBtnSecondaryInner: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.3)", overflow: "hidden" },
+  modalBtnPrimaryInner: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "transparent", overflow: "hidden" },
+  modalBtnSecondaryInner: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.3)", overflow: "hidden" },
   modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1 },
   modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5 },
 });

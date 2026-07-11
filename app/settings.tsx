@@ -230,19 +230,14 @@ export default function SettingsScreen() {
                 style={S.disconnectBtnWrapper}
               >
                 {(focused) => (
-                  <LinearGradient
-                    colors={[THEME.colors.primary, THEME.colors.secondary]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
+                  <View
                     style={[S.disconnectBtnGradient, focused && S.disconnectBtnFocused]}
                   >
-                    <Ionicons name="warning" size={ps(1.8)} color="#fff" />
-                    <GradientText
-                      text="Disconnect Portal"
-                      style={S.disconnectBtnText}
-                      colors={["#fff", "rgba(255,255,255,0.8)"]}
-                    />
-                  </LinearGradient>
+                    <Ionicons name="warning" size={ps(1.8)} color={focused ? "#ff1b1bff" : "rgba(255,255,255,0.7)"} />
+                    <Text style={[S.disconnectBtnText, focused ? { color: "#ff1b1bff" } : { color: "rgba(255,255,255,0.7)" }]}>
+                      Disconnect Portal
+                    </Text>
+                  </View>
                 )}
               </Focusable>
             </View>
@@ -517,31 +512,40 @@ const S = StyleSheet.create({
   },
   disconnectBtnWrapper: {
     alignSelf: 'flex-start',
-    borderRadius: ps(1.2),
-    overflow: 'hidden',
-    // Shadow for gradient button
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 10,
+    overflow: 'visible',
+    marginTop: ph(1),
   },
   disconnectBtnGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: pw(3),
-    paddingVertical: ph(1.8),
-    gap: pw(1.2),
+    paddingHorizontal: pw(2),
+    paddingVertical: ph(1.2),
+    gap: pw(0.8),
+    borderRadius: ps(1),
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: '#111015',
   },
   disconnectBtnFocused: {
+    borderColor: '#ff0130ff',
+    backgroundColor: 'transparent',
     transform: [{ scale: 1.05 }],
-    borderWidth: 1,
-    borderColor: '#fff',
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fe0921ff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
   disconnectBtnText: {
-    color: '#fff',
-    fontSize: ps(1.4),
+    fontSize: ps(1.3),
     fontWeight: '700',
+    letterSpacing: 0.5,
   },
 
   // Grouped Card
@@ -663,6 +667,7 @@ const S = StyleSheet.create({
   },
   switchKnobActive: {
     alignSelf: 'flex-end',
+    backgroundColor: '#000',
   },
 
   stats: {

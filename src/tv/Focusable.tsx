@@ -120,6 +120,7 @@ export const Focusable = React.forwardRef<View, FocusableProps>(function Focusab
       accessibilityRole="button"
       focusable={!disabled}
       {...({ isTVSelectable: !disabled } as any)}
+      tvParallaxProperties={{ enabled: false }}
       hasTVPreferredFocus={hasTVPreferredFocus}
       nextFocusUp={nextFocusUp}
       nextFocusDown={nextFocusDown}

@@ -7,6 +7,7 @@ import {
   Pressable,
   Dimensions,
   Animated,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -211,22 +212,9 @@ export default function PortalsScreen() {
           ringOnFocus={false}
           style={S.pressable}
         >
-          {isFocused ? (
-            <LinearGradient
-              colors={[THEME.colors.primary, THEME.colors.secondary]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={S.gradientBorder}
-            >
-              <View style={[S.portalCard, S.portalCardFocused, isActive && S.portalCardActive]}>
-                {renderCardContent(item, isActive)}
-              </View>
-            </LinearGradient>
-          ) : (
-            <View style={[S.portalCard, isActive && S.portalCardActive]}>
-              {renderCardContent(item, isActive)}
-            </View>
-          )}
+          <View style={[S.portalCard, isFocused && S.portalCardFocused, isActive && S.portalCardActive]}>
+            {renderCardContent(item, isActive)}
+          </View>
         </Focusable>
       </Animated.View>
     );
@@ -250,12 +238,12 @@ export default function PortalsScreen() {
         style={{ borderRadius: ps(1), overflow: "visible" }}
       >
         {(focused) => (
-          <BlurView
-            intensity={focused ? 0 : 30}
-            tint="dark"
+          <View
             style={[
-              { padding: focused ? 1.5 : 0, borderRadius: ps(1), backgroundColor: focused ? "#fff" : "transparent" },
+              { borderRadius: ps(1), overflow: "hidden", borderWidth: focused ? 1.5 : 1, borderColor: focused ? "#fff" : "rgba(255,255,255,0.1)" },
+              !focused && { backgroundColor: "rgba(255,255,255,0.05)" },
               focused && {
+                backgroundColor: "#fff",
                 transform: [{ scale: 1.06 }],
                 shadowColor: "#fff",
                 shadowOpacity: 0.6,
@@ -264,11 +252,11 @@ export default function PortalsScreen() {
               },
             ]}
           >
-            <View style={[S.addBtn, focused && { backgroundColor: "transparent" }]}>
+            <View style={S.addBtn}>
               <Ionicons name="add" size={ps(1.8)} color={focused ? "#000" : "#fff"} />
               <Text style={[S.addBtnText, focused && { color: "#000" }]}>ADD NEW PORTAL</Text>
             </View>
-          </BlurView>
+          </View>
         )}
       </Focusable>
     </View>
@@ -309,17 +297,16 @@ export default function PortalsScreen() {
               style={{ borderRadius: ps(1), overflow: "visible", marginTop: ph(3) }}
             >
               {(focused) => (
-                <LinearGradient
-                  colors={[THEME.colors.primary, THEME.colors.secondary]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
+                <View
                   style={[
                     S.addButtonLarge,
-                    focused && { transform: [{ scale: 1.06 }], shadowColor: THEME.colors.primary, shadowOpacity: 0.7, shadowRadius: 14, elevation: 14 },
+                    { overflow: "hidden", borderWidth: focused ? 1.5 : 1, borderColor: focused ? "#fff" : "rgba(255,255,255,0.1)" },
+                    !focused && { backgroundColor: "rgba(255,255,255,0.05)" },
+                    focused && { backgroundColor: "#fff", transform: [{ scale: 1.06 }], shadowColor: "#fff", shadowOpacity: 0.6, shadowRadius: 14, elevation: 14 },
                   ]}
                 >
-                  <Text style={S.addButtonText}>GET STARTED</Text>
-                </LinearGradient>
+                  <Text style={[S.addButtonText, focused && { color: "#000" }]}>GET STARTED</Text>
+                </View>
               )}
             </Focusable>
           </View>
@@ -471,12 +458,19 @@ const S = StyleSheet.create({
   },
   portalCardFocused: {
     backgroundColor: "#222026",
-    // Intense focus glow
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 25,
-    elevation: 15,
+    borderWidth: 1.5,
+    borderColor: "#fff",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 15,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
   portalCardActive: {
     borderWidth: 1.5,

@@ -132,19 +132,19 @@ const S = StyleSheet.create({
   modalContainer: { width: isTV ? ps(65) : "92%", borderRadius: 36, padding: ps(2), borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.3)", overflow: "hidden" },
   modalTVContent: { flexDirection: "row" },
   modalLeft: { flex: 1.4, padding: ps(1.5) },
-  modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.05)", padding: ps(2), borderRadius: 28, justifyContent: "center", gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.15)" },
-  modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", marginBottom: 12, fontFamily: THEME.fonts.bold },
-  modalDescription: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.95), lineHeight: ps(1.4), marginBottom: 18, fontFamily: THEME.fonts.regular },
+  modalRight: { flex: 0.6, padding: ps(2), paddingRight: isTV ? ps(4) : ps(2), justifyContent: "center", gap: 12 },
+  modalTitle: { color: "#fff", fontSize: ps(1.9), fontWeight: "900", marginBottom: 12, fontFamily: THEME.fonts.bold },
+  modalDescription: { color: "rgba(255,255,255,0.7)", fontSize: ps(1.2), lineHeight: ps(1.4), marginBottom: 18, fontFamily: THEME.fonts.regular },
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
   modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.1)", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.2)" },
   modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "800", fontFamily: THEME.fonts.bold },
   // ── Play-modal buttons: gradient acts as the border ──
-  modalBtnWrapper: { borderRadius: 16, overflow: "visible" },
-  modalBtnBorder: { padding: 1, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.15)" },
+  modalBtnWrapper: { borderRadius: 8, overflow: "visible", width: "100%", maxWidth: 380, alignSelf: "flex-end" },
+  modalBtnBorder: { padding: 1, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.15)" },
   modalBtnBorderFocused: {
     padding: 1,
-    borderColor: "#fff",
-    backgroundColor: "rgba(255,255,255,0.2)",
+    borderWidth: 0,
+    backgroundColor: "#fff",
     ...Platform.select({
       ios: {
         shadowColor: "#fff",
@@ -157,8 +157,8 @@ const S = StyleSheet.create({
       }
     })
   },
-  modalBtnPrimaryInner: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "transparent", overflow: "hidden" },
-  modalBtnSecondaryInner: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.3)", overflow: "hidden" },
+  modalBtnPrimaryInner: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "transparent", overflow: "hidden" },
+  modalBtnSecondaryInner: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.3)", overflow: "hidden" },
   modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1, fontFamily: THEME.fonts.bold },
   modalBtnSecondaryText: { color: "rgba(255,255,255,0.9)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5, fontFamily: THEME.fonts.bold },
   loadMoreFooter: { paddingVertical: ph(3), alignItems: "center", justifyContent: "center" },
@@ -520,7 +520,7 @@ export default function VODScreen() {
   const handleVodFocus = useCallback((vod: VODItem) => {
     setFocusedImage(vod.logo || null);
     focusedIdRef.current = String(vod.id);
-    
+
     if (flatListRef.current) {
       const data = flatListRef.current.props.data as any[];
       if (data && data.length > 0) {
@@ -718,205 +718,211 @@ export default function VODScreen() {
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
-      <CinematicBackground uri={focusedImage} />
-      <StatusBar hidden />
+      <View
+        style={{ flex: 1 }}
+        accessibilityElementsHidden={playModalVisible}
+        importantForAccessibility={playModalVisible ? "no-hide-descendants" : "auto"}
+      >
+        <CinematicBackground uri={focusedImage} />
+        <StatusBar hidden />
 
-      <View style={S.header}>
-        <Focusable
-          ringOnFocus={false}
-          focusStyle={{ borderWidth: 2, borderColor: "rgba(255,255,255,0.5)", borderRadius: ps(2) }}
-          onPress={safeGoBack}
-          style={S.iconBtn}
-        >
-          {() => <Ionicons name="chevron-back" size={ps(1.4)} color="#fff" />}
-        </Focusable>
-        <Text style={S.headerTitle}>Movies</Text>
-        <Focusable
-          onPress={() => searchInputRef.current?.focus()}
-          ringOnFocus={false}
-          style={S.searchWrapper}
-        >
-          {(focused) => (
-            <LinearGradient
-              colors={focused || searchFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[S.searchGradient, (focused || searchFocused) && S.searchFocused]}
-            >
-              <View style={[
-                S.searchInner,
-                { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
-                (focused || searchFocused) && { backgroundColor: "#0b0b10" }
-              ]}>
-                <Ionicons name="search" size={ps(1.1)} color={focused || searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
-                <TextInput
-                  ref={searchInputRef}
-                  style={S.searchInput}
-                  placeholder="Search movies..."
-                  placeholderTextColor="rgba(255,255,255,0.2)"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
-                />
-              </View>
-            </LinearGradient>
-          )}
-        </Focusable>
-        <View style={S.countBadge}>
-          <Text style={S.countText}>{isLoading ? "..." : String(filteredMovies.length)}</Text>
+        <View style={S.header}>
+          <Focusable
+            ringOnFocus={false}
+            focusStyle={{ borderWidth: 2, borderColor: "rgba(255,255,255,0.5)", borderRadius: ps(2) }}
+            onPress={safeGoBack}
+            style={S.iconBtn}
+          >
+            {() => <Ionicons name="chevron-back" size={ps(1.4)} color="#fff" />}
+          </Focusable>
+          <Text style={S.headerTitle}>Movies</Text>
+          <Focusable
+            onPress={() => searchInputRef.current?.focus()}
+            ringOnFocus={false}
+            style={S.searchWrapper}
+          >
+            {(focused) => (
+              <LinearGradient
+                colors={focused || searchFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[S.searchGradient, (focused || searchFocused) && S.searchFocused]}
+              >
+                <View style={[
+                  S.searchInner,
+                  { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
+                  (focused || searchFocused) && { backgroundColor: "#0b0b10" }
+                ]}>
+                  <Ionicons name="search" size={ps(1.1)} color={focused || searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
+                  <TextInput
+                    ref={searchInputRef}
+                    style={S.searchInput}
+                    placeholder="Search movies..."
+                    placeholderTextColor="rgba(255,255,255,0.2)"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
+                  />
+                </View>
+              </LinearGradient>
+            )}
+          </Focusable>
+          <View style={S.countBadge}>
+            <Text style={S.countText}>{isLoading ? "..." : String(filteredMovies.length)}</Text>
+          </View>
+        </View>
+
+        <View style={S.body}>
+          <FocusGroup style={{ width: SIDEBAR_WIDTH_VAL }}>
+            <CategorySidebar
+              categories={sidebarCategories}
+              selectedId={selectedCategory || "all"}
+              onSelect={setSelectedCategory}
+              width={SIDEBAR_WIDTH_VAL}
+            />
+          </FocusGroup>
+          <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapUp={trappingFocus}>
+            <FlatList
+              ref={flatListRef}
+              data={chunkedMovies}
+              renderItem={renderRow}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={[S.list, (isLoading || chunkedMovies.length === 0) && { flexGrow: 1 }]}
+              removeClippedSubviews={false}
+              extraData={filteredMovies.length}
+              initialNumToRender={8}
+              maxToRenderPerBatch={6}
+              windowSize={5}
+              updateCellsBatchingPeriod={50}
+              onEndReached={() => {
+                if (isLoading || loadingMore || !hasMore || debouncedQuery) return;
+                trapFocusBriefly();
+                if (isXtreamOrM3U) {
+                  // Grow the slice from the cached full list — no network.
+                  const nextPage = page + 1;
+                  const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
+                  setVodItems(sliced);
+                  setPage(nextPage);
+                  setHasMore(fullListRef.current.length > sliced.length);
+                } else {
+                  loadVodItems(selectedCategory, page + 1);
+                }
+              }}
+              onEndReachedThreshold={1.5}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
+              ListEmptyComponent={
+                isLoading ? (
+                  <Focusable hasTVPreferredFocus={!searchFocused} style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }} ringOnFocus={false}>
+                    <ActivityIndicator color={THEME.colors.primary} size="large" />
+                    <Text style={[S.loadingText, { marginTop: 10 }]}>Brewing cinematic magic...</Text>
+                  </Focusable>
+                ) : (
+                  <View style={S.emptyState}>
+                    <MaterialCommunityIcons name="movie-filter-outline" size={ps(4)} color="rgba(255,255,255,0.05)" />
+                    <Text style={S.emptyTitle}>Nothing Found</Text>
+                  </View>
+                )
+              }
+              ListFooterComponent={
+                loadingMore && filteredMovies.length > 0 ? (
+                  <View style={{ width: "100%", paddingVertical: ph(3), alignItems: "center", justifyContent: "center", flexDirection: "row", gap: pw(1) }}>
+                    <ActivityIndicator color={THEME.colors.primary} size="small" />
+                    <Text style={{ color: "rgba(255,255,255,0.3)", fontSize: ps(0.9) }}>Loading more...</Text>
+                  </View>
+                ) : null
+              }
+            />
+          </FocusGroup>
         </View>
       </View>
 
-      <View style={S.body}>
-        <FocusGroup style={{ width: SIDEBAR_WIDTH_VAL }}>
-          <CategorySidebar
-            categories={sidebarCategories}
-            selectedId={selectedCategory || "all"}
-            onSelect={setSelectedCategory}
-            width={SIDEBAR_WIDTH_VAL}
+      <Overlay
+        visible={playModalVisible}
+        onClose={() => setPlayModalVisible(false)}
+        style={{ justifyContent: 'flex-end', backgroundColor: 'transparent' }}
+        contentStyle={{ width: '100%', maxWidth: '100%', margin: 0, padding: 0 }}
+      >
+        <BlurView intensity={120} tint="dark" style={{ width: '100%', borderTopLeftRadius: 36, borderTopRightRadius: 36, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.25)", borderBottomWidth: 0 }}>
+          {selectedVod?.logo && (
+            <Image
+              source={{ uri: selectedVod.logo }}
+              style={[StyleSheet.absoluteFillObject, { opacity: 0.4 }]}
+              blurRadius={40}
+              contentFit="cover"
+            />
+          )}
+          <LinearGradient
+            colors={['rgba(255,255,255,0.1)', 'rgba(0,0,0,0.5)', '#000']}
+            style={StyleSheet.absoluteFillObject}
           />
-        </FocusGroup>
-        <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapUp={trappingFocus}>
-          <FlatList
-            ref={flatListRef}
-            data={chunkedMovies}
-            renderItem={renderRow}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={[S.list, (isLoading || chunkedMovies.length === 0) && { flexGrow: 1 }]}
-            removeClippedSubviews={false}
-            extraData={filteredMovies.length}
-            initialNumToRender={8}
-            maxToRenderPerBatch={6}
-            windowSize={5}
-            updateCellsBatchingPeriod={50}
-            onEndReached={() => {
-              if (isLoading || loadingMore || !hasMore || debouncedQuery) return;
-              trapFocusBriefly();
-              if (isXtreamOrM3U) {
-                // Grow the slice from the cached full list — no network.
-                const nextPage = page + 1;
-                const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
-                setVodItems(sliced);
-                setPage(nextPage);
-                setHasMore(fullListRef.current.length > sliced.length);
-              } else {
-                loadVodItems(selectedCategory, page + 1);
-              }
-            }}
-            onEndReachedThreshold={1.5}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
-            ListEmptyComponent={
-              isLoading ? (
-                <Focusable hasTVPreferredFocus={!searchFocused} style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }} ringOnFocus={false}>
-                  <ActivityIndicator color={THEME.colors.primary} size="large" />
-                  <Text style={[S.loadingText, { marginTop: 10 }]}>Brewing cinematic magic...</Text>
-                </Focusable>
-              ) : (
-                <View style={S.emptyState}>
-                  <MaterialCommunityIcons name="movie-filter-outline" size={ps(4)} color="rgba(255,255,255,0.05)" />
-                  <Text style={S.emptyTitle}>Nothing Found</Text>
-                </View>
-              )
-            }
-            ListFooterComponent={
-              loadingMore && filteredMovies.length > 0 ? (
-                <View style={{ width: "100%", paddingVertical: ph(3), alignItems: "center", justifyContent: "center", flexDirection: "row", gap: pw(1) }}>
-                  <ActivityIndicator color={THEME.colors.primary} size="small" />
-                  <Text style={{ color: "rgba(255,255,255,0.3)", fontSize: ps(0.9) }}>Loading more...</Text>
-                </View>
-              ) : null
-            }
-          />
-          
-          <Overlay
-            visible={playModalVisible}
-            onClose={() => setPlayModalVisible(false)}
-            style={{ justifyContent: 'flex-end', backgroundColor: 'transparent' }}
-            contentStyle={{ width: '100%', maxWidth: '100%', margin: 0, padding: 0 }}
-          >
-            <BlurView intensity={120} tint="dark" style={{ width: '100%', borderTopLeftRadius: 36, borderTopRightRadius: 36, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.25)", borderBottomWidth: 0 }}>
-              {selectedVod?.logo && (
-                <Image 
-                  source={{ uri: selectedVod.logo }} 
-                  style={[StyleSheet.absoluteFillObject, { opacity: 0.4 }]} 
-                  blurRadius={40} 
-                  contentFit="cover" 
-                />
-              )}
-              <LinearGradient 
-                colors={['rgba(255,255,255,0.1)', 'rgba(0,0,0,0.5)', '#000']} 
-                style={StyleSheet.absoluteFillObject} 
-              />
-              <View style={[isTV ? S.modalTVContent : null, { padding: ps(4) }]}>
-                <View style={S.modalLeft}>
-                  <Text style={S.modalTitle} numberOfLines={2}>{selectedVod?.name}</Text>
-                  <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-                    {getDisplayDescription(selectedVod?.description)}
-                  </Text>
-                  <View style={S.modalMetaRow}>
-                    {selectedVod?.rating && (
-                      <View style={S.modalBadge}>
-                        <Ionicons name="star" size={ps(1)} color="#FFD700" />
-                        <Text style={S.modalBadgeText}>{selectedVod.rating}</Text>
-                      </View>
-                    )}
-                    {selectedVod?.year && (
-                      <View style={S.modalBadge}>
-                        <Ionicons name="calendar-outline" size={ps(1)} color="#fff" />
-                        <Text style={S.modalBadgeText}>{selectedVod.year}</Text>
-                      </View>
-                    )}
+          <View style={[isTV ? S.modalTVContent : null, { padding: ps(3) }]}>
+            <View style={S.modalLeft}>
+              <Text style={S.modalTitle} numberOfLines={2}>{selectedVod?.name}</Text>
+              <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
+                {getDisplayDescription(selectedVod?.description)}
+              </Text>
+              <View style={S.modalMetaRow}>
+                {selectedVod?.rating && (
+                  <View style={S.modalBadge}>
+                    <Ionicons name="star" size={ps(1)} color="#FFD700" />
+                    <Text style={S.modalBadgeText}>{selectedVod.rating}</Text>
                   </View>
-                </View>
-
-                <View style={S.modalRight}>
-                  <Focusable
-                    hasTVPreferredFocus
-                    ringOnFocus={false}
-                    onPress={() => handleModalAction(false)}
-                    style={S.modalBtnWrapper}
-                  >
-                    {(focused) => (
-                      <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                        <BlurView intensity={focused ? 0 : 40} tint="light" style={[S.modalBtnPrimaryInner, focused && { backgroundColor: "#fff" }]}>
-                          <Text style={[S.modalBtnPrimaryText, focused && { color: "#000" }]}>WATCH NOW</Text>
-                        </BlurView>
-                      </View>
-                    )}
-                  </Focusable>
-                  <Focusable
-                    ringOnFocus={false}
-                    onPress={() => handleModalAction(true)}
-                    style={S.modalBtnWrapper}
-                  >
-                    {(focused) => (
-                      <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                        <BlurView intensity={focused ? 0 : 40} tint="dark" style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
-                          <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>EXTERNAL PLAYER</Text>
-                        </BlurView>
-                      </View>
-                    )}
-                  </Focusable>
-                  <Focusable
-                    ringOnFocus={false}
-                    onPress={() => setPlayModalVisible(false)}
-                    style={S.modalBtnWrapper}
-                  >
-                    {(focused) => (
-                      <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                        <BlurView intensity={focused ? 0 : 40} tint="dark" style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
-                          <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>CLOSE</Text>
-                        </BlurView>
-                      </View>
-                    )}
-                  </Focusable>
-                </View>
+                )}
+                {selectedVod?.year && (
+                  <View style={S.modalBadge}>
+                    <Ionicons name="calendar-outline" size={ps(1)} color="#fff" />
+                    <Text style={S.modalBadgeText}>{selectedVod.year}</Text>
+                  </View>
+                )}
               </View>
-            </BlurView>
-          </Overlay>
-        </FocusGroup>
-      </View>
+            </View>
+
+            <View style={S.modalRight}>
+              <Focusable
+                hasTVPreferredFocus
+                ringOnFocus={false}
+                onPress={() => handleModalAction(false)}
+                style={S.modalBtnWrapper}
+              >
+                {(focused) => (
+                  <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                    <View style={S.modalBtnPrimaryInner}>
+                      <Text style={[S.modalBtnPrimaryText, focused && { color: "#000" }]}>WATCH NOW</Text>
+                    </View>
+                  </View>
+                )}
+              </Focusable>
+              <Focusable
+                ringOnFocus={false}
+                onPress={() => handleModalAction(true)}
+                style={S.modalBtnWrapper}
+              >
+                {(focused) => (
+                  <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                    <View style={S.modalBtnSecondaryInner}>
+                      <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>EXTERNAL PLAYER</Text>
+                    </View>
+                  </View>
+                )}
+              </Focusable>
+              <Focusable
+                ringOnFocus={false}
+                onPress={() => setPlayModalVisible(false)}
+                style={S.modalBtnWrapper}
+              >
+                {(focused) => (
+                  <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                    <View style={S.modalBtnSecondaryInner}>
+                      <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>CLOSE</Text>
+                    </View>
+                  </View>
+                )}
+              </Focusable>
+            </View>
+          </View>
+        </BlurView>
+      </Overlay>
     </View>
   );
 }

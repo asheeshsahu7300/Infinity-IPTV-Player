@@ -8,6 +8,7 @@ import {
   Image,
   Dimensions,
   Alert,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -89,18 +90,12 @@ const RailItem = ({
         {(focused) => (
           <View
             style={[
-              { flex: 1, borderRadius: pw(1.2), padding: focused ? 1.5 : 0, backgroundColor: focused ? "#fff" : "transparent" },
-              focused && {
-                transform: [{ scale: 1.08 }],
-                shadowColor: "#fff",
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.6,
-                shadowRadius: 10,
-                elevation: 0,
-              }
+              S.cardBorder,
+              focused && S.cardBorderFocused,
+              focused && { transform: [{ scale: 1.06 }] }
             ]}
           >
-            <View style={[S.railInner, { borderRadius: focused ? pw(1.2) - 1.5 : pw(1.2) }]}>
+            <View style={S.railInner}>
               {image ? (
                 <Image source={{ uri: image }} style={S.railItemImage} resizeMode="cover" />
               ) : (
@@ -108,14 +103,14 @@ const RailItem = ({
                   <Ionicons name={type === "landscape" ? "tv" : "film"} size={ps(2)} color="rgba(255,255,255,0.15)" />
                 </View>
               )}
-              <BlurView 
-                intensity={focused ? 80 : 60} 
-                tint="dark" 
+              <BlurView
+                intensity={focused ? 80 : 60}
+                tint="dark"
                 style={[
-                  S.cardContent, 
-                  { 
-                    borderBottomLeftRadius: focused ? pw(1.2) - 1.5 : pw(1.2),
-                    borderBottomRightRadius: focused ? pw(1.2) - 1.5 : pw(1.2),
+                  S.cardContent,
+                  {
+                    borderBottomLeftRadius: ps(1.1),
+                    borderBottomRightRadius: ps(1.1),
                     overflow: 'hidden'
                   }
                 ]}
@@ -197,19 +192,20 @@ const HeroPill = ({
           focused && S.heroPillContainerFocused,
           focused && { transform: [{ scale: 1.08 }] }
         ]}>
-          <LinearGradient
-            colors={focused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.08)", "rgba(255,255,255,0.05)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={S.heroPillGradient}
+          <View
+            style={[
+              S.heroPillGradient,
+              !focused && { backgroundColor: "rgba(255,255,255,0.05)" },
+              focused && { backgroundColor: "#fff" }
+            ]}
           >
             {iconType === "material" ? (
-              <MaterialCommunityIcons name={icon as any} size={ps(1.8)} color="#fff" style={{ marginRight: pw(0.8) }} />
+              <MaterialCommunityIcons name={icon as any} size={ps(1.8)} color={focused ? "#000" : "#fff"} style={{ marginRight: pw(0.8) }} />
             ) : (
-              <Ionicons name={icon as any} size={ps(1.8)} color="#fff" style={{ marginRight: pw(0.8) }} />
+              <Ionicons name={icon as any} size={ps(1.8)} color={focused ? "#000" : "#fff"} style={{ marginRight: pw(0.8) }} />
             )}
-            <Text style={S.heroPillText}>{text}</Text>
-          </LinearGradient>
+            <Text style={[S.heroPillText, focused && { color: "#000" }]}>{text}</Text>
+          </View>
         </View>
       )}
     </Focusable>
@@ -327,134 +323,128 @@ export default function DashboardScreen() {
 
   return (
     <View style={S.container}>
-      {/* Cinematic Background */}
-      <View style={S.backgroundArea}>
-        <Image source={{ uri: focusedImage || "https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?q=80&w=1200" }} style={S.bgImage} resizeMode="cover" blurRadius={20} />
-        <LinearGradient colors={["rgba(8,8,10,0.5)", "#08080a"]} style={S.bgGradient} />
-        <LinearGradient colors={["transparent", "#08080a"]} style={S.bgBottomFade} />
-      </View>
-
-      {isLoading && <LoadingOverlay message="Refreshing your library..." />}
-
-      <ScrollView
+      <View
         style={{ flex: 1 }}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: insets.top + ph(2), paddingBottom: ph(10) }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ff1b8a" />}
+        accessibilityElementsHidden={playModalVisible}
+        importantForAccessibility={playModalVisible ? "no-hide-descendants" : "auto"}
       >
-        {/* Cinematic Header Branding */}
-        <View style={S.headerBranding}>
-          <View style={S.logoRow}>
-            <Text style={S.logoTitle}>IPTV HUB</Text>
-          </View>
-          <View style={S.headerActions}>
-            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={handleFullRefresh} style={S.roundBtn}>
-              <Ionicons name="refresh" size={ps(2)} color="#fff" />
-            </Focusable>
-            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/portals")} style={S.roundBtn}>
-              <Ionicons name="apps" size={ps(2)} color="#fff" />
-            </Focusable>
-            <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/settings")} style={S.roundBtn}>
-              <Ionicons name="settings" size={ps(2)} color="#fff" />
-            </Focusable>
-          </View>
+        {/* Cinematic Background */}
+        <View style={S.backgroundArea}>
+          <Image source={{ uri: focusedImage || "https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?q=80&w=1200" }} style={S.bgImage} resizeMode="cover" blurRadius={20} />
+          <LinearGradient colors={["rgba(8,8,10,0.5)", "#08080a"]} style={S.bgGradient} />
+          <LinearGradient colors={["transparent", "#08080a"]} style={S.bgBottomFade} />
         </View>
 
-        <View style={S.heroSection}>
-          <GradientText text="PREMIUM STREAMING" style={S.heroTagline} />
-          <Text style={S.heroTitle}>Unlimited Entertainment</Text>
-          <Text style={S.heroDesc}>Access thousands of Indian channels, global movies and exclusive series directly on your screen.</Text>
-          <View style={S.heroButtons}>
-            <HeroPill icon="search" text="Search Content" autoFocus onPress={() => router.push("/search")} />
-          </View>
-        </View>
+        {isLoading && <LoadingOverlay message="Refreshing your library..." />}
 
-        {/* Browse Category Cards */}
-        <View style={S.browseSection}>
-          <View style={S.browseContainer}>
-            {(
-              [
-                { id: "cat-live", title: "Live TV", icon: "tv", img: "https://i.pinimg.com/1200x/c2/f5/f5/c2f5f508392fc27ab89483fe3037fd30.jpg", route: "/live-tv" },
-                { id: "cat-movies", title: "Movies", icon: "film", img: "https://i.pinimg.com/736x/eb/f1/4a/ebf14a5d3b21e60b907ae26b90205271.jpg", route: "/vod" },
-                { id: "cat-series", title: "Series", icon: "albums", img: "https://i.pinimg.com/1200x/8b/5b/e2/8b5be2acd7c6909b99a2b03b6f63999a.jpg", route: "/series" },
-              ]
-            ).map((cat) => (
-              <Focusable
-                key={cat.id}
-                onFocus={() => setFocusedImage(cat.img)}
-                onPress={() => router.push(cat.route as any)}
-                ringOnFocus={false}
-                style={[S.browseCardWrapper, { overflow: "visible" }]}
-              >
-                {(focused) => (
-                  <View style={[S.browseCard, focused && {
-                    transform: [{ scale: 1.05 }],
-                    shadowColor: "#ff1b8a",
-                    shadowOffset: { width: 0, height: 6 },
-                    shadowOpacity: 0.6,
-                    shadowRadius: 10,
-                    elevation: 14,
-                  }]}>
-                    <LinearGradient
-                      colors={focused ? GRADIENT_COLORS : ["transparent", "transparent"]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{ flex: 1, borderRadius: pw(1.2), padding: focused ? 1.5 : 0 }}
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingTop: insets.top + ph(2), paddingBottom: ph(10) }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ff1b8a" />}
+        >
+          {/* Cinematic Header Branding */}
+          <View style={S.headerBranding}>
+            <View style={S.logoRow}>
+              <Text style={S.logoTitle}>IPTV HUB</Text>
+            </View>
+            <View style={S.headerActions}>
+              <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={handleFullRefresh} style={S.roundBtn}>
+                <Ionicons name="refresh" size={ps(2)} color="#fff" />
+              </Focusable>
+              <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/portals")} style={S.roundBtn}>
+                <Ionicons name="apps" size={ps(2)} color="#fff" />
+              </Focusable>
+              <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/settings")} style={S.roundBtn}>
+                <Ionicons name="settings" size={ps(2)} color="#fff" />
+              </Focusable>
+            </View>
+          </View>
+
+          <View style={S.heroSection}>
+            <GradientText text="PREMIUM STREAMING" style={S.heroTagline} />
+            <Text style={S.heroTitle}>Unlimited Entertainment</Text>
+            <Text style={S.heroDesc}>Access thousands of Indian channels, global movies and exclusive series directly on your screen.</Text>
+            <View style={S.heroButtons}>
+              <HeroPill icon="search" text="Search Content" autoFocus onPress={() => router.push("/search")} />
+            </View>
+          </View>
+
+          {/* Browse Category Cards */}
+          <View style={S.browseSection}>
+            <View style={S.browseContainer}>
+              {(
+                [
+                  { id: "cat-live", title: "Live TV", icon: "tv", img: "https://i.pinimg.com/1200x/c2/f5/f5/c2f5f508392fc27ab89483fe3037fd30.jpg", route: "/live-tv" },
+                  { id: "cat-movies", title: "Movies", icon: "film", img: "https://i.pinimg.com/736x/eb/f1/4a/ebf14a5d3b21e60b907ae26b90205271.jpg", route: "/vod" },
+                  { id: "cat-series", title: "Series", icon: "albums", img: "https://i.pinimg.com/1200x/8b/5b/e2/8b5be2acd7c6909b99a2b03b6f63999a.jpg", route: "/series" },
+                ]
+              ).map((cat) => (
+                <Focusable
+                  key={cat.id}
+                  onFocus={() => setFocusedImage(cat.img)}
+                  onPress={() => router.push(cat.route as any)}
+                  ringOnFocus={false}
+                  style={[{ flex: 1, height: ph(35), minHeight: ph(35), padding: pw(1), overflow: "visible" }]}
+                >
+                  {(focused) => (
+                    <View
+                      style={[
+                        S.cardBorder,
+                        focused && S.cardBorderFocused,
+                        focused && { transform: [{ scale: 1.05 }] }
+                      ]}
                     >
                       <View style={S.browseCardInner}>
                         <Image source={{ uri: cat.img }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-                        <LinearGradient
-                          colors={focused ? ["rgba(0,0,0,0.2)", "rgba(0,0,0,0.4)"] : ["rgba(0,0,0,0.2)", "rgba(0,0,0,0.85)"]}
-                          style={StyleSheet.absoluteFillObject}
-                        />
-                        <View style={S.browseCardContent}>
+                        <BlurView intensity={focused ? 80 : 60} tint="dark" style={S.browseCardContent}>
                           <Ionicons name={cat.icon as any} size={ps(2.2)} color="#fff" />
                           <Text style={S.browseCardTitle}>{cat.title}</Text>
-                        </View>
+                        </BlurView>
                       </View>
-                    </LinearGradient>
-                  </View>
-                )}
-              </Focusable>
-            ))}
+                    </View>
+                  )}
+                </Focusable>
+              ))}
+            </View>
           </View>
-        </View>
 
-        <View style={S.railsPadding}>
-          {indianChannels.length > 0 && (
-            <ContentSection
-              title="Indian Television"
-              data={indianChannels}
-              type="landscape"
-              onFocus={(img: string) => setFocusedImage(img)}
-              onPress={(c: any) => router.push({ pathname: "/player", params: { url: c.streamUrl, title: c.name, type: "live" } })}
-            />
-          )}
+          <View style={S.railsPadding}>
+            {indianChannels.length > 0 && (
+              <ContentSection
+                title="Indian Television"
+                data={indianChannels}
+                type="landscape"
+                onFocus={(img: string) => setFocusedImage(img)}
+                onPress={(c: any) => router.push({ pathname: "/player", params: { url: c.streamUrl, title: c.name, type: "live" } })}
+              />
+            )}
 
-          {movieRails.length > 0 && (
-            <ContentSection
-              title="Must-Watch Movies"
-              data={movieRails}
-              type="portrait"
-              onFocus={(img: string) => setFocusedImage(img)}
-              onPress={(m: any) => {
-                setSelectedItem(m);
-                setPlayModalVisible(true);
-              }}
-            />
-          )}
+            {movieRails.length > 0 && (
+              <ContentSection
+                title="Must-Watch Movies"
+                data={movieRails}
+                type="portrait"
+                onFocus={(img: string) => setFocusedImage(img)}
+                onPress={(m: any) => {
+                  setSelectedItem(m);
+                  setPlayModalVisible(true);
+                }}
+              />
+            )}
 
-          {seriesRails.length > 0 && (
-            <ContentSection
-              title="Compelling Series"
-              data={seriesRails}
-              type="portrait"
-              onFocus={(img: string) => setFocusedImage(img)}
-              onPress={(s: any) => router.push({ pathname: "/series-details", params: { id: s.id, name: s.name, logo: s.logo } })}
-            />
-          )}
-        </View>
-      </ScrollView>
+            {seriesRails.length > 0 && (
+              <ContentSection
+                title="Compelling Series"
+                data={seriesRails}
+                type="portrait"
+                onFocus={(img: string) => setFocusedImage(img)}
+                onPress={(s: any) => router.push({ pathname: "/series-details", params: { id: s.id, name: s.name, logo: s.logo } })}
+              />
+            )}
+          </View>
+        </ScrollView>
+      </View>
 
       {/* ── Play Modal ────────────────────────────────────────────────────── */}
       <Overlay
@@ -462,7 +452,7 @@ export default function DashboardScreen() {
         onClose={() => setPlayModalVisible(false)}
         contentStyle={S.modalContainer}
       >
-        <View style={isTV ? S.modalTVContent : null}>
+        <View style={[isTV ? S.modalTVContent : null, { padding: ps(3) }]}>
           <View style={S.modalLeft}>
             <Text style={S.modalTitle} numberOfLines={2}>{selectedItem?.name}</Text>
             <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
@@ -493,13 +483,13 @@ export default function DashboardScreen() {
             >
               {(focused) => (
                 <LinearGradient
-                  colors={[THEME.colors.primary, THEME.colors.secondary]}
+                  colors={focused ? ["#fff", "#fff"] : ["rgba(255,255,255,0.05)", "rgba(255,255,255,0.05)"]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
                 >
                   <View style={S.modalBtnPrimaryInner}>
-                    <Text style={S.modalBtnPrimaryText}>WATCH NOW</Text>
+                    <Text style={[S.modalBtnPrimaryText, focused && { color: "#000" }]}>WATCH NOW</Text>
                   </View>
                 </LinearGradient>
               )}
@@ -512,7 +502,7 @@ export default function DashboardScreen() {
               {(focused) => (
                 <LinearGradient
                   colors={focused
-                    ? [THEME.colors.primary, THEME.colors.secondary]
+                    ? ["#fff", "#fff"]
                     : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
                   }
                   start={{ x: 0, y: 0 }}
@@ -520,7 +510,7 @@ export default function DashboardScreen() {
                   style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
                 >
                   <View style={S.modalBtnSecondaryInner}>
-                    <Text style={S.modalBtnSecondaryText}>EXTERNAL PLAYER</Text>
+                    <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>EXTERNAL PLAYER</Text>
                   </View>
                 </LinearGradient>
               )}
@@ -533,7 +523,7 @@ export default function DashboardScreen() {
               {(focused) => (
                 <LinearGradient
                   colors={focused
-                    ? [THEME.colors.primary, THEME.colors.secondary]
+                    ? ["#fff", "#fff"]
                     : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
                   }
                   start={{ x: 0, y: 0 }}
@@ -541,7 +531,7 @@ export default function DashboardScreen() {
                   style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
                 >
                   <View style={S.modalBtnSecondaryInner}>
-                    <Text style={S.modalBtnSecondaryText}>CLOSE</Text>
+                    <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>CLOSE</Text>
                   </View>
                 </LinearGradient>
               )}
@@ -651,18 +641,26 @@ const S = StyleSheet.create({
     overflow: "hidden",
   },
   heroPillContainerFocused: {
-    borderColor: "#6b6b6bff",
-    shadowColor: "#ff1b8a",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: pw(1.5),
-    elevation: 12,
+    borderColor: "#fff",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: pw(1.5),
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
   heroPillGradient: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: pw(2.2),
     paddingVertical: ph(1.2),
+    borderRadius: 100,
+    overflow: "hidden",
   },
   heroPillText: {
     color: "#fff",
@@ -680,35 +678,46 @@ const S = StyleSheet.create({
     flexDirection: isTV ? "row" : "column",
     gap: pw(2),
   },
-  browseCardWrapper: {
+  cardBorder: {
     flex: 1,
-    height: ph(35),
-    minHeight: ph(35),
+    padding: 1,
+    borderRadius: ps(1.4),
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
   },
-  browseCard: {
-    flex: 1,
-    borderRadius: pw(1.2),
-    overflow: "visible",
+  cardBorderFocused: {
+    borderColor: "#fff",
+    backgroundColor: "transparent",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
   browseCardInner: {
     flex: 1,
-    borderRadius: pw(1.2),
+    backgroundColor: "transparent",
+    borderRadius: ps(1.1),
     overflow: "hidden",
-    position: "relative",
   },
   browseCardContent: {
     position: "absolute",
     bottom: 0,
-    left: 0,
-    right: 0,
+    width: "100%",
+    padding: ps(1.5),
+    borderBottomLeftRadius: ps(1.1),
+    borderBottomRightRadius: ps(1.1),
+    overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
     gap: pw(1.2),
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingVertical: ph(1.2),
-    paddingHorizontal: pw(1.8),
-    borderBottomLeftRadius: pw(1.2),
-    borderBottomRightRadius: pw(1.2),
   },
   browseCardTitle: {
     color: "#fff",
@@ -756,9 +765,9 @@ const S = StyleSheet.create({
   },
   railInner: {
     flex: 1,
-    borderRadius: pw(1.2),
+    backgroundColor: "transparent",
+    borderRadius: ps(1.1),
     overflow: "hidden",
-    backgroundColor: "#111216",
   },
   imageWrapper: {
     flex: 1,
@@ -807,27 +816,27 @@ const S = StyleSheet.create({
   },
 
   // ── Play Modal ── (identical to vod.tsx)
-  modalContainer: { backgroundColor: "#111", width: isTV ? ps(65) : "92%", borderRadius: 24, padding: ps(2), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
+  modalContainer: { backgroundColor: "#111", width: isTV ? ps(65) : "92%", borderRadius: 24, padding: ps(.8), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
   modalTVContent: { flexDirection: "row" },
   modalLeft: { flex: 1.4, padding: ps(1.5) },
-  modalRight: { flex: 0.6, backgroundColor: "rgba(255,255,255,0.015)", padding: ps(2), borderRadius: 20, justifyContent: "center", gap: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" },
-  modalTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", marginBottom: 12 },
-  modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.95), lineHeight: ps(1.4), marginBottom: 18 },
+  modalRight: { flex: 0.6, padding: ps(2), paddingRight: isTV ? ps(4) : ps(2), justifyContent: "center", gap: 12 },
+  modalTitle: { color: "#fff", fontSize: ps(1.9), fontWeight: "900", marginBottom: 12 },
+  modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(1.2), lineHeight: ps(1.4), marginBottom: 18 },
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
   modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "700" },
-  modalBtnWrapper: { borderRadius: 12, overflow: "visible" },
-  modalBtnBorder: { padding: 1.5, borderRadius: 12 },
+  modalBtnWrapper: { borderRadius: 8, overflow: "visible", width: "100%", maxWidth: 380, alignSelf: "flex-end" },
+  modalBtnBorder: { padding: 1, borderRadius: 8 },
   modalBtnBorderFocused: {
-    padding: 2.5,
-    shadowColor: THEME.colors.primary,
+    padding: 1,
+    shadowColor: "#fff",
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.7,
-    shadowRadius: 14,
+    shadowOpacity: 0.8,
+    shadowRadius: 16,
     elevation: 14,
   },
-  modalBtnPrimaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
-  modalBtnSecondaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#0d0d12" },
+  modalBtnPrimaryInner: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
+  modalBtnSecondaryInner: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.3)" },
   modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1 },
   modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5 },
 });
