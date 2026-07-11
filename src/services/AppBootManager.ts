@@ -70,12 +70,20 @@ class AppBootManagerClass {
                     try {
                         const { portalApi } = await import("./portalApi");
                         await portalApi.warmPortalData(activePortal);
+                        await AsyncStorage.setItem(`portal:${activePortal.id}:lastSync`, Date.now().toString());
                     } catch (e) {
                         console.warn("❌ Network warming failed during boot:", e);
                     }
                 } else {
-                    // If we have data, we can trigger a background sync update without blocking
-                    this.triggerBackgroundSync(activePortal).catch(console.warn);
+                    // Always refresh in background on app initialize
+                    import("./portalApi").then(({ portalApi }) => {
+                        portalApi.warmPortalData(activePortal).then(() => {
+                            AsyncStorage.setItem(`portal:${activePortal.id}:lastSync`, Date.now().toString());
+                            console.log("✅ Background sync complete (on initialize)");
+                        }).catch(e => {
+                            console.warn("Background sync failed on initialize (non-fatal):", e);
+                        });
+                    }).catch(console.warn);
                 }
 
                 // 6. Load favorites
@@ -140,7 +148,7 @@ class AppBootManagerClass {
             const now = Date.now();
 
             // Only sync if last sync was more than 30 minutes ago
-            const SYNC_INTERVAL = 10 * 60 * 1000; // 30 minutes
+            const SYNC_INTERVAL = 30 * 60 * 1000; // 30 minutes
             if (now - lastSync < SYNC_INTERVAL) {
                 console.log("⏭️ Skipping background sync - recently synced");
                 return;

@@ -136,6 +136,28 @@ export default function RootLayout() {
       });
   }, []);
 
+  // Handle auto-refresh every 30 minutes
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (isHydrated && isReady) {
+      interval = setInterval(async () => {
+        const portal = usePortalStore.getState().activePortal;
+        if (portal) {
+          try {
+            const { portalApi } = await import("../src/services/portalApi");
+            await portalApi.warmPortalData(portal);
+            console.log("✅ Auto-refresh complete");
+          } catch (e) {
+            console.warn("Auto-refresh failed:", e);
+          }
+        }
+      }, 30 * 60 * 1000); // 30 minutes
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isHydrated, isReady]);
+
   // Handle app resume - refresh token if needed
   useEffect(() => {
     const handleAppStateChange = async (state: AppStateStatus) => {

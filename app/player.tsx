@@ -698,8 +698,6 @@ export default function PlayerScreen() {
                     {/* Seekable progress bar — focusable on TV for D-pad scrub */}
                     <Focusable
                       ref={seekBarRef}
-                      nextFocusLeft={seekBarNode}
-                      nextFocusRight={seekBarNode}
                       ringOnFocus={false}
                       focusStyle={S.progressBarFocused}
                       style={S.progressBarWrapper}
@@ -1003,7 +1001,7 @@ const S = StyleSheet.create({
   progressRailFocused: { height: 6, borderRadius: 3 },
   bufferBar: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,255,255,0.1)" },
   progressFill: { height: "100%", borderRadius: 2, overflow: "hidden" },
-  scrubber: { position: "absolute", top: -6, width: 14, height: 14, borderRadius: 7, backgroundColor: "white", borderWidth: 3, borderColor: "rgba(255,27,138,0.8)", marginLeft: -7 },
+  scrubber: { position: "absolute", top: -6, width: 14, height: 14, borderRadius: 7, backgroundColor: "white", borderWidth: 3, borderColor: "rgba(255, 27, 35, 0.8)", marginLeft: -7 },
   scrubberFocused: { width: 20, height: 20, borderRadius: 10, top: -8, marginLeft: -10, borderWidth: 4, borderColor: "#fff", shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 10 },
   seekHint: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   seekHintText: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.7), fontWeight: "600", fontFamily: THEME.fonts.medium },
@@ -1013,7 +1011,7 @@ const S = StyleSheet.create({
   liveText: { color: "#fff", fontSize: ps(0.85), fontWeight: "900", fontFamily: THEME.fonts.bold, letterSpacing: 1 },
   actionsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   actionsLeft: { flexDirection: "row", alignItems: "center", gap: pw(1) },
-  iconChip: { padding: 6, borderRadius: 6, borderWidth: 2, borderColor: "transparent" },
+  iconChip: { padding: 6, borderRadius: 6, borderWidth: 1, borderColor: "transparent" },
   iconChipFocused: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.1)" },
   vSeparator: { width: 1, height: 12, backgroundColor: "rgba(255,255,255,0.2)" },
   actionLabelBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
@@ -1096,7 +1094,7 @@ const S = StyleSheet.create({
   },
   modalOptionSelected: {
     backgroundColor: "rgba(255,27,138,0.12)",
-    borderColor: "rgba(255,27,138,0.3)",
+    borderColor: "rgba(255, 27, 27, 0.3)",
   },
   modalOptionFocused: {
     borderColor: "#fff",

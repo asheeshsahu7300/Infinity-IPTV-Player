@@ -549,7 +549,6 @@ export default function LiveTVScreen() {
             maxToRenderPerBatch={6}
             windowSize={5}
             updateCellsBatchingPeriod={50}
-            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
             ref={flatListRef}
             renderItem={({ item: row, index: rowIndex }: { item: { id: string; items: Channel[] }; index: number }) => (
               <View style={{ flexDirection: "row" }}>

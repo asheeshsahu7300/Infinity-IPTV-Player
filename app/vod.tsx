@@ -781,7 +781,6 @@ export default function VODScreen() {
             maxToRenderPerBatch={6}
             windowSize={5}
             updateCellsBatchingPeriod={50}
-            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
             onEndReached={() => {
               if (isLoading || loadingMore || !hasMore || debouncedQuery) return;
               trapFocusBriefly();
