@@ -72,10 +72,18 @@ const ChannelCard = React.memo(function ChannelCard({
             style={[
               S.cardBorder,
               focused && S.cardBorderFocused,
-              focused && { transform: [{ scale: 1.06 }] }
+              focused && { transform: [{ scale: 1.06 }], backgroundColor: "#fff", borderColor: "#fff", borderWidth: 1 }
             ]}
           >
-            <BlurView intensity={focused ? 40 : 20} tint="dark" style={[S.card, focused && { backgroundColor: "rgba(255,255,255,0.05)" }]}>
+            <BlurView 
+              intensity={focused ? 80 : 60} 
+              tint="dark" 
+              style={[
+                S.card, 
+                focused && { backgroundColor: "transparent" },
+                { overflow: "hidden" }
+              ]}
+            >
               <View style={S.cardLogoWrapper}>
                 {item.logo ? (
                   <Image source={{ uri: item.logo }} style={S.cardLogo} contentFit="contain" />
@@ -84,12 +92,12 @@ const ChannelCard = React.memo(function ChannelCard({
                 )}
               </View>
               <View style={S.cardInfo}>
-                <Text style={S.cardTitle} numberOfLines={2}>{item.name}</Text>
+                <Text style={[S.cardTitle, focused && { color: "#000" }]} numberOfLines={2}>{item.name}</Text>
                 {item.category ? (
-                  <Text style={S.cardCategory} numberOfLines={1}>{item.category}</Text>
+                  <Text style={[S.cardCategory, focused && { color: "rgba(0,0,0,0.6)" }]} numberOfLines={1}>{item.category}</Text>
                 ) : null}
               </View>
-              {focused && <View style={S.focusDot} />}
+              {focused && <View style={[S.focusDot, { backgroundColor: "#000" }]} />}
             </BlurView>
           </View>
         )}

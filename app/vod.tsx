@@ -163,7 +163,7 @@ const S = StyleSheet.create({
   modalBtnSecondaryText: { color: "rgba(255,255,255,0.9)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5, fontFamily: THEME.fonts.bold },
   loadMoreFooter: { paddingVertical: ph(3), alignItems: "center", justifyContent: "center" },
   loadMoreBtn: { flexDirection: "row", alignItems: "center", gap: pw(0.8), paddingHorizontal: pw(3), paddingVertical: ph(1.4), backgroundColor: "rgba(255,255,255,0.06)", borderRadius: ps(1), borderWidth: 2, borderColor: "transparent" },
-  loadMoreBtnFocused: { borderColor: "#fff", backgroundColor: THEME.colors.primary, shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 12, elevation: 12 },
+  loadMoreBtnFocused: { borderColor: "#fff", backgroundColor: "#fff", shadowColor: "#fff", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 12, elevation: 12 },
   loadMoreBtnText: { color: "#fff", fontSize: ps(1), fontWeight: "900", letterSpacing: 1.5, fontFamily: THEME.fonts.bold },
 });
 
@@ -238,7 +238,7 @@ const MovieItem = React.memo(function MovieItem({
                 )}
               </View>
 
-              <BlurView intensity={focused ? 50 : 30} tint="dark" style={S.cardContent}>
+              <BlurView intensity={focused ? 80 : 60} tint="dark" style={S.cardContent}>
                 <Text style={S.vodTitle} numberOfLines={1}>{item.name}</Text>
                 <View style={S.metaRow}>
                   {item.year ? <Text style={S.vodMetaText}>{item.year}</Text> : null}
@@ -835,7 +835,7 @@ export default function VODScreen() {
             style={{ justifyContent: 'flex-end', backgroundColor: 'transparent' }}
             contentStyle={{ width: '100%', maxWidth: '100%', margin: 0, padding: 0 }}
           >
-            <BlurView intensity={80} tint="dark" style={{ width: '100%', borderTopLeftRadius: 36, borderTopRightRadius: 36, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.25)", borderBottomWidth: 0 }}>
+            <BlurView intensity={120} tint="dark" style={{ width: '100%', borderTopLeftRadius: 36, borderTopRightRadius: 36, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.25)", borderBottomWidth: 0 }}>
               {selectedVod?.logo && (
                 <Image 
                   source={{ uri: selectedVod.logo }} 

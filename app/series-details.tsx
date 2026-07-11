@@ -161,21 +161,21 @@ const SeasonPill = React.memo(function SeasonPill({
       style={S.seasonPillWrapper}
     >
       {(focused) => (
-        <LinearGradient
-          colors={isActive || focused
-            ? [THEME.colors.primary, THEME.colors.secondary]
-            : ["rgba(255,255,255,0.06)", "rgba(255,255,255,0.02)"]
-          }
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={[S.seasonPillBorder, focused && S.seasonPillBorderFocused]}
+        <BlurView
+          intensity={isActive && !focused ? 80 : 0}
+          tint={isActive ? "light" : "dark"}
+          style={[
+            S.seasonPillBorder, 
+            focused && S.seasonPillBorderFocused,
+            (focused || isActive) && { backgroundColor: "#fff" }
+          ]}
         >
-          <View style={[S.seasonPillInner, isActive && S.seasonPillInnerActive]}>
-            <Text style={[S.seasonPillText, (isActive || focused) && S.seasonPillTextActive]}>
+          <View style={[S.seasonPillInner, isActive && S.seasonPillInnerActive, (focused || isActive) && { backgroundColor: "transparent" }]}>
+            <Text style={[S.seasonPillText, (isActive || focused) && S.seasonPillTextActive, (isActive || focused) && { color: "#000" }]}>
               {season.name || `Season ${season.seasonNumber}`}
             </Text>
           </View>
-        </LinearGradient>
+        </BlurView>
       )}
     </Focusable>
   );
@@ -480,23 +480,23 @@ export default function SeriesDetailsScreen() {
         <Overlay
           visible={playModalVisible}
           onClose={() => setPlayModalVisible(false)}
-          style={{ justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' }}
+          style={{ justifyContent: 'flex-end', backgroundColor: 'transparent' }}
           contentStyle={{ width: '100%', maxWidth: '100%', margin: 0, padding: 0 }}
         >
-          <View style={{ width: '100%', borderTopLeftRadius: ps(3), borderTopRightRadius: ps(3), overflow: 'hidden', borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", borderBottomWidth: 0 }}>
+          <BlurView intensity={120} tint="dark" style={{ width: '100%', borderTopLeftRadius: 36, borderTopRightRadius: 36, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.25)", borderBottomWidth: 0 }}>
             {params.logo && (
               <Image 
                 source={{ uri: params.logo }} 
-                style={StyleSheet.absoluteFillObject} 
-                blurRadius={15} 
+                style={[StyleSheet.absoluteFillObject, { opacity: 0.4 }]} 
+                blurRadius={40} 
                 contentFit="cover" 
               />
             )}
             <LinearGradient 
-              colors={['rgba(15,15,20,0.7)', 'rgba(10,10,15,0.95)', '#050505']} 
+              colors={['rgba(255,255,255,0.1)', 'rgba(0,0,0,0.5)', '#000']} 
               style={StyleSheet.absoluteFillObject} 
             />
-            <View style={[isTV ? S.modalTVContent : null, { padding: ps(3) }]}>
+            <View style={[isTV ? S.modalTVContent : null, { padding: ps(4) }]}>
               <View style={S.modalLeft}>
                 <Text style={S.modalTitle} numberOfLines={2}>
                   {`S${currentSeason?.seasonNumber || ""} E${selectedEpisode?.episodeNum || ""} : ${selectedEpisode?.name || ""}`}
@@ -563,7 +563,7 @@ export default function SeriesDetailsScreen() {
                 </Focusable>
               </View>
             </View>
-          </View>
+          </BlurView>
         </Overlay>
       </FocusGroup>
     </View>
@@ -596,11 +596,17 @@ const S = StyleSheet.create({
   },
   favoriteBtnFocused: {
     borderColor: "#fff",
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
-    elevation: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
   favoriteText: { color: "#fff", fontSize: ps(0.9), fontWeight: "800" },
 
@@ -617,14 +623,21 @@ const S = StyleSheet.create({
   seasonPillBorder: {
     padding: 1.5,
     borderRadius: THEME.radius.full,
+    overflow: "hidden",
   },
   seasonPillBorderFocused: {
     padding: 2.5,
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.7,
-    shadowRadius: 12,
-    elevation: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
   seasonPillInner: {
     paddingHorizontal: 28,

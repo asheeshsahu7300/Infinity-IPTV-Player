@@ -199,7 +199,7 @@ const SeriesItem = React.memo(function SeriesItem({
                 )}
               </View>
 
-              <BlurView intensity={focused ? 50 : 30} tint="dark" style={S.cardContent}>
+              <BlurView intensity={focused ? 80 : 60} tint="dark" style={S.cardContent}>
                 <Text style={S.seriesTitle} numberOfLines={1}>{item.name}</Text>
                 <View style={S.metaRow}>
                   {item.year ? <Text style={S.seriesMetaText}>{item.year}</Text> : null}

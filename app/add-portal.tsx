@@ -12,6 +12,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePortalStore } from "../src/store/portalStore";
@@ -98,22 +99,20 @@ const GradientBorderCard = ({
         },
       ]}
     >
-      <LinearGradient
-        colors={
-          focused ? [THEME.colors.primary, THEME.colors.secondary] : ["transparent", "transparent"]
-        }
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+      <BlurView
+        intensity={focused ? 0 : 30}
+        tint="dark"
         style={{
           flex: 1,
           borderRadius: RADIUS,
           padding: focused ? BORDER : 0,
+          backgroundColor: focused ? "#fff" : "transparent"
         }}
       >
         <View
           style={{
             flex: 1,
-            backgroundColor: THEME.colors.surface,
+            backgroundColor: focused ? "transparent" : THEME.colors.surface,
             borderRadius: focused ? RADIUS - BORDER : RADIUS,
             alignItems: "center",
             justifyContent: "center",
@@ -122,7 +121,7 @@ const GradientBorderCard = ({
         >
           {children}
         </View>
-      </LinearGradient>
+      </BlurView>
     </Focusable>
   );
 };
@@ -141,24 +140,23 @@ const GradientBorderInput = ({
   const BORDER = 1.5;
 
   return (
-    <LinearGradient
-      colors={isFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["transparent", "transparent"]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
-      style={[{ borderRadius: RADIUS, padding: isFocused ? BORDER : 0 }, style]}
+    <BlurView
+      intensity={isFocused ? 0 : 20}
+      tint="dark"
+      style={[{ borderRadius: RADIUS, padding: isFocused ? BORDER : 0, backgroundColor: isFocused ? "#fff" : "transparent" }, style]}
     >
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          backgroundColor: "#141318",
+          backgroundColor: isFocused ? "transparent" : "#141318",
           borderRadius: isFocused ? RADIUS - BORDER : RADIUS,
           paddingHorizontal: pw(2),
         }}
       >
         {children}
       </View>
-    </LinearGradient>
+    </BlurView>
   );
 };
 
@@ -536,14 +534,13 @@ export default function AddPortalScreen() {
               ]}
             >
               {(focused) => (
-                <LinearGradient
-                  colors={[THEME.colors.primary, THEME.colors.secondary]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0.5 }}
-                  style={S.connectBtnGradient}
+                <BlurView
+                  intensity={focused ? 0 : 40}
+                  tint="dark"
+                  style={[S.connectBtnGradient, focused && { backgroundColor: "#fff" }]}
                 >
-                  <Text style={S.connectBtnText}>Connect Playlist</Text>
-                </LinearGradient>
+                  <Text style={[S.connectBtnText, focused && { color: "#000" }]}>Connect Playlist</Text>
+                </BlurView>
               )}
             </Focusable>
 

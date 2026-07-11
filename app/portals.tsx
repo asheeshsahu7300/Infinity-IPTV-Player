@@ -250,26 +250,25 @@ export default function PortalsScreen() {
         style={{ borderRadius: ps(1), overflow: "visible" }}
       >
         {(focused) => (
-          <LinearGradient
-            colors={focused ? [THEME.colors.primary, THEME.colors.secondary] : ["transparent", "transparent"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+          <BlurView
+            intensity={focused ? 0 : 30}
+            tint="dark"
             style={[
-              { padding: focused ? 1.5 : 0, borderRadius: ps(1) },
+              { padding: focused ? 1.5 : 0, borderRadius: ps(1), backgroundColor: focused ? "#fff" : "transparent" },
               focused && {
                 transform: [{ scale: 1.06 }],
-                shadowColor: THEME.colors.primary,
+                shadowColor: "#fff",
                 shadowOpacity: 0.6,
                 shadowRadius: 12,
-                elevation: 12,
+                elevation: 0,
               },
             ]}
           >
-            <View style={S.addBtn}>
-              <Ionicons name="add" size={ps(1.8)} color="#fff" />
-              <Text style={S.addBtnText}>ADD NEW PORTAL</Text>
+            <View style={[S.addBtn, focused && { backgroundColor: "transparent" }]}>
+              <Ionicons name="add" size={ps(1.8)} color={focused ? "#000" : "#fff"} />
+              <Text style={[S.addBtnText, focused && { color: "#000" }]}>ADD NEW PORTAL</Text>
             </View>
-          </LinearGradient>
+          </BlurView>
         )}
       </Focusable>
     </View>

@@ -17,6 +17,7 @@ import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from "expo-blur";
 import * as IntentLauncher from "expo-intent-launcher";
 
 import { usePortalStore } from "../src/store/portalStore";
@@ -481,10 +482,24 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
       <Overlay
         visible={playModalVisible}
         onClose={() => setPlayModalVisible(false)}
-        contentStyle={S.modalContainer}
+        style={{ justifyContent: 'flex-end', backgroundColor: 'transparent' }}
+        contentStyle={{ width: '100%', maxWidth: '100%', margin: 0, padding: 0 }}
       >
-        <View style={isTV ? S.modalTVContent : null}>
-          <View style={S.modalLeft}>
+        <BlurView intensity={120} tint="dark" style={{ width: '100%', borderTopLeftRadius: 36, borderTopRightRadius: 36, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.25)", borderBottomWidth: 0 }}>
+          {selectedItem?.logo && (
+            <Image 
+              source={{ uri: selectedItem.logo }} 
+              style={[StyleSheet.absoluteFillObject, { opacity: 0.4 }]} 
+              blurRadius={40} 
+              contentFit="cover" 
+            />
+          )}
+          <LinearGradient 
+            colors={['rgba(255,255,255,0.1)', 'rgba(0,0,0,0.5)', '#000']} 
+            style={StyleSheet.absoluteFillObject} 
+          />
+          <View style={[isTV ? S.modalTVContent : null, { padding: ps(4) }]}>
+            <View style={S.modalLeft}>
             <Text style={S.modalTitle} numberOfLines={2}>{selectedItem?.name}</Text>
             <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
               {selectedItem?.description || "No description available for this content."}
@@ -513,16 +528,11 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
               style={S.modalBtnWrapper}
             >
               {(focused) => (
-                <LinearGradient
-                  colors={[THEME.colors.primary, THEME.colors.secondary]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnPrimaryInner}>
-                    <Text style={S.modalBtnPrimaryText}>WATCH NOW</Text>
-                  </View>
-                </LinearGradient>
+                <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                  <BlurView intensity={focused ? 0 : 40} tint="light" style={[S.modalBtnPrimaryInner, focused && { backgroundColor: "#fff" }]}>
+                    <Text style={[S.modalBtnPrimaryText, focused && { color: "#000" }]}>WATCH NOW</Text>
+                  </BlurView>
+                </View>
               )}
             </Focusable>
             <Focusable
@@ -531,19 +541,11 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
               style={S.modalBtnWrapper}
             >
               {(focused) => (
-                <LinearGradient
-                  colors={focused
-                    ? [THEME.colors.primary, THEME.colors.secondary]
-                    : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnSecondaryInner}>
-                    <Text style={S.modalBtnSecondaryText}>EXTERNAL PLAYER</Text>
-                  </View>
-                </LinearGradient>
+                <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                  <BlurView intensity={focused ? 0 : 40} tint="dark" style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
+                    <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>EXTERNAL PLAYER</Text>
+                  </BlurView>
+                </View>
               )}
             </Focusable>
             <Focusable
@@ -552,23 +554,16 @@ const RESULT_COLUMNS = isTV ? 6 : 3;
               style={S.modalBtnWrapper}
             >
               {(focused) => (
-                <LinearGradient
-                  colors={focused
-                    ? [THEME.colors.primary, THEME.colors.secondary]
-                    : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnSecondaryInner}>
-                    <Text style={S.modalBtnSecondaryText}>CLOSE</Text>
-                  </View>
-                </LinearGradient>
+                <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
+                  <BlurView intensity={focused ? 0 : 40} tint="dark" style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
+                    <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>CLOSE</Text>
+                  </BlurView>
+                </View>
               )}
             </Focusable>
           </View>
-        </View>
+          </View>
+        </BlurView>
       </Overlay>
     </View>
   );
@@ -780,18 +775,26 @@ const S = StyleSheet.create({
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
   modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "700" },
-  modalBtnWrapper: { borderRadius: 12, overflow: "visible" },
-  modalBtnBorder: { padding: 1.5, borderRadius: 12 },
+  modalBtnWrapper: { borderRadius: 16, overflow: "visible" },
+  modalBtnBorder: { padding: 1, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.15)" },
   modalBtnBorderFocused: {
-    padding: 2.5,
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.7,
-    shadowRadius: 14,
-    elevation: 14,
+    padding: 1,
+    borderColor: "#fff",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 0,
+      }
+    })
   },
-  modalBtnPrimaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
-  modalBtnSecondaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#0d0d12" },
+  modalBtnPrimaryInner: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "transparent", overflow: "hidden" },
+  modalBtnSecondaryInner: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.3)", overflow: "hidden" },
   modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1 },
   modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5 },
 });

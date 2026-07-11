@@ -12,6 +12,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from "expo-blur";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePortalStore } from "../src/store/portalStore";
@@ -86,19 +87,16 @@ const RailItem = ({
         style={{ width, height }}
       >
         {(focused) => (
-          <LinearGradient
-            colors={focused ? GRADIENT_COLORS : ["transparent", "transparent"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+          <View
             style={[
-              { flex: 1, borderRadius: pw(1.2), padding: focused ? 1.5 : 0 },
+              { flex: 1, borderRadius: pw(1.2), padding: focused ? 1.5 : 0, backgroundColor: focused ? "#fff" : "transparent" },
               focused && {
                 transform: [{ scale: 1.08 }],
-                shadowColor: "#ff1b8a",
+                shadowColor: "#fff",
                 shadowOffset: { width: 0, height: 6 },
                 shadowOpacity: 0.6,
                 shadowRadius: 10,
-                elevation: 14,
+                elevation: 0,
               }
             ]}
           >
@@ -110,16 +108,23 @@ const RailItem = ({
                   <Ionicons name={type === "landscape" ? "tv" : "film"} size={ps(2)} color="rgba(255,255,255,0.15)" />
                 </View>
               )}
-              <LinearGradient
-                colors={focused ? ["transparent", "rgba(0,0,0,0.5)"] : ["transparent", "rgba(0,0,0,0.85)"]}
-                style={S.cardOver}
-              />
-              <View style={S.cardContent}>
+              <BlurView 
+                intensity={focused ? 80 : 60} 
+                tint="dark" 
+                style={[
+                  S.cardContent, 
+                  { 
+                    borderBottomLeftRadius: focused ? pw(1.2) - 1.5 : pw(1.2),
+                    borderBottomRightRadius: focused ? pw(1.2) - 1.5 : pw(1.2),
+                    overflow: 'hidden'
+                  }
+                ]}
+              >
                 <Text numberOfLines={1} style={S.cardTitle}>{title}</Text>
                 {subtitle && <Text numberOfLines={1} style={S.cardSubtitle}>{subtitle}</Text>}
-              </View>
+              </BlurView>
             </View>
-          </LinearGradient>
+          </View>
         )}
       </Focusable>
     </View>
@@ -772,9 +777,10 @@ const S = StyleSheet.create({
   },
   cardContent: {
     position: "absolute",
-    bottom: ps(1),
-    left: ps(1),
-    right: ps(1),
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: ps(1),
   },
   cardTitle: {
     color: "#fff",

@@ -138,11 +138,12 @@ const CategoryItem = React.memo(function CategoryItem({
         {(focused) => {
           return (
             <BlurView 
-              intensity={isActive ? 50 : (focused ? 30 : 0)} 
+              intensity={isActive && !focused ? 80 : 0} 
               tint={isActive ? "light" : "dark"} 
               style={[
                 S.itemContainer, 
                 focused && S.itemContainerFocused,
+                (focused || isActive) && { backgroundColor: "#fff" },
                 focused && { transform: [{ scale: 1.05 }] }
               ]}
             >
@@ -151,7 +152,7 @@ const CategoryItem = React.memo(function CategoryItem({
                   style={[
                     S.itemText,
                     (isActive || focused) && S.itemTextActive,
-                    isActive && { color: "#000" }
+                    (isActive || focused) && { color: "#000" }
                   ]}
                   numberOfLines={1}
                 >
