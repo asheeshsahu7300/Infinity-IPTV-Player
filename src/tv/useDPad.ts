@@ -1,4 +1,5 @@
-import { Platform, useTVEventHandler } from "react-native";
+import React from "react";
+import { Platform, TVEventHandler } from "react-native";
 
 export type DPadEventType =
   | "up"
@@ -37,38 +38,46 @@ const isKeyDown = (evt: any): boolean => {
 };
 
 export function useDPad(handlers: DPadHandlers, enabled: boolean = true) {
-  useTVEventHandler((evt: any) => {
+  React.useEffect(() => {
     if (!enabled) return;
     if (Platform.OS !== "android" && Platform.OS !== "ios") return;
-    if (!isKeyDown(evt)) return;
 
-    const type = evt?.eventType;
-    if (!type) return;
+    const tvEventHandler = new TVEventHandler();
+    tvEventHandler.enable(undefined, (_cmp: any, evt: any) => {
+      if (!isKeyDown(evt)) return;
 
-    if (type === "select" || type === "dpad_center" || type === "center") {
-      handlers.onSelect?.();
-    } else if (type === "up") {
-      handlers.onUp?.();
-    } else if (type === "down") {
-      handlers.onDown?.();
-    } else if (type === "left") {
-      handlers.onLeft?.();
-    } else if (type === "right") {
-      handlers.onRight?.();
-    } else if (type === "longSelect") {
-      handlers.onLongSelect?.();
-    } else if (type === "playPause") {
-      handlers.onPlayPause?.();
-    } else if (type === "fastForward") {
-      handlers.onFastForward?.();
-    } else if (type === "rewind") {
-      handlers.onRewind?.();
-    } else if (type === "menu") {
-      handlers.onMenu?.();
-    }
+      const type = evt?.eventType;
+      if (!type) return;
 
-    handlers.onAny?.(type);
-  });
+      if (type === "select" || type === "dpad_center" || type === "center") {
+        handlers.onSelect?.();
+      } else if (type === "up") {
+        handlers.onUp?.();
+      } else if (type === "down") {
+        handlers.onDown?.();
+      } else if (type === "left") {
+        handlers.onLeft?.();
+      } else if (type === "right") {
+        handlers.onRight?.();
+      } else if (type === "longSelect") {
+        handlers.onLongSelect?.();
+      } else if (type === "playPause") {
+        handlers.onPlayPause?.();
+      } else if (type === "fastForward") {
+        handlers.onFastForward?.();
+      } else if (type === "rewind") {
+        handlers.onRewind?.();
+      } else if (type === "menu") {
+        handlers.onMenu?.();
+      }
+
+      handlers.onAny?.(type);
+    });
+
+    return () => {
+      tvEventHandler.disable();
+    };
+  }, [enabled, handlers]);
 }
 
 // Default no-op export to keep import paths simple

@@ -3,7 +3,7 @@ import {
   StyleProp,
   StyleSheet,
   TouchableOpacity,
-  useTVEventHandler,
+  TVEventHandler,
   View,
   ViewStyle,
 } from "react-native";
@@ -98,16 +98,24 @@ export const Focusable = React.forwardRef<View, FocusableProps>(function Focusab
   }, [onBlur]);
 
   // Fallback path: the native focus engine sends `select` here when this
-  // view holds focus. We use a ref so the handler captures the latest
-  // focused-state without re-subscribing the listener.
-  useTVEventHandler((evt: any) => {
-    if (!focusedRef.current) return;
-    const type = evt?.eventType;
-    if (type !== "select" && type !== "dpad_center" && type !== "center") return;
-    const action = evt?.eventKeyAction;
-    if (action != null && action !== 0 && action !== "0" && action !== "down") return;
-    fire();
-  });
+  // view holds focus. We only subscribe to TV events when the view is actually
+  // focused to avoid performance issues (e.g. 50 listeners for 50 Focusables).
+  React.useEffect(() => {
+    if (!focused) return;
+
+    const tvEventHandler = new TVEventHandler();
+    tvEventHandler.enable(undefined, (_cmp: any, evt: any) => {
+      const type = evt?.eventType;
+      if (type !== "select" && type !== "dpad_center" && type !== "center") return;
+      const action = evt?.eventKeyAction;
+      if (action != null && action !== 0 && action !== "0" && action !== "down") return;
+      fire();
+    });
+
+    return () => {
+      tvEventHandler.disable();
+    };
+  }, [focused, fire]);
 
   const child = typeof children === "function" ? children(focused) : children;
 

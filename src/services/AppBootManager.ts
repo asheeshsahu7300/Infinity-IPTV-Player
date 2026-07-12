@@ -75,15 +75,8 @@ class AppBootManagerClass {
                         console.warn("❌ Network warming failed during boot:", e);
                     }
                 } else {
-                    // Always refresh in background on app initialize
-                    import("./portalApi").then(({ portalApi }) => {
-                        portalApi.warmPortalData(activePortal).then(() => {
-                            AsyncStorage.setItem(`portal:${activePortal.id}:lastSync`, Date.now().toString());
-                            console.log("✅ Background sync complete (on initialize)");
-                        }).catch(e => {
-                            console.warn("Background sync failed on initialize (non-fatal):", e);
-                        });
-                    }).catch(console.warn);
+                    // Background sync with 30-min throttle
+                    this.triggerBackgroundSync(activePortal).catch(console.warn);
                 }
 
                 // 6. Load favorites

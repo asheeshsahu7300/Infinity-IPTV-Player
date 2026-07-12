@@ -769,17 +769,25 @@ export const portalApi = {
   },
 
   async warmPortalData(portal: Portal): Promise<void> {
+    if (portal.type !== "mag") {
+      return this.refreshPortalData(portal);
+    }
+
     try {
-      const base = safe(portal.config.url).replace(/\/$/, "");
-      const mac = portal.config.mac ?? "";
-      const token = portal.config.token ?? "";
-      const key = portal.id;
+      // Ensure we have a valid token before warming
+      const refreshed = await refreshToken(portal);
+      const base = safe(refreshed.config.url).replace(/\/$/, "");
+      const mac = refreshed.config.mac ?? "";
+      const token = refreshed.config.token ?? "";
+      const key = refreshed.id;
 
       // Helper to only fetch if cache missing
       const fetchIfMissing = async <T>(cacheKey: string, loader: () => Promise<T>, ttl: number, setter?: (v: T) => void) => {
         try {
           if (!(await cacheManager.has(cacheKey))) {
             const val = await loader();
+            // Validate that we don't overwrite with empty data by accident
+            if (Array.isArray(val) && val.length === 0) return;
             await cacheManager.set(cacheKey, val, ttl);
             if (setter) setter(val);
           }
@@ -1036,11 +1044,13 @@ export const portalApi = {
       // ---------------------------------------
       // STALKER / MAG LOGIC
       // ---------------------------------------
-      const base = safe(portal.config.url).replace(/\/$/, "");
-      const mac = portal.config.mac ?? "";
-      const token = portal.config.token ?? "";
+      // Ensure token is refreshed before fetching
+      const refreshed = await refreshToken(portal);
+      const base = safe(refreshed.config.url).replace(/\/$/, "");
+      const mac = refreshed.config.mac ?? "";
+      const token = refreshed.config.token ?? "";
 
-      // Re-fetch live categories
+      // Fetch all data
       const liveCategoriesUrl = `${base}/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml`;
       const liveCategoriesRes = await axios.get(liveCategoriesUrl, {
         ...rmAcceptHeader,
@@ -1054,7 +1064,6 @@ export const portalApi = {
         type: "live" as const,
       }));
 
-      // Re-fetch all live channels
       const liveChannelsUrl = `${base}/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml`;
       const liveChannelsRes = await axios.get(liveChannelsUrl, {
         ...rmAcceptHeader,
@@ -1071,10 +1080,7 @@ export const portalApi = {
         streamUrl: c.cmd ?? "",
         epgId: String(c.epg_id ?? ""),
       }));
-      await cacheManager.set(`portal:${key}:live:channels:search:all`, liveChannels, CACHE_TTL.CHANNELS);
-      await store.setChannels(liveChannels);
 
-      // Re-fetch VOD categories
       const vodCategoriesUrl = `${base}/portal.php?type=vod&action=get_categories&JsHttpRequest=1-xml`;
       const vodCategoriesRes = await axios.get(vodCategoriesUrl, {
         ...rmAcceptHeader,
@@ -1088,7 +1094,6 @@ export const portalApi = {
         type: "vod" as const,
       }));
 
-      // Re-fetch VOD items (first page)
       const vodItemsUrl = `${base}/portal.php?type=vod&action=get_ordered_list&p=1&JsHttpRequest=1-xml`;
       const vodItemsRes = await axios.get(vodItemsUrl, {
         ...rmAcceptHeader,
@@ -1108,10 +1113,7 @@ export const portalApi = {
         rating: pickRating(v),
         duration: v.time ?? v.duration ?? "",
       }));
-      await cacheManager.set(`portal:${key}:vod:items:all:1`, vodItems, CACHE_TTL.VOD);
-      await store.setVodItems(vodItems);
 
-      // Re-fetch series categories
       const seriesCategoriesUrl = `${base}/portal.php?type=series&action=get_categories&JsHttpRequest=1-xml`;
       const seriesCategoriesRes = await axios.get(seriesCategoriesUrl, {
         ...rmAcceptHeader,
@@ -1125,7 +1127,6 @@ export const portalApi = {
         type: "series" as const,
       }));
 
-      // Re-fetch series list (first page)
       const seriesListUrl = `${base}/portal.php?type=series&action=get_ordered_list&p=1&JsHttpRequest=1-xml`;
       const seriesListRes = await axios.get(seriesListUrl, {
         ...rmAcceptHeader,
@@ -1143,18 +1144,7 @@ export const portalApi = {
         year: pickYear(v),
         rating: pickRating(v),
       }));
-      await cacheManager.set(`portal:${key}:series:list:all:1`, seriesList, CACHE_TTL.SERIES);
-      await store.setSeries(seriesList);
 
-      // Save categories to store
-      const allMagCategories = [
-        ...(liveCategories || []),
-        ...(vodCategories || []),
-        ...(seriesCategories || []),
-      ];
-      await store.setCategories(allMagCategories);
-
-      // Re-fetch EPG
       const epgUrl = `${base}/portal.php?type=itv&action=epg_info&JsHttpRequest=1-xml`;
       const epgRes = await axios.get(epgUrl, {
         headers: headers(mac, token),
@@ -1185,8 +1175,31 @@ export const portalApi = {
           });
         }
       }
+
+      // Check if data is valid before persisting
+      if (liveChannels.length === 0 && vodItems.length === 0 && seriesList.length === 0) {
+        throw new Error("Portal returned empty data. Token may be invalid.");
+      }
+
+      // Save to cache and store
+      await cacheManager.set(`portal:${key}:live:channels:search:all`, liveChannels, CACHE_TTL.CHANNELS);
+      await cacheManager.set(`portal:${key}:vod:items:all:1`, vodItems, CACHE_TTL.VOD);
+      await cacheManager.set(`portal:${key}:series:list:all:1`, seriesList, CACHE_TTL.SERIES);
       await cacheManager.set(`portal:${key}:epg`, epgPrograms, CACHE_TTL.EPG);
-      await store.setEpgData(epgPrograms);
+
+      const allMagCategories = [
+        ...(liveCategories || []),
+        ...(vodCategories || []),
+        ...(seriesCategories || []),
+      ];
+
+      await Promise.all([
+        store.setCategories(allMagCategories),
+        store.setChannels(liveChannels),
+        store.setVodItems(vodItems),
+        store.setSeries(seriesList),
+        store.setEpgData(epgPrograms)
+      ]);
 
       console.log("✅ MAG portal data refreshed and persisted");
     } catch (e) {
