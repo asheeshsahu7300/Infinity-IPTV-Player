@@ -4,11 +4,12 @@ import {
   StyleProp,
   StyleSheet,
   TouchableOpacity,
-  Modal,
   View,
   ViewStyle,
+  Animated,
 } from "react-native";
 import { useDPad } from "./useDPad";
+import { FocusGroup } from "./FocusGroup";
 
 export interface OverlayProps {
   visible: boolean;
@@ -50,29 +51,52 @@ export function Overlay({
     visible
   );
 
+  const opacity = React.useRef(new Animated.Value(0)).current;
+  const [render, setRender] = React.useState(visible);
+
+  React.useEffect(() => {
+    if (visible) {
+      setRender(true);
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        setRender(false);
+      });
+    }
+  }, [visible, opacity]);
+
+  if (!render) return null;
+
   return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      onRequestClose={() => {
-        if (closeOnBack) onClose?.();
-      }}
-      animationType="fade"
-    >
-      <View style={[styles.backdrop, style]} pointerEvents="auto">
+    <Animated.View style={[styles.backdrop, style, { opacity }]} pointerEvents="auto">
         <TouchableOpacity 
           style={StyleSheet.absoluteFillObject} 
           activeOpacity={1} 
+          focusable={false}
           onPress={() => {
             if (closeOnBack) onClose?.();
           }}
           tvParallaxProperties={{ enabled: false }}
         />
-        <View style={[styles.content, contentStyle]}>
+        <FocusGroup 
+          style={[styles.content, contentStyle]}
+          autoFocus={true}
+          trapUp={trapFocus}
+          trapDown={trapFocus}
+          trapLeft={trapFocus}
+          trapRight={trapFocus}
+        >
           {children}
-        </View>
-      </View>
-    </Modal>
+        </FocusGroup>
+    </Animated.View>
   );
 }
 

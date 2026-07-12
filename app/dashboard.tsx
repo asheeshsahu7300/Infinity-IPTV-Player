@@ -340,7 +340,7 @@ export default function DashboardScreen() {
           {/* Cinematic Header Branding */}
           <View style={S.headerBranding}>
             <View style={S.logoRow}>
-              <Text style={S.logoTitle}>IPTV HUB</Text>
+              <Image source={require("../assets/images/TV.png")} style={S.headerLogoImage} resizeMode="contain" />
             </View>
             <View style={S.headerActions}>
               <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={handleFullRefresh} style={S.roundBtn}>
@@ -356,7 +356,6 @@ export default function DashboardScreen() {
           </View>
 
           <View style={S.heroSection}>
-            <GradientText text="PREMIUM STREAMING" style={S.heroTagline} />
             <Text style={S.heroTitle}>Unlimited Entertainment</Text>
             <Text style={S.heroDesc}>Access thousands of Indian channels, global movies and exclusive series directly on your screen.</Text>
             <View style={S.heroButtons}>
@@ -580,6 +579,10 @@ const S = StyleSheet.create({
     fontWeight: "500",
     letterSpacing: 5,
   },
+  headerLogoImage: {
+    width: pw(25),
+    aspectRatio: 5,
+  },
   headerActions: {
     flexDirection: "row",
     gap: pw(1.5),
@@ -611,14 +614,14 @@ const S = StyleSheet.create({
   heroTitle: {
     fontSize: ps(4.2),
     color: "#fff",
-    fontWeight: "700",
+    fontWeight: "500",
     marginVertical: ph(1),
   },
   heroDesc: {
     fontSize: ps(1.4),
     color: "#a0a4b8",
     lineHeight: ph(2.5),
-    marginBottom: ph(3),
+    marginBottom: ph(5),
   },
   heroButtons: {
     flexDirection: "row",

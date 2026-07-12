@@ -8,6 +8,7 @@ import {
   Dimensions,
   Animated,
   Platform,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -58,6 +59,13 @@ export default function PortalsScreen() {
 
   const focusedPortalIdRef = useRef<string | null>(null);
   const focusedHeaderRef = useRef<"back" | "add" | null>(null);
+
+  // Temporary state to ensure TV preferred focus only happens on initial mount
+  const [shouldAutoTargetFirstPortal, setShouldAutoTargetFirstPortal] = useState(true);
+  useEffect(() => {
+    const timer = setTimeout(() => setShouldAutoTargetFirstPortal(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => { focusedPortalIdRef.current = focusedPortalId; }, [focusedPortalId]);
   useEffect(() => { focusedHeaderRef.current = focusedHeader; }, [focusedHeader]);
@@ -172,16 +180,9 @@ export default function PortalsScreen() {
   const renderPortal = ({ item, index }: { item: Portal; index: number }) => {
     const isFocused = focusedPortalId === item.id;
     const isActive = activePortal?.id === item.id;
-    
+
     // Disable TV preferred focus after initial mount to prevent stealing focus on re-renders
-    const [shouldFocus, setShouldFocus] = useState(index === 0);
-    useEffect(() => {
-      if (index === 0) {
-        setShouldFocus(true);
-        const timer = setTimeout(() => setShouldFocus(false), 500);
-        return () => clearTimeout(timer);
-      }
-    }, [index === 0]);
+    const shouldFocus = index === 0 && shouldAutoTargetFirstPortal;
 
     const inputRange = [(index - 1) * ITEM_SIZE, index * ITEM_SIZE, (index + 1) * ITEM_SIZE];
     const scale = scrollX.interpolate({ inputRange, outputRange: [0.95, 1.05, 0.95], extrapolate: "clamp" });
@@ -223,9 +224,8 @@ export default function PortalsScreen() {
   // ── Header ─────────────────────────────────────────────────────────────────
   const renderHeader = () => (
     <View style={S.header}>
-      <Text style={S.brandingText}>IPTV HUB</Text>
-      <Text style={S.headerSubtitle}>SELECT YOUR PREFERRED CONNECTION TO BEGIN YOUR</Text>
-      <Text style={S.headerSubtitleAccent}>PREMIUM STREAMING EXPERIENCE</Text>
+      <Image source={require("../assets/images/TV.png")} style={S.headerLogoImage} resizeMode="contain" />
+
     </View>
   );
 
@@ -368,6 +368,11 @@ const S = StyleSheet.create({
     fontWeight: "500",
     color: "#fff",
     letterSpacing: 5,
+    marginBottom: ph(1),
+  },
+  headerLogoImage: {
+    width: pw(25),
+    aspectRatio: 5,
     marginBottom: ph(1),
   },
   headerSubtitle: {

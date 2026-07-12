@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { THEME } from '../theme/tokens';
 
 interface Props {
-  children: ReactNode;
+  children?: ReactNode;
 }
 
 interface State {

@@ -43,21 +43,11 @@ if (oldTextRender) {
     const origin = oldTextRender.apply(this, args);
     const customStyle = origin.props.style;
 
-    let fontFamily = "GoogleSans-Regular";
-    if (customStyle) {
-      const flattened = StyleSheet.flatten(customStyle);
-      if (flattened && flattened.fontWeight) {
-        const fw = flattened.fontWeight.toString();
-        if (fw === "bold" || fw === "700" || fw === "800" || fw === "900") {
-          fontFamily = "GoogleSans-Bold";
-        } else if (fw === "500" || fw === "600" || fw === "medium") {
-          fontFamily = "GoogleSans-Medium";
-        }
-      }
-    }
+    // Use Tenor Sans globally
+    let fontFamily = "Tenor Sans";
 
     return React.cloneElement(origin, {
-      style: [{ fontFamily }, customStyle],
+      style: [customStyle, { fontFamily: "Tenor Sans", fontWeight: "normal" }],
     });
   };
 }
@@ -69,7 +59,14 @@ if (TextInput.defaultProps == null) {
   TextInput.defaultProps = {};
 }
 // @ts-ignore
-TextInput.defaultProps.style = { fontFamily: "GoogleSans-Regular" };
+TextInput.defaultProps.style = { fontFamily: "Tenor Sans", fontWeight: "normal" };
+
+// Inject CSS for Web to guarantee the font loads exactly as the user requested
+if (Platform.OS === "web" && typeof document !== "undefined") {
+  const style = document.createElement("style");
+  style.textContent = `@import url('https://fonts.googleapis.com/css2?family=Tenor+Sans&display=swap');`;
+  document.head.append(style);
+}
 
 // Modern Cinematic Splash Screen Component
 function SplashScreen() {
@@ -99,11 +96,11 @@ function SplashScreen() {
         <Animated.View
           style={[
             isTV ? styles.splashLogoTVWrapper : styles.splashLogoWrapper,
-            { transform: [{ scale: pulseAnim }] },
+
           ]}
         >
           <Image
-            source={isTV ? require("../assets/images/splash-icon.gif") : require("../assets/images/icon.png")}
+            source={isTV ? require("../assets/images/TV.png") : require("../assets/images/icon.png")}
             style={styles.logoImage}
             contentFit="contain"
           />
@@ -113,15 +110,15 @@ function SplashScreen() {
   );
 }
 
+import { TenorSans_400Regular } from "@expo-google-fonts/tenor-sans";
+
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
   const isHydrated = usePortalStore((s) => s.isHydrated);
 
   // Load premium Google TV fonts
   const [fontsLoaded] = useFonts({
-    "GoogleSans-Regular": require("../assets/fonts/GoogleSans-Regular.ttf"),
-    "GoogleSans-Medium": require("../assets/fonts/GoogleSans-Medium.ttf"),
-    "GoogleSans-Bold": require("../assets/fonts/GoogleSans-Bold.ttf"),
+    "Tenor Sans": TenorSans_400Regular,
   });
 
   // Boot the app via AppBootManager

@@ -42,8 +42,10 @@ export function useDPad(handlers: DPadHandlers, enabled: boolean = true) {
     if (!enabled) return;
     if (Platform.OS !== "android" && Platform.OS !== "ios") return;
 
-    const tvEventHandler = new TVEventHandler();
-    tvEventHandler.enable(undefined, (_cmp: any, evt: any) => {
+    let subscription: any;
+    let tvEventHandler: any;
+
+    const handler = (evt: any) => {
       if (!isKeyDown(evt)) return;
 
       const type = evt?.eventType;
@@ -72,10 +74,18 @@ export function useDPad(handlers: DPadHandlers, enabled: boolean = true) {
       }
 
       handlers.onAny?.(type);
-    });
+    };
+
+    if (typeof TVEventHandler === "function") {
+      tvEventHandler = new (TVEventHandler as any)();
+      tvEventHandler.enable(undefined, (_cmp: any, evt: any) => handler(evt));
+    } else if (TVEventHandler && typeof (TVEventHandler as any).addListener === "function") {
+      subscription = (TVEventHandler as any).addListener(handler);
+    }
 
     return () => {
-      tvEventHandler.disable();
+      if (tvEventHandler && typeof tvEventHandler.disable === "function") tvEventHandler.disable();
+      if (subscription && typeof subscription.remove === "function") subscription.remove();
     };
   }, [enabled, handlers]);
 }

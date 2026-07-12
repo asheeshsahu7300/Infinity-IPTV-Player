@@ -374,37 +374,6 @@ export default function SeriesDetailsScreen() {
               {getDisplayDescription(params.description)}
             </Text>
 
-            <Focusable
-              ringOnFocus={false}
-              onPress={() => toggleFavorite("series", params.id || "")}
-              style={{ alignSelf: isTV ? "flex-start" : "center", borderRadius: 12, overflow: "visible" }}
-            >
-              {(focused) => (
-                <LinearGradient
-                  colors={focused
-                    ? [THEME.colors.primary, THEME.colors.secondary]
-                    : isFavorite
-                      ? ["rgba(239, 68, 68, 0.2)", "rgba(239, 68, 68, 0.05)"]
-                      : ["rgba(255,255,255,0.05)", "rgba(255,255,255,0.02)"]
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[
-                    S.favoriteBtnInner,
-                    focused && S.favoriteBtnFocused,
-                  ]}
-                >
-                  <Ionicons
-                    name={isFavorite ? "heart" : "heart-outline"}
-                    size={ps(1.2)}
-                    color="#fff"
-                  />
-                  <Text style={S.favoriteText}>
-                    {isFavorite ? "IN FAVORITES" : "ADD TO FAVORITES"}
-                  </Text>
-                </LinearGradient>
-              )}
-            </Focusable>
           </View>
         </View>
       </View>
@@ -445,6 +414,7 @@ export default function SeriesDetailsScreen() {
         style={{ flex: 1 }}
         accessibilityElementsHidden={playModalVisible}
         importantForAccessibility={playModalVisible ? "no-hide-descendants" : "auto"}
+        pointerEvents={playModalVisible ? "none" : "auto"}
       >
         <CinematicBackground uri={params.logo} />
         <StatusBar hidden />

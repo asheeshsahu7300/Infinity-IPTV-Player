@@ -8,6 +8,7 @@ import {
   Pressable,
   Platform,
   Dimensions,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -196,9 +197,7 @@ export default function SettingsScreen() {
           </Focusable>
           <View style={{ flex: 1 }} />
         </View>
-        <Text style={S.brandingText}>IPTV HUB</Text>
-        <Text style={S.headerSubtitle}>APPLICATION PREFERENCES & SYSTEM</Text>
-        <Text style={S.headerSubtitleAccent}>SETTINGS CONTROL PANEL</Text>
+        <Image source={require("../assets/images/TV.png")} style={S.headerLogoImage} resizeMode="contain" />
       </View>
 
       <ScrollView
@@ -382,12 +381,16 @@ const S = StyleSheet.create({
     transform: [{ scale: 1.1 }],
   },
   brandingText: {
-    fontSize: isTV ? ps(2.5) : ps(2.2),
-    fontWeight: "500",
-    color: "#fff",
-    letterSpacing: 5,
+    color: '#fff',
+    fontSize: ps(2.2),
+    fontWeight: '600',
+    letterSpacing: 2,
     marginBottom: ph(1),
-    textAlign: 'center',
+  },
+  headerLogoImage: {
+    width: pw(25),
+    aspectRatio: 5,
+    marginBottom: ph(1),
   },
   headerSubtitle: {
     fontSize: isTV ? ps(1.2) : ps(0.9),

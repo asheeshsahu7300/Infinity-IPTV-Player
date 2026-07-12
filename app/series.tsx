@@ -639,47 +639,42 @@ export default function SeriesScreen() {
       <StatusBar hidden />
 
       <View style={S.header}>
-        <Focusable
-          ringOnFocus={false}
-          focusStyle={{ borderWidth: 2, borderColor: "rgba(255,255,255,0.5)", borderRadius: ps(2) }}
-          onPress={safeGoBack}
-          style={S.iconBtn}
-        >
-          {() => <Ionicons name="chevron-back" size={ps(1.4)} color="#fff" />}
-        </Focusable>
         <Text style={S.headerTitle}>TV Series</Text>
-        <Focusable
-          onPress={() => searchInputRef.current?.focus()}
-          ringOnFocus={false}
-          style={S.searchWrapper}
-        >
-          {(focused) => (
+        <FocusGroup style={S.searchWrapper}>
+          <View style={[S.searchGradient, searchFocused && S.searchFocused]}>
             <LinearGradient
-              colors={focused || searchFocused ? [THEME.colors.primary, THEME.colors.secondary] : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
+              colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={[S.searchGradient, (focused || searchFocused) && S.searchFocused]}
-            >
-              <View style={[
-                S.searchInner,
-                { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
-                (focused || searchFocused) && { backgroundColor: "#0b0b10" }
-              ]}>
-                <Ionicons name="search" size={ps(1.1)} color={focused || searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
-                <TextInput
-                  ref={searchInputRef}
-                  style={S.searchInput}
-                  placeholder="Search series..."
-                  placeholderTextColor="rgba(255,255,255,0.2)"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
-                />
-              </View>
-            </LinearGradient>
-          )}
-        </Focusable>
+              style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
+            />
+            {searchFocused && (
+              <LinearGradient
+                colors={[THEME.colors.primary, THEME.colors.secondary]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
+              />
+            )}
+            <View style={[
+              S.searchInner,
+              { borderRadius: searchFocused ? 25 - 1.5 : 25 },
+              searchFocused && { backgroundColor: "#0b0b10" }
+            ]}>
+              <Ionicons name="search" size={ps(1.1)} color={searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
+              <TextInput
+                ref={searchInputRef}
+                style={S.searchInput}
+                placeholder="Search series..."
+                placeholderTextColor="rgba(255,255,255,0.2)"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
+              />
+            </View>
+          </View>
+        </FocusGroup>
         <View style={S.countBadge}>
           <Text style={S.countText}>{isLoading ? "..." : String(filteredSeries.length)}</Text>
         </View>

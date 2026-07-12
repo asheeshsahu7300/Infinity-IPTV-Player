@@ -103,17 +103,29 @@ export const Focusable = React.forwardRef<View, FocusableProps>(function Focusab
   React.useEffect(() => {
     if (!focused) return;
 
-    const tvEventHandler = new TVEventHandler();
-    tvEventHandler.enable(undefined, (_cmp: any, evt: any) => {
+    let subscription: any;
+    let tvEventHandler: any;
+
+    const handler = (evt: any) => {
       const type = evt?.eventType;
       if (type !== "select" && type !== "dpad_center" && type !== "center") return;
       const action = evt?.eventKeyAction;
       if (action != null && action !== 0 && action !== "0" && action !== "down") return;
       fire();
-    });
+    };
+
+    if (typeof TVEventHandler === "function") {
+      // Legacy RN API
+      tvEventHandler = new (TVEventHandler as any)();
+      tvEventHandler.enable(undefined, (_cmp: any, evt: any) => handler(evt));
+    } else if (TVEventHandler && typeof (TVEventHandler as any).addListener === "function") {
+      // Modern RN API
+      subscription = (TVEventHandler as any).addListener(handler);
+    }
 
     return () => {
-      tvEventHandler.disable();
+      if (tvEventHandler && typeof tvEventHandler.disable === "function") tvEventHandler.disable();
+      if (subscription && typeof subscription.remove === "function") subscription.remove();
     };
   }, [focused, fire]);
 

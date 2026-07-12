@@ -639,7 +639,6 @@ export default function PlayerScreen() {
                 </Focusable>
               )}
               <View style={S.playBtnContainer}>
-                <View style={S.playGlow} />
                 <Focusable
                   hasTVPreferredFocus
                   ringOnFocus={false}
@@ -647,7 +646,7 @@ export default function PlayerScreen() {
                   style={S.mainPlayBtn}
                   onPress={togglePlay}
                 >
-                  <LinearGradient colors={["#db0482", "#3305eb"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.mainPlayGradient}>
+                  <LinearGradient colors={["rgba(255,255,255,0.15)", "rgba(255,255,255,0.05)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.mainPlayGradient}>
                     <Ionicons name={isPlaying ? "pause" : "play"} size={ps(2)} color="#fff" />
                   </LinearGradient>
                 </Focusable>
@@ -970,9 +969,8 @@ const S = StyleSheet.create({
   qualityBadgeText: { color: "#fff", fontSize: ps(0.7), fontWeight: "900", fontFamily: THEME.fonts.bold, letterSpacing: 1 },
   centerRow: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: pw(8) },
   playBtnContainer: { width: ps(5.5), height: ps(5.5), alignItems: "center", justifyContent: "center" },
-  playGlow: { position: "absolute", width: ps(8.2), height: ps(8.2), borderRadius: ps(4.1), backgroundColor: THEME.colors.primary, opacity: 0.2 },
-  mainPlayBtn: { width: ps(4.8), height: ps(4.8), borderRadius: ps(2.4), overflow: "hidden", elevation: 20, borderWidth: 3, borderColor: "transparent" },
-  mainPlayBtnFocused: { borderColor: "#fff", transform: [{ scale: 1.08 }] },
+  mainPlayBtn: { width: ps(4.8), height: ps(4.8), borderRadius: ps(2.4), overflow: "hidden", elevation: 4, borderWidth: 2, borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(0,0,0,0.5)" },
+  mainPlayBtnFocused: { borderColor: "#fff", transform: [{ scale: 1.08 }], backgroundColor: "rgba(255,255,255,0.1)" },
   mainPlayGradient: { flex: 1, alignItems: "center", justifyContent: "center" },
   skipBtn: { padding: 16, borderRadius: ps(3), borderWidth: 2, borderColor: "transparent" },
   skipInner: { alignItems: "center", gap: 4 },

@@ -9,6 +9,7 @@ import {
   Dimensions,
   TouchableOpacity,
   Platform,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -140,6 +141,7 @@ const GradientBorderInput = ({
         borderWidth: isFocused ? BORDER : 0,
         borderColor: isFocused ? "#fff" : "transparent",
         overflow: "hidden",
+        width: "100%",
       }, style]}
     >
       <View
@@ -149,6 +151,7 @@ const GradientBorderInput = ({
           backgroundColor: "#141318",
           borderRadius: isFocused ? RADIUS - BORDER : RADIUS,
           paddingHorizontal: pw(2),
+          width: "100%",
         }}
       >
         {children}
@@ -262,10 +265,10 @@ export default function AddPortalScreen() {
       await setActivePortal(portal);
       setLoadingMessage("Fetching categories...");
       await portalApi.refreshPortalData(portal);
-      
+
       const store = usePortalStore.getState();
       const hasContent = store.categories.length > 0 || store.channels.length > 0 || store.vodItems.length > 0 || store.series.length > 0;
-      
+
       if (!hasContent) {
         await deletePortal(portal.id);
         throw new Error("This playlist contains no content.");
@@ -290,12 +293,11 @@ export default function AddPortalScreen() {
   const renderStep1 = () => (
     <View style={S.step1Container}>
       <View style={S.logoRow}>
-        <Text style={S.logoTitle}>IPTV HUB</Text>
+        <Image source={require("../assets/images/TV.png")} style={S.mainLogoImage} resizeMode="contain" />
       </View>
 
       <Text style={S.step1Subtitle}>
         Select your preferred connection method to begin your{"\n"}
-        <Text style={S.premiumText}>premium streaming experience</Text>.
       </Text>
 
       <View style={S.cardsContainer}>
@@ -362,63 +364,45 @@ export default function AddPortalScreen() {
           {/* Name */}
           <View style={S.premiumInputGroup}>
             <Text style={S.premiumLabel}>{type === "m3u" ? "PLAYLIST NAME" : "PORTAL NAME"}</Text>
-            <Focusable
-              onPress={() => nameInputRef.current?.focus()}
-              ringOnFocus={false}
-              onFocus={() => setFocusedField("name")}
-              onBlur={() => setFocusedField(null)}
-            >
-              {(focused) => (
-                <GradientBorderInput isFocused={focused || focusedField === "name"}>
-                  <TextInput
-                    ref={nameInputRef}
-                    style={S.premiumInput}
-                    placeholder={type === "m3u" ? "e.g. My Premium Streams" : "My IPTV Portal"}
-                    placeholderTextColor="#555"
-                    value={name}
-                    onChangeText={setName}
-                    onFocus={() => setFocusedField("name")}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                </GradientBorderInput>
-              )}
-            </Focusable>
+            <GradientBorderInput isFocused={focusedField === "name"}>
+              <TextInput
+                ref={nameInputRef}
+                style={S.premiumInput}
+                placeholder={type === "m3u" ? "e.g. My Premium Streams" : "My IPTV Portal"}
+                placeholderTextColor="#555"
+                value={name}
+                onChangeText={setName}
+                onFocus={() => setFocusedField("name")}
+                onBlur={() => setFocusedField(null)}
+              />
+            </GradientBorderInput>
           </View>
 
           {/* URL */}
           <View style={S.premiumInputGroup}>
             <Text style={S.premiumLabel}>{type === "m3u" ? "M3U URL" : "PORTAL URL"}</Text>
-            <Focusable
-              onPress={() => urlInputRef.current?.focus()}
-              ringOnFocus={false}
-              onFocus={() => setFocusedField("url")}
-              onBlur={() => setFocusedField(null)}
-            >
-              {(focused) => (
-                <GradientBorderInput isFocused={focused || focusedField === "url"}>
-                  <TextInput
-                    ref={urlInputRef}
-                    style={S.premiumInput}
-                    placeholder={
-                      type === "m3u"
-                        ? "http://example.com/playlist.m3u"
-                        : "http://example.com:8080"
-                    }
-                    placeholderTextColor="#555"
-                    value={url}
-                    onChangeText={setUrl}
-                    onFocus={() => setFocusedField("url")}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                  <Ionicons
-                    name="link"
-                    size={ps(1.8)}
-                    color={focused || focusedField === "url" ? "#fff" : "#555"}
-                    style={{ marginLeft: pw(1) }}
-                  />
-                </GradientBorderInput>
-              )}
-            </Focusable>
+            <GradientBorderInput isFocused={focusedField === "url"}>
+              <TextInput
+                ref={urlInputRef}
+                style={S.premiumInput}
+                placeholder={
+                  type === "m3u"
+                    ? "http://example.com/playlist.m3u"
+                    : "http://example.com:8080"
+                }
+                placeholderTextColor="#555"
+                value={url}
+                onChangeText={setUrl}
+                onFocus={() => setFocusedField("url")}
+                onBlur={() => setFocusedField(null)}
+              />
+              <Ionicons
+                name="link"
+                size={ps(1.8)}
+                color={focusedField === "url" ? "#fff" : "#555"}
+                style={{ marginLeft: pw(1) }}
+              />
+            </GradientBorderInput>
           </View>
 
           {/* Xtream */}
@@ -428,28 +412,19 @@ export default function AddPortalScreen() {
               return (
                 <View key={field} style={S.premiumInputGroup}>
                   <Text style={S.premiumLabel}>{field.toUpperCase()}</Text>
-                  <Focusable
-                    onPress={() => ref.current?.focus()}
-                    ringOnFocus={false}
-                    onFocus={() => setFocusedField(field)}
-                    onBlur={() => setFocusedField(null)}
-                  >
-                    {(focused) => (
-                      <GradientBorderInput isFocused={focused || focusedField === field}>
-                        <TextInput
-                          ref={ref}
-                          style={S.premiumInput}
-                          placeholder={field}
-                          placeholderTextColor="#555"
-                          secureTextEntry={field === "password"}
-                          value={field === "username" ? username : password}
-                          onChangeText={field === "username" ? setUsername : setPassword}
-                          onFocus={() => setFocusedField(field)}
-                          onBlur={() => setFocusedField(null)}
-                        />
-                      </GradientBorderInput>
-                    )}
-                  </Focusable>
+                  <GradientBorderInput isFocused={focusedField === field}>
+                    <TextInput
+                      ref={ref}
+                      style={S.premiumInput}
+                      placeholder={field}
+                      placeholderTextColor="#555"
+                      secureTextEntry={field === "password"}
+                      value={field === "username" ? username : password}
+                      onChangeText={field === "username" ? setUsername : setPassword}
+                      onFocus={() => setFocusedField(field)}
+                      onBlur={() => setFocusedField(null)}
+                    />
+                  </GradientBorderInput>
                 </View>
               );
             })}
@@ -458,33 +433,21 @@ export default function AddPortalScreen() {
           {type === "mag" && (
             <View style={S.premiumInputGroup}>
               <Text style={S.premiumLabel}>MAC ADDRESS</Text>
-              <Focusable
-                onPress={() => macInputRef.current?.focus()}
-                ringOnFocus={false}
-                onFocus={() => setFocusedField("mac")}
-                onBlur={() => {
-                  setFocusedField(null);
-                  setMac((prev) => formatMac(prev));
-                }}
-              >
-                {(focused) => (
-                  <GradientBorderInput isFocused={focused || focusedField === "mac"}>
-                    <TextInput
-                      ref={macInputRef}
-                      style={S.premiumInput}
-                      placeholder="00:1A:79:XX:XX:XX"
-                      placeholderTextColor="#555"
-                      value={mac}
-                      onChangeText={(t) => setMac(t.replace(/[^a-fA-F0-9:]/g, "").toUpperCase())}
-                      onFocus={() => setFocusedField("mac")}
-                      onBlur={() => {
-                        setFocusedField(null);
-                        setMac((prev) => formatMac(prev));
-                      }}
-                    />
-                  </GradientBorderInput>
-                )}
-              </Focusable>
+                <GradientBorderInput isFocused={focusedField === "mac"}>
+                  <TextInput
+                    ref={macInputRef}
+                    style={S.premiumInput}
+                    placeholder="00:1A:79:XX:XX:XX"
+                    placeholderTextColor="#555"
+                    value={mac}
+                    onChangeText={(t) => setMac(t.replace(/[^a-fA-F0-9:]/g, "").toUpperCase())}
+                    onFocus={() => setFocusedField("mac")}
+                    onBlur={() => {
+                      setFocusedField(null);
+                      setMac((prev) => formatMac(prev));
+                    }}
+                  />
+                </GradientBorderInput>
             </View>
           )}
 
@@ -517,7 +480,7 @@ export default function AddPortalScreen() {
           </View>
 
           <Text style={S.premiumFooterWarning}>
-            IPTV HUB DOES NOT HOST ANY CONTENT. ENSURE YOU HAVE THE LEGAL RIGHT TO USE YOUR PLAYLIST.
+            INFINITY IPTV PLAYER DOES NOT HOST ANY CONTENT. ENSURE YOU HAVE THE LEGAL RIGHT TO USE YOUR PLAYLIST.
           </Text>
         </View>
       </View>
@@ -533,24 +496,7 @@ export default function AddPortalScreen() {
 
       {step === 2 && (
         <View style={S.premiumHeader}>
-          <Focusable
-            onPress={handleBack}
-            onFocus={() => setFocusedField("back")}
-            onBlur={() => setFocusedField(null)}
-            ringOnFocus={false}
-            style={[
-              S.premiumTopActionBtn,
-              focusedField === "back" && S.premiumTopActionBtnFocused,
-            ]}
-          >
-            {(focused) => (
-              <Ionicons name="arrow-back" size={ps(2.2)} color="#fff" />
-            )}
-          </Focusable>
-
-          <Text style={S.premiumHeaderTitle}>IPTV HUB</Text>
-
-
+          <Image source={require("../assets/images/TV.png")} style={S.headerLogoImage} resizeMode="contain" />
         </View>
       )}
 
@@ -628,9 +574,17 @@ const S = StyleSheet.create({
   },
   logoTitle: {
     color: "#fff",
-    fontSize: ps(3.2),
+    fontSize: ps(2.5),
     fontWeight: "500",
-    letterSpacing: 5,
+    letterSpacing: 2,
+  },
+  mainLogoImage: {
+    width: pw(55),
+    aspectRatio: 5,
+  },
+  headerLogoImage: {
+    width: pw(25),
+    aspectRatio: 5,
   },
   step1Subtitle: {
     fontSize: ps(1.6),
@@ -664,7 +618,7 @@ const S = StyleSheet.create({
   },
   darkCardTitle: {
     fontSize: isTV ? ps(2.2) : ps(1.8),
-    fontWeight: "700",
+    fontWeight: "500",
     color: "#fff",
     marginBottom: ph(1.2),
     textAlign: "center",
@@ -681,7 +635,7 @@ const S = StyleSheet.create({
   premiumHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
     paddingHorizontal: pw(3),
     paddingVertical: ph(2),
   },
@@ -730,9 +684,9 @@ const S = StyleSheet.create({
   premiumFormCard: {
     backgroundColor: "#1D1B20",
     borderRadius: pw(2),
-    padding: pw(2.2),
+    padding: pw(4.5),
     width: "100%",
-    maxWidth: isTV ? pw(40) : pw(90),
+    maxWidth: isTV ? pw(45) : pw(90),
   },
   premiumFormTitle: {
     fontSize: isTV ? ps(2.0) : ps(1.8),
@@ -741,9 +695,10 @@ const S = StyleSheet.create({
     marginBottom: ph(0.4),
   },
   premiumFormSubtitle: {
-    fontSize: isTV ? ps(1.2) : ps(1.0),
+    fontSize: isTV ? ps(1.3) : ps(1.0),
     color: "#9ca3af",
-    lineHeight: ph(2.0),
+    lineHeight: ph(3.0),
+    marginTop: ph(2.0),
     marginBottom: ph(2.0),
   },
   premiumInputGroup: {
