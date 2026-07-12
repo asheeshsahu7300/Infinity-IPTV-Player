@@ -103,9 +103,9 @@ function SplashScreen() {
           ]}
         >
           <Image
-            source={require("../assets/images/icon.png")}
+            source={isTV ? require("../assets/images/splash-icon.gif") : require("../assets/images/icon.png")}
             style={styles.logoImage}
-            resizeMode="contain"
+            contentFit="contain"
           />
         </Animated.View>
       </Animated.View>

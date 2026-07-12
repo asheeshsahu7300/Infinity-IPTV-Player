@@ -1,19 +1,19 @@
 {
   "expo": {
-    "name": "IPTV Hub",
-    "slug": "frontend",
+    "name": "Infinity IPTV Player",
+    "slug": "infinity-iptv-player",
     "version": "1.0.4",
     "orientation": "landscape",
     "icon": "./assets/images/icon.png",
-    "scheme": "iptv",
+    "scheme": "infinityiptv",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.iptvhub.iptvplayer"
+      "bundleIdentifier": "com.infinity.iptvplayer"
     },
     "android": {
-      "package": "com.iptvhub.iptvplayer",
+      "package": "com.infinity.iptvplayer",
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",

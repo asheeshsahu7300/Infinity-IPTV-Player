@@ -97,7 +97,6 @@ const ChannelCard = React.memo(function ChannelCard({
                   <Text style={[S.cardCategory, focused && { color: "rgba(0,0,0,0.6)" }]} numberOfLines={1}>{item.category}</Text>
                 ) : null}
               </View>
-              {focused && <View style={[S.focusDot, { backgroundColor: "#000" }]} />}
             </BlurView>
           </View>
         )}
@@ -738,15 +737,6 @@ const S = StyleSheet.create({
     fontWeight: "600",
     textAlign: "center",
     marginTop: 2,
-  },
-  focusDot: {
-    position: "absolute",
-    top: 5,
-    right: 5,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: THEME.colors.primary,
   },
 
   // ── States ──
