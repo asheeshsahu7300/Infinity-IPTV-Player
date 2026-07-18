@@ -122,16 +122,23 @@ const CategoryItem = React.memo(function CategoryItem({
 }: {
   item: Category;
   isActive: boolean;
-  onSelect: () => void;
+  onSelect: (id: string) => void;
   onFocus: (index: number) => void;
   index: number;
 }) {
+  const handleSelect = useCallback(() => {
+    onSelect(item.id);
+  }, [onSelect, item.id]);
+
+  const handleFocus = useCallback(() => {
+    onFocus(index);
+  }, [onFocus, index]);
 
   return (
     <View style={[S.itemWrapper, { overflow: "visible" }]}>
       <Focusable
-        onPress={onSelect}
-        onFocus={() => onFocus(index)}
+        onPress={handleSelect}
+        onFocus={handleFocus}
         ringOnFocus={false}
         style={{ overflow: "visible" }}
       >
@@ -164,6 +171,12 @@ const CategoryItem = React.memo(function CategoryItem({
         }}
       </Focusable>
     </View>
+  );
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.isActive === nextProps.isActive &&
+    prevProps.index === nextProps.index
   );
 });
 
@@ -228,15 +241,15 @@ export default function CategorySidebar({
               }
             }, 100);
           }}
-          renderItem={({ item, index }) => (
+          renderItem={useCallback(({ item, index }: { item: Category; index: number }) => (
             <CategoryItem
               item={item}
               isActive={selectedId === item.id}
-              onSelect={() => onSelect(item.id)}
-              onFocus={(i) => scrollToIndex(i)}
+              onSelect={onSelect}
+              onFocus={scrollToIndex}
               index={index}
             />
-          )}
+          ), [selectedId, onSelect, scrollToIndex])}
         />
       </View>
     </View>

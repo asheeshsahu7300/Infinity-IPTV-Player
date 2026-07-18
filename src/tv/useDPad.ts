@@ -26,6 +26,8 @@ export interface DPadHandlers {
   onFastForward?: () => void;
   onRewind?: () => void;
   onMenu?: () => void;
+  onPageUp?: () => void;
+  onPageDown?: () => void;
   onAny?: (eventType: DPadEventType) => void;
 }
 
@@ -71,6 +73,10 @@ export function useDPad(handlers: DPadHandlers, enabled: boolean = true) {
         handlers.onRewind?.();
       } else if (type === "menu") {
         handlers.onMenu?.();
+      } else if (type === "pageUp") {
+        handlers.onPageUp?.();
+      } else if (type === "pageDown") {
+        handlers.onPageDown?.();
       }
 
       handlers.onAny?.(type);

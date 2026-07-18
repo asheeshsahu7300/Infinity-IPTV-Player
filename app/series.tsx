@@ -25,7 +25,7 @@ import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { isTV } from "../src/utils/tvUtils";
-import { CinematicBackground } from "../src/components/CinematicBackground";
+import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import CategorySidebar from "../src/components/CategorySidebar";
 import { Focusable, FocusGroup } from "../src/tv";
 
@@ -218,6 +218,13 @@ const SeriesItem = React.memo(function SeriesItem({
       </Focusable>
     </View>
   );
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.isFocusedItem === nextProps.isFocusedItem &&
+    prevProps.isFavorite === nextProps.isFavorite &&
+    prevProps.itemWidth === nextProps.itemWidth
+  );
 });
 
 // ─────────────────────────────────────────────
@@ -295,7 +302,6 @@ export default function SeriesScreen() {
   } = usePortalStore();
 
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [focusedImage, setFocusedImage] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -483,7 +489,7 @@ export default function SeriesScreen() {
   }, [router]);
 
   const handleSeriesFocus = useCallback((item: Series) => {
-    setFocusedImage(item.logo || null);
+    updateCinematicBackground(item.logo || null);
     focusedIdRef.current = String(item.id);
 
     if (flatListRef.current) {
@@ -531,7 +537,7 @@ export default function SeriesScreen() {
           <SeriesItem
             key={seriesItem.id}
             item={seriesItem}
-            onPress={() => handleSeriesPress(seriesItem)}
+            onPress={handleSeriesPress}
             onFocus={handleSeriesFocus}
             onFavoritePress={handleFavoritePress}
             isFavorite={favorites.series.includes(seriesItem.id)}
@@ -545,7 +551,7 @@ export default function SeriesScreen() {
         );
       })}
     </View>
-  ), [favorites.series, itemWidth, searchFocused, handleSeriesPress, numColumns]);
+  ), [favorites.series, itemWidth, searchFocused, numColumns, handleSeriesPress, handleSeriesFocus, handleFavoritePress]);
 
 
 
@@ -635,7 +641,7 @@ export default function SeriesScreen() {
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
-      <CinematicBackground uri={focusedImage} />
+      <CinematicBackground />
       <StatusBar hidden />
 
       <View style={S.header}>

@@ -352,24 +352,38 @@ export default function PlayerScreen() {
       },
       onLeft: () => {
         if (!showControlsRef.current && !isLive) {
-          seek(-60000); // 1 minute
-        } else if (showControlsRef.current && seekBarFocusedRef.current && !isLive) {
-          seek(-60000); // 1 minute
-          setSeekIndicator("-1 min");
+          seek(-10000); // 10 seconds
+          setSeekIndicator("-10s");
           setTimeout(() => setSeekIndicator(null), 600);
+          return;
+        } else if (showControlsRef.current && seekBarFocusedRef.current && !isLive) {
+          seek(-10000); // 10 seconds
+          setSeekIndicator("-10s");
+          setTimeout(() => setSeekIndicator(null), 600);
+          resetControlsTimeout();
+          return;
         }
-        if (!showControlsRef.current) setShowControls(true);
+        if (!showControlsRef.current) {
+          setShowControls(true);
+        }
         resetControlsTimeout();
       },
       onRight: () => {
         if (!showControlsRef.current && !isLive) {
-          seek(60000); // 1 minute
-        } else if (showControlsRef.current && seekBarFocusedRef.current && !isLive) {
-          seek(60000); // 1 minute
-          setSeekIndicator("+1 min");
+          seek(10000); // 10 seconds
+          setSeekIndicator("+10s");
           setTimeout(() => setSeekIndicator(null), 600);
+          return;
+        } else if (showControlsRef.current && seekBarFocusedRef.current && !isLive) {
+          seek(10000); // 10 seconds
+          setSeekIndicator("+10s");
+          setTimeout(() => setSeekIndicator(null), 600);
+          resetControlsTimeout();
+          return;
         }
-        if (!showControlsRef.current) setShowControls(true);
+        if (!showControlsRef.current) {
+          setShowControls(true);
+        }
         resetControlsTimeout();
       },
       onSelect: () => {
@@ -377,21 +391,50 @@ export default function PlayerScreen() {
           setShowControls(true);
           resetControlsTimeout();
         }
-        // When controls are showing, let native focus engine handle select on buttons
       },
       onUp: () => {
-        setShowControls(true);
+        if (!showControlsRef.current) {
+           let newVol = Math.min(100, volumeRef.current + 10);
+           volumeRef.current = newVol;
+           setCurrentVolume(newVol);
+           setVolumeIndicator(newVol);
+           setTimeout(() => setVolumeIndicator(null), 1000);
+           return;
+        }
         resetControlsTimeout();
       },
       onDown: () => {
-        setShowControls(true);
+        if (!showControlsRef.current) {
+           let newVol = Math.max(0, volumeRef.current - 10);
+           volumeRef.current = newVol;
+           setCurrentVolume(newVol);
+           setVolumeIndicator(newVol);
+           setTimeout(() => setVolumeIndicator(null), 1000);
+           return;
+        }
         resetControlsTimeout();
       },
-      onAny: () => {
+      onPageUp: () => {
         if (!showControlsRef.current) {
-          setShowControls(true);
-          resetControlsTimeout();
+           let newBright = Math.min(1, brightnessRef.current + 0.1);
+           brightnessRef.current = newBright;
+           setBrightnessIndicator(newBright);
+           Brightness.setBrightnessAsync(newBright);
+           setTimeout(() => setBrightnessIndicator(null), 1000);
+           return;
         }
+        resetControlsTimeout();
+      },
+      onPageDown: () => {
+        if (!showControlsRef.current) {
+           let newBright = Math.max(0, brightnessRef.current - 0.1);
+           brightnessRef.current = newBright;
+           setBrightnessIndicator(newBright);
+           Brightness.setBrightnessAsync(newBright);
+           setTimeout(() => setBrightnessIndicator(null), 1000);
+           return;
+        }
+        resetControlsTimeout();
       }
     },
     isTV && !showAudioModal && !showSubtitleModal

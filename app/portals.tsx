@@ -217,6 +217,23 @@ export default function PortalsScreen() {
             {renderCardContent(item, isActive)}
           </View>
         </Focusable>
+
+        <Focusable
+           onPress={() => handleDeletePortal(item)}
+           style={{ marginTop: ph(1.5), borderRadius: ps(1), overflow: 'hidden' }}
+           ringOnFocus={false}
+        >
+           {(focusedBtn) => (
+              <View style={[
+                  { height: ph(5.5), backgroundColor: "rgba(255,0,0,0.1)", borderRadius: ps(1), alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "rgba(255,0,0,0.2)" },
+                  focusedBtn && { borderColor: "#ff4444", backgroundColor: "rgba(255,0,0,0.2)", transform: [{ scale: 1.02 }] }
+              ]}>
+                 <Text style={{ color: "#ff4444", fontSize: ps(1.2), fontWeight: "bold", letterSpacing: 1 }}>
+                    DELETE PORTAL
+                 </Text>
+              </View>
+           )}
+        </Focusable>
       </Animated.View>
     );
   };
@@ -433,7 +450,7 @@ const S = StyleSheet.create({
   },
   cardWrapper: {
     width: CARD_WIDTH,
-    height: isTV ? ph(40) : ph(45),
+    height: isTV ? ph(46) : ph(51),
     marginHorizontal: CARD_MARGIN,
   },
   pressable: {

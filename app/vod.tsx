@@ -28,7 +28,7 @@ import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { isTV } from "../src/utils/tvUtils";
-import { CinematicBackground } from "../src/components/CinematicBackground";
+import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import CategorySidebar from "../src/components/CategorySidebar";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
@@ -257,6 +257,13 @@ const MovieItem = React.memo(function MovieItem({
       </Focusable>
     </View>
   );
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.isFocusedItem === nextProps.isFocusedItem &&
+    prevProps.isFavorite === nextProps.isFavorite &&
+    prevProps.itemWidth === nextProps.itemWidth
+  );
 });
 
 // ─────────────────────────────────────────────
@@ -334,7 +341,6 @@ export default function VODScreen() {
   } = usePortalStore();
 
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [focusedImage, setFocusedImage] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -518,7 +524,7 @@ export default function VODScreen() {
   }, []);
 
   const handleVodFocus = useCallback((vod: VODItem) => {
-    setFocusedImage(vod.logo || null);
+    updateCinematicBackground(vod.logo || null);
     focusedIdRef.current = String(vod.id);
 
     if (flatListRef.current) {
@@ -629,7 +635,7 @@ export default function VODScreen() {
         );
       })}
     </View>
-  ), [favorites.vod, itemWidth, searchFocused, numColumns]);
+  ), [favorites.vod, itemWidth, searchFocused, numColumns, handleVodPress, handleVodFocus, handleFavoritePress]);
 
 
 
@@ -724,7 +730,7 @@ export default function VODScreen() {
         importantForAccessibility={playModalVisible ? "no-hide-descendants" : "auto"}
         pointerEvents={playModalVisible ? "none" : "auto"}
       >
-        <CinematicBackground uri={focusedImage} />
+        <CinematicBackground />
         <StatusBar hidden />
 
         <View style={S.header}>

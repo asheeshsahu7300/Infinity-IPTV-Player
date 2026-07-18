@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, DeviceEventEmitter } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -7,7 +7,22 @@ export interface CinematicBackgroundProps {
   uri?: string | null;
 }
 
-export const CinematicBackground = React.memo(function CinematicBackground({ uri }: CinematicBackgroundProps) {
+export const CINEMATIC_EVENT = "UPDATE_CINEMATIC_BACKGROUND";
+
+export const CinematicBackground = React.memo(function CinematicBackground({ uri: initialUri }: CinematicBackgroundProps) {
+  const [uri, setUri] = useState(initialUri);
+
+  useEffect(() => {
+    setUri(initialUri);
+  }, [initialUri]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(CINEMATIC_EVENT, (newUri: string | null) => {
+      setUri(newUri);
+    });
+    return () => sub.remove();
+  }, []);
+
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
       {/* Base Dark background */}
@@ -53,3 +68,8 @@ export const CinematicBackground = React.memo(function CinematicBackground({ uri
     </View>
   );
 });
+
+// Helper function to update background without re-rendering parent
+export const updateCinematicBackground = (uri: string | null) => {
+  DeviceEventEmitter.emit(CINEMATIC_EVENT, uri);
+};

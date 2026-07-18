@@ -24,6 +24,7 @@ import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import LoadingOverlay from "../src/components/LoadingOverlay";
 import { isTV } from "../src/utils/tvUtils";
 import { Focusable, Overlay } from "../src/tv";
+import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import { THEME } from "../src/theme/tokens";
 
 // ─── Percentage helpers ───────────────────────────────────────────────────────
@@ -61,7 +62,7 @@ const GradientText = ({ text, style, isActive }: { text: string; style: any; isA
   );
 };
 
-const RailItem = ({
+const RailItem = React.memo(({
   title,
   subtitle,
   image,
@@ -79,10 +80,14 @@ const RailItem = ({
   const width = type === "landscape" ? LANDSCAPE_W : PORTRAIT_W;
   const height = type === "landscape" ? LANDSCAPE_H : PORTRAIT_H;
 
+  const handleFocus = useCallback(() => {
+    onFocus?.(image || "");
+  }, [onFocus, image]);
+
   return (
     <View style={{ marginRight: RAIL_GAP, paddingVertical: ps(1), overflow: "visible" }}>
       <Focusable
-        onFocus={() => onFocus?.(image || "")}
+        onFocus={handleFocus}
         onPress={onPress}
         ringOnFocus={false}
         style={{ width, height }}
@@ -124,9 +129,9 @@ const RailItem = ({
       </Focusable>
     </View>
   );
-};
+});
 
-const ContentSection = ({ title, data, type, onFocus, onPress }: any) => {
+const ContentSection = React.memo(({ title, data, type, onFocus, onPress }: any) => {
   if (!data?.length) return null;
   return (
     <View style={S.section}>
@@ -154,7 +159,7 @@ const ContentSection = ({ title, data, type, onFocus, onPress }: any) => {
       </ScrollView>
     </View>
   );
-};
+});
 
 const HeroPill = ({
   icon,
@@ -219,7 +224,6 @@ export default function DashboardScreen() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [focusedImage, setFocusedImage] = useState<string | null>(null);
 
   // ── Play Modal ──────────────────────────────────────────────────────────────
   const [playModalVisible, setPlayModalVisible] = useState(false);
@@ -234,18 +238,32 @@ export default function DashboardScreen() {
     loadFavorites();
   }, [activePortal]);
 
-  // Handle Full Refresh
   const handleFullRefresh = useCallback(async () => {
     if (!activePortal) return;
     setIsLoading(true);
     try {
-      await portalApi.refreshPortalData(activePortal);
+      if (activePortal.type === "mag") {
+        const auth = await portalApi.authenticate(activePortal);
+        const updatedPortal = {
+          ...activePortal,
+          config: {
+            ...activePortal.config,
+            token: auth.token,
+            expiry: auth.expiry,
+            serverInfo: auth.serverInfo,
+          }
+        };
+        setActivePortal(updatedPortal);
+        await portalApi.refreshPortalData(updatedPortal);
+      } else {
+        await portalApi.refreshPortalData(activePortal);
+      }
     } catch (e) {
       console.warn("Refresh failed:", e);
     } finally {
       setIsLoading(false);
     }
-  }, [activePortal]);
+  }, [activePortal, setActivePortal]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -324,9 +342,7 @@ export default function DashboardScreen() {
       >
         {/* Cinematic Background */}
         <View style={S.backgroundArea}>
-          <Image source={{ uri: focusedImage || "https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?q=80&w=1200" }} style={S.bgImage} resizeMode="cover" blurRadius={20} />
-          <LinearGradient colors={["rgba(8,8,10,0.5)", "#08080a"]} style={S.bgGradient} />
-          <LinearGradient colors={["transparent", "#08080a"]} style={S.bgBottomFade} />
+          <CinematicBackground />
         </View>
 
         {isLoading && <LoadingOverlay message="Refreshing your library..." />}
@@ -375,7 +391,7 @@ export default function DashboardScreen() {
               ).map((cat) => (
                 <Focusable
                   key={cat.id}
-                  onFocus={() => setFocusedImage(cat.img)}
+                  onFocus={() => updateCinematicBackground(cat.img)}
                   onPress={() => router.push(cat.route as any)}
                   ringOnFocus={false}
                   style={[{ flex: 1, height: ph(35), minHeight: ph(35), padding: pw(1), overflow: "visible" }]}
@@ -408,7 +424,7 @@ export default function DashboardScreen() {
                 title="Indian Television"
                 data={indianChannels}
                 type="landscape"
-                onFocus={(img: string) => setFocusedImage(img)}
+                onFocus={(img: string) => updateCinematicBackground(img)}
                 onPress={(c: any) => router.push({ pathname: "/player", params: { url: c.streamUrl, title: c.name, type: "live" } })}
               />
             )}
@@ -418,7 +434,7 @@ export default function DashboardScreen() {
                 title="Must-Watch Movies"
                 data={movieRails}
                 type="portrait"
-                onFocus={(img: string) => setFocusedImage(img)}
+                onFocus={(img: string) => updateCinematicBackground(img)}
                 onPress={(m: any) => {
                   setSelectedItem(m);
                   setPlayModalVisible(true);
@@ -431,7 +447,7 @@ export default function DashboardScreen() {
                 title="Compelling Series"
                 data={seriesRails}
                 type="portrait"
-                onFocus={(img: string) => setFocusedImage(img)}
+                onFocus={(img: string) => updateCinematicBackground(img)}
                 onPress={(s: any) => router.push({ pathname: "/series-details", params: { id: s.id, name: s.name, logo: s.logo } })}
               />
             )}

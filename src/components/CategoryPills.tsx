@@ -11,17 +11,22 @@ interface CategoryPillsProps {
 
 const isTV = Platform.isTV || (Platform.OS === "android" && Platform.isTV);
 
-const PillItem = React.memo(({ item, selectedId, focusedId, onSelect, onFocus, onBlur, index }: {
+const PillItem = React.memo(({ item, isActive, isFocused, onSelect, onFocus, onBlur, index }: {
   item: Category;
-  selectedId: string;
-  focusedId: string | null;
+  isActive: boolean;
+  isFocused: boolean;
   onSelect: (id: string) => void;
   onFocus: (id: string, index: number) => void;
   onBlur: () => void;
   index: number;
 }) => {
-  const isActive = selectedId === item.id;
-  const isFocused = focusedId === item.id;
+  const handleSelect = useCallback(() => {
+    onSelect(item.id);
+  }, [onSelect, item.id]);
+
+  const handleFocus = useCallback(() => {
+    onFocus(item.id, index);
+  }, [onFocus, item.id, index]);
 
   // Scale animation for focus
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -45,9 +50,9 @@ const PillItem = React.memo(({ item, selectedId, focusedId, onSelect, onFocus, o
           isActive && styles.pillActive,
           isFocused && styles.pillFocused,
         ]}
-        onPress={() => onSelect(item.id)}
+        onPress={handleSelect}
         activeOpacity={1}
-        onFocus={() => onFocus(item.id, index)}
+        onFocus={handleFocus}
         onBlur={onBlur}
       >
         <Text
@@ -62,6 +67,13 @@ const PillItem = React.memo(({ item, selectedId, focusedId, onSelect, onFocus, o
         </Text>
       </TouchableOpacity>
     </Animated.View>
+  );
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.isActive === nextProps.isActive &&
+    prevProps.isFocused === nextProps.isFocused &&
+    prevProps.index === nextProps.index
   );
 });
 
@@ -117,25 +129,31 @@ export default function CategoryPills({ categories, selectedId, onSelect }: Cate
 
 
 
+  const handleFocus = useCallback((id: string, idx: number) => {
+    setFocusedId(id);
+    scrollToIndex(idx);
+  }, [scrollToIndex]);
+
+  const handleBlur = useCallback(() => {
+    setFocusedId(null);
+  }, []);
+
   return (
     <View style={styles.container}>
       <FlatList
         ref={flatListRef}
         data={categories}
-        renderItem={({ item, index }) => (
+        renderItem={useCallback(({ item, index }: { item: Category; index: number }) => (
           <PillItem
             item={item}
             index={index}
-            selectedId={selectedId}
-            focusedId={focusedId}
+            isActive={selectedId === item.id}
+            isFocused={focusedId === item.id}
             onSelect={onSelect}
-            onFocus={(id, idx) => {
-              setFocusedId(id);
-              scrollToIndex(idx);
-            }}
-            onBlur={() => setFocusedId(null)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
           />
-        )}
+        ), [selectedId, focusedId, onSelect, handleFocus, handleBlur])}
         keyExtractor={(item) => item.id}
         horizontal
         showsHorizontalScrollIndicator={false}

@@ -26,7 +26,7 @@ import { XtreamApi } from "../src/services/xtreamApi";
 import { StreamManager } from "../src/services/StreamManager";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { isTV } from "../src/utils/tvUtils";
-import { CinematicBackground } from "../src/components/CinematicBackground";
+import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import CategorySidebar from "../src/components/CategorySidebar";
 import { Focusable, FocusGroup } from "../src/tv";
 
@@ -103,6 +103,12 @@ const ChannelCard = React.memo(function ChannelCard({
       </Focusable>
     </View>
   );
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.isFocusedItem === nextProps.isFocusedItem &&
+    prevProps.itemWidth === nextProps.itemWidth
+  );
 });
 
 // ─────────────────────────────────────────────
@@ -126,7 +132,6 @@ export default function LiveTVScreen() {
   } = usePortalStore();
 
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [focusedImage, setFocusedImage] = useState<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(storeChannels.length === 0);
   const [refreshing, setRefreshing] = useState(false);
@@ -323,7 +328,7 @@ export default function LiveTVScreen() {
   }, [activePortal, router]);
 
   const handleChannelFocus = useCallback((channel: Channel) => {
-    setFocusedImage(channel.logo || null);
+    updateCinematicBackground(channel.logo || null);
     focusedIdRef.current = String(channel.id);
 
     if (flatListRef.current) {
@@ -462,7 +467,7 @@ export default function LiveTVScreen() {
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
-      <CinematicBackground uri={focusedImage} />
+      <CinematicBackground />
       <StatusBar hidden />
 
       {/* ─── Header ─── */}
@@ -541,7 +546,7 @@ export default function LiveTVScreen() {
             windowSize={5}
             updateCellsBatchingPeriod={50}
             ref={flatListRef}
-            renderItem={({ item: row, index: rowIndex }: { item: { id: string; items: Channel[] }; index: number }) => (
+            renderItem={useCallback(({ item: row, index: rowIndex }: { item: { id: string; items: Channel[] }; index: number }) => (
               <View style={{ flexDirection: "row" }}>
                 {row.items.map((channel, colIndex) => {
                   const itemIndex = rowIndex * numColumns + colIndex;
@@ -561,7 +566,7 @@ export default function LiveTVScreen() {
                   );
                 })}
               </View>
-            )}
+            ), [itemWidth, searchFocused, numColumns, handleChannelPress, handleChannelFocus])}
             ListEmptyComponent={
               isLoading ? (
                 <Focusable hasTVPreferredFocus={!searchFocused} style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }} ringOnFocus={false}>

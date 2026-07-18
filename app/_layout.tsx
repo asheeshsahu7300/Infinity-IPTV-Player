@@ -9,18 +9,17 @@ import {
   AppState,
   AppStateStatus,
   View,
-  ActivityIndicator,
   Text,
   TextInput,
   BackHandler,
   Platform,
   Dimensions,
   Animated,
+  Image as RNImage,
 } from "react-native";
 import { Image } from "expo-image";
 
 import ErrorBoundary from "../src/components/ErrorBoundary";
-import GradientLoader from "../src/components/GradientLoader";
 import { usePortalStore } from "../src/store/portalStore";
 import { ThemeProvider } from "../src/context/ThemeContext";
 import { AppBootManager } from "../src/services/AppBootManager";
@@ -42,10 +41,6 @@ if (oldTextRender) {
   Text.render = function (...args) {
     const origin = oldTextRender.apply(this, args);
     const customStyle = origin.props.style;
-
-    // Use Tenor Sans globally
-    let fontFamily = "Tenor Sans";
-
     return React.cloneElement(origin, {
       style: [customStyle, { fontFamily: "Tenor Sans", fontWeight: "normal" }],
     });
@@ -99,10 +94,10 @@ function SplashScreen() {
 
           ]}
         >
-          <Image
+          <RNImage
             source={isTV ? require("../assets/images/TV.png") : require("../assets/images/icon.png")}
             style={styles.logoImage}
-            contentFit="contain"
+            resizeMode="contain"
           />
         </Animated.View>
       </Animated.View>
@@ -121,9 +116,12 @@ export default function RootLayout() {
     "Tenor Sans": TenorSans_400Regular,
   });
 
-  // Boot the app via AppBootManager
+  // Boot the app via AppBootManager (ensure min 3 seconds splashscreen)
   useEffect(() => {
-    AppBootManager.initialize()
+    Promise.all([
+      AppBootManager.initialize(),
+      new Promise(resolve => setTimeout(resolve, 3000))
+    ])
       .then(() => {
         setIsReady(true);
       })
@@ -239,7 +237,7 @@ const styles = StyleSheet.create({
   splashContent: { alignItems: "center", justifyContent: "center" },
   splashLogoWrapper: { width: pw(18), height: pw(18), borderRadius: pw(4), overflow: "hidden", marginBottom: ph(4) },
   splashLogoTVWrapper: { width: pw(12), height: pw(12), borderRadius: pw(3), overflow: "hidden", marginBottom: ph(5) },
-  logoImage: { width: "120%", height: "120%", borderRadius: pw(3) },
+  logoImage: { width: "100%", height: "100%", borderRadius: pw(3) },
   splashTextGroup: { alignItems: "center", marginBottom: ph(2), justifyContent: "flex-end" },
   splashTitle: { color: "#ffffff", fontSize: ps(1.6), fontWeight: "500", letterSpacing: pw(0.2) },
   splashTitleTV: { fontSize: ps(2.2), letterSpacing: pw(0.5) },
