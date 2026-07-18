@@ -117,19 +117,7 @@ export default function RootLayout() {
   });
 
   // Boot the app via AppBootManager (ensure min 3 seconds splashscreen)
-  useEffect(() => {
-    Promise.all([
-      AppBootManager.initialize(),
-      new Promise(resolve => setTimeout(resolve, 3000))
-    ])
-      .then(() => {
-        setIsReady(true);
-      })
-      .catch((e) => {
-        console.error("Boot failed:", e);
-        setIsReady(true);
-      });
-  }, []);
+
 
   // Handle auto-refresh every 30 minutes
   useEffect(() => {
