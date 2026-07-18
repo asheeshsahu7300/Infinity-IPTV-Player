@@ -9,6 +9,8 @@ import {
   Dimensions,
   FlatList,
   Alert,
+  useTVEventHandler,
+  Keyboard,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -24,7 +26,7 @@ import { isTV } from "../src/utils/tvUtils";
 import { useResponsive } from "../src/theme/responsive";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
-import { THEME , fw, isPhone } from '../src/theme/tokens';
+import { THEME, fw, isPhone } from '../src/theme/tokens';
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 
 const { width: W, height: H } = Dimensions.get("window");
@@ -231,7 +233,7 @@ export default function SearchScreen() {
 
   useEffect(() => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    
+
     searchTimeout.current = setTimeout(() => {
       performSearch(query, activeType);
     }, 400); // 400ms debounce
@@ -332,42 +334,34 @@ export default function SearchScreen() {
               {() => <Ionicons name="chevron-back" size={ps(1.8)} color="#fff" />}
             </Focusable>
           )}
-          <Focusable
-            hasTVPreferredFocus
-            onPress={() => inputRef.current?.focus()}
-            ringOnFocus={false}
-            style={S.searchBarWrapper}
-          >
-            {(focused) => (
-              <View
-                style={[
-                  S.searchBarInner,
-                  { borderWidth: 1.5, borderColor: (focused || searchFocused) ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.12)" },
-                  (focused || searchFocused) && S.searchBarFocused,
-                ]}
-              >
-                  <Ionicons name="search" size={ps(1.1)} color="rgba(255,255,255,0.5)" />
-                  <TextInput
-                    ref={inputRef}
-                    style={S.searchInput}
-                    placeholder="Search movies, shows, and more..."
-                    placeholderTextColor="rgba(255,255,255,0.3)"
-                    value={query}
-                    onChangeText={setQuery}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="search"
-                    onFocus={() => setSearchFocused(true)}
-                    onBlur={() => setSearchFocused(false)}
-                  />
-                  {query.length > 0 && (
-                    <TouchableOpacity onPress={() => setQuery("")} style={{ padding: 8 }}>
-                      <Ionicons name="close-circle" size={ps(1.2)} color="rgba(255,255,255,0.5)" />
-                    </TouchableOpacity>
-                  )}
-              </View>
-            )}
-          </Focusable>
+          <View style={S.searchBarWrapper}>
+            <View
+              style={[
+                S.searchBarInner,
+                { borderWidth: 1.5, borderColor: searchFocused ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.12)" },
+                searchFocused && S.searchBarFocused,
+              ]}
+            >
+              <Ionicons name="search" size={ps(1.1)} color="rgba(255,255,255,0.5)" />
+              <TextInput
+                ref={inputRef}
+                style={S.searchInput}
+                placeholder="Search movies, shows, and more..."
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                value={query}
+                onChangeText={setQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+
+              />
+              {query.length > 0 && (
+                <TouchableOpacity onPress={() => setQuery("")} style={{ padding: 8 }}>
+                  <Ionicons name="close-circle" size={ps(1.2)} color="rgba(255,255,255,0.5)" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         </View>
       </FocusGroup>
 
@@ -422,6 +416,8 @@ export default function SearchScreen() {
           removeClippedSubviews={false}
           initialNumToRender={RESULT_COLUMNS * 4}
           maxToRenderPerBatch={RESULT_COLUMNS * 4}
+          keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={() => Keyboard.dismiss()}
           renderItem={({ item }: any) => (
             <ResultCard
               item={item}
@@ -648,7 +644,7 @@ const S = StyleSheet.create({
   },
   cardImgContainer: {
     width: "100%",
-    aspectRatio: 3/4,
+    aspectRatio: 3 / 4,
     backgroundColor: "#1c1c2b",
     overflow: "hidden",
   },

@@ -1,5 +1,6 @@
 import React from "react";
-import { StyleProp, TVFocusGuideView, ViewStyle } from "react-native";
+import { StyleProp, TVFocusGuideView, ViewStyle, View } from "react-native";
+import { isTV } from "../utils/tvUtils";
 
 export interface FocusGroupProps {
   children: React.ReactNode;
@@ -28,6 +29,10 @@ export function FocusGroup({
   trapRight,
   destinations,
 }: FocusGroupProps) {
+  if (!isTV) {
+    return <View style={style}>{children}</View>;
+  }
+
   return (
     <TVFocusGuideView
       style={style}

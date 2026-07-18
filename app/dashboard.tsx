@@ -238,13 +238,15 @@ export default function DashboardScreen() {
     if (!activePortal) return;
     setIsLoading(true);
     try {
+      let portalToRefresh = activePortal;
       if (activePortal.type === "mag") {
         const auth = await portalApi.authenticate(activePortal);
         const updated = { ...activePortal, config: { ...activePortal.config, token: auth.token, serverInfo: auth.serverInfo } };
         if (updatePortal) await updatePortal(activePortal.id, { config: updated.config });
         await setActivePortal(updated);
+        portalToRefresh = updated;
       }
-      await portalApi.refreshPortalData(activePortal);
+      await portalApi.refreshPortalData(portalToRefresh);
     } catch (e) {
       console.warn("Refresh failed:", e);
     } finally {
