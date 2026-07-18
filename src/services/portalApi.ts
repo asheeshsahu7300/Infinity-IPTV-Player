@@ -768,6 +768,11 @@ export const portalApi = {
 
   async warmPortalData(portal: Portal): Promise<void> {
     try {
+      // Early bailout and handoff for non-MAG portals
+      if (portal.type === "xtream" || portal.type === "m3u") {
+        return this.refreshPortalData(portal);
+      }
+
       const base = safe(portal.config.url).replace(/\/$/, "");
       const mac = portal.config.mac ?? "";
       const token = portal.config.token ?? "";
@@ -1034,9 +1039,11 @@ export const portalApi = {
       // ---------------------------------------
       // STALKER / MAG LOGIC
       // ---------------------------------------
-      const base = safe(portal.config.url).replace(/\/$/, "");
-      const mac = portal.config.mac ?? "";
-      const token = portal.config.token ?? "";
+      // Ensure token is fresh
+      const updatedPortal = await refreshToken(portal);
+      const base = safe(updatedPortal.config.url).replace(/\/$/, "");
+      const mac = updatedPortal.config.mac ?? "";
+      const token = updatedPortal.config.token ?? "";
 
       // Re-fetch live categories
       const liveCategoriesUrl = `${base}/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml`;
@@ -1141,6 +1148,16 @@ export const portalApi = {
         year: pickYear(v),
         rating: pickRating(v),
       }));
+
+      // Fail-Safe: If everything is completely empty, it might be an auth error/HTML response
+      if (
+        liveChannels.length === 0 &&
+        vodItems.length === 0 &&
+        seriesList.length === 0
+      ) {
+        throw new Error("Zero items returned for all content types, aborting to prevent data wipe.");
+      }
+
       await cacheManager.set(`portal:${key}:series:list:all:1`, seriesList, CACHE_TTL.SERIES);
       await store.setSeries(seriesList);
 

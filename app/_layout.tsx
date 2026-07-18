@@ -143,8 +143,7 @@ export default function RootLayout() {
         try {
           const portal = usePortalStore.getState().activePortal;
           if (portal) {
-            const { portalApi } = await import("../src/services/portalApi");
-            await portalApi.warmPortalData(portal);
+            AppBootManager.triggerBackgroundSync(portal);
           }
         } catch (e) {
           console.warn("Resume refresh failed (non-fatal):", e);

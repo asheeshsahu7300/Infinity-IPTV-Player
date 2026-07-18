@@ -139,7 +139,7 @@ class AppBootManagerClass {
     /**
      * Background sync - refresh portal data silently without blocking UI
      */
-    private async triggerBackgroundSync(portal: Portal): Promise<void> {
+    public async triggerBackgroundSync(portal: Portal): Promise<void> {
         try {
             // Check last sync time
             const lastSyncKey = `portal:${portal.id}:lastSync`;
