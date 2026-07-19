@@ -735,14 +735,20 @@ export default function VODScreen() {
         <View style={S.header}>
           <Text style={S.headerTitle}>Movies</Text>
           <FocusGroup style={S.searchWrapper}>
-            <View style={[S.searchGradient, searchFocused && S.searchFocused]}>
+            <Focusable
+              onPress={() => searchInputRef.current?.focus()}
+              ringOnFocus={false}
+              style={{ flex: 1 }}
+            >
+              {(focused) => (
+                <View style={[S.searchGradient, (focused || searchFocused) && S.searchFocused]}>
               <LinearGradient
                 colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
               />
-              {searchFocused && (
+                {(focused || searchFocused) && (
                 <LinearGradient
                   colors={[THEME.colors.primary, THEME.colors.secondary]}
                   start={{ x: 0, y: 0 }}
@@ -750,12 +756,12 @@ export default function VODScreen() {
                   style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
                 />
               )}
-              <View style={[
-                S.searchInner,
-                { borderRadius: searchFocused ? 25 - 1.5 : 25 },
-                searchFocused && { backgroundColor: "#0b0b10" }
-              ]}>
-                <Ionicons name="search" size={ps(1.1)} color={searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
+                <View style={[
+                  S.searchInner,
+                  { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
+                  (focused || searchFocused) && { backgroundColor: "#0b0b10" }
+                ]}>
+                  <Ionicons name="search" size={ps(1.1)} color={(focused || searchFocused) ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
                 <TextInput
                   ref={searchInputRef}
                   style={S.searchInput}
@@ -766,8 +772,10 @@ export default function VODScreen() {
                   onFocus={() => setSearchFocused(true)}
                   onBlur={() => setSearchFocused(false)}
                 />
+                </View>
               </View>
-            </View>
+              )}
+            </Focusable>
           </FocusGroup>
           <View style={S.countBadge}>
             <Text style={S.countText}>{isLoading ? "..." : String(filteredMovies.length)}</Text>

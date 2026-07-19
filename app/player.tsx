@@ -319,6 +319,7 @@ export default function PlayerScreen() {
         if (seekTimeout.current) clearTimeout(seekTimeout.current);
         let newPos = Math.max(0, Math.min(position + delta, duration));
         setPosition(newPos);
+        setVlcPosition(newPos / duration);
         if (vlcPlayerRef.current) vlcPlayerRef.current.seek(newPos / duration);
         else if (expoVideoRef.current) await expoVideoRef.current.setPositionAsync(newPos);
         seekTimeout.current = setTimeout(() => { isSeeking.current = false; }, 1000);
@@ -740,6 +741,8 @@ export default function PlayerScreen() {
                     {/* Seekable progress bar — focusable on TV for D-pad scrub */}
                     <Focusable
                       ref={seekBarRef}
+                      nextFocusLeft={seekBarNode}
+                      nextFocusRight={seekBarNode}
                       ringOnFocus={false}
                       focusStyle={S.progressBarFocused}
                       style={S.progressBarWrapper}
