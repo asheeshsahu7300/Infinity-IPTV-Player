@@ -319,7 +319,6 @@ export default function PlayerScreen() {
         if (seekTimeout.current) clearTimeout(seekTimeout.current);
         let newPos = Math.max(0, Math.min(position + delta, duration));
         setPosition(newPos);
-        setVlcPosition(newPos / duration);
         if (vlcPlayerRef.current) vlcPlayerRef.current.seek(newPos / duration);
         else if (expoVideoRef.current) await expoVideoRef.current.setPositionAsync(newPos);
         seekTimeout.current = setTimeout(() => { isSeeking.current = false; }, 1000);
@@ -395,45 +394,45 @@ export default function PlayerScreen() {
       },
       onUp: () => {
         if (!showControlsRef.current) {
-           let newVol = Math.min(100, volumeRef.current + 10);
-           volumeRef.current = newVol;
-           setCurrentVolume(newVol);
-           setVolumeIndicator(newVol);
-           setTimeout(() => setVolumeIndicator(null), 1000);
-           return;
+          let newVol = Math.min(100, volumeRef.current + 10);
+          volumeRef.current = newVol;
+          setCurrentVolume(newVol);
+          setVolumeIndicator(newVol);
+          setTimeout(() => setVolumeIndicator(null), 1000);
+          return;
         }
         resetControlsTimeout();
       },
       onDown: () => {
         if (!showControlsRef.current) {
-           let newVol = Math.max(0, volumeRef.current - 10);
-           volumeRef.current = newVol;
-           setCurrentVolume(newVol);
-           setVolumeIndicator(newVol);
-           setTimeout(() => setVolumeIndicator(null), 1000);
-           return;
+          let newVol = Math.max(0, volumeRef.current - 10);
+          volumeRef.current = newVol;
+          setCurrentVolume(newVol);
+          setVolumeIndicator(newVol);
+          setTimeout(() => setVolumeIndicator(null), 1000);
+          return;
         }
         resetControlsTimeout();
       },
       onPageUp: () => {
         if (!showControlsRef.current) {
-           let newBright = Math.min(1, brightnessRef.current + 0.1);
-           brightnessRef.current = newBright;
-           setBrightnessIndicator(newBright);
-           Brightness.setBrightnessAsync(newBright);
-           setTimeout(() => setBrightnessIndicator(null), 1000);
-           return;
+          let newBright = Math.min(1, brightnessRef.current + 0.1);
+          brightnessRef.current = newBright;
+          setBrightnessIndicator(newBright);
+          Brightness.setBrightnessAsync(newBright);
+          setTimeout(() => setBrightnessIndicator(null), 1000);
+          return;
         }
         resetControlsTimeout();
       },
       onPageDown: () => {
         if (!showControlsRef.current) {
-           let newBright = Math.max(0, brightnessRef.current - 0.1);
-           brightnessRef.current = newBright;
-           setBrightnessIndicator(newBright);
-           Brightness.setBrightnessAsync(newBright);
-           setTimeout(() => setBrightnessIndicator(null), 1000);
-           return;
+          let newBright = Math.max(0, brightnessRef.current - 0.1);
+          brightnessRef.current = newBright;
+          setBrightnessIndicator(newBright);
+          Brightness.setBrightnessAsync(newBright);
+          setTimeout(() => setBrightnessIndicator(null), 1000);
+          return;
         }
         resetControlsTimeout();
       }
@@ -741,8 +740,6 @@ export default function PlayerScreen() {
                     {/* Seekable progress bar — focusable on TV for D-pad scrub */}
                     <Focusable
                       ref={seekBarRef}
-                      nextFocusLeft={seekBarNode}
-                      nextFocusRight={seekBarNode}
                       ringOnFocus={false}
                       focusStyle={S.progressBarFocused}
                       style={S.progressBarWrapper}
