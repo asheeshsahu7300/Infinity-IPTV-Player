@@ -365,6 +365,7 @@ export default function SeriesScreen() {
     if (!activePortal || prevCategoryIdRef.current === selectedCategory) return;
     setPage(1);
     prevCategoryIdRef.current = selectedCategory;
+    focusedIdRef.current = "";
 
     if (activePortal.type === "xtream" || activePortal.type === "m3u") {
       const cat = selectedCategory === "all" ? undefined : selectedCategory;
@@ -530,7 +531,7 @@ export default function SeriesScreen() {
   }, [toggleFavorite]);
 
   const renderRow = useCallback(({ item: row, index: rowIndex }: { item: { id: string; items: Series[] }; index: number }) => (
-    <View style={{ flexDirection: "row" }}>
+    <FocusGroup style={{ flexDirection: "row" }}>
       {row.items.map((seriesItem, colIndex) => {
         const itemIndex = rowIndex * numColumns + colIndex;
         return (
@@ -543,14 +544,12 @@ export default function SeriesScreen() {
             isFavorite={favorites.series.includes(seriesItem.id)}
             itemWidth={itemWidth}
             isFocusedItem={
-              focusedIdRef.current
-                ? String(seriesItem.id) === focusedIdRef.current
-                : itemIndex === 0 && !searchFocused
+              !focusedIdRef.current && itemIndex === 0 && !searchFocused
             }
           />
         );
       })}
-    </View>
+    </FocusGroup>
   ), [favorites.series, itemWidth, searchFocused, numColumns, handleSeriesPress, handleSeriesFocus, handleFavoritePress]);
 
 

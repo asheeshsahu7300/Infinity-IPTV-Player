@@ -295,6 +295,7 @@ export default function LiveTVScreen() {
     if (!activePortal || prevCategoryIdRef.current === selectedCategory) return;
     setPage(1);
     prevCategoryIdRef.current = selectedCategory;
+    focusedIdRef.current = "";
 
     if (activePortal.type === "xtream" || activePortal.type === "m3u") {
       const cat = selectedCategory === "all" ? undefined : selectedCategory;
@@ -547,7 +548,7 @@ export default function LiveTVScreen() {
             updateCellsBatchingPeriod={50}
             ref={flatListRef}
             renderItem={useCallback(({ item: row, index: rowIndex }: { item: { id: string; items: Channel[] }; index: number }) => (
-              <View style={{ flexDirection: "row" }}>
+              <FocusGroup style={{ flexDirection: "row" }}>
                 {row.items.map((channel, colIndex) => {
                   const itemIndex = rowIndex * numColumns + colIndex;
                   return (
@@ -556,16 +557,14 @@ export default function LiveTVScreen() {
                       item={channel}
                       itemWidth={itemWidth}
                       isFocusedItem={
-                        focusedIdRef.current
-                          ? String(channel.id) === focusedIdRef.current
-                          : itemIndex === 0 && !searchFocused
+                        !focusedIdRef.current && itemIndex === 0 && !searchFocused
                       }
                       onPress={handleChannelPress}
                       onFocus={handleChannelFocus}
                     />
                   );
                 })}
-              </View>
+              </FocusGroup>
             ), [itemWidth, searchFocused, numColumns, handleChannelPress, handleChannelFocus])}
             ListEmptyComponent={
               isLoading ? (

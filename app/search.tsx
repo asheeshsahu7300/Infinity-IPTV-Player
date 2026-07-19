@@ -97,16 +97,16 @@ const pickYear = (v: any) => {
   return match ? match[0] : s;
 };
 
-const ResultCard = ({ item, onPress, onFocus }: any) => {
+const ResultCard = ({ item, onPress, onFocus, itemWidth }: any) => {
   // Use a fixed aspect ratio for the entire card to match VOD design
-  const cardHeight = ((W - pw(4)) / (isTV ? 6 : 3)) * 1.5;
+  const cardHeight = itemWidth * 1.5;
 
   return (
     <Focusable
       onPress={onPress}
       onFocus={onFocus}
       ringOnFocus={false}
-      style={[S.cardWrapper, { overflow: "visible" }]}
+      style={[S.cardWrapper, { width: itemWidth, overflow: "visible" }]}
     >
       {(focused) => (
         <View
@@ -322,7 +322,7 @@ export default function SearchScreen() {
       router.push({ pathname: "/player", params: { url: streamUrl, title: selectedItem.name, type: "vod" } });
     }
   };
-  const RESULT_COLUMNS = isTV ? 6 : 3;
+  const RESULT_COLUMNS = isTV ? 7 : (W >= 1024 ? 6 : (W >= 768 ? 4 : 3));
   const CARD_WIDTH = (W - pw(4)) / RESULT_COLUMNS;
 
   return (
@@ -351,7 +351,7 @@ export default function SearchScreen() {
                   ]}
                 >
                   <View style={[S.searchBarInner, { backgroundColor: "#111015" }]}>
-                    <Ionicons name="search" size={ps(2.2)} color="rgba(255,255,255,0.5)" />
+                    <Ionicons name="search" size={isTV ? ps(2.3) : ps(2.2)} color="rgba(255,255,255,0.5)" />
                     <TextInput
                       ref={inputRef}
                       style={S.searchInput}
@@ -367,7 +367,7 @@ export default function SearchScreen() {
                     />
                     {query.length > 0 && (
                       <TouchableOpacity onPress={() => setQuery("")} style={{ padding: 8 }}>
-                        <Ionicons name="close-circle" size={ps(1.6)} color="rgba(255,255,255,0.5)" />
+                        <Ionicons name="close-circle" size={isTV ? ps(2.0) : ps(1.6)} color="rgba(255,255,255,0.5)" />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -380,7 +380,7 @@ export default function SearchScreen() {
               style={S.settingsBtn}
               onPress={() => router.push("/settings")}
             >
-              <Ionicons name="settings" size={ps(2)} color="rgba(255,255,255,0.7)" />
+              <Ionicons name="settings" size={isTV ? ps(2.2) : ps(2)} color="rgba(255,255,255,0.7)" />
             </Focusable>
           </View>
         </FocusGroup>
@@ -434,13 +434,14 @@ export default function SearchScreen() {
             key={`results-${RESULT_COLUMNS}`}
             keyExtractor={(item: any) => `${item.type}-${item.id}`}
             contentContainerStyle={{ paddingHorizontal: pw(2), paddingBottom: ph(6) }}
-            columnWrapperStyle={{ justifyContent: 'center' }}
+            columnWrapperStyle={{ justifyContent: 'flex-start' }}
             removeClippedSubviews={false}
             initialNumToRender={RESULT_COLUMNS * 4}
             maxToRenderPerBatch={RESULT_COLUMNS * 4}
             renderItem={({ item }: any) => (
               <ResultCard
                 item={item}
+                itemWidth={CARD_WIDTH}
                 onPress={() => handleResultPress(item)}
                 onFocus={() => item.logo && setFocusedImage(item.logo)}
               />
@@ -448,7 +449,7 @@ export default function SearchScreen() {
             ListEmptyComponent={
               !isLoading ? (
                 <View style={S.emptyState}>
-                  <Ionicons name="search-outline" size={ps(5)} color="rgba(255,255,255,0.08)" />
+                  <Ionicons name="search-outline" size={isTV ? ps(7) : ps(5)} color="rgba(255,255,255,0.08)" />
                   <Text style={S.emptyText}>
                     {query.trim() ? "No matches found" : "Start typing to discover content"}
                   </Text>
@@ -563,11 +564,11 @@ const S = StyleSheet.create({
   },
   searchBarWrapper: {
     flex: 1,
-    height: ps(4.5),
+    height: isTV ? ph(7.5) : ps(4.5),
   },
   searchBarGradient: {
     flex: 1,
-    borderRadius: ps(1),
+    borderRadius: 100,
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.15)",
     backgroundColor: "rgba(255,255,255,0.05)",
@@ -589,7 +590,7 @@ const S = StyleSheet.create({
   },
   searchBarInner: {
     flex: 1,
-    borderRadius: ps(1) - 1.5,
+    borderRadius: 100,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: pw(2),
@@ -597,15 +598,15 @@ const S = StyleSheet.create({
   searchInput: {
     flex: 1,
     color: "#fff",
-    fontSize: ps(1.4),
-    marginLeft: 14,
+    fontSize: isTV ? ps(1.6) : ps(1.4),
+    marginLeft: isTV ? 18 : 14,
     paddingVertical: 0,
-    paddingLeft: 4,
+    paddingLeft: isTV ? 8 : 4,
     textAlignVertical: "center",
     fontWeight: "400",
   },
   settingsBtn: {
-    padding: ps(1),
+    padding: isTV ? ps(1.3) : ps(1),
   },
   settingsBtnFocused: {
     transform: [{ scale: 1.2 }],
@@ -670,13 +671,13 @@ const S = StyleSheet.create({
     paddingVertical: ph(0.5),
   },
   filterPill: {
-    paddingHorizontal: pw(2.5),
-    paddingVertical: ph(1.2),
-    borderRadius: ps(2.5),
+    paddingHorizontal: isTV ? pw(2) : pw(2.5),
+    paddingVertical: isTV ? ph(1.8) : ph(1.2),
+    borderRadius: isTV ? ps(2.5) : ps(2.5),
     borderWidth: 1.2,
     borderColor: "rgba(255,255,255,0.12)",
     overflow: "hidden",
-    minWidth: pw(8),
+    minWidth: isTV ? pw(9) : pw(8),
     alignItems: "center",
   },
   filterPillFocused: {
@@ -696,7 +697,7 @@ const S = StyleSheet.create({
   },
   filterText: {
     color: "rgba(255,255,255,0.4)",
-    fontSize: ps(1.3),
+    fontSize: isTV ? ps(1.4) : ps(1.3),
     fontWeight: "700",
     letterSpacing: 0.5,
   },
@@ -728,8 +729,6 @@ const S = StyleSheet.create({
     })
   },
   cardWrapper: {
-    width: (W - pw(4)) / (isTV ? 6 : 3),
-    maxWidth: (W - pw(4)) / (isTV ? 6 : 3),
     padding: isTV ? pw(1.0) : pw(0.4),
   },
   card: {
@@ -788,7 +787,7 @@ const S = StyleSheet.create({
   },
   emptyText: {
     color: "rgba(255,255,255,0.2)",
-    fontSize: ps(1.4),
+    fontSize: isTV ? ps(1.8) : ps(1.4),
     marginTop: ph(2),
     textAlign: "center",
   },

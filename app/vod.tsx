@@ -409,6 +409,7 @@ export default function VODScreen() {
     if (!activePortal || prevCategoryIdRef.current === selectedCategory) return;
     setPage(1);
     prevCategoryIdRef.current = selectedCategory;
+    focusedIdRef.current = "";
 
     if (activePortal.type === "xtream" || activePortal.type === "m3u") {
       const cat = selectedCategory === "all" ? undefined : selectedCategory;
@@ -614,7 +615,7 @@ export default function VODScreen() {
   };
 
   const renderRow = useCallback(({ item: row, index: rowIndex }: { item: { id: string; items: VODItem[] }; index: number }) => (
-    <View style={{ flexDirection: "row" }}>
+    <FocusGroup style={{ flexDirection: "row" }}>
       {row.items.map((movie, colIndex) => {
         const itemIndex = rowIndex * numColumns + colIndex;
         return (
@@ -627,14 +628,12 @@ export default function VODScreen() {
             isFavorite={favorites.vod.includes(movie.id)}
             itemWidth={itemWidth}
             isFocusedItem={
-              focusedIdRef.current
-                ? String(movie.id) === focusedIdRef.current
-                : itemIndex === 0 && !searchFocused
+              !focusedIdRef.current && itemIndex === 0 && !searchFocused
             }
           />
         );
       })}
-    </View>
+    </FocusGroup>
   ), [favorites.vod, itemWidth, searchFocused, numColumns, handleVodPress, handleVodFocus, handleFavoritePress]);
 
 
