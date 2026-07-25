@@ -192,9 +192,9 @@ export default function FavoritesScreen() {
         const loadedSeries = await portalApi.getSeries(activePortal);
         setSeries(loadedSeries);
       }
-    } catch (error) {
-      console.error("Failed to load data for favorites:", error);
-    }
+    } catch (err) {
+      console.warn("Failed to refresh favorites:", err);
+    } finally { };
   };
 
   const updateFavoriteItems = () => {

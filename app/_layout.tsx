@@ -27,39 +27,10 @@ import { AppBootManager } from "../src/services/AppBootManager";
 import { isTV } from "../src/utils/tvUtils";
 import { THEME, ps, ph, pw } from "../src/theme/tokens";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Google TV Typography Monkey-Patch (Global Font Family Enforcer)
-// ─────────────────────────────────────────────────────────────────────────────
-// This overrides the default Text rendering behavior across all React Native views,
-// dynamically mapping styles to correct weight variants of "Google Sans".
-// This ensures 100% typography consistency in all pages, third-party libraries,
-// and default system controls.
-// ─────────────────────────────────────────────────────────────────────────────
-// @ts-ignore
-const oldTextRender = Text.render;
-if (oldTextRender) {
-  // @ts-ignore
-  Text.render = function (...args) {
-    const origin = oldTextRender.apply(this, args);
-    const customStyle = origin.props.style;
-    return React.cloneElement(origin, {
-      style: [customStyle, { fontFamily: "Tenor Sans", fontWeight: "normal" }],
-    });
-  };
-}
-
-// Ensure TextInput also defaults to the regular Google Sans variant
-// @ts-ignore
-if (TextInput.defaultProps == null) {
-  // @ts-ignore
-  TextInput.defaultProps = {};
-}
-// @ts-ignore
-TextInput.defaultProps.style = { fontFamily: "Tenor Sans", fontWeight: "normal" };
-
-// Inject CSS for Web to guarantee the font loads exactly as the user requested
-if (Platform.OS === "web" && typeof document !== "undefined") {
+// Inject CSS for Web to guarantee the font loads exactly as requested
+if (Platform.OS === "web" && typeof document !== "undefined" && !document.getElementById("tenor-sans-font")) {
   const style = document.createElement("style");
+  style.id = "tenor-sans-font";
   style.textContent = `@import url('https://fonts.googleapis.com/css2?family=Tenor+Sans&display=swap');`;
   document.head.append(style);
 }

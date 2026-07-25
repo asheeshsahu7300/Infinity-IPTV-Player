@@ -4,6 +4,7 @@ import pako from "pako";
 
 export const CACHE_TTL = {
   AUTH: 55 * 60 * 1000,
+  XTREAM_AUTH: 5 * 60 * 1000,
   CATEGORIES: 24 * 60 * 60 * 1000,
   CHANNELS: 12 * 60 * 60 * 1000,
   VOD: 6 * 60 * 60 * 1000,
@@ -48,6 +49,9 @@ function base64ToUint8(b64: string): Uint8Array {
   const u8 = new Uint8Array(outputLen | 0);
   let outIndex = 0;
 
+  // Note: base64 padding characters ('=') resolve to index -1, which bitwise shifts
+  // to garbage values. However, outputLen is calculated to exclude padding bytes,
+  // so outIndex bounds checking ensures these garbage bits are never written to u8.
   for (let i = 0; i < len; i += 4) {
     const c1 = chars.indexOf(cleaned.charAt(i));
     const c2 = chars.indexOf(cleaned.charAt(i + 1));
@@ -91,7 +95,8 @@ class MemoryCache {
   private estimateSize(data: any): number {
     try {
       const str = JSON.stringify(data);
-      return new Blob([str]).size; // accurate byte size
+      // RN-safe UTF-8 byte length estimation (avoids engine-inconsistent Blob polyfills)
+      return encodeURIComponent(str).replace(/%[89AB][0-9A-F]/gi, "2").length;
     } catch {
       return 1024; // fallback
     }
@@ -100,6 +105,10 @@ class MemoryCache {
   set<T>(key: string, data: T, ttl: number): void {
     const expiry = Date.now() + ttl;
     const size = this.estimateSize(data);
+
+    // Skip storing single items larger than max RAM size in memory cache (diskCache handles them)
+    if (size > this.maxSize) return;
+
     const entry: CacheEntry<T> = { data, expiry, timestamp: Date.now(), size };
 
     if (this.cache.has(key)) {
@@ -301,7 +310,7 @@ class DiskCache {
 class CacheManager {
   private memoryCache = new MemoryCache(50);
   private diskCache = new DiskCache();
-  private warmingKeys = new Set<string>();
+  private warmingPromises = new Map<string, Promise<any>>();
 
   async set<T>(key: string, data: T, ttl: number): Promise<void> {
     this.memoryCache.set(key, data, ttl);
@@ -361,29 +370,31 @@ class CacheManager {
     loader: () => Promise<T>,
     ttl: number
   ): Promise<T> {
-    if (this.warmingKeys.has(key)) {
-      await new Promise((r) => setTimeout(r, 200));
-      const cached = await this.get<T>(key);
-      if (cached !== null) return cached;
+    if (this.warmingPromises.has(key)) {
+      return this.warmingPromises.get(key)!;
     }
 
-    this.warmingKeys.add(key);
-    try {
-      const data = await loader();
-      await this.set(key, data, ttl);
-      return data;
-    } catch (e) {
-      console.warn("Warm failed:", e);
-      throw e;
-    } finally {
-      this.warmingKeys.delete(key);
-    }
+    const promise = (async () => {
+      try {
+        const data = await loader();
+        await this.set(key, data, ttl);
+        return data;
+      } catch (e) {
+        console.warn("Warm failed:", e);
+        throw e;
+      } finally {
+        this.warmingPromises.delete(key);
+      }
+    })();
+
+    this.warmingPromises.set(key, promise);
+    return promise;
   }
 
   getStats() {
     return {
       memory: this.memoryCache.getStats(),
-      warming: this.warmingKeys.size,
+      warming: this.warmingPromises.size,
     };
   }
 }

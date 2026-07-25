@@ -36,7 +36,7 @@ export class XtreamApi {
 
       if (!res.data?.user_info) throw new Error("Invalid Xtream login");
 
-      await cacheManager.set(cacheKey, res.data, CACHE_TTL.AUTH);
+      await cacheManager.set(cacheKey, res.data, CACHE_TTL.XTREAM_AUTH);
       return res.data;
     });
   }
@@ -54,6 +54,8 @@ export class XtreamApi {
     return requestManager.request(cacheKey, async () => {
       const cached = await cacheManager.get<any[]>(cacheKey);
       if (cached) return cached;
+
+      await this.auth().catch(() => {});
 
       const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_live_categories`;
       const res = await requestManager.axiosWithRetry<any[]>({
@@ -86,6 +88,8 @@ export class XtreamApi {
     const rows = await requestManager.request(rawCacheKey, async () => {
       const cached = await cacheManager.get<any[]>(rawCacheKey);
       if (cached) return cached;
+
+      await this.auth().catch(() => {});
 
       const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_live_streams`;
       const res = await requestManager.axiosWithRetry<any[]>({
@@ -129,6 +133,8 @@ export class XtreamApi {
       const cached = await cacheManager.get<any[]>(cacheKey);
       if (cached) return cached;
 
+      await this.auth().catch(() => {});
+
       const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_vod_categories`;
       const res = await requestManager.axiosWithRetry<any[]>({
         method: "get",
@@ -160,6 +166,8 @@ export class XtreamApi {
     const rows = await requestManager.request(rawCacheKey, async () => {
       const cached = await cacheManager.get<any[]>(rawCacheKey);
       if (cached) return cached;
+
+      await this.auth().catch(() => {});
 
       const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_vod_streams`;
       const res = await requestManager.axiosWithRetry<any[]>({
@@ -206,6 +214,8 @@ export class XtreamApi {
       const cached = await cacheManager.get<any[]>(cacheKey);
       if (cached) return cached;
 
+      await this.auth().catch(() => {});
+
       const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_series_categories`;
       const res = await requestManager.axiosWithRetry<any[]>({
         method: "get",
@@ -237,6 +247,8 @@ export class XtreamApi {
     const rows = await requestManager.request(rawCacheKey, async () => {
       const cached = await cacheManager.get<any[]>(rawCacheKey);
       if (cached) return cached;
+
+      await this.auth().catch(() => {});
 
       const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_series`;
       const res = await requestManager.axiosWithRetry<any[]>({
@@ -280,6 +292,8 @@ export class XtreamApi {
     return requestManager.request(cacheKey, async () => {
       const cached = await cacheManager.get<any[]>(cacheKey);
       if (cached) return cached;
+
+      await this.auth().catch(() => {});
 
       const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_series_info&series_id=${seriesId}`;
       const res = await requestManager.axiosWithRetry<any>({

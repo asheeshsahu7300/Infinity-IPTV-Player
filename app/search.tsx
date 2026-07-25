@@ -119,13 +119,20 @@ const ResultCard = ({ item, onPress, onFocus, itemWidth }: any) => {
         >
           <View style={S.card}>
             <View style={S.cardImgContainer}>
-              <Image source={{ uri: item.logo }} style={S.cardImg} contentFit="cover" />
+              <Image source={{ uri: item.logo }} style={S.cardImg} contentFit="cover" cachePolicy="memory-disk" />
               {item.quality && <View style={S.badge}><Text style={S.badgeText}>{item.quality}</Text></View>}
             </View>
-            <BlurView intensity={focused ? 80 : 60} tint="dark" style={S.cardInfo}>
+            <LinearGradient
+              colors={
+                focused
+                  ? ["transparent", "rgba(0,0,0,0.8)", "rgba(0,0,0,1)"]
+                  : ["transparent", "rgba(0,0,0,0.6)", "rgba(0,0,0,0.9)"]
+              }
+              style={S.cardInfo}
+            >
               <Text style={S.cardTitle} numberOfLines={1}>{item.name}</Text>
               <Text style={S.cardSub}>{item.year ? `${item.year} • ` : ""}{item.type.toUpperCase()}</Text>
-            </BlurView>
+            </LinearGradient>
           </View>
         </View>
       )}
@@ -339,7 +346,14 @@ export default function SearchScreen() {
           <View style={S.headerRow}>
             <Focusable
               hasTVPreferredFocus
-              onPress={() => inputRef.current?.focus()}
+              onFocus={() => {
+                setSearchFocused(true);
+                setTimeout(() => inputRef.current?.focus(), 100);
+              }}
+              onPress={() => {
+                setSearchFocused(true);
+                setTimeout(() => inputRef.current?.focus(), 50);
+              }}
               ringOnFocus={false}
               style={S.searchBarWrapper}
             >
@@ -362,6 +376,7 @@ export default function SearchScreen() {
                       autoCapitalize="none"
                       autoCorrect={false}
                       returnKeyType="search"
+                      showSoftInputOnFocus={true}
                       onFocus={() => setSearchFocused(true)}
                       onBlur={() => setSearchFocused(false)}
                     />

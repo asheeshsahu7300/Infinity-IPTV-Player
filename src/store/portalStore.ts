@@ -137,11 +137,11 @@ interface PortalState {
   deletePortal: (id: string) => Promise<void>;
   setActivePortal: (portal: Portal | null) => Promise<void>;
 
-  setChannels: (channels: Channel[]) => Promise<void>;
-  setVodItems: (items: VODItem[]) => Promise<void>;
-  setSeries: (series: Series[]) => Promise<void>;
-  setCategories: (categories: Category[]) => Promise<void>;
-  setEpgData: (data: EPGProgram[]) => Promise<void>;
+  setChannels: (channels: Channel[], targetPortalId?: string) => Promise<void>;
+  setVodItems: (items: VODItem[], targetPortalId?: string) => Promise<void>;
+  setSeries: (series: Series[], targetPortalId?: string) => Promise<void>;
+  setCategories: (categories: Category[], targetPortalId?: string) => Promise<void>;
+  setEpgData: (data: EPGProgram[], targetPortalId?: string) => Promise<void>;
 
   loadPortalData: (portalId: string) => Promise<void>;
 
@@ -357,32 +357,36 @@ export const usePortalStore = create<PortalState>((set, get) => ({
   },
 
   // ---------------------------------------
-  // TV DATA SETTERS (with AsyncStorage persistence)
+  // TV DATA SETTERS (with AsyncStorage persistence & stale-portal guard)
   // ---------------------------------------
-  setChannels: async (channels) => {
-    set({ channels });
+  setChannels: async (channels, targetPortalId) => {
     const activePortal = get().activePortal;
+    if (targetPortalId && activePortal?.id !== targetPortalId) return;
+    set({ channels });
     if (activePortal) {
       await AsyncStorage.setItem(`portal:${activePortal.id}:channels`, JSON.stringify(channels)).catch(console.warn);
     }
   },
-  setVodItems: async (items) => {
-    set({ vodItems: items });
+  setVodItems: async (items, targetPortalId) => {
     const activePortal = get().activePortal;
+    if (targetPortalId && activePortal?.id !== targetPortalId) return;
+    set({ vodItems: items });
     if (activePortal) {
       await AsyncStorage.setItem(`portal:${activePortal.id}:vod`, JSON.stringify(items)).catch(console.warn);
     }
   },
-  setSeries: async (series) => {
-    set({ series });
+  setSeries: async (series, targetPortalId) => {
     const activePortal = get().activePortal;
+    if (targetPortalId && activePortal?.id !== targetPortalId) return;
+    set({ series });
     if (activePortal) {
       await AsyncStorage.setItem(`portal:${activePortal.id}:series`, JSON.stringify(series)).catch(console.warn);
     }
   },
-  setCategories: async (categories) => {
-    set({ categories });
+  setCategories: async (categories, targetPortalId) => {
     const activePortal = get().activePortal;
+    if (targetPortalId && activePortal?.id !== targetPortalId) return;
+    set({ categories });
     if (activePortal) {
       // 1. Store in active portal configuration (permanent)
       const updatedPortal = { ...activePortal, categories };
@@ -397,9 +401,10 @@ export const usePortalStore = create<PortalState>((set, get) => ({
       await AsyncStorage.setItem(`portal:${activePortal.id}:categories`, JSON.stringify(categories)).catch(console.warn);
     }
   },
-  setEpgData: async (data) => {
-    set({ epgData: data });
+  setEpgData: async (data, targetPortalId) => {
     const activePortal = get().activePortal;
+    if (targetPortalId && activePortal?.id !== targetPortalId) return;
+    set({ epgData: data });
     if (activePortal) {
       await AsyncStorage.setItem(`portal:${activePortal.id}:epg`, JSON.stringify(data)).catch(console.warn);
     }
@@ -416,11 +421,17 @@ export const usePortalStore = create<PortalState>((set, get) => ({
         AsyncStorage.getItem(`portal:${portalId}:epg`),
       ]);
 
-      if (channels) set({ channels: JSON.parse(channels) });
-      if (vodItems) set({ vodItems: JSON.parse(vodItems) });
-      if (series) set({ series: JSON.parse(series) });
-      if (categories) set({ categories: JSON.parse(categories) });
-      if (epgData) set({ epgData: JSON.parse(epgData) });
+      const nowCutoff = Date.now() - 12 * 60 * 60 * 1000;
+      const parsedEpg: EPGProgram[] = epgData ? JSON.parse(epgData) : [];
+      const validEpg = parsedEpg.filter((p) => p.end >= nowCutoff);
+
+      set({
+        channels: channels ? JSON.parse(channels) : [],
+        vodItems: vodItems ? JSON.parse(vodItems) : [],
+        series: series ? JSON.parse(series) : [],
+        categories: categories ? JSON.parse(categories) : [],
+        epgData: validEpg,
+      });
     } catch (err) {
       console.warn("Failed to load portal data from storage:", err);
     }

@@ -9,6 +9,7 @@ import {
   Dimensions,
   TouchableOpacity,
   Platform,
+  KeyboardAvoidingView,
   Image,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -18,7 +19,7 @@ import { BlurView } from "expo-blur";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePortalStore } from "../src/store/portalStore";
-import { portalApi } from "@/src/services/portalApi";
+import { portalApi, formatMac } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import LoadingOverlay from "../src/components/LoadingOverlay";
@@ -172,7 +173,7 @@ export default function AddPortalScreen() {
   const [url, setUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [mac, setMac] = useState("");
+  const [mac, setMac] = useState("00:1A:79");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
 
@@ -189,11 +190,6 @@ export default function AddPortalScreen() {
     focusedFieldRef.current = focusedField;
   }, [focusedField]);
 
-  const formatMac = useCallback((t: string) => {
-    const cleaned = t.replace(/[^a-fA-F0-9]/g, "").toUpperCase();
-    return (cleaned.match(/.{1,2}/g)?.join(":") ?? cleaned).slice(0, 17);
-  }, []);
-
   const validateInputs = useCallback(() => {
     if (!name.trim()) { Alert.alert("Error", "Enter portal name"); return false; }
     if (!url.trim()) { Alert.alert("Error", "Enter portal URL"); return false; }
@@ -209,29 +205,7 @@ export default function AddPortalScreen() {
       }
     }
     return true;
-  }, [name, url, type, username, password, mac, formatMac]);
-
-  const handleSave = useCallback(async () => {
-    if (!validateInputs()) return;
-    const formattedMac = formatMac(mac);
-    const portal = {
-      id: Date.now().toString(),
-      name,
-      type,
-      config:
-        type === "m3u"
-          ? { url }
-          : type === "xtream"
-            ? { url, username, password }
-            : { url: url.trim(), mac: formattedMac },
-    };
-    try {
-      await addPortal(portal);
-      router.back();
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    }
-  }, [validateInputs, name, type, url, username, password, mac, formatMac, addPortal, router]);
+  }, [name, url, type, username, password, mac]);
 
   const handleSaveAndConnect = useCallback(async () => {
     if (!validateInputs()) return;
@@ -255,10 +229,10 @@ export default function AddPortalScreen() {
           id, name, type: "mag" as const,
           config: { url: url.trim(), mac: formattedMac },
         };
-        const { token, serverInfo } = await portalApi.authenticate(base);
+        const { token, expiry, serverInfo } = await portalApi.authenticate(base);
         portal = {
           id, name, type,
-          config: { url: url.trim(), mac: formattedMac, token, serverInfo },
+          config: { url: url.trim(), mac: formattedMac, token, expiry, serverInfo },
         };
       }
       await addPortal(portal);
@@ -280,7 +254,7 @@ export default function AddPortalScreen() {
       setIsLoading(false);
       Alert.alert("Error", e.message || "Failed to connect");
     }
-  }, [validateInputs, type, url, username, password, name, mac, formatMac, addPortal, setActivePortal, deletePortal, router]);
+  }, [validateInputs, type, url, username, password, name, mac, addPortal, setActivePortal, deletePortal, router]);
 
   const handleBack = useCallback(() => {
     if (step === 2) setStep(1);
@@ -395,6 +369,10 @@ export default function AddPortalScreen() {
                 onChangeText={setUrl}
                 onFocus={() => setFocusedField("url")}
                 onBlur={() => setFocusedField(null)}
+                autoCorrect={false}
+                autoCapitalize="none"
+                spellCheck={false}
+                autoComplete="off"
               />
               <Ionicons
                 name="link"
@@ -423,6 +401,10 @@ export default function AddPortalScreen() {
                       onChangeText={field === "username" ? setUsername : setPassword}
                       onFocus={() => setFocusedField(field)}
                       onBlur={() => setFocusedField(null)}
+                      autoCorrect={false}
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      autoComplete="off"
                     />
                   </GradientBorderInput>
                 </View>
@@ -440,12 +422,16 @@ export default function AddPortalScreen() {
                     placeholder="00:1A:79:XX:XX:XX"
                     placeholderTextColor="#555"
                     value={mac}
-                    onChangeText={(t) => setMac(t.replace(/[^a-fA-F0-9:]/g, "").toUpperCase())}
+                    onChangeText={setMac}
                     onFocus={() => setFocusedField("mac")}
                     onBlur={() => {
                       setFocusedField(null);
                       setMac((prev) => formatMac(prev));
                     }}
+                    autoCorrect={false}
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    autoComplete="off"
                   />
                 </GradientBorderInput>
             </View>
@@ -489,7 +475,10 @@ export default function AddPortalScreen() {
 
   // ── Root ─────────────────────────────────────────────────────────────────────
   return (
-    <View style={[S.container, { paddingTop: insets.top }]}>
+    <KeyboardAvoidingView 
+      style={[S.container, { paddingTop: insets.top }]} 
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       <CinematicBackground />
 
       {isLoading && <LoadingOverlay message={loadingMessage} />}
@@ -515,7 +504,7 @@ export default function AddPortalScreen() {
       >
         {step === 1 ? renderStep1() : renderStep2()}
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

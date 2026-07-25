@@ -185,7 +185,7 @@ const SeriesItem = React.memo(function SeriesItem({
             <View style={S.seriesItem}>
               <View style={S.posterContainer}>
                 {item.logo ? (
-                  <Image source={{ uri: item.logo }} style={S.poster} contentFit="cover" />
+                  <Image source={{ uri: item.logo }} style={S.poster} contentFit="cover" cachePolicy="memory-disk" />
                 ) : (
                   <View style={S.posterPlaceholder}>
                     <Ionicons name="tv-outline" size={ps(3)} color="rgba(255,255,255,0.15)" />
@@ -199,7 +199,14 @@ const SeriesItem = React.memo(function SeriesItem({
                 )}
               </View>
 
-              <BlurView intensity={focused ? 80 : 60} tint="dark" style={S.cardContent}>
+              <LinearGradient
+                colors={
+                  focused
+                    ? ["transparent", "rgba(0,0,0,0.8)", "rgba(0,0,0,1)"]
+                    : ["transparent", "rgba(0,0,0,0.6)", "rgba(0,0,0,0.9)"]
+                }
+                style={S.cardContent}
+              >
                 <Text style={S.seriesTitle} numberOfLines={1}>{item.name}</Text>
                 <View style={S.metaRow}>
                   {item.year ? <Text style={S.seriesMetaText}>{item.year}</Text> : null}
@@ -211,7 +218,7 @@ const SeriesItem = React.memo(function SeriesItem({
                     </View>
                   ) : null}
                 </View>
-              </BlurView>
+              </LinearGradient>
             </View>
           </View>
         )}
@@ -358,7 +365,6 @@ export default function SeriesScreen() {
       });
     }
     loadCategories();
-    loadSeries(undefined, 1, true);
   }, [activePortal?.id]);
 
   useEffect(() => {
@@ -368,15 +374,20 @@ export default function SeriesScreen() {
     focusedIdRef.current = "";
 
     if (activePortal.type === "xtream" || activePortal.type === "m3u") {
-      const cat = selectedCategory === "all" ? undefined : selectedCategory;
-      const filtered = !cat
-        ? allSeriesCacheRef.current
-        : allSeriesCacheRef.current.filter(s => String(s.categoryId) === String(cat));
-      fullListRef.current = filtered;
-      const sliced = filtered.slice(0, PAGE_SIZE);
-      setSeries(sliced);
-      setHasMore(filtered.length > sliced.length);
-      setIsLoading(false);
+      if (allSeriesCacheRef.current.length > 0) {
+        const cat = selectedCategory === "all" ? undefined : selectedCategory;
+        const filtered = !cat
+          ? allSeriesCacheRef.current
+          : allSeriesCacheRef.current.filter(s => String(s.categoryId) === String(cat));
+        fullListRef.current = filtered;
+        const sliced = filtered.slice(0, PAGE_SIZE);
+        setSeries(sliced);
+        setHasMore(filtered.length > sliced.length);
+        setIsLoading(false);
+      } else {
+        setHasMore(true);
+        loadSeries(selectedCategory, 1, true);
+      }
     } else {
       setHasMore(true);
       loadSeries(selectedCategory, 1, true);
@@ -456,7 +467,7 @@ export default function SeriesScreen() {
         if (reset) restoreFocusPosition(updatedList);
       }
     } catch (e) {
-      console.error(e);
+      console.warn(e);
     } finally {
       setIsLoading(false);
       setLoadingMore(false);
@@ -586,8 +597,8 @@ export default function SeriesScreen() {
           categoryId: "",
         }));
         setSearchResults(mapped);
-      } catch (e) {
-        console.error("Remote search error:", e);
+      } catch (err) {
+        console.warn("Series Data Fetch Error:", err);
       } finally {
         if (isMounted) setIsLoading(false);
       }

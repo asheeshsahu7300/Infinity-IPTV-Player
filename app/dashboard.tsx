@@ -108,9 +108,12 @@ const RailItem = React.memo(({
                   <Ionicons name={type === "landscape" ? "tv" : "film"} size={ps(2)} color="rgba(255,255,255,0.15)" />
                 </View>
               )}
-              <BlurView
-                intensity={focused ? 80 : 60}
-                tint="dark"
+              <LinearGradient
+                colors={
+                  focused
+                    ? ["transparent", "rgba(0,0,0,0.8)", "rgba(0,0,0,1)"]
+                    : ["transparent", "rgba(0,0,0,0.6)", "rgba(0,0,0,0.9)"]
+                }
                 style={[
                   S.cardContent,
                   {
@@ -122,7 +125,7 @@ const RailItem = React.memo(({
               >
                 <Text numberOfLines={1} style={S.cardTitle}>{title}</Text>
                 {subtitle && <Text numberOfLines={1} style={S.cardSubtitle}>{subtitle}</Text>}
-              </BlurView>
+              </LinearGradient>
             </View>
           </View>
         )}
@@ -242,28 +245,14 @@ export default function DashboardScreen() {
     if (!activePortal) return;
     setIsLoading(true);
     try {
-      if (activePortal.type === "mag") {
-        const auth = await portalApi.authenticate(activePortal);
-        const updatedPortal = {
-          ...activePortal,
-          config: {
-            ...activePortal.config,
-            token: auth.token,
-            expiry: auth.expiry,
-            serverInfo: auth.serverInfo,
-          }
-        };
-        setActivePortal(updatedPortal);
-        await portalApi.refreshPortalData(updatedPortal);
-      } else {
-        await portalApi.refreshPortalData(activePortal);
-      }
-    } catch (e) {
+      await portalApi.refreshPortalData(activePortal);
+    } catch (e: any) {
       console.warn("Refresh failed:", e);
+      Alert.alert("Refresh Failed", e?.message || "Unable to refresh portal data.");
     } finally {
       setIsLoading(false);
     }
-  }, [activePortal, setActivePortal]);
+  }, [activePortal]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -283,12 +272,12 @@ export default function DashboardScreen() {
           username: activePortal.config.username!,
           password: activePortal.config.password!,
         });
-        streamUrl = xtream.buildMovieUrl(String(selectedItem.id), selectedItem.quality?.toLowerCase() || "mp4");
+        streamUrl = xtream.buildMovieUrl(String(selectedItem.id), "mp4");
       } else if (activePortal.type === "m3u") {
         const m3uApi = new M3UApi({ url: activePortal.config.url });
         streamUrl = await m3uApi.getStreamUrl(String(selectedItem.id));
       } else if (activePortal.type === "mag") {
-        const cmd = streamUrl || selectedItem.streamUrl;
+        const cmd = selectedItem.streamUrl;
         if (cmd) {
           const resolved = await portalApi.getStreamUrl(activePortal, cmd, "vod");
           if (resolved) streamUrl = resolved;
@@ -406,10 +395,17 @@ export default function DashboardScreen() {
                     >
                       <View style={S.browseCardInner}>
                         <Image source={{ uri: cat.img }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-                        <BlurView intensity={focused ? 80 : 60} tint="dark" style={S.browseCardContent}>
+                        <LinearGradient
+                          colors={
+                            focused
+                              ? ["transparent", "rgba(0,0,0,0.7)"]
+                              : ["transparent", "rgba(0,0,0,0.5)"]
+                          }
+                          style={S.browseCardContent}
+                        >
                           <Ionicons name={cat.icon as any} size={ps(2.2)} color="#fff" />
                           <Text style={S.browseCardTitle}>{cat.title}</Text>
-                        </BlurView>
+                        </LinearGradient>
                       </View>
                     </View>
                   )}

@@ -1,5 +1,6 @@
 // portalApi.ts
 import axios from "axios";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { cacheManager, CACHE_TTL } from "./cacheManager";
 import { requestManager } from "./requestManager";
 import {
@@ -46,32 +47,43 @@ async function tryConvertToM3U8(candidateUrl: string): Promise<string | null> {
     urlObj.pathname = folder + "index.m3u8";
     candidates.push(urlObj.toString());
 
-    // 4) try adding .m3u8 as query param (some providers expect ?ext=m3u8)
+    // 4) try adding .m3u8 as query param (some providers expect ?format=m3u8)
     candidates.push(candidateUrl + (urlObj.search ? "&" : "?") + "format=m3u8");
 
-    // Probe candidates with HEAD first, then GET small range if needed
-    for (const c of candidates) {
+    const probeCandidate = async (c: string): Promise<string> => {
       try {
-        const head = await axios.head(c, { timeout: 5000 });
+        const head = await axios.head(c, { timeout: 3000 });
         const ct = String(head.headers["content-type"] || "").toLowerCase();
-        if (head.status >= 200 && head.status < 300 && (ct.includes("mpegurl") || ct.includes("vnd.apple.mpegurl") || ct.includes("text/plain") || ct.includes("application/vnd.apple.mpegurl"))) {
+        if (
+          head.status >= 200 &&
+          head.status < 300 &&
+          (ct.includes("mpegurl") ||
+            ct.includes("vnd.apple.mpegurl") ||
+            ct.includes("text/plain") ||
+            ct.includes("application/vnd.apple.mpegurl"))
+        ) {
           return c;
         }
       } catch (e) {
-        // ignore and try next
+        // ignore and try GET fallback
       }
 
-      // As a fallback try GET first 256 bytes to detect #EXTM3U
-      try {
-        const res = await axios.get(c, { timeout: 5000, responseType: "text", headers: { Range: "bytes=0-512" } });
-        const data = String(res.data || "");
-        if (/^#EXTM3U/m.test(data) || data.includes("EXTINF") || data.includes("#EXT-X-")) {
-          return c;
-        }
-      } catch (e) {
-        // ignore
+      const res = await axios.get(c, {
+        timeout: 3000,
+        responseType: "text",
+        headers: { Range: "bytes=0-512" },
+      });
+      const data = String(res.data || "");
+      if (/^#EXTM3U/m.test(data) || data.includes("EXTINF") || data.includes("#EXT-X-")) {
+        return c;
       }
-    }
+      throw new Error("Not valid m3u8");
+    };
+
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000));
+    const probePromise = Promise.any(candidates.map((c) => probeCandidate(c))).catch(() => null);
+
+    return await Promise.race([probePromise, timeoutPromise]);
   } catch (e) {
     // ignore
   }
@@ -87,50 +99,65 @@ const rmAcceptHeader = {
   ],
 };
 
-const formatMac = (mac: string) =>
-  mac
-    .replace(/[^A-Fa-f0-9]/g, "")
-    .toUpperCase()
-    .match(/.{2}/g)
-    ?.join(":") ?? mac;
+export const formatMac = (mac: string) => {
+  if (!mac) return "";
+  let clean = mac.replace(/[^A-Fa-f0-9]/g, "").toUpperCase();
+  if (clean.length === 0) return mac;
+  if (clean.length % 2 !== 0) {
+    clean = "0" + clean;
+  }
+  const pairs = clean.match(/.{2}/g);
+  return pairs ? pairs.join(":") : mac;
+};
 
-const headers = (mac: string, token?: string) => ({
-  // Core MAG identity
-  "User-Agent":
-    "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG254 Safari/533.3",
-
-  // Compression
-  "Accept-Encoding": "gzip",
-
-  // Expected by Stalker portals
-  Accept: "application/json, text/javascript, */*; q=0.01",
-  "Accept-Language": "en-US,en;q=0.9",
-
-  // MAG session identity
-  Cookie: [
-    `mac=${encodeURIComponent(formatMac(mac))}`,
+const headers = (mac: string, token?: string, url?: string) => {
+  const formattedMac = formatMac(mac);
+  const cookieParts = [
+    `mac=${encodeURIComponent(formattedMac)}`,
     "stb_lang=en",
     "timezone=Europe/London",
-  ].join("; "),
+  ];
+  if (token) {
+    cookieParts.push(`token=${encodeURIComponent(token)}`);
+    cookieParts.push(`token_type=bearer`);
+  }
 
-  // Optional token after handshake
-  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  let originHeaders: Record<string, string> = {};
+  if (url) {
+    try {
+      const u = new URL(url);
+      originHeaders["Referer"] = `${u.origin}/c/index.html`;
+      originHeaders["Origin"] = u.origin;
+    } catch {
+      // ignore
+    }
+  }
 
-  // Legacy headers seen in MAG traffic
-  "X-User-Agent": "Model: MAG254; Link: Ethernet",
-  Connection: "Keep-Alive",
-});
-
+  return {
+    "User-Agent":
+      "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG254 Safari/533.3",
+    "Accept-Encoding": "gzip",
+    Accept: "application/json, text/javascript, */*; q=0.01",
+    "Accept-Language": "en-US,en;q=0.9",
+    Cookie: cookieParts.join("; "),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...originHeaders,
+    "X-User-Agent": "Model: MAG254; Link: Ethernet",
+    Connection: "Keep-Alive",
+  };
+};
 
 const extract = (res: any): any[] => {
   let data = res?.data?.js?.data ?? res?.data?.js ?? res?.data ?? res ?? [];
 
-  if (Array.isArray(data)) return data;
+  if (Array.isArray(data)) {
+    return data.filter((v) => v != null && typeof v === "object");
+  }
 
   if (typeof data === "object" && data !== null) {
-    const values = Object.values(data);
+    const values = Object.values(data).filter((v) => v != null);
     if (values.length > 0 && values.every((v) => Array.isArray(v))) {
-      return values.flat();
+      return values.flat().filter((v) => v != null && typeof v === "object");
     }
     if (values.length > 0 && values.every((v) => typeof v === "object")) {
       return values;
@@ -141,6 +168,23 @@ const extract = (res: any): any[] => {
   return [];
 };
 
+const buildImageUrl = (base: string, raw?: any): string => {
+  if (!raw || typeof raw !== "string") return "";
+  const s = raw.trim();
+  if (!s || s === "null" || s === "undefined" || s === "N/A" || s === "none") return "";
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+
+  const serverRoot = base
+    .replace(/\/$/, "")
+    .replace(/\/portal\.php$/i, "")
+    .replace(/\/c$/i, "");
+
+  if (s.startsWith("/")) {
+    return `${serverRoot}${s}`;
+  }
+  return `${serverRoot}/${s}`;
+};
+
 const pickRating = (v: any) => {
   const r =
     v?.rating_imdb ??
@@ -148,7 +192,11 @@ const pickRating = (v: any) => {
     v?.rating ??
     v?.vote_average ??
     v?.rating_tmdb ??
-    v?.score;
+    v?.score ??
+    v?.kinopoisk_rating ??
+    v?.rating_kinopoisk ??
+    v?.imdb ??
+    v?.kinopoisk;
   if (r == null) return undefined;
   const s = String(r).trim();
   const lower = s.toLowerCase();
@@ -169,7 +217,13 @@ const pickRating = (v: any) => {
 
 const pickYear = (v: any) => {
   const y =
-    v?.year ?? v?.production_year ?? v?.release_year ?? v?.first_air_date;
+    v?.year ??
+    v?.production_year ??
+    v?.release_year ??
+    v?.first_air_date ??
+    v?.o_name ??
+    v?.name ??
+    v?.title;
   if (y == null) return undefined;
   const s = String(y).trim();
   const lower = s.toLowerCase();
@@ -183,22 +237,30 @@ const pickYear = (v: any) => {
   ) {
     return undefined;
   }
-  const match = s.match(/(19|20)\d{2}/);
-  return match ? match[0] : s;
+  const match = s.match(/(19\d{2}|20\d{2})/);
+  return match ? match[0] : undefined;
 };
 
 const pickDescription = (v: any): string => {
-  const desc = v?.description ??
+  const desc =
+    v?.description ??
     v?.plot ??
     v?.desc ??
     v?.info ??
     v?.storyline ??
-    v?.short_description;
-  return desc || "No description available for this content.";
+    v?.short_description ??
+    v?.comments ??
+    v?.o_name ??
+    v?.actors ??
+    v?.director;
+  if (!desc || typeof desc !== "string") return "";
+  const s = desc.trim();
+  return s === "null" || s === "undefined" ? "" : s;
 };
 
 // 🔁 Token refresh with deduplication & global state sync
 const tokenRefreshMap = new Map<string, Promise<Portal>>();
+const warmPromiseMap = new Map<string, Promise<void>>();
 
 const isExpired = (p: Portal) =>
   !p?.config?.token ||
@@ -208,73 +270,77 @@ const isExpired = (p: Portal) =>
 async function refreshToken(portal: Portal): Promise<Portal> {
   if (!isExpired(portal)) return portal;
 
-  const mac = formatMac(portal.config.mac ?? "");
   const key = portal.id;
-  const cacheKey = `portal:${key}:auth`;
 
   // Reuse in-flight refresh
   if (tokenRefreshMap.has(key)) {
     return tokenRefreshMap.get(key)!;
   }
 
-  // Try cached token first
-  const cached = await cacheManager.get<any>(cacheKey);
-  if (cached && cached.expiry > Date.now() + 5 * 60 * 1000) {
-    const updated = {
-      ...portal,
-      config: { ...portal.config, ...cached },
-    };
-    // 🟢 Sync to global state
-    usePortalStore.getState().setActivePortal(updated);
-    return updated;
-  }
+  const cacheKey = `portal:${key}:auth`;
 
-  // Start new auth flow
-  const refreshPromise = portalApi
-    .authenticate(portal)
-    .then(async (auth) => {
+  const refreshPromise = (async () => {
+    // Try cached token first
+    const cached = await cacheManager.get<any>(cacheKey);
+    if (cached && cached.expiry > Date.now() + 5 * 60 * 1000) {
       const updated = {
         ...portal,
-        config: {
-          ...portal.config,
-          token: auth.token,
-          expiry: auth.expiry,
-          serverInfo: auth.serverInfo,
-        },
+        config: { ...portal.config, ...cached },
       };
-
-      // 🟢 CRITICAL: Persist updated portal (token!) to store & disk
+      // 🟢 Sync to global state if still active
       const store = usePortalStore.getState();
-      store.setActivePortal(updated);
-
-      // Cache for fast-path next time
-      await cacheManager.set(
-        cacheKey,
-        { token: auth.token, expiry: auth.expiry, serverInfo: auth.serverInfo },
-        CACHE_TTL.AUTH
-      );
-
-      // Warm portal data on first handshake: fetch and persist large lists
-      // without blocking the auth flow. Only fetch if cache missing.
-      try {
-        // Fire-and-forget warming; errors are non-fatal
-        portalApi.warmPortalData(updated).catch(() => { });
-      } catch {
-        // ignore
+      if (store.activePortal?.id === portal.id) {
+        await store.setActivePortal(updated);
+      } else {
+        await store.updatePortal(portal.id, { config: updated.config });
       }
-
       return updated;
-    })
-    .catch((e) => {
-      tokenRefreshMap.delete(key);
-      throw e;
-    })
-    .finally(() => {
-      tokenRefreshMap.delete(key);
-    });
+    }
+
+    // Start new auth flow
+    const auth = await portalApi.authenticate(portal);
+    const updated = {
+      ...portal,
+      config: {
+        ...portal.config,
+        token: auth.token,
+        expiry: auth.expiry,
+        serverInfo: auth.serverInfo,
+      },
+    };
+
+    // 🟢 CRITICAL: Persist updated portal (token!) to store & disk if still active
+    const store = usePortalStore.getState();
+    if (store.activePortal?.id === portal.id) {
+      await store.setActivePortal(updated);
+    } else {
+      await store.updatePortal(portal.id, { config: updated.config });
+    }
+
+    // Cache for fast-path next time
+    await cacheManager.set(
+      cacheKey,
+      { token: auth.token, expiry: auth.expiry, serverInfo: auth.serverInfo },
+      CACHE_TTL.AUTH
+    );
+
+    // Warm portal data on first handshake
+    try {
+      portalApi.warmPortalData(updated).catch(() => { });
+    } catch {
+      // ignore
+    }
+
+    return updated;
+  })();
 
   tokenRefreshMap.set(key, refreshPromise);
-  return refreshPromise;
+
+  try {
+    return await refreshPromise;
+  } finally {
+    tokenRefreshMap.delete(key);
+  }
 }
 
 export const portalApi = {
@@ -283,28 +349,64 @@ export const portalApi = {
     const mac = formatMac(portal.config.mac ?? "");
 
     const hURL = `${base}/portal.php?type=stb&action=handshake&JsHttpRequest=1-xml`;
-    const handshake = await axios.get(hURL, {
-      ...rmAcceptHeader,
-      headers: headers(mac),
-      timeout: 60000,
-    });
 
-    const token =
-      handshake?.data?.js?.token ?? Math.random().toString(36).substring(2);
+    let handshake: any = null;
+    let lastError: any = null;
+
+    // Retry handshake up to 3 times on transient errors
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        handshake = await axios.get(hURL, {
+          ...rmAcceptHeader,
+          headers: headers(mac, undefined, base),
+          timeout: 60000,
+        });
+        if (handshake?.data?.js?.token) break;
+      } catch (err) {
+        lastError = err;
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        }
+      }
+    }
+
+    const token = handshake?.data?.js?.token;
+    if (!token || typeof token !== "string") {
+      throw lastError || new Error("Portal handshake failed: Server did not return a valid token.");
+    }
 
     const pURL = `${base}/portal.php?type=stb&action=get_profile&token=${encodeURIComponent(
       token
     )}&JsHttpRequest=1-xml`;
-    const profile = await axios.get(pURL, {
-      ...rmAcceptHeader,
-      headers: headers(mac, token),
-      timeout: 60000,
-    });
+
+    let profile: any = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        profile = await axios.get(pURL, {
+          ...rmAcceptHeader,
+          headers: headers(mac, token, base),
+          timeout: 60000,
+        });
+        if (profile?.data) break;
+      } catch (err) {
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        }
+      }
+    }
+
+    const profileData = profile?.data?.js ?? {};
+    const lifetimeSec = Number(
+      profileData.token_page_lifetime ??
+        profileData.account_page_lifetime ??
+        3600
+    );
+    const validLifetimeSec = !isNaN(lifetimeSec) && lifetimeSec > 60 ? lifetimeSec : 3600;
 
     return {
       token,
-      expiry: Date.now() + 3600 * 1000,
-      serverInfo: profile?.data?.js ?? {},
+      expiry: Date.now() + validLifetimeSec * 1000,
+      serverInfo: profileData,
     };
   },
 
@@ -322,7 +424,8 @@ export const portalApi = {
         ...rmAcceptHeader,
         headers: headers(
           refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
+          refreshed.config.token ?? "",
+          base
         ),
         timeout: 60000,
       });
@@ -352,23 +455,55 @@ export const portalApi = {
       const refreshed = await refreshToken(portal);
       const base = safe(refreshed.config.url).replace(/\/$/, "");
       let url = `${base}/portal.php?type=itv&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
-      if (categoryId && categoryId !== "all")
+      if (categoryId && categoryId !== "all") {
         url += `&genre=${encodeURIComponent(categoryId)}`;
+      } else {
+        url += `&genre=*`;
+      }
 
-      const res = await axios.get(url, {
+      let res = await axios.get(url, {
         ...rmAcceptHeader,
         headers: headers(
           refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
+          refreshed.config.token ?? "",
+          base
         ),
         timeout: 60000,
       });
 
-      const rows = extract(res);
+      let rows = extract(res);
+
+      // Fallback 1: Try genre=0 if genre=* returned 0 items
+      if ((!rows || rows.length === 0) && (!categoryId || categoryId === "all")) {
+        const fbUrl1 = `${base}/portal.php?type=itv&action=get_ordered_list&p=${page}&genre=0&JsHttpRequest=1-xml`;
+        const fbRes1 = await axios.get(fbUrl1, {
+          ...rmAcceptHeader,
+          headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+          timeout: 30000,
+        }).catch(() => null);
+        if (fbRes1) {
+          const fbRows1 = extract(fbRes1);
+          if (fbRows1 && fbRows1.length > 0) rows = fbRows1;
+        }
+      }
+
+      // Fallback 2: Try no genre parameter
+      if ((!rows || rows.length === 0) && (!categoryId || categoryId === "all")) {
+        const fbUrl2 = `${base}/portal.php?type=itv&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
+        const fbRes2 = await axios.get(fbUrl2, {
+          ...rmAcceptHeader,
+          headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+          timeout: 30000,
+        }).catch(() => null);
+        if (fbRes2) {
+          const fbRows2 = extract(fbRes2);
+          if (fbRows2 && fbRows2.length > 0) rows = fbRows2;
+        }
+      }
       const result = rows.map((c: any) => ({
         id: String(c.id ?? c.cmd ?? ""),
         name: c.name ?? c.title ?? "Unknown",
-        logo: c.logo ?? c.logo_30x30 ?? c.screenshot_uri ?? "",
+        logo: buildImageUrl(base, c.logo ?? c.logo_30x30 ?? c.screenshot_uri ?? c.poster ?? c.pic ?? ""),
         category: c.tv_genre_name ?? c.genre ?? c.category_name ?? "",
         categoryId: String(c.tv_genre_id ?? c.genre_id ?? c.category_id ?? ""),
         streamUrl: c.cmd ?? "",
@@ -393,7 +528,8 @@ export const portalApi = {
         ...rmAcceptHeader,
         headers: headers(
           refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
+          refreshed.config.token ?? "",
+          base
         ),
         timeout: 60000,
       });
@@ -419,37 +555,89 @@ export const portalApi = {
     const cacheKey = `portal:${key}:vod:items:${categoryId ?? "all"}:${page}`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      let url = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
-      if (categoryId && categoryId !== "all")
-        url += `&category=${encodeURIComponent(categoryId)}`;
+      try {
+        const refreshed = await refreshToken(portal);
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        let url = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
+        if (categoryId && categoryId !== "all") {
+          url += `&category=${encodeURIComponent(categoryId)}`;
+        } else {
+          url += `&category=*`;
+        }
 
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
-        ),
-        timeout: 60000,
-      });
+        let res = await axios.get(url, {
+          ...rmAcceptHeader,
+          headers: headers(
+            refreshed.config.mac ?? "",
+            refreshed.config.token ?? "",
+            base
+          ),
+          timeout: 60000,
+        });
 
-      const rows = extract(res);
-      const result = rows.map((v: any) => ({
-        id: String(v.id ?? ""),
-        name: v.name ?? v.title ?? "Unknown",
-        logo: v.screenshot_uri ?? v.logo ?? v.stream_icon ?? "",
-        category: v.category_name ?? v.genre ?? "",
-        categoryId: String(v.category_id ?? ""),
-        streamUrl: v.cmd ?? "",
-        description: pickDescription(v),
-        year: pickYear(v),
-        rating: pickRating(v),
-        duration: v.time ?? v.duration ?? "",
-      }));
+        let rows = extract(res);
 
-      await cacheManager.set(cacheKey, result, CACHE_TTL.VOD);
-      return result;
+        // Fallback 1: Try category=0 if category=* returned 0 items
+        if ((!rows || rows.length === 0) && (!categoryId || categoryId === "all")) {
+          const fbUrl1 = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&category=0&JsHttpRequest=1-xml`;
+          const fbRes1 = await axios.get(fbUrl1, {
+            ...rmAcceptHeader,
+            headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+            timeout: 30000,
+          }).catch(() => null);
+          if (fbRes1) {
+            const fbRows1 = extract(fbRes1);
+            if (fbRows1 && fbRows1.length > 0) rows = fbRows1;
+          }
+        }
+
+        // Fallback 2: Try no category parameter
+        if ((!rows || rows.length === 0) && (!categoryId || categoryId === "all")) {
+          const fbUrl2 = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
+          const fbRes2 = await axios.get(fbUrl2, {
+            ...rmAcceptHeader,
+            headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+            timeout: 30000,
+          }).catch(() => null);
+          if (fbRes2) {
+            const fbRows2 = extract(fbRes2);
+            if (fbRows2 && fbRows2.length > 0) rows = fbRows2;
+          }
+        }
+
+        const result = rows.map((v: any) => {
+          const rawLogo =
+            v.screenshot_uri ??
+            v.poster ??
+            v.cover ??
+            v.big_poster ??
+            v.poster_url ??
+            v.pic ??
+            v.logo ??
+            v.stream_icon ??
+            v.image ??
+            v.icon ??
+            "";
+          return {
+            id: String(v.id ?? ""),
+            name: v.name ?? v.title ?? "Unknown",
+            logo: buildImageUrl(base, rawLogo),
+            category: v.category_name ?? v.genre ?? "",
+            categoryId: String(v.category_id ?? ""),
+            streamUrl: v.cmd ?? "",
+            description: pickDescription(v),
+            year: pickYear(v),
+            rating: pickRating(v),
+            duration: v.time ?? v.duration ?? "",
+          };
+        });
+
+        await cacheManager.set(cacheKey, result, CACHE_TTL.VOD);
+        return result;
+      } catch (err) {
+        console.warn(`getVodItems error (page ${page}):`, err);
+        return [];
+      }
     });
   },
 
@@ -466,7 +654,8 @@ export const portalApi = {
         ...rmAcceptHeader,
         headers: headers(
           refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
+          refreshed.config.token ?? "",
+          base
         ),
         timeout: 60000,
       });
@@ -492,35 +681,87 @@ export const portalApi = {
     const cacheKey = `portal:${key}:series:list:${categoryId ?? "all"}:${page}`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      let url = `${base}/portal.php?type=series&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
-      if (categoryId && categoryId !== "all")
-        url += `&category=${encodeURIComponent(categoryId)}`;
+      try {
+        const refreshed = await refreshToken(portal);
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        let url = `${base}/portal.php?type=series&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
+        if (categoryId && categoryId !== "all") {
+          url += `&category=${encodeURIComponent(categoryId)}`;
+        } else {
+          url += `&category=*`;
+        }
 
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
-        ),
-        timeout: 60000,
-      });
+        let res = await axios.get(url, {
+          ...rmAcceptHeader,
+          headers: headers(
+            refreshed.config.mac ?? "",
+            refreshed.config.token ?? "",
+            base
+          ),
+          timeout: 60000,
+        });
 
-      const rows = extract(res);
-      const result = rows.map((v: any) => ({
-        id: String(v.id ?? ""),
-        name: v.name ?? v.title ?? "Unknown",
-        logo: v.screenshot_uri ?? v.logo ?? "",
-        category: v.category_name ?? v.genre ?? "",
-        categoryId: String(v.category_id ?? ""),
-        description: pickDescription(v),
-        year: pickYear(v),
-        rating: pickRating(v),
-      }));
+        let rows = extract(res);
 
-      await cacheManager.set(cacheKey, result, CACHE_TTL.SERIES);
-      return result;
+        // Fallback 1: Try category=0 if category=* returned 0 items
+        if ((!rows || rows.length === 0) && (!categoryId || categoryId === "all")) {
+          const fallbackUrl = `${base}/portal.php?type=series&action=get_ordered_list&p=${page}&category=0&JsHttpRequest=1-xml`;
+          const fbRes = await axios.get(fallbackUrl, {
+            ...rmAcceptHeader,
+            headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+            timeout: 30000,
+          }).catch(() => null);
+          if (fbRes) {
+            const fbRows = extract(fbRes);
+            if (fbRows && fbRows.length > 0) rows = fbRows;
+          }
+        }
+
+        // Fallback 2: Try type=vod&movie_type=series if series returned 0 items
+        if ((!rows || rows.length === 0) && (!categoryId || categoryId === "all")) {
+          const fallbackUrl2 = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&category=*&movie_type=series&JsHttpRequest=1-xml`;
+          const fbRes2 = await axios.get(fallbackUrl2, {
+            ...rmAcceptHeader,
+            headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+            timeout: 30000,
+          }).catch(() => null);
+          if (fbRes2) {
+            const fbRows2 = extract(fbRes2);
+            if (fbRows2 && fbRows2.length > 0) rows = fbRows2;
+          }
+        }
+
+        const result = rows.map((v: any) => {
+          const rawLogo =
+            v.screenshot_uri ??
+            v.poster ??
+            v.cover ??
+            v.big_poster ??
+            v.poster_url ??
+            v.pic ??
+            v.logo ??
+            v.stream_icon ??
+            v.image ??
+            v.icon ??
+            "";
+          return {
+            id: String(v.id ?? ""),
+            name: v.name ?? v.title ?? "Unknown",
+            logo: buildImageUrl(base, rawLogo),
+            category: v.category_name ?? v.genre ?? "",
+            categoryId: String(v.category_id ?? ""),
+            description: pickDescription(v),
+            year: pickYear(v),
+            rating: pickRating(v),
+          };
+        });
+
+        await cacheManager.set(cacheKey, result, CACHE_TTL.SERIES);
+        return result;
+      } catch (err) {
+        console.warn(`getSeries error (page ${page}):`, err);
+        return [];
+      }
     });
   },
 
@@ -539,7 +780,8 @@ export const portalApi = {
         ...rmAcceptHeader,
         headers: headers(
           refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
+          refreshed.config.token ?? "",
+          base
         ),
         timeout: 60000,
       });
@@ -626,7 +868,8 @@ export const portalApi = {
         ...rmAcceptHeader,
         headers: headers(
           refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
+          refreshed.config.token ?? "",
+          base
         ),
         timeout: 30000,
       });
@@ -680,7 +923,8 @@ export const portalApi = {
     const res = await axios.get(url, {
       headers: headers(
         refreshed.config.mac ?? "",
-        refreshed.config.token ?? ""
+        refreshed.config.token ?? "",
+        base
       ),
       timeout: 60000,
     });
@@ -726,7 +970,8 @@ export const portalApi = {
       ...rmAcceptHeader,
       headers: headers(
         refreshed.config.mac ?? "",
-        refreshed.config.token ?? ""
+        refreshed.config.token ?? "",
+        base
       ),
       timeout: 60000,
     });
@@ -747,7 +992,8 @@ export const portalApi = {
         ...rmAcceptHeader,
         headers: headers(
           refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
+          refreshed.config.token ?? "",
+          base
         ),
         timeout: 60000,
       });
@@ -769,222 +1015,255 @@ export const portalApi = {
   },
 
   async warmPortalData(portal: Portal): Promise<void> {
-    if (portal.type !== "mag") {
-      return this.refreshPortalData(portal);
+    const key = portal.id;
+    if (warmPromiseMap.has(key)) {
+      return warmPromiseMap.get(key)!;
     }
 
-    try {
-      // Ensure we have a valid token before warming
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      const mac = refreshed.config.mac ?? "";
-      const token = refreshed.config.token ?? "";
-      const key = refreshed.id;
+    const warmPromise = (async () => {
+      try {
+        if (portal.type !== "mag") {
+          return await this.refreshPortalData(portal);
+        }
 
-      // Helper to only fetch if cache missing
-      const fetchIfMissing = async <T>(cacheKey: string, loader: () => Promise<T>, ttl: number, setter?: (v: T) => void) => {
-        try {
-          if (!(await cacheManager.has(cacheKey))) {
+        // Ensure we have a valid token before warming
+        const refreshed = await refreshToken(portal);
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        const mac = refreshed.config.mac ?? "";
+        const token = refreshed.config.token ?? "";
+
+        // Helper to only fetch if cache missing, but always returns current data (cached or loaded)
+        const fetchIfMissing = async <T>(
+          cacheKey: string,
+          loader: () => Promise<T>,
+          ttl: number,
+          setter?: (v: T) => void
+        ): Promise<T | null> => {
+          try {
+            if (await cacheManager.has(cacheKey)) {
+              const cached = await cacheManager.get<T>(cacheKey);
+              if (cached != null) return cached;
+            }
             const val = await loader();
             // Validate that we don't overwrite with empty data by accident
-            if (Array.isArray(val) && val.length === 0) return;
+            if (Array.isArray(val) && val.length === 0) return null;
             await cacheManager.set(cacheKey, val, ttl);
             if (setter) setter(val);
+            return val;
+          } catch (e) {
+            // non-fatal warming error
+            console.warn(`warmPortalData failed for ${cacheKey}:`, e);
+            return null;
           }
-        } catch (e) {
-          // non-fatal warming error
-          console.warn(`warmPortalData failed for ${cacheKey}:`, e);
+        };
+
+        let liveCategories: Category[] = [];
+        let vodCategories: Category[] = [];
+        let seriesCategories: Category[] = [];
+
+        // Live categories
+        const liveCats = (await fetchIfMissing(
+          `portal:${key}:live:categories`,
+          async () => {
+            const url = `${base}/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml`;
+            const res = await axios.get(url, {
+              ...rmAcceptHeader,
+              headers: headers(mac, token, base),
+              timeout: 60000,
+            });
+            const rows = extract(res);
+            return rows.map((c: any) => ({
+              id: String(c.id ?? c.gid ?? ""),
+              name: c.title ?? c.name ?? c.genre_name ?? "Unknown",
+              type: "live" as const,
+            }));
+          },
+          CACHE_TTL.CATEGORIES
+        )) || [];
+        liveCategories = liveCats;
+
+        // All live channels (for search / initial listing)
+        await fetchIfMissing(
+          `portal:${key}:live:channels:search:all`,
+          async () => {
+            const url = `${base}/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml`;
+            const res = await axios.get(url, {
+              ...rmAcceptHeader,
+              headers: headers(mac, token, base),
+              timeout: 60000,
+            });
+            const rows = extract(res);
+            const result = rows.map((c: any) => ({
+              id: String(c.id ?? c.cmd ?? ""),
+              name: c.name ?? c.title ?? "Unknown",
+              logo: c.logo ?? c.logo_30x30 ?? c.screenshot_uri ?? "",
+              category: c.tv_genre_name ?? c.genre ?? c.category_name ?? "",
+              categoryId: String(c.tv_genre_id ?? c.genre_id ?? c.category_id ?? ""),
+              streamUrl: c.cmd ?? "",
+              epgId: String(c.epg_id ?? ""),
+            }));
+            return result;
+          },
+          CACHE_TTL.CHANNELS,
+          (v) => usePortalStore.getState().setChannels(v as any, key)
+        );
+
+        // VOD categories
+        const vodCats = (await fetchIfMissing(
+          `portal:${key}:vod:categories`,
+          async () => {
+            const url = `${base}/portal.php?type=vod&action=get_categories&JsHttpRequest=1-xml`;
+            const res = await axios.get(url, {
+              ...rmAcceptHeader,
+              headers: headers(mac, token, base),
+              timeout: 60000,
+            });
+            const rows = extract(res);
+            return rows.map((c: any) => ({
+              id: String(c.id ?? ""),
+              name: c.title ?? c.name ?? "Unknown",
+              type: "vod" as const,
+            }));
+          },
+          CACHE_TTL.CATEGORIES
+        )) || [];
+        vodCategories = vodCats;
+
+        // VOD items (first page)
+        await fetchIfMissing(
+          `portal:${key}:vod:items:all:1`,
+          async () => {
+            const url = `${base}/portal.php?type=vod&action=get_ordered_list&p=1&JsHttpRequest=1-xml`;
+            const res = await axios.get(url, {
+              ...rmAcceptHeader,
+              headers: headers(mac, token, base),
+              timeout: 60000,
+            });
+            const rows = extract(res);
+            const result = rows.map((v: any) => ({
+              id: String(v.id ?? ""),
+              name: v.name ?? v.title ?? "Unknown",
+              logo: v.screenshot_uri ?? v.logo ?? v.stream_icon ?? "",
+              category: v.category_name ?? v.genre ?? "",
+              categoryId: String(v.category_id ?? ""),
+              streamUrl: v.cmd ?? "",
+              description: pickDescription(v),
+              year: pickYear(v),
+              rating: pickRating(v),
+              duration: v.time ?? v.duration ?? "",
+            }));
+            return result;
+          },
+          CACHE_TTL.VOD,
+          (v) => usePortalStore.getState().setVodItems(v as any, key)
+        );
+
+        // Series categories
+        const seriesCats = (await fetchIfMissing(
+          `portal:${key}:series:categories`,
+          async () => {
+            const url = `${base}/portal.php?type=series&action=get_categories&JsHttpRequest=1-xml`;
+            const res = await axios.get(url, {
+              ...rmAcceptHeader,
+              headers: headers(mac, token, base),
+              timeout: 60000,
+            });
+            const rows = extract(res);
+            return rows.map((c: any) => ({
+              id: String(c.id ?? ""),
+              name: c.title ?? c.name ?? "Unknown",
+              type: "series" as const,
+            }));
+          },
+          CACHE_TTL.CATEGORIES
+        )) || [];
+        seriesCategories = seriesCats;
+
+        // Push all warmed categories (live, vod, series) to store
+        const allWarmedCategories = [
+          ...liveCategories,
+          ...vodCategories,
+          ...seriesCategories,
+        ];
+        if (allWarmedCategories.length > 0) {
+          await usePortalStore.getState().setCategories(allWarmedCategories, key);
         }
-      };
 
-      // Live categories
-      await fetchIfMissing(
-        `portal:${key}:live:categories`,
-        async () => {
-          const url = `${base}/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml`;
-          const res = await axios.get(url, {
-            ...rmAcceptHeader,
-            headers: headers(mac, token),
-            timeout: 60000,
-          });
-          const rows = extract(res);
-          const result = rows.map((c: any) => ({
-            id: String(c.id ?? c.gid ?? ""),
-            name: c.title ?? c.name ?? c.genre_name ?? "Unknown",
-            type: "live" as const,
-          }));
-          return result;
-        },
-        CACHE_TTL.CATEGORIES,
-        (v) => usePortalStore.getState().setCategories(v as any)
-      );
+        // Series list (first page)
+        await fetchIfMissing(
+          `portal:${key}:series:list:all:1`,
+          async () => {
+            const url = `${base}/portal.php?type=series&action=get_ordered_list&p=1&JsHttpRequest=1-xml`;
+            const res = await axios.get(url, {
+              ...rmAcceptHeader,
+              headers: headers(mac, token, base),
+              timeout: 60000,
+            });
+            const rows = extract(res);
+            const result = rows.map((v: any) => ({
+              id: String(v.id ?? ""),
+              name: v.name ?? v.title ?? "Unknown",
+              logo: v.screenshot_uri ?? v.logo ?? "",
+              category: v.category_name ?? v.genre ?? "",
+              categoryId: String(v.category_id ?? ""),
+              description: pickDescription(v),
+              year: pickYear(v),
+              rating: pickRating(v),
+            }));
+            return result;
+          },
+          CACHE_TTL.SERIES,
+          (v) => usePortalStore.getState().setSeries(v as any, key)
+        );
 
-      // All live channels (for search / initial listing)
-      await fetchIfMissing(
-        `portal:${key}:live:channels:search:all`,
-        async () => {
-          const url = `${base}/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml`;
-          const res = await axios.get(url, {
-            ...rmAcceptHeader,
-            headers: headers(mac, token),
-            timeout: 60000,
-          });
-          const rows = extract(res);
-          const result = rows.map((c: any) => ({
-            id: String(c.id ?? c.cmd ?? ""),
-            name: c.name ?? c.title ?? "Unknown",
-            logo: c.logo ?? c.logo_30x30 ?? c.screenshot_uri ?? "",
-            category: c.tv_genre_name ?? c.genre ?? c.category_name ?? "",
-            categoryId: String(c.tv_genre_id ?? c.genre_id ?? c.category_id ?? ""),
-            streamUrl: c.cmd ?? "",
-            epgId: String(c.epg_id ?? ""),
-          }));
-          return result;
-        },
-        CACHE_TTL.CHANNELS,
-        (v) => usePortalStore.getState().setChannels(v as any)
-      );
-
-      // VOD categories
-      await fetchIfMissing(
-        `portal:${key}:vod:categories`,
-        async () => {
-          const url = `${base}/portal.php?type=vod&action=get_categories&JsHttpRequest=1-xml`;
-          const res = await axios.get(url, {
-            ...rmAcceptHeader,
-            headers: headers(mac, token),
-            timeout: 60000,
-          });
-          const rows = extract(res);
-          const result = rows.map((c: any) => ({
-            id: String(c.id ?? ""),
-            name: c.title ?? c.name ?? "Unknown",
-            type: "vod" as const,
-          }));
-          return result;
-        },
-        CACHE_TTL.CATEGORIES
-      );
-
-      // VOD items (first page)
-      await fetchIfMissing(
-        `portal:${key}:vod:items:all:1`,
-        async () => {
-          const url = `${base}/portal.php?type=vod&action=get_ordered_list&p=1&JsHttpRequest=1-xml`;
-          const res = await axios.get(url, {
-            ...rmAcceptHeader,
-            headers: headers(mac, token),
-            timeout: 60000,
-          });
-          const rows = extract(res);
-          const result = rows.map((v: any) => ({
-            id: String(v.id ?? ""),
-            name: v.name ?? v.title ?? "Unknown",
-            logo: v.screenshot_uri ?? v.logo ?? v.stream_icon ?? "",
-            category: v.category_name ?? v.genre ?? "",
-            categoryId: String(v.category_id ?? ""),
-            streamUrl: v.cmd ?? "",
-            description: pickDescription(v),
-            year: pickYear(v),
-            rating: pickRating(v),
-            duration: v.time ?? v.duration ?? "",
-          }));
-          return result;
-        },
-        CACHE_TTL.VOD,
-        (v) => usePortalStore.getState().setVodItems(v as any)
-      );
-
-      // Series categories
-      await fetchIfMissing(
-        `portal:${key}:series:categories`,
-        async () => {
-          const url = `${base}/portal.php?type=series&action=get_categories&JsHttpRequest=1-xml`;
-          const res = await axios.get(url, {
-            ...rmAcceptHeader,
-            headers: headers(mac, token),
-            timeout: 60000,
-          });
-          const rows = extract(res);
-          const result = rows.map((c: any) => ({
-            id: String(c.id ?? ""),
-            name: c.title ?? c.name ?? "Unknown",
-            type: "series" as const,
-          }));
-          return result;
-        },
-        CACHE_TTL.CATEGORIES
-      );
-
-      // Series list (first page)
-      await fetchIfMissing(
-        `portal:${key}:series:list:all:1`,
-        async () => {
-          const url = `${base}/portal.php?type=series&action=get_ordered_list&p=1&JsHttpRequest=1-xml`;
-          const res = await axios.get(url, {
-            ...rmAcceptHeader,
-            headers: headers(mac, token),
-            timeout: 60000,
-          });
-          const rows = extract(res);
-          const result = rows.map((v: any) => ({
-            id: String(v.id ?? ""),
-            name: v.name ?? v.title ?? "Unknown",
-            logo: v.screenshot_uri ?? v.logo ?? "",
-            category: v.category_name ?? v.genre ?? "",
-            categoryId: String(v.category_id ?? ""),
-            description: pickDescription(v),
-            year: pickYear(v),
-            rating: pickRating(v),
-          }));
-          return result;
-        },
-        CACHE_TTL.SERIES,
-        (v) => usePortalStore.getState().setSeries(v as any)
-      );
-
-      // EPG
-      await fetchIfMissing(
-        `portal:${key}:epg`,
-        async () => {
-          const url = `${base}/portal.php?type=itv&action=epg_info&JsHttpRequest=1-xml`;
-          const res = await axios.get(url, {
-            headers: headers(mac, token),
-            timeout: 60000,
-          });
-          const js = res.data?.js ?? {};
-          const out: any[] = [];
-          const toMs = (v: any): number => {
-            if (typeof v === "number") return v < 1e12 ? v * 1000 : v;
-            if (typeof v === "string" && /^\d+$/.test(v)) {
-              const n = Number(v);
-              return n < 1e12 ? n * 1000 : n;
+        // EPG
+        await fetchIfMissing(
+          `portal:${key}:epg`,
+          async () => {
+            const url = `${base}/portal.php?type=itv&action=epg_info&JsHttpRequest=1-xml`;
+            const res = await axios.get(url, {
+              headers: headers(mac, token, base),
+              timeout: 60000,
+            });
+            const js = res.data?.js ?? {};
+            const out: any[] = [];
+            const toMs = (v: any): number => {
+              if (typeof v === "number") return v < 1e12 ? v * 1000 : v;
+              if (typeof v === "string" && /^\d+$/.test(v)) {
+                const n = Number(v);
+                return n < 1e12 ? n * 1000 : n;
+              }
+              const parsed = Date.parse(v);
+              return isNaN(parsed) ? Date.now() : parsed;
+            };
+            for (const [cid, list] of Object.entries(js)) {
+              if (!Array.isArray(list)) continue;
+              for (const p of list as any[]) {
+                if (!p) continue;
+                out.push({
+                  id: String(p.id ?? `${cid}-${p.start}`),
+                  channelId: cid,
+                  title: p.name ?? p.title ?? "",
+                  description: (p.descr ?? p.description) || "No description available for this content.",
+                  start: toMs(p.start_timestamp ?? p.start),
+                  end: toMs(p.stop_timestamp ?? p.end),
+                });
+              }
             }
-            const parsed = Date.parse(v);
-            return isNaN(parsed) ? Date.now() : parsed;
-          };
-          for (const [cid, list] of Object.entries(js)) {
-            if (!Array.isArray(list)) continue;
-            for (const p of list as any[]) {
-              if (!p) continue;
-              out.push({
-                id: String(p.id ?? `${cid}-${p.start}`),
-                channelId: cid,
-                title: p.name ?? p.title ?? "",
-                description: (p.descr ?? p.description) || "No description available for this content.",
-                start: toMs(p.start_timestamp ?? p.start),
-                end: toMs(p.stop_timestamp ?? p.end),
-              });
-            }
-          }
-          return out;
-        },
-        CACHE_TTL.EPG,
-        (v) => usePortalStore.getState().setEpgData(v as any)
-      );
-    } catch (e) {
-      console.warn("warmPortalData top-level failure:", e);
-    }
+            return out;
+          },
+          CACHE_TTL.EPG,
+          (v) => usePortalStore.getState().setEpgData(v as any, key)
+        );
+      } catch (e) {
+        console.warn("warmPortalData top-level failure:", e);
+      } finally {
+        warmPromiseMap.delete(key);
+      }
+    })();
+
+    warmPromiseMap.set(key, warmPromise);
+    return warmPromise;
   },
 
   async refreshPortalData(portal: Portal): Promise<void> {
@@ -1008,11 +1287,11 @@ export const portalApi = {
         ];
 
         await Promise.all([
-          store.setCategories(allCategories),
-          store.setChannels(data.liveChannels || []),
-          store.setVodItems(data.vodItems || []),
-          store.setSeries(data.seriesList || []),
-          store.setEpgData([]), // Xtream EPG handled differently or not at all here
+          store.setCategories(allCategories, portal.id),
+          store.setChannels(data.liveChannels || [], portal.id),
+          store.setVodItems(data.vodItems || [], portal.id),
+          store.setSeries(data.seriesList || [], portal.id),
+          store.setEpgData([], portal.id),
         ]);
 
         console.log("✅ Xtream portal data refreshed");
@@ -1031,10 +1310,10 @@ export const portalApi = {
         ];
 
         await Promise.all([
-          store.setCategories(allCategories),
-          store.setChannels(data.liveChannels || []),
-          store.setVodItems(data.vodItems || []),
-          store.setSeries(data.seriesList || []),
+          store.setCategories(allCategories, portal.id),
+          store.setChannels(data.liveChannels || [], portal.id),
+          store.setVodItems(data.vodItems || [], portal.id),
+          store.setSeries(data.seriesList || [], portal.id),
         ]);
 
         console.log("✅ M3U portal data refreshed");
@@ -1054,7 +1333,7 @@ export const portalApi = {
       const liveCategoriesUrl = `${base}/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml`;
       const liveCategoriesRes = await axios.get(liveCategoriesUrl, {
         ...rmAcceptHeader,
-        headers: headers(mac, token),
+        headers: headers(mac, token, base),
         timeout: 60000,
       });
       const liveCategoriesRows = extract(liveCategoriesRes);
@@ -1067,7 +1346,7 @@ export const portalApi = {
       const liveChannelsUrl = `${base}/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml`;
       const liveChannelsRes = await axios.get(liveChannelsUrl, {
         ...rmAcceptHeader,
-        headers: headers(mac, token),
+        headers: headers(mac, token, base),
         timeout: 60000,
       });
       const liveChannelsRows = extract(liveChannelsRes);
@@ -1084,7 +1363,7 @@ export const portalApi = {
       const vodCategoriesUrl = `${base}/portal.php?type=vod&action=get_categories&JsHttpRequest=1-xml`;
       const vodCategoriesRes = await axios.get(vodCategoriesUrl, {
         ...rmAcceptHeader,
-        headers: headers(mac, token),
+        headers: headers(mac, token, base),
         timeout: 60000,
       });
       const vodCategoriesRows = extract(vodCategoriesRes);
@@ -1097,7 +1376,7 @@ export const portalApi = {
       const vodItemsUrl = `${base}/portal.php?type=vod&action=get_ordered_list&p=1&JsHttpRequest=1-xml`;
       const vodItemsRes = await axios.get(vodItemsUrl, {
         ...rmAcceptHeader,
-        headers: headers(mac, token),
+        headers: headers(mac, token, base),
         timeout: 60000,
       });
       const vodItemsRows = extract(vodItemsRes);
@@ -1117,7 +1396,7 @@ export const portalApi = {
       const seriesCategoriesUrl = `${base}/portal.php?type=series&action=get_categories&JsHttpRequest=1-xml`;
       const seriesCategoriesRes = await axios.get(seriesCategoriesUrl, {
         ...rmAcceptHeader,
-        headers: headers(mac, token),
+        headers: headers(mac, token, base),
         timeout: 60000,
       });
       const seriesCategoriesRows = extract(seriesCategoriesRes);
@@ -1130,7 +1409,7 @@ export const portalApi = {
       const seriesListUrl = `${base}/portal.php?type=series&action=get_ordered_list&p=1&JsHttpRequest=1-xml`;
       const seriesListRes = await axios.get(seriesListUrl, {
         ...rmAcceptHeader,
-        headers: headers(mac, token),
+        headers: headers(mac, token, base),
         timeout: 60000,
       });
       const seriesListRows = extract(seriesListRes);
@@ -1147,7 +1426,7 @@ export const portalApi = {
 
       const epgUrl = `${base}/portal.php?type=itv&action=epg_info&JsHttpRequest=1-xml`;
       const epgRes = await axios.get(epgUrl, {
-        headers: headers(mac, token),
+        headers: headers(mac, token, base),
         timeout: 60000,
       });
       const js = epgRes.data?.js ?? {};
@@ -1194,11 +1473,11 @@ export const portalApi = {
       ];
 
       await Promise.all([
-        store.setCategories(allMagCategories),
-        store.setChannels(liveChannels),
-        store.setVodItems(vodItems),
-        store.setSeries(seriesList),
-        store.setEpgData(epgPrograms)
+        store.setCategories(allMagCategories, key),
+        store.setChannels(liveChannels, key),
+        store.setVodItems(vodItems, key),
+        store.setSeries(seriesList, key),
+        store.setEpgData(epgPrograms, key)
       ]);
 
       console.log("✅ MAG portal data refreshed and persisted");
@@ -1215,33 +1494,41 @@ export const portalApi = {
 
       // Load portal-level data (categories are already in the portal object or direct storage)
       if (portal.categories) {
-        store.setCategories(portal.categories);
+        store.setCategories(portal.categories, key);
       }
 
       // Load other cached data in parallel
       const [
         liveChannelsFull, liveChannelsPage1,
-        vodItemsFull, vodItemsPage1,
-        seriesListFull, seriesListPage1,
+        vodItemsPage1,
+        seriesListPage1,
         epg
       ] = await Promise.all([
         cacheManager.get<Channel[]>(`portal:${key}:live:channels:search:all`),
         cacheManager.get<Channel[]>(`portal:${key}:live:channels:all:1`),
-        cacheManager.get<VODItem[]>(`portal:${key}:vod:items:search:all`),
         cacheManager.get<VODItem[]>(`portal:${key}:vod:items:all:1`),
-        cacheManager.get<Series[]>(`portal:${key}:series:list:search:all`),
         cacheManager.get<Series[]>(`portal:${key}:series:list:all:1`),
         cacheManager.get<EPGProgram[]>(`portal:${key}:epg`),
       ]);
 
       const liveChannels = liveChannelsFull || liveChannelsPage1;
-      const vodItems = vodItemsFull || vodItemsPage1;
-      const seriesList = seriesListFull || seriesListPage1;
+      const vodItems = vodItemsPage1;
+      const seriesList = seriesListPage1;
 
-      if (liveChannels && liveChannels.length > 0) store.setChannels(liveChannels);
-      if (vodItems && vodItems.length > 0) store.setVodItems(vodItems);
-      if (seriesList && seriesList.length > 0) store.setSeries(seriesList);
-      if (epg && epg.length > 0) store.setEpgData(epg);
+      const nowCutoff = Date.now() - 12 * 60 * 60 * 1000;
+      const validEpg = (epg || []).filter((p) => p.end >= nowCutoff);
+
+      if (liveChannels && liveChannels.length > 0) store.setChannels(liveChannels, key);
+      else store.setChannels([], key);
+
+      if (vodItems && vodItems.length > 0) store.setVodItems(vodItems, key);
+      else store.setVodItems([], key);
+
+      if (seriesList && seriesList.length > 0) store.setSeries(seriesList, key);
+      else store.setSeries([], key);
+
+      if (validEpg.length > 0) store.setEpgData(validEpg, key);
+      else store.setEpgData([], key);
 
       console.log("✅ Cached portal data restored");
     } catch (e) {
@@ -1254,8 +1541,18 @@ export const portalApi = {
 
   async deletePortalData(portal: Portal): Promise<void> {
     try {
+      const key = portal.id;
+
+      // Clear raw AsyncStorage keys written directly by the store
+      await AsyncStorage.multiRemove([
+        `portal:${key}:channels`,
+        `portal:${key}:vod`,
+        `portal:${key}:series`,
+        `portal:${key}:categories`,
+        `portal:${key}:epg`,
+      ]).catch(console.warn);
+
       if (portal.type === "mag") {
-        const key = portal.id;
         await cacheManager.removeByPrefix(`portal:${key}`);
       } else if (portal.type === "xtream") {
         // xtream:URL:USERNAME:...
@@ -1263,11 +1560,10 @@ export const portalApi = {
         await cacheManager.removeByPrefix(prefix);
       } else if (portal.type === "m3u") {
         // m3u:portal:ID:...
-        // checking both new and potential legacy keys if strictly needed, but new one supports ID
         const prefix = `m3u:portal:${portal.id}`;
         await cacheManager.removeByPrefix(prefix);
 
-        // Also try legacy URL based if no ID (though we enforce ID now)
+        // Also try legacy URL based if no ID
         await cacheManager.removeByPrefix(`m3u:${portal.config.url}`);
       }
       console.log(`🗑️ Deleted all data for portal ${portal.name} (${portal.type})`);

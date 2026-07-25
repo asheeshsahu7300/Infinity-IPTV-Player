@@ -75,9 +75,12 @@ const ChannelCard = React.memo(function ChannelCard({
               focused && { transform: [{ scale: 1.06 }], backgroundColor: "#fff", borderColor: "#fff", borderWidth: 1 }
             ]}
           >
-            <BlurView 
-              intensity={focused ? 80 : 60} 
-              tint="dark" 
+            <LinearGradient 
+              colors={
+                focused
+                  ? ["transparent", "transparent"] // Background is handled by wrapper when focused
+                  : ["rgba(255,255,255,0.05)", "rgba(255,255,255,0.01)"]
+              }
               style={[
                 S.card, 
                 focused && { backgroundColor: "transparent" },
@@ -86,7 +89,7 @@ const ChannelCard = React.memo(function ChannelCard({
             >
               <View style={S.cardLogoWrapper}>
                 {item.logo ? (
-                  <Image source={{ uri: item.logo }} style={S.cardLogo} contentFit="contain" />
+                  <Image source={{ uri: item.logo }} style={S.cardLogo} contentFit="contain" cachePolicy="memory-disk" />
                 ) : (
                   <Ionicons name="tv-outline" size={ps(2)} color="rgba(255,255,255,0.15)" />
                 )}
@@ -97,7 +100,7 @@ const ChannelCard = React.memo(function ChannelCard({
                   <Text style={[S.cardCategory, focused && { color: "rgba(0,0,0,0.6)" }]} numberOfLines={1}>{item.category}</Text>
                 ) : null}
               </View>
-            </BlurView>
+            </LinearGradient>
           </View>
         )}
       </Focusable>
@@ -199,7 +202,7 @@ export default function LiveTVScreen() {
       const others = currentCategories.filter(c => c.type !== "live");
       setCategories([...others, ...cats]);
     } catch (e) {
-      console.error("loadCategories error:", e);
+      console.warn("loadCategories error:", e);
     }
   }, [activePortal, setCategories]);
 
@@ -267,8 +270,8 @@ export default function LiveTVScreen() {
       setPage(pageNum);
       // Restore scroll position after a reset-load so focus doesn't snap to top
       if (reset) restoreFocusPosition(list);
-    } catch (e) {
-      console.error("loadChannels error:", e);
+    } catch (err) {
+      console.warn("Live TV Data Fetch Error:", err);
     } finally {
       setIsLoading(false);
       setLoadingMore(false);
@@ -287,7 +290,6 @@ export default function LiveTVScreen() {
       });
     }
     loadCategories();
-    loadChannels(undefined, 1, true);
   }, [activePortal?.id]);
 
   // Category change — Xtream/M3U slice the cached full list; MAG hits the API.
@@ -298,15 +300,20 @@ export default function LiveTVScreen() {
     focusedIdRef.current = "";
 
     if (activePortal.type === "xtream" || activePortal.type === "m3u") {
-      const cat = selectedCategory === "all" ? undefined : selectedCategory;
-      const filtered = !cat
-        ? allChannelsCacheRef.current
-        : allChannelsCacheRef.current.filter(c => String(c.categoryId) === String(cat));
-      fullListRef.current = filtered;
-      const sliced = filtered.slice(0, PAGE_SIZE);
-      setChannels(sliced);
-      setHasMore(filtered.length > sliced.length);
-      setIsLoading(false);
+      if (allChannelsCacheRef.current.length > 0) {
+        const cat = selectedCategory === "all" ? undefined : selectedCategory;
+        const filtered = !cat
+          ? allChannelsCacheRef.current
+          : allChannelsCacheRef.current.filter(c => String(c.categoryId) === String(cat));
+        fullListRef.current = filtered;
+        const sliced = filtered.slice(0, PAGE_SIZE);
+        setChannels(sliced);
+        setHasMore(filtered.length > sliced.length);
+        setIsLoading(false);
+      } else {
+        setHasMore(true);
+        loadChannels(selectedCategory, 1, true);
+      }
     } else {
       setHasMore(true);
       loadChannels(selectedCategory, 1, true);

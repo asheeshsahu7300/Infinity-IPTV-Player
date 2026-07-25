@@ -224,7 +224,7 @@ const MovieItem = React.memo(function MovieItem({
             <View style={S.vodItem}>
               <View style={S.posterContainer}>
                 {item.logo ? (
-                  <Image source={{ uri: item.logo }} style={S.poster} contentFit="cover" />
+                  <Image source={{ uri: item.logo }} style={S.poster} contentFit="cover" cachePolicy="memory-disk" />
                 ) : (
                   <View style={S.posterPlaceholder}>
                     <MaterialCommunityIcons name="movie-outline" size={ps(3)} color="rgba(255,255,255,0.15)" />
@@ -238,7 +238,14 @@ const MovieItem = React.memo(function MovieItem({
                 )}
               </View>
 
-              <BlurView intensity={focused ? 80 : 60} tint="dark" style={S.cardContent}>
+              <LinearGradient
+                colors={
+                  focused
+                    ? ["transparent", "rgba(0,0,0,0.8)", "rgba(0,0,0,1)"]
+                    : ["transparent", "rgba(0,0,0,0.6)", "rgba(0,0,0,0.9)"]
+                }
+                style={S.cardContent}
+              >
                 <Text style={S.vodTitle} numberOfLines={1}>{item.name}</Text>
                 <View style={S.metaRow}>
                   {item.year ? <Text style={S.vodMetaText}>{item.year}</Text> : null}
@@ -250,7 +257,7 @@ const MovieItem = React.memo(function MovieItem({
                     </View>
                   ) : null}
                 </View>
-              </BlurView>
+              </LinearGradient>
             </View>
           </View>
         )}
@@ -402,7 +409,6 @@ export default function VODScreen() {
       });
     }
     loadCategories();
-    loadVodItems(undefined, 1, true);
   }, [activePortal?.id]);
 
   useEffect(() => {
@@ -412,15 +418,20 @@ export default function VODScreen() {
     focusedIdRef.current = "";
 
     if (activePortal.type === "xtream" || activePortal.type === "m3u") {
-      const cat = selectedCategory === "all" ? undefined : selectedCategory;
-      const filtered = !cat
-        ? allVodCacheRef.current
-        : allVodCacheRef.current.filter(v => String(v.categoryId) === String(cat));
-      fullListRef.current = filtered;
-      const sliced = filtered.slice(0, PAGE_SIZE);
-      setVodItems(sliced);
-      setHasMore(filtered.length > sliced.length);
-      setIsLoading(false);
+      if (allVodCacheRef.current.length > 0) {
+        const cat = selectedCategory === "all" ? undefined : selectedCategory;
+        const filtered = !cat
+          ? allVodCacheRef.current
+          : allVodCacheRef.current.filter(v => String(v.categoryId) === String(cat));
+        fullListRef.current = filtered;
+        const sliced = filtered.slice(0, PAGE_SIZE);
+        setVodItems(sliced);
+        setHasMore(filtered.length > sliced.length);
+        setIsLoading(false);
+      } else {
+        setHasMore(true);
+        loadVodItems(selectedCategory, 1, true);
+      }
     } else {
       setHasMore(true);
       loadVodItems(selectedCategory, 1, true);
@@ -443,7 +454,7 @@ export default function VODScreen() {
       const others = currentCategories.filter(c => c.type !== "vod");
       setCategories([...others, ...(Array.isArray(cats) ? cats : [])]);
     } catch (e) {
-      console.error(e);
+      console.warn(e);
       // On error, do NOT clear categories — leave existing ones intact
     }
   };
@@ -500,7 +511,7 @@ export default function VODScreen() {
         if (reset) restoreFocusPosition(updatedList);
       }
     } catch (e) {
-      console.error(e);
+      console.warn(e);
     } finally {
       setIsLoading(false);
       setLoadingMore(false);
@@ -671,8 +682,8 @@ export default function VODScreen() {
           categoryId: "",
         }));
         setSearchResults(mapped);
-      } catch (e) {
-        console.error("Remote search error:", e);
+      } catch (err) {
+        console.warn("VOD Data Fetch Error:", err);
       } finally {
         if (isMounted) setIsLoading(false);
       }
