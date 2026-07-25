@@ -11,6 +11,8 @@ import {
   Platform,
   KeyboardAvoidingView,
   Image,
+  BackHandler,
+  Keyboard,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -257,9 +259,38 @@ export default function AddPortalScreen() {
   }, [validateInputs, type, url, username, password, name, mac, addPortal, setActivePortal, deletePortal, router]);
 
   const handleBack = useCallback(() => {
-    if (step === 2) setStep(1);
-    else router.back();
+    if (step === 2) {
+      setStep(1);
+      return true;
+    }
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/portals");
+    }
+    return true;
   }, [step, router]);
+
+  // Track whether the software keyboard is currently visible so that
+  // hardware-back while the keyboard is open is NOT intercepted — Android
+  // will dismiss the keyboard first (its default behaviour).  Only once the
+  // keyboard is gone do we intercept the next back press for step/nav logic.
+  const keyboardVisibleRef = useRef(false);
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () => { keyboardVisibleRef.current = true; });
+    const hide = Keyboard.addListener("keyboardDidHide", () => { keyboardVisibleRef.current = false; });
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+
+  // Register hardware back handler for Android TV / Android
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      // If keyboard is visible, let Android dismiss it naturally — don't intercept
+      if (keyboardVisibleRef.current) return false;
+      return handleBack();
+    });
+    return () => sub.remove();
+  }, [handleBack]);
 
   // OK is delivered via each Pressable's onPress when focused.
 
