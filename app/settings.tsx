@@ -142,10 +142,18 @@ export default function SettingsScreen() {
   }, []);
 
   const handleDisconnect = useCallback(async () => {
+    if (activePortal) {
+      try {
+        const { portalApi } = await import("../src/services/portalApi");
+        await portalApi.deletePortalData(activePortal);
+      } catch (e) {
+        console.warn("Failed to delete portal cache data on disconnect:", e);
+      }
+    }
     await setActivePortal(null);
     clearPortalData();
     router.replace('/');
-  }, []);
+  }, [activePortal, setActivePortal, clearPortalData, router]);
 
   const focusId = (id: string) => () => setFocusedId(id);
   const blurId = () => setFocusedId(null);

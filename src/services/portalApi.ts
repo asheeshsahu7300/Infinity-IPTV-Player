@@ -447,7 +447,7 @@ export const portalApi = {
       const rows = extract(res);
       const mapped = rows.map((c: any) => {
         const rawId = String(c.id ?? c.gid ?? "");
-        const id = rawId === "*" || rawId === "0" ? "all" : `live:${rawId}`;
+        const id = rawId === "*" || rawId === "0" ? "all" : rawId;
         return {
           id,
           name: c.title ?? c.name ?? c.genre_name ?? "Unknown",
@@ -461,6 +461,7 @@ export const portalApi = {
       return result;
     });
   },
+
 
   async getLiveChannels(
     portal: Portal,
@@ -1427,21 +1428,32 @@ export const portalApi = {
         `portal:${key}:epg`,
       ]).catch(console.warn);
 
-      if (portal.type === "mag") {
-        await cacheManager.removeByPrefix(`portal:${key}`);
-      } else if (portal.type === "xtream") {
-        // xtream:URL:USERNAME:...
+      // Clear all cacheManager entries associated with this portal ID
+      await cacheManager.removeByPrefix(`portal:${key}`);
+      await cacheManager.removeByPrefix(`cache:portal:${key}`);
+      await cacheManager.removeByPrefix(key);
+
+      if (portal.type === "xtream") {
         const prefix = `xtream:${portal.config.url}:${portal.config.username}`;
         await cacheManager.removeByPrefix(prefix);
       } else if (portal.type === "m3u") {
-        // m3u:portal:ID:...
         const prefix = `m3u:portal:${portal.id}`;
         await cacheManager.removeByPrefix(prefix);
-
-        // Also try legacy URL based if no ID
-        await cacheManager.removeByPrefix(`m3u:${portal.config.url}`);
+        if (portal.config.url) {
+          await cacheManager.removeByPrefix(`m3u:${portal.config.url}`);
+        }
       }
-      console.log(`🗑️ Deleted all data for portal ${portal.name} (${portal.type})`);
+
+      // Evict any leftover keys in AsyncStorage containing this portal ID
+      const allKeys = await AsyncStorage.getAllKeys();
+      const portalKeys = allKeys.filter(
+        (k) => k.includes(`portal:${key}`) || (k.startsWith("cache:") && k.includes(key))
+      );
+      if (portalKeys.length > 0) {
+        await AsyncStorage.multiRemove(portalKeys).catch(console.warn);
+      }
+
+      console.log(`🗑️ Deleted all cached data for portal ${portal.name} (${portal.type})`);
     } catch (e) {
       console.warn("deletePortalData failed:", e);
     }
