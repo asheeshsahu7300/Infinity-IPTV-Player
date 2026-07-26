@@ -44,17 +44,18 @@ const ASPECT_RATIOS: {
     { key: "fit", label: "Fit", resize: "21:9" },
   ];
 
-// Native LibVLC flags for low-speed / low-bandwidth playback resilience
+// Native LibVLC flags for low-speed / high-latency server resilience
 const VLC_LOW_BANDWIDTH_OPTIONS = [
-  "--network-caching=1000",       // Lower network cache (1.0s) for fast startup on low speed connection
-  "--live-caching=1000",          // 1.0s live cache buffer
-  "--file-caching=1000",          // 1.0s VOD file buffer
-  "--clock-jitter=0",             // Prevent frame delay on jittery Wi-Fi/mobile data
+  "--network-caching=3000",       // 3.0s network cache to absorb high-latency server jitter
+  "--live-caching=2000",          // 2.0s live cache buffer
+  "--file-caching=3000",          // 3.0s VOD file buffer for high-latency VOD movies
+  "--clock-jitter=0",             // Disable jitter delay on slow/high-latency Wi-Fi
   "--clock-synchro=0",            // Maintain continuous audio/video playback
-  "--drop-late-frames",           // Automatically drop late frames if CPU/bandwidth drops
+  "--drop-late-frames",           // Automatically drop late frames if internet speed drops
   "--skip-frames",                // Skip non-reference frames to prevent stream freezing
-  "--rtsp-tcp",                 // Force RTSP over TCP for reliable low-speed transport
-  "--http-reconnect",             // Auto-reconnect if slow server drops HTTP connection
+  "--rtsp-tcp",                 // Force RTSP over TCP for reliable transport
+  "--http-reconnect",             // Auto-reconnect if slow IPTV server drops HTTP connection
+  "--http-continuous",            // Continuous HTTP stream reading
 ];
 
 export default function PlayerScreen() {
@@ -564,10 +565,27 @@ export default function PlayerScreen() {
     }
   };
 
+  const stallTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const onExpoStatusUpdate = (status: AVPlaybackStatus) => {
     if (!status.isLoaded) { if (status.error) handleSilentRetry(); return; }
     setIsLoading(false);
     setIsBuffering(status.isBuffering);
+
+    if (status.isBuffering && status.shouldPlay) {
+      if (!stallTimeoutRef.current) {
+        stallTimeoutRef.current = setTimeout(() => {
+          stallTimeoutRef.current = null;
+          expoVideoRef.current?.playAsync().catch(() => {});
+        }, 4000);
+      }
+    } else {
+      if (stallTimeoutRef.current) {
+        clearTimeout(stallTimeoutRef.current);
+        stallTimeoutRef.current = null;
+      }
+    }
+
     if (status.durationMillis) setDuration(status.durationMillis);
     if (status.positionMillis !== undefined) onProgress({ currentTime: status.positionMillis, duration: status.durationMillis });
     if (status.didJustFinish) { setIsPlaying(false); if (params.contentId) StreamManager.savePlaybackPosition(params.contentId, 0, status.durationMillis || duration); }
@@ -611,11 +629,17 @@ export default function PlayerScreen() {
         <Video
           ref={expoVideoRef}
           style={S.video}
-          source={{ uri: streamUrl }}
+          source={{
+            uri: streamUrl,
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Connection": "keep-alive",
+            },
+          }}
           shouldPlay={autoPlay && isPlaying}
           rate={playbackSpeed}
           resizeMode={getExpoResizeMode()}
-          progressUpdateIntervalMillis={1000}
+          progressUpdateIntervalMillis={500}
           onPlaybackStatusUpdate={onExpoStatusUpdate}
           onLoad={(s) => s.isLoaded && onLoad({ duration: s.durationMillis })}
         />
