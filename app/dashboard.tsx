@@ -245,7 +245,7 @@ export default function DashboardScreen() {
     if (!activePortal) return;
     setIsLoading(true);
     try {
-      await portalApi.refreshPortalData(activePortal);
+      await portalApi.refreshPortalData(activePortal, true);
     } catch (e: any) {
       console.warn("Refresh failed:", e);
       Alert.alert("Refresh Failed", e?.message || "Unable to refresh portal data.");

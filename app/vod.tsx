@@ -172,6 +172,7 @@ const S = StyleSheet.create({
 // ─────────────────────────────────────────────
 const MovieItem = React.memo(function MovieItem({
   item,
+  index,
   onPress,
   onFocus,
   onFavoritePress,
@@ -180,8 +181,9 @@ const MovieItem = React.memo(function MovieItem({
   isFocusedItem,
 }: {
   item: VODItem;
+  index?: number;
   onPress: (item: VODItem) => void;
-  onFocus?: (item: VODItem) => void;
+  onFocus?: (item: VODItem, index?: number) => void;
   onFavoritePress: (item: VODItem) => void;
   isFavorite: boolean;
   itemWidth: number;
@@ -192,8 +194,8 @@ const MovieItem = React.memo(function MovieItem({
   }, [onPress, item]);
 
   const handleFocus = useCallback(() => {
-    onFocus?.(item);
-  }, [onFocus, item]);
+    onFocus?.(item, index);
+  }, [onFocus, item, index]);
 
   const handleFavoritePress = useCallback(() => {
     onFavoritePress(item);
@@ -535,25 +537,15 @@ export default function VODScreen() {
     setPlayModalVisible(true);
   }, []);
 
-  const handleVodFocus = useCallback((vod: VODItem) => {
+  const totalCountRef = useRef(0);
+  const handleLoadMoreRef = useRef<() => void>(() => {});
+
+  const handleVodFocus = useCallback((vod: VODItem, index?: number) => {
     updateCinematicBackground(vod.logo || null);
     focusedIdRef.current = String(vod.id);
 
-    if (flatListRef.current) {
-      const data = flatListRef.current.props.data as any[];
-      if (data && data.length > 0) {
-        let foundNearEnd = false;
-        const checkCount = Math.min(3, data.length);
-        for (let i = data.length - checkCount; i < data.length; i++) {
-          if (data[i].items?.some((m: VODItem) => m.id === vod.id)) {
-            foundNearEnd = true;
-            break;
-          }
-        }
-        if (foundNearEnd && flatListRef.current.props.onEndReached) {
-          flatListRef.current.props.onEndReached({ distanceFromEnd: 0 });
-        }
-      }
+    if (index !== undefined && totalCountRef.current > 0 && index >= totalCountRef.current - 12) {
+      handleLoadMoreRef.current();
     }
   }, []);
 
@@ -633,6 +625,7 @@ export default function VODScreen() {
           <MovieItem
             key={movie.id}
             item={movie}
+            index={itemIndex}
             onPress={handleVodPress}
             onFocus={handleVodFocus}
             onFavoritePress={handleFavoritePress}
@@ -723,6 +716,29 @@ export default function VODScreen() {
     return chunks;
   }, [filteredMovies, numColumns]);
 
+  useEffect(() => {
+    totalCountRef.current = filteredMovies.length;
+  }, [filteredMovies.length]);
+
+  const handleLoadMore = useCallback(() => {
+    if (isLoading || loadingMore || !hasMore || debouncedQuery) return;
+    trapFocusBriefly();
+    if (isXtreamOrM3U) {
+      // Grow the slice from the cached full list — no network.
+      const nextPage = page + 1;
+      const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
+      setVodItems(sliced);
+      setPage(nextPage);
+      setHasMore(fullListRef.current.length > sliced.length);
+    } else {
+      loadVodItems(selectedCategory, page + 1);
+    }
+  }, [isLoading, loadingMore, hasMore, debouncedQuery, isXtreamOrM3U, page, selectedCategory, trapFocusBriefly]);
+
+  useEffect(() => {
+    handleLoadMoreRef.current = handleLoadMore;
+  }, [handleLoadMore]);
+
   const sidebarCategories: Category[] = [
     { id: "all", name: "All Movies", type: "vod" },
     ...categories.filter(c =>
@@ -731,6 +747,13 @@ export default function VODScreen() {
       c.name.toLowerCase() !== "all movies"
     ),
   ];
+
+  const ROW_HEIGHT = itemWidth * 1.5 + pw(1);
+  const getItemLayout = useCallback((_: any, index: number) => ({
+    length: ROW_HEIGHT,
+    offset: pw(1) + index * ROW_HEIGHT,
+    index,
+  }), [ROW_HEIGHT]);
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
@@ -808,27 +831,15 @@ export default function VODScreen() {
               data={chunkedMovies}
               renderItem={renderRow}
               keyExtractor={(item) => item.id}
+              getItemLayout={getItemLayout}
               contentContainerStyle={[S.list, (isLoading || chunkedMovies.length === 0) && { flexGrow: 1 }]}
-              removeClippedSubviews={false}
+              removeClippedSubviews={!isTV}
               extraData={filteredMovies.length}
               initialNumToRender={8}
               maxToRenderPerBatch={6}
               windowSize={5}
               updateCellsBatchingPeriod={50}
-              onEndReached={() => {
-                if (isLoading || loadingMore || !hasMore || debouncedQuery) return;
-                trapFocusBriefly();
-                if (isXtreamOrM3U) {
-                  // Grow the slice from the cached full list — no network.
-                  const nextPage = page + 1;
-                  const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
-                  setVodItems(sliced);
-                  setPage(nextPage);
-                  setHasMore(fullListRef.current.length > sliced.length);
-                } else {
-                  loadVodItems(selectedCategory, page + 1);
-                }
-              }}
+              onEndReached={handleLoadMore}
               onEndReachedThreshold={1.5}
               refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
               ListEmptyComponent={

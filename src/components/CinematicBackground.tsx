@@ -17,10 +17,17 @@ export const CinematicBackground = React.memo(function CinematicBackground({ uri
   }, [initialUri]);
 
   useEffect(() => {
+    let timeoutId: any = null;
     const sub = DeviceEventEmitter.addListener(CINEMATIC_EVENT, (newUri: string | null) => {
-      setUri(newUri);
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setUri(newUri);
+      }, 100);
     });
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, []);
 
   return (

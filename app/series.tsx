@@ -133,6 +133,7 @@ const S = StyleSheet.create({
 // ─────────────────────────────────────────────
 const SeriesItem = React.memo(function SeriesItem({
   item,
+  index,
   onPress,
   onFocus,
   onFavoritePress,
@@ -141,8 +142,9 @@ const SeriesItem = React.memo(function SeriesItem({
   isFocusedItem,
 }: {
   item: Series;
+  index?: number;
   onPress: (item: Series) => void;
-  onFocus?: (item: Series) => void;
+  onFocus?: (item: Series, index?: number) => void;
   onFavoritePress: (item: Series) => void;
   isFavorite: boolean;
   itemWidth: number;
@@ -153,8 +155,8 @@ const SeriesItem = React.memo(function SeriesItem({
   }, [onPress, item]);
 
   const handleFocus = useCallback(() => {
-    onFocus?.(item);
-  }, [onFocus, item]);
+    onFocus?.(item, index);
+  }, [onFocus, item, index]);
 
   const handleFavoritePress = useCallback(() => {
     onFavoritePress(item);
@@ -500,25 +502,15 @@ export default function SeriesScreen() {
     });
   }, [router]);
 
-  const handleSeriesFocus = useCallback((item: Series) => {
+  const totalCountRef = useRef(0);
+  const handleLoadMoreRef = useRef<() => void>(() => {});
+
+  const handleSeriesFocus = useCallback((item: Series, index?: number) => {
     updateCinematicBackground(item.logo || null);
     focusedIdRef.current = String(item.id);
 
-    if (flatListRef.current) {
-      const data = flatListRef.current.props.data as any[];
-      if (data && data.length > 0) {
-        let foundNearEnd = false;
-        const checkCount = Math.min(3, data.length);
-        for (let i = data.length - checkCount; i < data.length; i++) {
-          if (data[i].items?.some((s: Series) => s.id === item.id)) {
-            foundNearEnd = true;
-            break;
-          }
-        }
-        if (foundNearEnd && flatListRef.current.props.onEndReached) {
-          flatListRef.current.props.onEndReached({ distanceFromEnd: 0 });
-        }
-      }
+    if (index !== undefined && totalCountRef.current > 0 && index >= totalCountRef.current - 12) {
+      handleLoadMoreRef.current();
     }
   }, []);
 
@@ -549,6 +541,7 @@ export default function SeriesScreen() {
           <SeriesItem
             key={seriesItem.id}
             item={seriesItem}
+            index={itemIndex}
             onPress={handleSeriesPress}
             onFocus={handleSeriesFocus}
             onFavoritePress={handleFavoritePress}
@@ -627,6 +620,29 @@ export default function SeriesScreen() {
     return series;
   }, [series, debouncedQuery, isXtreamOrM3U, searchResults]);
 
+  useEffect(() => {
+    totalCountRef.current = filteredSeries.length;
+  }, [filteredSeries.length]);
+
+  const handleLoadMore = useCallback(() => {
+    if (isLoading || loadingMore || !hasMore || debouncedQuery) return;
+    trapFocusBriefly();
+    if (isXtreamOrM3U) {
+      // Grow the slice from the cached full list — no network.
+      const nextPage = page + 1;
+      const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
+      setSeries(sliced);
+      setPage(nextPage);
+      setHasMore(fullListRef.current.length > sliced.length);
+    } else {
+      loadSeries(selectedCategory, page + 1);
+    }
+  }, [isLoading, loadingMore, hasMore, debouncedQuery, isXtreamOrM3U, page, selectedCategory, trapFocusBriefly]);
+
+  useEffect(() => {
+    handleLoadMoreRef.current = handleLoadMore;
+  }, [handleLoadMore]);
+
   const chunkedSeries = useMemo(() => {
     const chunks = [];
     for (let i = 0; i < filteredSeries.length; i += numColumns) {
@@ -637,6 +653,13 @@ export default function SeriesScreen() {
     }
     return chunks;
   }, [filteredSeries, numColumns]);
+
+  const ROW_HEIGHT = itemWidth * 1.5 + pw(1);
+  const getItemLayout = useCallback((_: any, index: number) => ({
+    length: ROW_HEIGHT,
+    offset: pw(1) + index * ROW_HEIGHT,
+    index,
+  }), [ROW_HEIGHT]);
 
   const sidebarCategories: Category[] = [
     { id: "all", name: "All Series", type: "series" },
@@ -664,38 +687,38 @@ export default function SeriesScreen() {
           >
             {(focused) => (
               <View style={[S.searchGradient, (focused || searchFocused) && S.searchFocused]}>
-            <LinearGradient
-              colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
-            />
-            {(focused || searchFocused) && (
-              <LinearGradient
-                colors={[THEME.colors.primary, THEME.colors.secondary]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
-              />
-            )}
-            <View style={[
-              S.searchInner,
-              { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
-              (focused || searchFocused) && { backgroundColor: "#0b0b10" }
-            ]}>
-              <Ionicons name="search" size={ps(1.1)} color={(focused || searchFocused) ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
-              <TextInput
-                ref={searchInputRef}
-                style={S.searchInput}
-                placeholder="Search series..."
-                placeholderTextColor="rgba(255,255,255,0.2)"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
-              />
+                <LinearGradient
+                  colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
+                />
+                {(focused || searchFocused) && (
+                  <LinearGradient
+                    colors={[THEME.colors.primary, THEME.colors.secondary]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
+                  />
+                )}
+                <View style={[
+                  S.searchInner,
+                  { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
+                  (focused || searchFocused) && { backgroundColor: "#0b0b10" }
+                ]}>
+                  <Ionicons name="search" size={ps(1.1)} color={(focused || searchFocused) ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
+                  <TextInput
+                    ref={searchInputRef}
+                    style={S.searchInput}
+                    placeholder="Search series..."
+                    placeholderTextColor="rgba(255,255,255,0.2)"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
+                  />
+                </View>
               </View>
-            </View>
             )}
           </Focusable>
         </FocusGroup>
@@ -719,28 +742,13 @@ export default function SeriesScreen() {
             data={chunkedSeries}
             renderItem={renderRow}
             keyExtractor={(item) => item.id}
+            getItemLayout={getItemLayout}
             contentContainerStyle={[S.list, (isLoading || chunkedSeries.length === 0) && { flexGrow: 1 }]}
-            removeClippedSubviews={false}
+            removeClippedSubviews={!isTV}
             extraData={filteredSeries.length}
             initialNumToRender={8}
-            maxToRenderPerBatch={6}
-            windowSize={5}
-            updateCellsBatchingPeriod={50}
-            onEndReached={() => {
-              if (isLoading || loadingMore || !hasMore || debouncedQuery) return;
-              trapFocusBriefly();
-              if (isXtreamOrM3U) {
-                // Grow the slice from the cached full list — no network.
-                const nextPage = page + 1;
-                const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
-                setSeries(sliced);
-                setPage(nextPage);
-                setHasMore(fullListRef.current.length > sliced.length);
-              } else {
-                loadSeries(selectedCategory, page + 1);
-              }
-            }}
-            onEndReachedThreshold={0.5}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={1.5}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
             ListEmptyComponent={
               isLoading ? (

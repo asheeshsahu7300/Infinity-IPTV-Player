@@ -240,7 +240,7 @@ export default function AddPortalScreen() {
       await addPortal(portal);
       await setActivePortal(portal);
       setLoadingMessage("Fetching categories...");
-      await portalApi.refreshPortalData(portal);
+      await portalApi.refreshPortalData(portal, true);
 
       const store = usePortalStore.getState();
       const hasContent = store.categories.length > 0 || store.channels.length > 0 || store.vodItems.length > 0 || store.series.length > 0;
@@ -505,11 +505,14 @@ export default function AddPortalScreen() {
   };
 
   // ── Root ─────────────────────────────────────────────────────────────────────
-  return (
-    <KeyboardAvoidingView 
-      style={[S.container, { paddingTop: insets.top }]} 
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
+  // On Android, KeyboardAvoidingView with behavior="height" physically shrinks
+  // the container when the keyboard opens, and does NOT reliably restore its
+  // height when the keyboard dismisses — causing a blank-screen layout.
+  // The ScrollView with keyboardShouldPersistTaps already scrolls focused
+  // inputs into view on Android, so we don't need KeyboardAvoidingView there.
+  const rootStyle = [S.container, { paddingTop: insets.top }];
+  const inner = (
+    <>
       <CinematicBackground />
 
       {isLoading && <LoadingOverlay message={loadingMessage} />}
@@ -521,7 +524,7 @@ export default function AddPortalScreen() {
       )}
 
       {step === 1 && !isTV && (
-        <TouchableOpacity style={S.step1BackButton} onPress={() => router.back()}>
+        <TouchableOpacity style={S.step1BackButton} onPress={handleBack}>
           <Ionicons name="chevron-back" size={ps(2.4)} color="#fff" />
         </TouchableOpacity>
       )}
@@ -535,7 +538,15 @@ export default function AddPortalScreen() {
       >
         {step === 1 ? renderStep1() : renderStep2()}
       </ScrollView>
+    </>
+  );
+
+  return Platform.OS === "ios" ? (
+    <KeyboardAvoidingView style={rootStyle} behavior="padding">
+      {inner}
     </KeyboardAvoidingView>
+  ) : (
+    <View style={rootStyle}>{inner}</View>
   );
 }
 

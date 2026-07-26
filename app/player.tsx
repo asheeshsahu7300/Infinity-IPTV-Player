@@ -502,18 +502,14 @@ export default function PlayerScreen() {
   }, [activePortal, params]);
 
   const onLoad = (data: any) => {
-    setIsLoading(false); retryCount.current = 0;
+    setIsLoading(false);
+    retryCount.current = 0;
     if (data.audioTracks) setAudioTracks(data.audioTracks);
     if (data.textTracks) setTextTracks(data.textTracks);
 
     // Ensure duration is in milliseconds and valid
-    let newDuration = Number(data.duration);
+    let newDuration = Number(data.duration || data.durationMillis);
     if (newDuration > 0) {
-      // Some players return seconds, convert to ms if it's suspiciously small compared to typical VODs
-      if (newDuration < 10000 && params.type !== "live" && !String(streamUrl).includes(".m3u8")) {
-        // This is a heuristic - if it's < 10s it might be seconds
-        // But let's be safer: check against current position if available
-      }
       setDuration(newDuration);
     }
 
@@ -535,13 +531,12 @@ export default function PlayerScreen() {
 
     if (data.duration) {
       let d = Number(data.duration);
-      // Only update if it's a valid positive number and potentially growing (for HLS)
-      if (d > duration || (duration === 0 && d > 0)) {
+      if (d > 0 && (d > duration || duration === 0)) {
         setDuration(d);
       }
     }
 
-    if (data.position !== undefined) {
+    if (data.position !== undefined && Number.isFinite(data.position) && data.position >= 0) {
       setVlcPosition(data.position);
     }
 
@@ -555,7 +550,7 @@ export default function PlayerScreen() {
     if (!status.isLoaded) { if (status.error) handleSilentRetry(); return; }
     setIsLoading(false);
     setIsBuffering(status.isBuffering);
-    if (status.durationMillis) setDuration(status.durationMillis);
+    if (status.durationMillis && status.durationMillis > 0) setDuration(status.durationMillis);
     if (status.positionMillis !== undefined) onProgress({ currentTime: status.positionMillis, duration: status.durationMillis });
     if (status.didJustFinish) { setIsPlaying(false); if (params.contentId) StreamManager.savePlaybackPosition(params.contentId, 0, status.durationMillis || duration); }
   };
@@ -572,22 +567,15 @@ export default function PlayerScreen() {
   return (
     <View style={S.container} {...panResponder.panHandlers}>
       <StatusBar hidden />
-      {isLive ? (
-        <VLCPlayer
-          ref={vlcPlayerRef} style={S.video} source={{ uri: streamUrl }} autoplay={autoPlay} paused={!isPlaying}
-          audioTrack={selectedAudioTrack} textTrack={selectedTextTrack} volume={currentVolume} rate={playbackSpeed}
-          videoAspectRatio={ASPECT_RATIOS[aspectRatioIndex].resize}
-          onLoad={onLoad} onProgress={onProgress} onError={handleSilentRetry}
-          onBuffering={(i: any) => setIsBuffering(i.isBuffering)}
-          onPlaying={() => { setIsPlaying(true); setIsLoading(false); }}
-        />
-      ) : (
-        <Video
-          ref={expoVideoRef} style={S.video} source={{ uri: streamUrl }} shouldPlay={autoPlay && isPlaying}
-          rate={playbackSpeed} resizeMode={getExpoResizeMode()} onPlaybackStatusUpdate={onExpoStatusUpdate}
-          onLoad={(s) => s.isLoaded && onLoad({ duration: s.durationMillis })}
-        />
-      )}
+      <VLCPlayer
+        ref={vlcPlayerRef} style={S.video} source={{ uri: streamUrl }} autoplay={autoPlay} paused={!isPlaying}
+        audioTrack={selectedAudioTrack} textTrack={selectedTextTrack} volume={currentVolume} rate={playbackSpeed}
+        videoAspectRatio={ASPECT_RATIOS[aspectRatioIndex].resize}
+        onLoad={onLoad} onProgress={onProgress} onError={handleSilentRetry}
+        onBuffering={(i: any) => setIsBuffering(i.isBuffering)}
+        onPlaying={() => { setIsPlaying(true); setIsLoading(false); }}
+        onPaused={() => setIsPlaying(false)}
+      />
 
       {/* Invisible focusable overlay to catch remote OK press when controls are hidden.
           This ensures the focus engine always has a target to trigger Select. */}
@@ -722,7 +710,7 @@ export default function PlayerScreen() {
           {(!isLocked || isTV) && (
             <View style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2) }]}>
               <View style={S.glassControls}>
-                {!isLive && duration > 0 && (
+                {!isLive && (
                   <View style={S.progressSection}>
                     <View style={S.timeRow}>
                       <Text style={S.timeText}>

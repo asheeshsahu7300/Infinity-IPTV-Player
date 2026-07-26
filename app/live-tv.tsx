@@ -37,14 +37,16 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 // ─────────────────────────────────────────────
 const ChannelCard = React.memo(function ChannelCard({
   item,
+  index,
   onPress,
   onFocus,
   isFocusedItem,
   itemWidth,
 }: {
   item: Channel;
+  index?: number;
   onPress: (item: Channel) => void;
-  onFocus?: (item: Channel) => void;
+  onFocus?: (item: Channel, index?: number) => void;
   isFocusedItem?: boolean;
   itemWidth: number;
 }) {
@@ -53,8 +55,8 @@ const ChannelCard = React.memo(function ChannelCard({
   }, [onPress, item]);
 
   const handleFocus = useCallback(() => {
-    onFocus?.(item);
-  }, [onFocus, item]);
+    onFocus?.(item, index);
+  }, [onFocus, item, index]);
 
 
 
@@ -71,6 +73,7 @@ const ChannelCard = React.memo(function ChannelCard({
           <View
             style={[
               S.cardBorder,
+              { height: Math.floor(itemWidth / 0.85) },
               focused && S.cardBorderFocused,
               focused && { transform: [{ scale: 1.06 }], backgroundColor: "#fff", borderColor: "#fff", borderWidth: 1 }
             ]}
@@ -335,25 +338,15 @@ export default function LiveTVScreen() {
     }
   }, [activePortal, router]);
 
-  const handleChannelFocus = useCallback((channel: Channel) => {
+  const totalCountRef = useRef(0);
+  const onEndReachedRef = useRef<() => void>(() => {});
+
+  const handleChannelFocus = useCallback((channel: Channel, index?: number) => {
     updateCinematicBackground(channel.logo || null);
     focusedIdRef.current = String(channel.id);
 
-    if (flatListRef.current) {
-      const data = flatListRef.current.props.data as any[];
-      if (data && data.length > 0) {
-        let foundNearEnd = false;
-        const checkCount = Math.min(3, data.length);
-        for (let i = data.length - checkCount; i < data.length; i++) {
-          if (data[i].items?.some((c: Channel) => c.id === channel.id)) {
-            foundNearEnd = true;
-            break;
-          }
-        }
-        if (foundNearEnd && flatListRef.current.props.onEndReached) {
-          flatListRef.current.props.onEndReached({ distanceFromEnd: 0 });
-        }
-      }
+    if (index !== undefined && totalCountRef.current > 0 && index >= totalCountRef.current - 12) {
+      onEndReachedRef.current();
     }
   }, []);
 
@@ -400,6 +393,10 @@ export default function LiveTVScreen() {
     // MAG: fetch the next server page.
     loadChannels(selectedCategory, page + 1, false);
   }, [isLoading, loadingMore, hasMore, selectedCategory, page, loadChannels, activePortal, setChannels, trapFocusBriefly]);
+
+  useEffect(() => {
+    onEndReachedRef.current = onEndReached;
+  }, [onEndReached]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -452,26 +449,32 @@ export default function LiveTVScreen() {
     return chunks;
   }, [filteredChannels, numColumns]);
 
+  useEffect(() => {
+    totalCountRef.current = filteredChannels.length;
+  }, [filteredChannels.length]);
+
   // Build sidebar categories with "All" at top
   const sidebarCategories: Category[] = [
     { id: "all", name: "All Channels", type: "live" },
     ...localCategories.filter(c =>
       c.type === "live" &&
-      c.name.toLowerCase() !== "all" &&
+  c.name.toLowerCase() !== "all" &&
       c.name.toLowerCase() !== "all channels"
     ),
   ];
 
   const SIDEBAR_WIDTH = isTV ? 260 : 220;
-
-  // Subtract the grid's own horizontal padding (pw(1.5) per side) plus a small
-  // safety margin, then floor — so sub-pixel rounding can't push the
-  // rightmost card past the viewport edge.
   const GRID_H_PADDING = pw(1.5) * 2;
   const SAFETY_MARGIN = 4;
   const itemWidth = Math.floor(
     (SCREEN_WIDTH - SIDEBAR_WIDTH - GRID_H_PADDING - SAFETY_MARGIN) / numColumns
   );
+  const ROW_HEIGHT = Math.floor(itemWidth / 0.85) + pw(1.2);
+  const getItemLayout = useCallback((_: any, index: number) => ({
+    length: ROW_HEIGHT,
+    offset: pw(1.5) + index * ROW_HEIGHT,
+    index,
+  }), [ROW_HEIGHT]);
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
@@ -552,9 +555,10 @@ export default function LiveTVScreen() {
           <FlatList
             data={chunkedChannels}
             keyExtractor={(item) => item.id}
+            getItemLayout={getItemLayout}
             onEndReached={onEndReached}
             onEndReachedThreshold={0.5}
-            removeClippedSubviews={false}
+            removeClippedSubviews={!isTV}
             contentContainerStyle={[S.gridContent, (isLoading || chunkedChannels.length === 0) && { flexGrow: 1 }]}
             extraData={filteredChannels.length}
             initialNumToRender={8}
@@ -570,6 +574,7 @@ export default function LiveTVScreen() {
                     <ChannelCard
                       key={channel.id}
                       item={channel}
+                      index={itemIndex}
                       itemWidth={itemWidth}
                       isFocusedItem={
                         !focusedIdRef.current && itemIndex === 0 && !searchFocused

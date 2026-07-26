@@ -106,6 +106,18 @@ export interface EPGProgram {
 }
 
 // ---------------------------------------
+// MERGE UTILITY — used by background sync to avoid
+// collapsing paginated data back to page 1
+// ---------------------------------------
+function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
+  if (!existing.length) return incoming;
+  if (!incoming.length) return existing;
+  const map = new Map(existing.map(i => [i.id, i]));
+  for (const item of incoming) map.set(item.id, item);
+  return Array.from(map.values());
+}
+
+// ---------------------------------------
 // STORE INTERFACE
 // ---------------------------------------
 
@@ -142,6 +154,12 @@ interface PortalState {
   setSeries: (series: Series[], targetPortalId?: string) => Promise<void>;
   setCategories: (categories: Category[], targetPortalId?: string) => Promise<void>;
   setEpgData: (data: EPGProgram[], targetPortalId?: string) => Promise<void>;
+
+  // Merge setters — add incoming items by id without removing existing ones.
+  // Used by background sync to avoid collapsing paginated data.
+  mergeChannels: (channels: Channel[], targetPortalId?: string) => Promise<void>;
+  mergeVodItems: (items: VODItem[], targetPortalId?: string) => Promise<void>;
+  mergeSeries: (series: Series[], targetPortalId?: string) => Promise<void>;
 
   loadPortalData: (portalId: string) => Promise<void>;
 
@@ -358,6 +376,7 @@ export const usePortalStore = create<PortalState>((set, get) => ({
 
   // ---------------------------------------
   // TV DATA SETTERS (with AsyncStorage persistence & stale-portal guard)
+  // These REPLACE the entire array — used for hard-refresh / initial load.
   // ---------------------------------------
   setChannels: async (channels, targetPortalId) => {
     const activePortal = get().activePortal;
@@ -407,6 +426,38 @@ export const usePortalStore = create<PortalState>((set, get) => ({
     set({ epgData: data });
     if (activePortal) {
       await AsyncStorage.setItem(`portal:${activePortal.id}:epg`, JSON.stringify(data)).catch(console.warn);
+    }
+  },
+
+  // ---------------------------------------
+  // MERGE SETTERS — add incoming items by id, keeping existing ones.
+  // Used by background sync so paginated data isn't collapsed to page 1.
+  // ---------------------------------------
+  mergeChannels: async (channels, targetPortalId) => {
+    const activePortal = get().activePortal;
+    if (targetPortalId && activePortal?.id !== targetPortalId) return;
+    const merged = mergeById(get().channels, channels);
+    set({ channels: merged });
+    if (activePortal) {
+      await AsyncStorage.setItem(`portal:${activePortal.id}:channels`, JSON.stringify(merged)).catch(console.warn);
+    }
+  },
+  mergeVodItems: async (items, targetPortalId) => {
+    const activePortal = get().activePortal;
+    if (targetPortalId && activePortal?.id !== targetPortalId) return;
+    const merged = mergeById(get().vodItems, items);
+    set({ vodItems: merged });
+    if (activePortal) {
+      await AsyncStorage.setItem(`portal:${activePortal.id}:vod`, JSON.stringify(merged)).catch(console.warn);
+    }
+  },
+  mergeSeries: async (series, targetPortalId) => {
+    const activePortal = get().activePortal;
+    if (targetPortalId && activePortal?.id !== targetPortalId) return;
+    const merged = mergeById(get().series, series);
+    set({ series: merged });
+    if (activePortal) {
+      await AsyncStorage.setItem(`portal:${activePortal.id}:series`, JSON.stringify(merged)).catch(console.warn);
     }
   },
 
@@ -476,3 +527,4 @@ export const usePortalStore = create<PortalState>((set, get) => ({
       epgData: [],
     }),
 }));
+

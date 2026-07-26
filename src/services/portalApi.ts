@@ -437,7 +437,7 @@ export const portalApi = {
         type: "live" as const,
       }));
 
-      await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
+      if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
       return result;
     });
   },
@@ -510,7 +510,7 @@ export const portalApi = {
         epgId: String(c.epg_id ?? ""),
       }));
 
-      await cacheManager.set(cacheKey, result, CACHE_TTL.CHANNELS);
+      if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.CHANNELS);
       return result;
     });
   },
@@ -541,7 +541,7 @@ export const portalApi = {
         type: "vod" as const,
       }));
 
-      await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
+      if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
       return result;
     });
   },
@@ -632,7 +632,7 @@ export const portalApi = {
           };
         });
 
-        await cacheManager.set(cacheKey, result, CACHE_TTL.VOD);
+        if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.VOD);
         return result;
       } catch (err) {
         console.warn(`getVodItems error (page ${page}):`, err);
@@ -667,7 +667,7 @@ export const portalApi = {
         type: "series" as const,
       }));
 
-      await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
+      if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
       return result;
     });
   },
@@ -756,7 +756,7 @@ export const portalApi = {
           };
         });
 
-        await cacheManager.set(cacheKey, result, CACHE_TTL.SERIES);
+        if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.SERIES);
         return result;
       } catch (err) {
         console.warn(`getSeries error (page ${page}):`, err);
@@ -1105,7 +1105,7 @@ export const portalApi = {
             return result;
           },
           CACHE_TTL.CHANNELS,
-          (v) => usePortalStore.getState().setChannels(v as any, key)
+          (v) => usePortalStore.getState().mergeChannels(v as any, key)
         );
 
         // VOD categories
@@ -1155,7 +1155,7 @@ export const portalApi = {
             return result;
           },
           CACHE_TTL.VOD,
-          (v) => usePortalStore.getState().setVodItems(v as any, key)
+          (v) => usePortalStore.getState().mergeVodItems(v as any, key)
         );
 
         // Series categories
@@ -1213,7 +1213,7 @@ export const portalApi = {
             return result;
           },
           CACHE_TTL.SERIES,
-          (v) => usePortalStore.getState().setSeries(v as any, key)
+          (v) => usePortalStore.getState().mergeSeries(v as any, key)
         );
 
         // EPG
@@ -1266,7 +1266,7 @@ export const portalApi = {
     return warmPromise;
   },
 
-  async refreshPortalData(portal: Portal): Promise<void> {
+  async refreshPortalData(portal: Portal, forceReset = false): Promise<void> {
     try {
       const key = portal.id;
       const store = usePortalStore.getState();
@@ -1286,13 +1286,23 @@ export const portalApi = {
           ...(data.seriesCategories || []),
         ];
 
-        await Promise.all([
-          store.setCategories(allCategories, portal.id),
-          store.setChannels(data.liveChannels || [], portal.id),
-          store.setVodItems(data.vodItems || [], portal.id),
-          store.setSeries(data.seriesList || [], portal.id),
-          store.setEpgData([], portal.id),
-        ]);
+        if (forceReset) {
+          await Promise.all([
+            store.setCategories(allCategories, portal.id),
+            store.setChannels(data.liveChannels || [], portal.id),
+            store.setVodItems(data.vodItems || [], portal.id),
+            store.setSeries(data.seriesList || [], portal.id),
+            store.setEpgData([], portal.id),
+          ]);
+        } else {
+          await Promise.all([
+            store.setCategories(allCategories, portal.id),
+            data.liveChannels?.length ? store.mergeChannels(data.liveChannels, portal.id) : Promise.resolve(),
+            data.vodItems?.length ? store.mergeVodItems(data.vodItems, portal.id) : Promise.resolve(),
+            data.seriesList?.length ? store.mergeSeries(data.seriesList, portal.id) : Promise.resolve(),
+            store.setEpgData([], portal.id),
+          ]);
+        }
 
         console.log("✅ Xtream portal data refreshed");
         return;
@@ -1309,12 +1319,21 @@ export const portalApi = {
           ...(data.seriesCategories || []),
         ];
 
-        await Promise.all([
-          store.setCategories(allCategories, portal.id),
-          store.setChannels(data.liveChannels || [], portal.id),
-          store.setVodItems(data.vodItems || [], portal.id),
-          store.setSeries(data.seriesList || [], portal.id),
-        ]);
+        if (forceReset) {
+          await Promise.all([
+            store.setCategories(allCategories, portal.id),
+            store.setChannels(data.liveChannels || [], portal.id),
+            store.setVodItems(data.vodItems || [], portal.id),
+            store.setSeries(data.seriesList || [], portal.id),
+          ]);
+        } else {
+          await Promise.all([
+            store.setCategories(allCategories, portal.id),
+            data.liveChannels?.length ? store.mergeChannels(data.liveChannels, portal.id) : Promise.resolve(),
+            data.vodItems?.length ? store.mergeVodItems(data.vodItems, portal.id) : Promise.resolve(),
+            data.seriesList?.length ? store.mergeSeries(data.seriesList, portal.id) : Promise.resolve(),
+          ]);
+        }
 
         console.log("✅ M3U portal data refreshed");
         return;
@@ -1460,11 +1479,13 @@ export const portalApi = {
         throw new Error("Portal returned empty data. Token may be invalid.");
       }
 
-      // Save to cache and store
-      await cacheManager.set(`portal:${key}:live:channels:search:all`, liveChannels, CACHE_TTL.CHANNELS);
-      await cacheManager.set(`portal:${key}:vod:items:all:1`, vodItems, CACHE_TTL.VOD);
-      await cacheManager.set(`portal:${key}:series:list:all:1`, seriesList, CACHE_TTL.SERIES);
-      await cacheManager.set(`portal:${key}:epg`, epgPrograms, CACHE_TTL.EPG);
+      // Save to cache and store — only cache/set non-empty lists to avoid
+      // poisoning the cache or wiping a specific content type due to a
+      // transient server error on that one endpoint.
+      if (liveChannels.length > 0) await cacheManager.set(`portal:${key}:live:channels:search:all`, liveChannels, CACHE_TTL.CHANNELS);
+      if (vodItems.length > 0) await cacheManager.set(`portal:${key}:vod:items:all:1`, vodItems, CACHE_TTL.VOD);
+      if (seriesList.length > 0) await cacheManager.set(`portal:${key}:series:list:all:1`, seriesList, CACHE_TTL.SERIES);
+      if (epgPrograms.length > 0) await cacheManager.set(`portal:${key}:epg`, epgPrograms, CACHE_TTL.EPG);
 
       const allMagCategories = [
         ...(liveCategories || []),
@@ -1472,13 +1493,24 @@ export const portalApi = {
         ...(seriesCategories || []),
       ];
 
-      await Promise.all([
-        store.setCategories(allMagCategories, key),
-        store.setChannels(liveChannels, key),
-        store.setVodItems(vodItems, key),
-        store.setSeries(seriesList, key),
-        store.setEpgData(epgPrograms, key)
-      ]);
+      if (forceReset) {
+        // Hard refresh — replace everything
+        await Promise.all([
+          store.setCategories(allMagCategories, key),
+          store.setChannels(liveChannels, key),
+          store.setVodItems(vodItems, key),
+          store.setSeries(seriesList, key),
+          store.setEpgData(epgPrograms, key)
+        ]);
+      } else {
+        // Background sync — merge by id, skip empty lists
+        const ops: Promise<void>[] = [store.setCategories(allMagCategories, key)];
+        if (liveChannels.length > 0) ops.push(store.mergeChannels(liveChannels, key));
+        if (vodItems.length > 0) ops.push(store.mergeVodItems(vodItems, key));
+        if (seriesList.length > 0) ops.push(store.mergeSeries(seriesList, key));
+        if (epgPrograms.length > 0) ops.push(store.setEpgData(epgPrograms, key));
+        await Promise.all(ops);
+      }
 
       console.log("✅ MAG portal data refreshed and persisted");
     } catch (e) {
@@ -1518,17 +1550,21 @@ export const portalApi = {
       const nowCutoff = Date.now() - 12 * 60 * 60 * 1000;
       const validEpg = (epg || []).filter((p) => p.end >= nowCutoff);
 
-      if (liveChannels && liveChannels.length > 0) store.setChannels(liveChannels, key);
-      else store.setChannels([], key);
-
-      if (vodItems && vodItems.length > 0) store.setVodItems(vodItems, key);
-      else store.setVodItems([], key);
-
-      if (seriesList && seriesList.length > 0) store.setSeries(seriesList, key);
-      else store.setSeries([], key);
-
-      if (validEpg.length > 0) store.setEpgData(validEpg, key);
-      else store.setEpgData([], key);
+      // Only UPGRADE — never downgrade store data that loadPortalData already
+      // populated from the full AsyncStorage dump. The cache-manager keys are
+      // capped at page 1, so they should never shrink a larger dataset.
+      if (liveChannels && liveChannels.length > store.channels.length) {
+        store.setChannels(liveChannels, key);
+      }
+      if (vodItems && vodItems.length > store.vodItems.length) {
+        store.setVodItems(vodItems, key);
+      }
+      if (seriesList && seriesList.length > store.series.length) {
+        store.setSeries(seriesList, key);
+      }
+      if (validEpg.length > store.epgData.length) {
+        store.setEpgData(validEpg, key);
+      }
 
       console.log("✅ Cached portal data restored");
     } catch (e) {
