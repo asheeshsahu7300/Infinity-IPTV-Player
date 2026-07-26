@@ -358,10 +358,16 @@ export const usePortalStore = create<PortalState>((set, get) => ({
   // SET ACTIVE PORTAL
   // ---------------------------------------
   setActivePortal: async (portal) => {
+    // Wipe previous portal's in-memory data first to prevent cross-portal leak
+    get().clearPortalData();
+
     set({ activePortal: portal });
     if (portal) {
-      // Persist the full portal data including tokens
+      // Persist the active portal ID
       await AsyncStorage.setItem("activePortalId", portal.id);
+
+      // Load saved portal data from storage for this specific portal
+      await get().loadPortalData(portal.id);
 
       // Update the portal in the portals list to ensure tokens are saved
       const portals = get().portals.map((p) =>
@@ -374,13 +380,6 @@ export const usePortalStore = create<PortalState>((set, get) => ({
     }
   },
 
-  // ---------------------------------------
-  // TV DATA SETTERS (with AsyncStorage persistence & stale-portal guard)
-  // These REPLACE the entire array — used for hard-refresh / initial load.
-  // ---------------------------------------
-  // ---------------------------------------
-  // TV DATA SETTERS (with AsyncStorage persistence & stale-portal guard)
-  // These REPLACE the entire array — used for hard-refresh / initial load.
   // ---------------------------------------
   // TV DATA SETTERS (with non-blocking AsyncStorage persistence)
   // ---------------------------------------
@@ -421,24 +420,23 @@ export const usePortalStore = create<PortalState>((set, get) => ({
     const activePortal = get().activePortal;
     const portalId = targetPortalId || activePortal?.id;
     if (categories && categories.length > 0) {
-      const current = get().categories || [];
-      const merged = mergeById(current, categories);
-      if (merged.length !== current.length) {
-        set({ categories: merged });
-        if (activePortal) {
-          const updatedPortal = { ...activePortal, categories: merged };
-          set({ activePortal: updatedPortal });
-          const portals = get().portals.map(p => p.id === updatedPortal.id ? updatedPortal : p);
-          set({ portals });
-          setTimeout(() => {
-            AsyncStorage.setItem("portals", JSON.stringify(portals)).catch(console.warn);
-          }, 500);
-        }
-        if (portalId) {
-          setTimeout(() => {
-            AsyncStorage.setItem(`portal:${portalId}:categories`, JSON.stringify(merged)).catch(console.warn);
-          }, 500);
-        }
+      // Set categories strictly for target/active portal
+      if (!targetPortalId || targetPortalId === activePortal?.id) {
+        set({ categories });
+      }
+      if (activePortal && activePortal.id === portalId) {
+        const updatedPortal = { ...activePortal, categories };
+        set({ activePortal: updatedPortal });
+        const portals = get().portals.map(p => p.id === updatedPortal.id ? updatedPortal : p);
+        set({ portals });
+        setTimeout(() => {
+          AsyncStorage.setItem("portals", JSON.stringify(portals)).catch(console.warn);
+        }, 500);
+      }
+      if (portalId) {
+        setTimeout(() => {
+          AsyncStorage.setItem(`portal:${portalId}:categories`, JSON.stringify(categories)).catch(console.warn);
+        }, 500);
       }
     }
   },
@@ -523,11 +521,11 @@ export const usePortalStore = create<PortalState>((set, get) => ({
       const current = get();
 
       set({
-        channels: parsedChannels.length > 0 ? parsedChannels : current.channels,
-        vodItems: parsedVod.length > 0 ? parsedVod : current.vodItems,
-        series: parsedSeries.length > 0 ? parsedSeries : current.series,
-        categories: parsedCats.length > 0 ? parsedCats : current.categories,
-        epgData: validEpg.length > 0 ? validEpg : current.epgData,
+        channels: parsedChannels,
+        vodItems: parsedVod,
+        series: parsedSeries,
+        categories: parsedCats,
+        epgData: validEpg,
       });
     } catch (err) {
       console.warn("Failed to load portal data from storage:", err);

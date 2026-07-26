@@ -447,7 +447,7 @@ export const portalApi = {
       const rows = extract(res);
       const mapped = rows.map((c: any) => {
         const rawId = String(c.id ?? c.gid ?? "");
-        const id = rawId === "*" || rawId === "0" ? "all" : rawId;
+        const id = rawId === "*" || rawId === "0" ? "all" : `live:${rawId}`;
         return {
           id,
           name: c.title ?? c.name ?? c.genre_name ?? "Unknown",
@@ -474,10 +474,11 @@ export const portalApi = {
     return requestManager.request(cacheKey, async () => {
       const refreshed = await refreshToken(portal);
       const base = safe(refreshed.config.url).replace(/\/$/, "");
+      const rawCategoryId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
       let url = `${base}/portal.php?type=itv&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
-      const isAllCat = !categoryId || categoryId === "all" || categoryId === "*";
+      const isAllCat = !rawCategoryId || rawCategoryId === "all" || rawCategoryId === "*";
       if (!isAllCat) {
-        url += `&genre=${encodeURIComponent(categoryId!)}`;
+        url += `&genre=${encodeURIComponent(rawCategoryId!)}`;
       } else {
         url += `&genre=*`;
       }
@@ -554,10 +555,11 @@ export const portalApi = {
         ),
         timeout: 60000,
       });
+      console.log("VOD Categories:", res);
       const rows = extract(res);
       const mapped = rows.map((c: any) => {
         const rawId = String(c.id ?? "");
-        const id = rawId === "*" || rawId === "0" ? "all" : rawId;
+        const id = rawId === "*" || rawId === "0" ? "all" : `vod:${rawId}`;
         return {
           id,
           name: c.title ?? c.name ?? "Unknown",
@@ -566,6 +568,7 @@ export const portalApi = {
       });
       const hasAll = mapped.some(c => c.id === "all" || c.name.toLowerCase() === "all");
       const result = hasAll ? mapped : [{ id: "all", name: "All", type: "vod" as const }, ...mapped];
+
 
       if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
       return result;
@@ -584,10 +587,11 @@ export const portalApi = {
       try {
         const refreshed = await refreshToken(portal);
         const base = safe(refreshed.config.url).replace(/\/$/, "");
+        const rawCategoryId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
         let url = `${base}/portal.php?type=vod&action=get_ordered_list&max_page_items=100000&p=${page}&JsHttpRequest=1-xml`;
-        const isAllCat = !categoryId || categoryId === "all" || categoryId === "*";
+        const isAllCat = !rawCategoryId || rawCategoryId === "all" || rawCategoryId === "*";
         if (!isAllCat) {
-          url += `&category=${encodeURIComponent(categoryId!)}`;
+          url += `&category=${encodeURIComponent(rawCategoryId!)}`;
         } else {
           url += `&category=*`;
         }
@@ -690,7 +694,7 @@ export const portalApi = {
       const rows = extract(res);
       const mapped = rows.map((c: any) => {
         const rawId = String(c.id ?? "");
-        const id = rawId === "*" || rawId === "0" ? "all" : rawId;
+        const id = rawId === "*" || rawId === "0" ? "all" : `series:${rawId}`;
         return {
           id,
           name: c.title ?? c.name ?? "Unknown",
@@ -717,10 +721,11 @@ export const portalApi = {
       try {
         const refreshed = await refreshToken(portal);
         const base = safe(refreshed.config.url).replace(/\/$/, "");
+        const rawCategoryId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
         let url = `${base}/portal.php?type=series&action=get_ordered_list&max_page_items=100000&p=${page}&JsHttpRequest=1-xml`;
-        const isAllCat = !categoryId || categoryId === "all" || categoryId === "*";
+        const isAllCat = !rawCategoryId || rawCategoryId === "all" || rawCategoryId === "*";
         if (!isAllCat) {
-          url += `&category=${encodeURIComponent(categoryId!)}`;
+          url += `&category=${encodeURIComponent(rawCategoryId!)}`;
         } else {
           url += `&category=*`;
         }
@@ -1203,11 +1208,15 @@ export const portalApi = {
         return;
       }
 
-      const liveCategories = liveCategoriesRows.map((c: any) => ({
-        id: String(c.id ?? c.gid ?? ""),
-        name: c.title ?? c.name ?? c.genre_name ?? "Unknown",
-        type: "live" as const,
-      }));
+      const liveCategories = liveCategoriesRows.map((c: any) => {
+        const rawId = String(c.id ?? c.gid ?? "");
+        const id = rawId === "*" || rawId === "0" ? "all" : `live:${rawId}`;
+        return {
+          id,
+          name: c.title ?? c.name ?? c.genre_name ?? "Unknown",
+          type: "live" as const,
+        };
+      });
 
       const liveChannels: Channel[] = liveChannelsRows.map((c: any) => ({
         id: String(c.id ?? c.cmd ?? ""),
@@ -1219,11 +1228,15 @@ export const portalApi = {
         epgId: String(c.epg_id ?? ""),
       }));
 
-      const vodCategories = vodCategoriesRows.map((c: any) => ({
-        id: String(c.id ?? ""),
-        name: c.title ?? c.name ?? "Unknown",
-        type: "vod" as const,
-      }));
+      const vodCategories = vodCategoriesRows.map((c: any) => {
+        const rawId = String(c.id ?? "");
+        const id = rawId === "*" || rawId === "0" ? "all" : `vod:${rawId}`;
+        return {
+          id,
+          name: c.title ?? c.name ?? "Unknown",
+          type: "vod" as const,
+        };
+      });
 
       const vodItems: VODItem[] = vodItemsRows.map((v: any) => ({
         id: String(v.id ?? ""),
@@ -1238,11 +1251,15 @@ export const portalApi = {
         duration: v.time ?? v.duration ?? "",
       }));
 
-      const seriesCategories = seriesCategoriesRows.map((c: any) => ({
-        id: String(c.id ?? ""),
-        name: c.title ?? c.name ?? "Unknown",
-        type: "series" as const,
-      }));
+      const seriesCategories = seriesCategoriesRows.map((c: any) => {
+        const rawId = String(c.id ?? "");
+        const id = rawId === "*" || rawId === "0" ? "all" : `series:${rawId}`;
+        return {
+          id,
+          name: c.title ?? c.name ?? "Unknown",
+          type: "series" as const,
+        };
+      });
 
       const seriesList: Series[] = seriesListRows.map((v: any) => ({
         id: String(v.id ?? ""),

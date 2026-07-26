@@ -343,11 +343,14 @@ export default function VODScreen() {
     activePortal,
     favorites,
     toggleFavorite,
-    vodItems,
+    vodItems: storeVodItems,
     setVodItems,
     categories,
     setCategories,
   } = usePortalStore();
+
+  // Local display state — drives FlatList directly, never blocked by store guards
+  const [displayVodItems, setDisplayVodItems] = useState<VODItem[]>([]);
 
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
@@ -419,6 +422,7 @@ export default function VODScreen() {
   }, [selectedCategory]);
 
   useEffect(() => {
+    if (!activePortal) return;
     setPage(1);
     const cat = selectedCategory;
     if (activePortal?.type === "m3u" || activePortal?.type === "xtream") {
@@ -435,7 +439,7 @@ export default function VODScreen() {
             });
         fullListRef.current = filtered;
         const sliced = filtered.slice(0, PAGE_SIZE);
-        setVodItems(sliced);
+        setDisplayVodItems(sliced);  // local state — never blocked
         setHasMore(filtered.length > sliced.length);
         restoreFocusPosition(sliced);
       } else {
@@ -446,7 +450,7 @@ export default function VODScreen() {
       setHasMore(true);
       loadVodItems(selectedCategory, 1, true);
     }
-  }, [selectedCategory]);
+  }, [selectedCategory, activePortal?.id]);
 
   const loadCategories = async () => {
     if (!activePortal) return;
@@ -482,8 +486,8 @@ export default function VODScreen() {
 
       if (activePortal.type === "m3u" || activePortal.type === "xtream") {
         if (allVodCacheRef.current.length === 0) {
-          if (vodItems.length > 0) {
-            allVodCacheRef.current = vodItems;
+          if (storeVodItems.length > 0) {
+            allVodCacheRef.current = storeVodItems;
           } else {
             let fetched: VODItem[] = [];
             if (activePortal.type === "m3u") {
@@ -513,10 +517,9 @@ export default function VODScreen() {
         fullListRef.current = filtered;
         const sliced = filtered.slice(0, pageNum * PAGE_SIZE);
         if (!reset) trapFocusBriefly();
-        if (sliced.length > 0 || vodItems.length === 0) {
-          setVodItems(sliced);
-        }
-        setHasMore(filtered.length > (sliced.length || vodItems.length));
+        setDisplayVodItems(sliced);  // always update local display state
+        setVodItems(sliced);  // persist to store cache
+        setHasMore(filtered.length > sliced.length);
         setPage(pageNum);
         if (reset && sliced.length > 0) restoreFocusPosition(sliced);
       } else {
@@ -525,12 +528,13 @@ export default function VODScreen() {
         if (requestId !== vodRequestIdRef.current || selectedCategoryRef.current !== targetCatId) return;
 
         items = Array.isArray(fresh) ? fresh : [];
-        const current = usePortalStore.getState().vodItems;
+        const current = displayVodItems;
         const updatedList = reset
-          ? (items.length > 0 || current.length === 0 ? items : current)
+          ? items
           : [...current, ...items.filter(i => !current.some(v => v.id === i.id))];
         if (!reset) trapFocusBriefly();
-        setVodItems(updatedList);
+        setDisplayVodItems(updatedList);  // local state
+        setVodItems(updatedList);  // persist to store
         setHasMore(items.length > 0);
         setPage(pageNum);
         if (reset) restoreFocusPosition(updatedList);
@@ -724,9 +728,9 @@ export default function VODScreen() {
       }
     }
 
-    // Default: return the category-filtered and paginated items
-    return vodItems;
-  }, [vodItems, debouncedQuery, isXtreamOrM3U, searchResults]);
+    // Default: return local display state (category-filtered and paginated)
+    return displayVodItems;
+  }, [displayVodItems, debouncedQuery, isXtreamOrM3U, searchResults]);
 
   const chunkedMovies = useMemo(() => {
     const chunks = [];
@@ -750,7 +754,8 @@ export default function VODScreen() {
       // Grow the slice from the cached full list — no network.
       const nextPage = page + 1;
       const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
-      setVodItems(sliced);
+      setDisplayVodItems(sliced);  // local state for immediate render
+      setVodItems(sliced);  // persist to store
       setPage(nextPage);
       setHasMore(fullListRef.current.length > sliced.length);
     } else {

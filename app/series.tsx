@@ -304,11 +304,14 @@ export default function SeriesScreen() {
     activePortal,
     favorites,
     toggleFavorite,
-    series,
+    series: storeSeries,
     setSeries,
     categories,
     setCategories,
   } = usePortalStore();
+
+  // Local display state — drives FlatList directly, never blocked by store guards
+  const [displaySeries, setDisplaySeries] = useState<Series[]>([]);
 
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
@@ -370,7 +373,7 @@ export default function SeriesScreen() {
   }, [activePortal?.id]);
 
   useEffect(() => {
-    if (!activePortal || prevCategoryIdRef.current === selectedCategory) return;
+    if (!activePortal) return;
     setPage(1);
     prevCategoryIdRef.current = selectedCategory;
     focusedIdRef.current = "";
@@ -379,12 +382,19 @@ export default function SeriesScreen() {
       if (allSeriesCacheRef.current.length > 0) {
         const isAll = !selectedCategory || selectedCategory === "all" || selectedCategory === "*";
         const cat = isAll ? undefined : selectedCategory;
+        const selectedCatObj = (categories || []).find(c => String(c.id) === String(cat));
         const filtered = !cat
           ? allSeriesCacheRef.current
-          : allSeriesCacheRef.current.filter(s => String(s.categoryId) === String(cat));
+          : allSeriesCacheRef.current.filter(s => {
+              const sCatId = String(s.categoryId ?? "");
+              const target = String(cat);
+              if (sCatId === target) return true;
+              if (selectedCatObj && s.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
+              return false;
+            });
         fullListRef.current = filtered;
         const sliced = filtered.slice(0, PAGE_SIZE);
-        setSeries(sliced);
+        setDisplaySeries(sliced);  // local state — never blocked
         setHasMore(filtered.length > sliced.length);
         setIsLoading(false);
       } else {
@@ -395,7 +405,7 @@ export default function SeriesScreen() {
       setHasMore(true);
       loadSeries(selectedCategory, 1, true);
     }
-  }, [selectedCategory]);
+  }, [selectedCategory, activePortal?.id]);
 
   const loadCategories = async () => {
     if (!activePortal) return;
@@ -439,8 +449,8 @@ export default function SeriesScreen() {
 
       if (activePortal.type === "m3u" || activePortal.type === "xtream") {
         if (allSeriesCacheRef.current.length === 0) {
-          if (series.length > 0) {
-            allSeriesCacheRef.current = series;
+          if (storeSeries.length > 0) {
+            allSeriesCacheRef.current = storeSeries;
           } else {
             let fetched: Series[] = [];
             if (activePortal.type === "m3u") {
@@ -470,8 +480,9 @@ export default function SeriesScreen() {
         fullListRef.current = filtered;
         const sliced = filtered.slice(0, pageNum * PAGE_SIZE);
         if (!reset) trapFocusBriefly();
-        if (sliced.length > 0 || series.length === 0) setSeries(sliced);
-        setHasMore(filtered.length > (sliced.length || series.length));
+        setDisplaySeries(sliced);  // always update local display state
+        setSeries(sliced);  // also persist to store cache
+        setHasMore(filtered.length > sliced.length);
         setPage(pageNum);
         if (reset && sliced.length > 0) restoreFocusPosition(sliced);
       } else {
@@ -480,12 +491,13 @@ export default function SeriesScreen() {
         if (requestId !== seriesRequestIdRef.current || selectedSeriesCategoryRef.current !== targetCatId) return;
 
         items = Array.isArray(fresh) ? fresh : [];
-        const current = usePortalStore.getState().series;
+        const current = displaySeries;
         const updatedList = reset
-          ? (items.length > 0 || current.length === 0 ? items : current)
+          ? items
           : [...current, ...items.filter(i => !current.some(s => s.id === i.id))];
         if (!reset) trapFocusBriefly();
-        setSeries(updatedList);
+        setDisplaySeries(updatedList);  // local state
+        setSeries(updatedList);  // persist to store
         setHasMore(items.length > 0);
         setPage(pageNum);
         if (reset) restoreFocusPosition(updatedList);
@@ -638,9 +650,9 @@ export default function SeriesScreen() {
       }
     }
 
-    // Default: return the category-filtered and paginated items
-    return series;
-  }, [series, debouncedQuery, isXtreamOrM3U, searchResults]);
+    // Default: return the local display state (category-filtered and paginated)
+    return displaySeries;
+  }, [displaySeries, debouncedQuery, isXtreamOrM3U, searchResults]);
 
   useEffect(() => {
     totalCountRef.current = filteredSeries.length;
@@ -653,6 +665,7 @@ export default function SeriesScreen() {
       // Grow the slice from the cached full list — no network.
       const nextPage = page + 1;
       const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
+      setDisplaySeries(sliced);  // local state for immediate render
       setSeries(sliced);
       setPage(nextPage);
       setHasMore(fullListRef.current.length > sliced.length);

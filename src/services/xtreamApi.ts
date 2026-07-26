@@ -65,7 +65,7 @@ export class XtreamApi {
       });
 
       const categories = (res.data || []).map((c: any) => ({
-        id: c.category_id,
+        id: `live:${c.category_id}`,
         name: c.category_name,
         type: "live",
       }));
@@ -104,8 +104,9 @@ export class XtreamApi {
     });
 
     let filteredRows = rows;
-    if (categoryId && categoryId !== "all") {
-      filteredRows = rows.filter((c: any) => c.category_id == categoryId);
+    const targetCatId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
+    if (targetCatId && targetCatId !== "all") {
+      filteredRows = rows.filter((c: any) => c.category_id == targetCatId);
     }
 
     const start = (page - 1) * pageSize;
@@ -143,7 +144,7 @@ export class XtreamApi {
       });
 
       const categories = res.data.map((c: any) => ({
-        id: c.category_id,
+        id: `vod:${c.category_id}`,
         name: c.category_name,
         type: "vod",
       }));
@@ -182,8 +183,9 @@ export class XtreamApi {
     });
 
     let filteredRows = rows;
-    if (categoryId && categoryId !== "all") {
-      filteredRows = rows.filter((v: any) => v.category_id == categoryId);
+    const targetCatId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
+    if (targetCatId && targetCatId !== "all") {
+      filteredRows = rows.filter((v: any) => v.category_id == targetCatId);
     }
 
     const start = (page - 1) * pageSize;
@@ -224,7 +226,7 @@ export class XtreamApi {
       });
 
       const categories = res.data.map((c: any) => ({
-        id: c.category_id,
+        id: `series:${c.category_id}`,
         name: c.category_name,
         type: "series",
       }));
@@ -263,8 +265,9 @@ export class XtreamApi {
     });
 
     let filteredRows = rows;
-    if (categoryId && categoryId !== "all") {
-      filteredRows = rows.filter((s: any) => s.category_id == categoryId);
+    const targetCatId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
+    if (targetCatId && targetCatId !== "all") {
+      filteredRows = rows.filter((s: any) => s.category_id == targetCatId);
     }
 
     const start = (page - 1) * pageSize;
