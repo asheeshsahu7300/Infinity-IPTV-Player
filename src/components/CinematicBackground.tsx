@@ -22,7 +22,7 @@ export const CinematicBackground = React.memo(function CinematicBackground({ uri
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         setUri(newUri);
-      }, 100);
+      }, 250);
     });
     return () => {
       sub.remove();
@@ -41,8 +41,8 @@ export const CinematicBackground = React.memo(function CinematicBackground({ uri
           source={{ uri }}
           style={StyleSheet.absoluteFillObject}
           contentFit="cover"
-          blurRadius={20}
-          transition={300}
+          blurRadius={12}
+          transition={200}
         />
       ) : null}
       

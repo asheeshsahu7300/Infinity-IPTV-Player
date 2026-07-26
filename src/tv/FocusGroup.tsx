@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleProp, TVFocusGuideView, ViewStyle } from "react-native";
+import { StyleProp, TVFocusGuideView, View, ViewStyle } from "react-native";
 
 export interface FocusGroupProps {
   children: React.ReactNode;
@@ -18,29 +18,35 @@ export interface FocusGroupProps {
  *  - Trap focus inside a region (`trapUp/Down/Left/Right`)
  *  - Redirect focus from a region to specific refs (`destinations`)
  */
-export function FocusGroup({
-  children,
-  style,
-  autoFocus = false,
-  trapUp,
-  trapDown,
-  trapLeft,
-  trapRight,
-  destinations,
-}: FocusGroupProps) {
-  return (
-    <TVFocusGuideView
-      style={style}
-      autoFocus={autoFocus}
-      trapFocusUp={trapUp}
-      trapFocusDown={trapDown}
-      trapFocusLeft={trapLeft}
-      trapFocusRight={trapRight}
-      destinations={destinations}
-    >
-      {children}
-    </TVFocusGuideView>
-  );
-}
+export const FocusGroup = React.forwardRef<View, FocusGroupProps>(
+  function FocusGroup(
+    {
+      children,
+      style,
+      autoFocus = false,
+      trapUp,
+      trapDown,
+      trapLeft,
+      trapRight,
+      destinations,
+    },
+    ref
+  ) {
+    return (
+      <TVFocusGuideView
+        ref={ref as any}
+        style={style}
+        autoFocus={autoFocus}
+        trapFocusUp={trapUp}
+        trapFocusDown={trapDown}
+        trapFocusLeft={trapLeft}
+        trapFocusRight={trapRight}
+        destinations={destinations}
+      >
+        {children}
+      </TVFocusGuideView>
+    );
+  }
+);
 
 export default FocusGroup;

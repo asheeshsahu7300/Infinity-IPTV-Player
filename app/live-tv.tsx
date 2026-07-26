@@ -567,13 +567,13 @@ export default function LiveTVScreen() {
             getItemLayout={getItemLayout}
             onEndReached={onEndReached}
             onEndReachedThreshold={0.5}
-            removeClippedSubviews={!isTV}
+            removeClippedSubviews={true}
             contentContainerStyle={[S.gridContent, (isLoading || chunkedChannels.length === 0) && { flexGrow: 1 }]}
             extraData={filteredChannels.length}
-            initialNumToRender={8}
-            maxToRenderPerBatch={6}
-            windowSize={5}
-            updateCellsBatchingPeriod={50}
+            initialNumToRender={6}
+            maxToRenderPerBatch={4}
+            windowSize={3}
+            updateCellsBatchingPeriod={30}
             ref={flatListRef}
             renderItem={useCallback(({ item: row, index: rowIndex }: { item: { id: string; items: Channel[] }; index: number }) => (
               <FocusGroup style={{ flexDirection: "row" }}>

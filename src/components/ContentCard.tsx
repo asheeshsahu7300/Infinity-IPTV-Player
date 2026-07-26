@@ -44,7 +44,7 @@ const PLACEHOLDER_ICON: Record<CardType, keyof typeof MaterialCommunityIcons.gly
   series: "television-classic",
 };
 
-export default function ContentCard({
+export const ContentCard = React.memo(function ContentCard({
   title,
   subtitle,
   image,
@@ -64,6 +64,7 @@ export default function ContentCard({
       return () => clearTimeout(timer);
     }
   }, [autoFocus]);
+
   return (
     <View style={[S.outer, itemWidth ? { width: itemWidth } : {}]}>
       <Focusable
@@ -73,27 +74,8 @@ export default function ContentCard({
         ringOnFocus={false}
         style={{ overflow: "visible" }}
       >
-        {(focused) => (
-          <LinearGradient
-            colors={
-              focused
-                ? [THEME.colors.primary, THEME.colors.secondary]
-                : ["transparent", "transparent"]
-            }
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[
-              S.gradientBorder,
-              focused && {
-                transform: [{ scale: 1.06 }],
-                shadowColor: THEME.colors.primary,
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.6,
-                shadowRadius: 10,
-                elevation: 14,
-              },
-            ]}
-          >
+        {(focused) => {
+          const cardContent = (
             <View style={S.card}>
               {/* ── Image / Thumbnail ── */}
               <View style={[S.imageContainer, { aspectRatio: RATIO_MAP[aspectRatio] }]}>
@@ -141,12 +123,43 @@ export default function ContentCard({
                 ) : null}
               </View>
             </View>
-          </LinearGradient>
-        )}
+          );
+
+          if (focused) {
+            return (
+              <LinearGradient
+                colors={[THEME.colors.primary, THEME.colors.secondary]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[
+                  S.gradientBorder,
+                  {
+                    transform: [{ scale: 1.06 }],
+                    shadowColor: THEME.colors.primary,
+                    shadowOffset: { width: 0, height: 6 },
+                    shadowOpacity: 0.6,
+                    shadowRadius: 10,
+                    elevation: 14,
+                  },
+                ]}
+              >
+                {cardContent}
+              </LinearGradient>
+            );
+          }
+
+          return (
+            <View style={[S.gradientBorder, { backgroundColor: "transparent" }]}>
+              {cardContent}
+            </View>
+          );
+        }}
       </Focusable>
     </View>
   );
-}
+});
+
+export default ContentCard;
 
 const S = StyleSheet.create({
   outer: {

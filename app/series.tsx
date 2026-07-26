@@ -422,12 +422,20 @@ export default function SeriesScreen() {
     }
   };
 
+  const selectedSeriesCategoryRef = useRef(selectedCategory);
+  const seriesRequestIdRef = useRef(0);
+  useEffect(() => {
+    selectedSeriesCategoryRef.current = selectedCategory;
+  }, [selectedCategory]);
+
   const loadSeries = async (categoryId?: string, pageNum: number = 1, reset: boolean = false) => {
     if (!activePortal || loadingMore || (!hasMore && !reset)) return;
+    const requestId = ++seriesRequestIdRef.current;
     try {
       reset ? setIsLoading(true) : setLoadingMore(true);
       let items: Series[] = [];
       const cat = !categoryId || categoryId === "all" || categoryId === "*" ? undefined : categoryId;
+      const targetCatId = categoryId ?? "all";
 
       if (activePortal.type === "m3u" || activePortal.type === "xtream") {
         if (allSeriesCacheRef.current.length === 0) {
@@ -446,13 +454,15 @@ export default function SeriesScreen() {
           }
         }
 
+        if (requestId !== seriesRequestIdRef.current || selectedSeriesCategoryRef.current !== targetCatId) return;
+
         const selectedCatObj = (categories || []).find(c => String(c.id) === String(cat));
         const filtered = !cat
           ? allSeriesCacheRef.current
           : allSeriesCacheRef.current.filter(s => {
               const sCatId = String(s.categoryId ?? "");
-              const targetCatId = String(cat);
-              if (sCatId === targetCatId) return true;
+              const target = String(cat);
+              if (sCatId === target) return true;
               if (selectedCatObj && s.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
               return false;
             });
@@ -467,6 +477,8 @@ export default function SeriesScreen() {
       } else {
         // MAG / Stalker: Server-side pagination (14 items per page, infinite scroll as user scrolls)
         const fresh = await portalApi.getSeries(activePortal, cat, pageNum);
+        if (requestId !== seriesRequestIdRef.current || selectedSeriesCategoryRef.current !== targetCatId) return;
+
         items = Array.isArray(fresh) ? fresh : [];
         const current = usePortalStore.getState().series;
         const updatedList = reset
@@ -757,9 +769,12 @@ export default function SeriesScreen() {
             keyExtractor={(item) => item.id}
             getItemLayout={getItemLayout}
             contentContainerStyle={[S.list, (isLoading || chunkedSeries.length === 0) && { flexGrow: 1 }]}
-            removeClippedSubviews={!isTV}
+            removeClippedSubviews={true}
             extraData={filteredSeries.length}
-            initialNumToRender={8}
+            initialNumToRender={6}
+            maxToRenderPerBatch={4}
+            windowSize={3}
+            updateCellsBatchingPeriod={30}
             onEndReached={handleLoadMore}
             onEndReachedThreshold={1.5}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}

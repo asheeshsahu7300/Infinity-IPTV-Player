@@ -13,6 +13,7 @@ import {
   TextInput,
   BackHandler,
   Platform,
+  TVEventHandler,
   Dimensions,
   Animated,
   Image as RNImage,
@@ -78,6 +79,39 @@ function SplashScreen() {
 }
 
 import { TenorSans_400Regular } from "@expo-google-fonts/tenor-sans";
+
+import { FocusableRegistry } from "../src/tv/FocusableRegistry";
+
+function TVDebugListener() {
+  React.useEffect(() => {
+    if (Platform.OS !== "android" && Platform.OS !== "ios") return;
+    let subscription: any;
+    let tvEventHandler: any;
+
+    const handler = (event: any) => {
+      const type = event?.eventType;
+      const isSelect = type === "select" || type === "dpad_center" || type === "center";
+      const isDown = event?.eventKeyAction === 0 || event?.eventKeyAction == null;
+      if (isSelect && isDown && event?.tag) {
+        FocusableRegistry.press(event.tag);
+      }
+    };
+
+    if (typeof TVEventHandler === "function") {
+      tvEventHandler = new (TVEventHandler as any)();
+      tvEventHandler.enable(null, (_cmp: any, event: any) => handler(event));
+    } else if (TVEventHandler && typeof (TVEventHandler as any).addListener === "function") {
+      subscription = (TVEventHandler as any).addListener(handler);
+    }
+
+    return () => {
+      if (tvEventHandler && typeof tvEventHandler.disable === "function") tvEventHandler.disable();
+      if (subscription && typeof subscription.remove === "function") subscription.remove();
+    };
+  }, []);
+
+  return null;
+}
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
@@ -170,12 +204,13 @@ export default function RootLayout() {
       <ThemeProvider>
         <SafeAreaProvider>
           <GestureHandlerRootView style={styles.container}>
+            <TVDebugListener />
             <StatusBar style="light" />
             <Stack
               screenOptions={{
                 headerShown: false,
-                contentStyle: { backgroundColor: "#000000" },
-                animation: isTV ? "fade" : "slide_from_right",
+                contentStyle: { backgroundColor: "#08080a" },
+                animation: isTV ? "none" : "slide_from_right",
               }}
               initialRouteName="index"
             >

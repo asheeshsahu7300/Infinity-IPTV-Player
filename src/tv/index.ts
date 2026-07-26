@@ -6,3 +6,4 @@ export { Overlay } from "./Overlay";
 export type { OverlayProps } from "./Overlay";
 export { useDPad } from "./useDPad";
 export type { DPadHandlers, DPadEventType } from "./useDPad";
+export { InsideOverlayContext, FocusTrap, useIsFocusTrapped } from "./FocusTrapContext";

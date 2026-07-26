@@ -44,6 +44,19 @@ const ASPECT_RATIOS: {
     { key: "fit", label: "Fit", resize: "21:9" },
   ];
 
+// Native LibVLC flags for low-speed / low-bandwidth playback resilience
+const VLC_LOW_BANDWIDTH_OPTIONS = [
+  "--network-caching=1000",       // Lower network cache (1.0s) for fast startup on low speed connection
+  "--live-caching=1000",          // 1.0s live cache buffer
+  "--file-caching=1000",          // 1.0s VOD file buffer
+  "--clock-jitter=0",             // Prevent frame delay on jittery Wi-Fi/mobile data
+  "--clock-synchro=0",            // Maintain continuous audio/video playback
+  "--drop-late-frames",           // Automatically drop late frames if CPU/bandwidth drops
+  "--skip-frames",                // Skip non-reference frames to prevent stream freezing
+  "--rtsp-tcp",                 // Force RTSP over TCP for reliable low-speed transport
+  "--http-reconnect",             // Auto-reconnect if slow server drops HTTP connection
+];
+
 export default function PlayerScreen() {
   useKeepAwake();
   const router = useRouter();
@@ -574,17 +587,36 @@ export default function PlayerScreen() {
       <StatusBar hidden />
       {isLive ? (
         <VLCPlayer
-          ref={vlcPlayerRef} style={S.video} source={{ uri: streamUrl }} autoplay={autoPlay} paused={!isPlaying}
-          audioTrack={selectedAudioTrack} textTrack={selectedTextTrack} volume={currentVolume} rate={playbackSpeed}
+          ref={vlcPlayerRef}
+          style={S.video}
+          source={{
+            uri: streamUrl,
+            initType: 2,
+            initOptions: VLC_LOW_BANDWIDTH_OPTIONS,
+          }}
+          autoplay={autoPlay}
+          paused={!isPlaying}
+          audioTrack={selectedAudioTrack}
+          textTrack={selectedTextTrack}
+          volume={currentVolume}
+          rate={playbackSpeed}
           videoAspectRatio={ASPECT_RATIOS[aspectRatioIndex].resize}
-          onLoad={onLoad} onProgress={onProgress} onError={handleSilentRetry}
+          onLoad={onLoad}
+          onProgress={onProgress}
+          onError={handleSilentRetry}
           onBuffering={(i: any) => setIsBuffering(i.isBuffering)}
           onPlaying={() => { setIsPlaying(true); setIsLoading(false); }}
         />
       ) : (
         <Video
-          ref={expoVideoRef} style={S.video} source={{ uri: streamUrl }} shouldPlay={autoPlay && isPlaying}
-          rate={playbackSpeed} resizeMode={getExpoResizeMode()} onPlaybackStatusUpdate={onExpoStatusUpdate}
+          ref={expoVideoRef}
+          style={S.video}
+          source={{ uri: streamUrl }}
+          shouldPlay={autoPlay && isPlaying}
+          rate={playbackSpeed}
+          resizeMode={getExpoResizeMode()}
+          progressUpdateIntervalMillis={1000}
+          onPlaybackStatusUpdate={onExpoStatusUpdate}
           onLoad={(s) => s.isLoaded && onLoad({ duration: s.durationMillis })}
         />
       )}

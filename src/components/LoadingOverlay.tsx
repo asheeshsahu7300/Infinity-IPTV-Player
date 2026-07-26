@@ -18,7 +18,7 @@ export default function LoadingOverlay({
 }: LoadingOverlayProps) {
   return (
     <View style={[styles.container, style]} pointerEvents={pointerEvents}>
-      <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
       <LinearGradient
         colors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)']}
         style={styles.box}

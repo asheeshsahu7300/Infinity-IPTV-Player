@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  FlatList,
   RefreshControl,
   Image,
   Dimensions,
@@ -50,17 +51,7 @@ const GRADIENT_COLORS = [THEME.colors.primary, THEME.colors.secondary] as const;
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
-const GradientText = ({ text, style, isActive }: { text: string; style: any; isActive?: boolean }) => {
-  return (
-    <MaskedView
-      maskElement={<Text style={[style, { backgroundColor: "transparent" }]}>{text}</Text>}
-    >
-      <LinearGradient colors={GRADIENT_COLORS} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-        <Text style={[style, { opacity: 0 }]}>{text}</Text>
-      </LinearGradient>
-    </MaskedView>
-  );
-};
+
 
 const RailItem = React.memo(({
   title,
@@ -136,30 +127,37 @@ const RailItem = React.memo(({
 
 const ContentSection = React.memo(({ title, data, type, onFocus, onPress }: any) => {
   if (!data?.length) return null;
+
+  const renderRailItem = React.useCallback(({ item }: { item: any }) => (
+    <RailItem
+      key={item.id}
+      title={item.title}
+      subtitle={item.subtitle}
+      image={item.image}
+      type={type}
+      onFocus={(img: string) => onFocus?.(img)}
+      onPress={() => onPress(item.data)}
+    />
+  ), [type, onFocus, onPress]);
+
   return (
     <View style={S.section}>
       <View style={S.sectionHeader}>
         <Text style={S.sectionTitle}>{title}</Text>
       </View>
-      <ScrollView
+      <FlatList
         horizontal
+        data={data}
+        renderItem={renderRailItem}
+        keyExtractor={(item: any) => item.id}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={S.sectionScroll}
         decelerationRate="fast"
-        snapToInterval={type === "landscape" ? LANDSCAPE_W + RAIL_GAP : PORTRAIT_W + RAIL_GAP}
-      >
-        {data.map((item: any) => (
-          <RailItem
-            key={item.id}
-            title={item.title}
-            subtitle={item.subtitle}
-            image={item.image}
-            type={type}
-            onFocus={(img) => onFocus?.(img)}
-            onPress={() => onPress(item.data)}
-          />
-        ))}
-      </ScrollView>
+        initialNumToRender={5}
+        maxToRenderPerBatch={3}
+        windowSize={3}
+        removeClippedSubviews={true}
+      />
     </View>
   );
 });

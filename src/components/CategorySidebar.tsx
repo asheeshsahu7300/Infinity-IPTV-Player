@@ -144,14 +144,12 @@ const CategoryItem = React.memo(function CategoryItem({
       >
         {(focused) => {
           return (
-            <BlurView 
-              intensity={isActive && !focused ? 80 : 0} 
-              tint={isActive ? "light" : "dark"} 
+            <View 
               style={[
                 S.itemContainer, 
                 focused && S.itemContainerFocused,
-                (focused || isActive) && { backgroundColor: "#fff" },
-                focused && { transform: [{ scale: 1.05 }] }
+                isActive && !focused && { backgroundColor: "rgba(255,255,255,0.15)" },
+                focused && { backgroundColor: "#fff", transform: [{ scale: 1.05 }] }
               ]}
             >
               <View style={[S.itemInner, { paddingLeft: focused ? pw(0.5) : 0 }]}>
@@ -159,14 +157,14 @@ const CategoryItem = React.memo(function CategoryItem({
                   style={[
                     S.itemText,
                     (isActive || focused) && S.itemTextActive,
-                    (isActive || focused) && { color: "#000" }
+                    (isActive || focused) && { color: focused ? "#000" : "#fff" }
                   ]}
                   numberOfLines={1}
                 >
                   {item.name}
                 </Text>
               </View>
-            </BlurView>
+            </View>
           );
         }}
       </Focusable>

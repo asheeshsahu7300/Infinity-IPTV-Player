@@ -413,24 +413,31 @@ export default function VODScreen() {
     loadCategories();
   }, [activePortal?.id]);
 
+  const selectedCategoryRef = useRef(selectedCategory);
   useEffect(() => {
-    if (!activePortal || prevCategoryIdRef.current === selectedCategory) return;
-    setPage(1);
-    prevCategoryIdRef.current = selectedCategory;
-    focusedIdRef.current = "";
+    selectedCategoryRef.current = selectedCategory;
+  }, [selectedCategory]);
 
-    if (activePortal.type === "xtream" || activePortal.type === "m3u") {
+  useEffect(() => {
+    setPage(1);
+    const cat = selectedCategory;
+    if (activePortal?.type === "m3u" || activePortal?.type === "xtream") {
       if (allVodCacheRef.current.length > 0) {
-        const isAll = !selectedCategory || selectedCategory === "all" || selectedCategory === "*";
-        const cat = isAll ? undefined : selectedCategory;
-        const filtered = !cat
+        const selectedCatObj = (categories || []).find(c => String(c.id) === String(cat));
+        const filtered = (!cat || cat === "all" || cat === "*")
           ? allVodCacheRef.current
-          : allVodCacheRef.current.filter(v => String(v.categoryId) === String(cat));
+          : allVodCacheRef.current.filter(v => {
+              const vCatId = String(v.categoryId ?? "");
+              const targetCatId = String(cat);
+              if (vCatId === targetCatId) return true;
+              if (selectedCatObj && v.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
+              return false;
+            });
         fullListRef.current = filtered;
         const sliced = filtered.slice(0, PAGE_SIZE);
         setVodItems(sliced);
         setHasMore(filtered.length > sliced.length);
-        setIsLoading(false);
+        restoreFocusPosition(sliced);
       } else {
         setHasMore(true);
         loadVodItems(selectedCategory, 1, true);
@@ -462,12 +469,16 @@ export default function VODScreen() {
     }
   };
 
+  const vodRequestIdRef = useRef(0);
+
   const loadVodItems = async (categoryId?: string, pageNum: number = 1, reset: boolean = false) => {
     if (!activePortal || loadingMore || (!hasMore && !reset)) return;
+    const requestId = ++vodRequestIdRef.current;
     try {
       reset ? setIsLoading(true) : setLoadingMore(true);
       let items: VODItem[] = [];
       const cat = !categoryId || categoryId === "all" || categoryId === "*" ? undefined : categoryId;
+      const targetCatId = categoryId ?? "all";
 
       if (activePortal.type === "m3u" || activePortal.type === "xtream") {
         if (allVodCacheRef.current.length === 0) {
@@ -486,13 +497,15 @@ export default function VODScreen() {
           }
         }
 
+        if (requestId !== vodRequestIdRef.current || selectedCategoryRef.current !== targetCatId) return;
+
         const selectedCatObj = (categories || []).find(c => String(c.id) === String(cat));
         const filtered = !cat
           ? allVodCacheRef.current
           : allVodCacheRef.current.filter(v => {
               const vCatId = String(v.categoryId ?? "");
-              const targetCatId = String(cat);
-              if (vCatId === targetCatId) return true;
+              const target = String(cat);
+              if (vCatId === target) return true;
               if (selectedCatObj && v.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
               return false;
             });
@@ -509,6 +522,8 @@ export default function VODScreen() {
       } else {
         // MAG / Stalker: Server-side pagination (14 items per page, infinite scroll as user scrolls)
         const fresh = await portalApi.getVodItems(activePortal, cat, pageNum);
+        if (requestId !== vodRequestIdRef.current || selectedCategoryRef.current !== targetCatId) return;
+
         items = Array.isArray(fresh) ? fresh : [];
         const current = usePortalStore.getState().vodItems;
         const updatedList = reset
@@ -841,12 +856,12 @@ export default function VODScreen() {
               keyExtractor={(item) => item.id}
               getItemLayout={getItemLayout}
               contentContainerStyle={[S.list, (isLoading || chunkedMovies.length === 0) && { flexGrow: 1 }]}
-              removeClippedSubviews={!isTV}
+              removeClippedSubviews={true}
               extraData={filteredMovies.length}
-              initialNumToRender={8}
-              maxToRenderPerBatch={6}
-              windowSize={5}
-              updateCellsBatchingPeriod={50}
+              initialNumToRender={6}
+              maxToRenderPerBatch={4}
+              windowSize={3}
+              updateCellsBatchingPeriod={30}
               onEndReached={handleLoadMore}
               onEndReachedThreshold={1.5}
               refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}

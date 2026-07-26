@@ -1,162 +1,215 @@
-import React, { useCallback, useImperativeHandle, useRef, useState } from "react";
+import React, {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import {
+  findNodeHandle,
+  Pressable,
   StyleProp,
   StyleSheet,
-  TouchableOpacity,
-  TVEventHandler,
   View,
   ViewStyle,
 } from "react-native";
 
+import { FocusableRegistry } from "./FocusableRegistry";
 import { FocusMemory } from "./FocusMemory";
+import { useIsFocusTrapped, InsideOverlayContext, NextFocusTags } from "./FocusTrapContext";
 
 export interface FocusableProps {
   children?: React.ReactNode | ((focused: boolean) => React.ReactNode);
+
   onPress?: () => void;
   onLongPress?: () => void;
+
   onFocus?: () => void;
   onBlur?: () => void;
-  hasTVPreferredFocus?: boolean;
+
   disabled?: boolean;
+
   style?: StyleProp<ViewStyle>;
   focusStyle?: StyleProp<ViewStyle>;
-  /** Kept for API compatibility; no longer used. */
-  scaleOnFocus?: number;
   ringOnFocus?: boolean;
-  testID?: string;
+
+  hasTVPreferredFocus?: boolean;
+
   nextFocusUp?: number;
   nextFocusDown?: number;
   nextFocusLeft?: number;
   nextFocusRight?: number;
+
   screenKey?: string;
   focusKey?: string;
+
+  testID?: string;
 }
 
-const SELECT_DEDUPE_MS = 250;
+export const lastFocusedRef: React.MutableRefObject<View | null> = { current: null };
 
-export const Focusable = React.forwardRef<View, FocusableProps>(function Focusable(
-  {
-    children,
-    onPress,
-    onLongPress,
-    onFocus,
-    onBlur,
-    hasTVPreferredFocus = false,
-    disabled = false,
-    style,
-    focusStyle,
-    ringOnFocus = true,
-    testID,
-    nextFocusUp,
-    nextFocusDown,
-    nextFocusLeft,
-    nextFocusRight,
-    screenKey,
-    focusKey,
-  },
-  ref
-) {
-  const [focused, setFocused] = useState(false);
-  const focusedRef = useRef(false);
-  const lastFireRef = useRef(0);
-  const internalRef = useRef<View>(null);
+export const Focusable = forwardRef<View, FocusableProps>(
+  function Focusable(
+    {
+      children,
+      onPress,
+      onLongPress,
+      onFocus,
+      onBlur,
+      disabled = false,
+      style,
+      focusStyle,
+      ringOnFocus = true,
+      hasTVPreferredFocus = false,
+      nextFocusUp,
+      nextFocusDown,
+      nextFocusLeft,
+      nextFocusRight,
+      screenKey,
+      focusKey,
+      testID,
+    },
+    forwardedRef
+  ) {
+    const nativeRef = useRef<View>(null);
+    const [focused, setFocused] = useState(false);
+    const isFocusTrapped = useIsFocusTrapped();
+    const isDisabled = disabled || isFocusTrapped;
 
-  useImperativeHandle(ref, () => internalRef.current as View);
+    // Overlay focus controller for locking navigation inside modal
+    const overlayController = React.useContext(InsideOverlayContext);
+    const idRef = useRef(`focusable-${Math.random().toString(36).substring(2, 9)}`);
+    const [overlayNextFocus, setOverlayNextFocus] = useState<NextFocusTags>({});
 
-  React.useEffect(() => {
-    if (!screenKey || !focusKey) return;
-    FocusMemory.register(screenKey, focusKey, internalRef);
-    return () => {
-      FocusMemory.unregister(screenKey, focusKey);
-    };
-  }, [screenKey, focusKey]);
+    useImperativeHandle(
+      forwardedRef,
+      () => nativeRef.current as View,
+      []
+    );
 
-  const fire = useCallback(() => {
-    if (disabled || !onPress) return;
-    const now = Date.now();
-    if (now - lastFireRef.current < SELECT_DEDUPE_MS) return;
-    lastFireRef.current = now;
-    onPress();
-  }, [disabled, onPress]);
+    // Register with overlay focus controller if inside an overlay
+    React.useEffect(() => {
+      if (!overlayController) return;
+      return overlayController.registerItem(idRef.current, nativeRef as React.RefObject<View>);
+    }, [overlayController]);
 
-  const handleFocus = useCallback(() => {
-    focusedRef.current = true;
-    setFocused(true);
-    if (screenKey && focusKey) {
-      FocusMemory.set(screenKey, focusKey);
-    }
-    onFocus?.();
-  }, [screenKey, focusKey, onFocus]);
+    // Subscribe to overlay controller updates to recalculate nextFocus tags
+    React.useEffect(() => {
+      if (!overlayController) return;
+      const updateTags = () => {
+        const tags = overlayController.getNextFocus(idRef.current);
+        setOverlayNextFocus(tags);
+      };
+      updateTags();
+      return overlayController.subscribe(updateTags);
+    }, [overlayController]);
 
-  const handleBlur = useCallback(() => {
-    focusedRef.current = false;
-    setFocused(false);
-    onBlur?.();
-  }, [onBlur]);
+    React.useEffect(() => {
+      if (!screenKey || !focusKey) return;
 
-  React.useEffect(() => {
-    if (!focused) return;
+      FocusMemory.register?.(
+        screenKey,
+        focusKey,
+        nativeRef
+      );
 
-    let subscription: any;
-    let tvEventHandler: any;
+      return () => {
+        FocusMemory.unregister?.(
+          screenKey,
+          focusKey
+        );
+      };
+    }, [screenKey, focusKey]);
 
-    const handler = (evt: any) => {
-      const type = evt?.eventType;
-      if (type !== "select" && type !== "dpad_center" && type !== "center") return;
-      const action = evt?.eventKeyAction;
-      if (action != null && action !== 0 && action !== "0" && action !== "down") return;
-      fire();
-    };
+    // Auto-focus on mount if this item hasTVPreferredFocus and is active
+    React.useEffect(() => {
+      if (hasTVPreferredFocus && !isDisabled) {
+        const timer = setTimeout(() => {
+          nativeRef.current?.focus?.();
+        }, 50);
+        return () => clearTimeout(timer);
+      }
+    }, [hasTVPreferredFocus, isDisabled]);
 
-    if (typeof TVEventHandler === "function") {
-      tvEventHandler = new (TVEventHandler as any)();
-      tvEventHandler.enable(undefined, (_cmp: any, evt: any) => handler(evt));
-    } else if (TVEventHandler && typeof (TVEventHandler as any).addListener === "function") {
-      subscription = (TVEventHandler as any).addListener(handler);
-    }
+    const handleFocus = useCallback(() => {
+      setFocused(true);
+      lastFocusedRef.current = nativeRef.current;
 
-    return () => {
-      if (tvEventHandler && typeof tvEventHandler.disable === "function") tvEventHandler.disable();
-      if (subscription && typeof subscription.remove === "function") subscription.remove();
-    };
-  }, [focused, fire]);
+      if (screenKey && focusKey) {
+        FocusMemory.set(screenKey, focusKey);
+      }
 
-  const child = typeof children === "function" ? children(focused) : children;
+      onFocus?.();
+    }, [screenKey, focusKey, onFocus]);
 
-  return (
-    <TouchableOpacity
-      ref={internalRef as any}
-      testID={testID}
-      activeOpacity={1}
-      accessible
-      accessibilityRole="button"
-      focusable={!disabled}
-      {...({ isTVSelectable: !disabled } as any)}
-      tvParallaxProperties={{ enabled: false }}
-      hasTVPreferredFocus={hasTVPreferredFocus}
-      nextFocusUp={nextFocusUp}
-      nextFocusDown={nextFocusDown}
-      nextFocusLeft={nextFocusLeft}
-      nextFocusRight={nextFocusRight}
-      onPress={disabled ? undefined : fire}
-      onLongPress={disabled ? undefined : onLongPress}
-      onFocus={handleFocus}
-      onBlur={handleBlur}
-      style={[
-        style,
-        focused && ringOnFocus && styles.ring,
-        focused && focusStyle,
-      ]}
-    >
-      {child}
-    </TouchableOpacity>
-  );
-});
+    const handleBlur = useCallback(() => {
+      setFocused(false);
+      onBlur?.();
+    }, [onBlur]);
+
+    const handlePress = useCallback(() => {
+      onPress?.();
+    }, [onPress]);
+
+    React.useEffect(() => {
+      if (!focused || disabled || !onPress) return;
+      const tag = findNodeHandle(nativeRef.current);
+      if (!tag) return;
+      FocusableRegistry.register(tag, handlePress);
+      return () => {
+        FocusableRegistry.unregister(tag);
+      };
+    }, [focused, disabled, onPress, handlePress]);
+
+    const content =
+      typeof children === "function"
+        ? children(focused)
+        : children;
+
+    // Effective next focus props: explicit props take precedence over overlay auto-tags
+    const effUp = nextFocusUp ?? overlayNextFocus.nextFocusUp;
+    const effDown = nextFocusDown ?? overlayNextFocus.nextFocusDown;
+    const effLeft = nextFocusLeft ?? overlayNextFocus.nextFocusLeft;
+    const effRight = nextFocusRight ?? overlayNextFocus.nextFocusRight;
+
+    return (
+      <Pressable
+        ref={nativeRef}
+        testID={testID}
+        disabled={isDisabled}
+        focusable={!isDisabled}
+        accessible
+        accessibilityRole="button"
+        hasTVPreferredFocus={!isFocusTrapped && hasTVPreferredFocus}
+        nextFocusUp={effUp}
+        nextFocusDown={effDown}
+        nextFocusLeft={effLeft}
+        nextFocusRight={effRight}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        onPress={isDisabled ? undefined : handlePress}
+        onLongPress={onLongPress}
+        style={({ pressed }) => [
+          style,
+          focused && ringOnFocus && styles.focused,
+          focused && focusStyle,
+          pressed && styles.pressed,
+        ]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+);
 
 const styles = StyleSheet.create({
-  ring: {
+  focused: {
     borderWidth: 3,
-    borderColor: "#ffffff",
+    borderColor: "#fff",
+  },
+
+  pressed: {
+    opacity: 0.7,
   },
 });
 
