@@ -118,14 +118,15 @@ class AppBootManagerClass {
      */
     private async loadPortalDataFromStorage(portal: Portal): Promise<void> {
         try {
-            // Import portalApi dynamically to avoid circular deps
+            // 1. Load durable non-expiring data from AsyncStorage into store first
+            const store = usePortalStore.getState();
+            await store.loadPortalData(portal.id);
+
+            // 2. Import portalApi dynamically and upgrade from cacheManager if available
             const { portalApi } = await import("./portalApi");
-
-            // Use portalApi's restore function which uses correct cache keys
             await portalApi.restoreCachedPortalData(portal);
-
         } catch (e) {
-            console.warn("Failed to load portal data from cache:", e);
+            console.warn("Failed to load portal data from storage:", e);
         }
     }
 

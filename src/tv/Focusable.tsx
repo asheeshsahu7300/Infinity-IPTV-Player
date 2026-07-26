@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useImperativeHandle, useRef, useState } from "react";
 import {
   StyleProp,
   StyleSheet,
@@ -7,6 +7,8 @@ import {
   View,
   ViewStyle,
 } from "react-native";
+
+import { FocusMemory } from "./FocusMemory";
 
 export interface FocusableProps {
   children?: React.ReactNode | ((focused: boolean) => React.ReactNode);
@@ -26,33 +28,12 @@ export interface FocusableProps {
   nextFocusDown?: number;
   nextFocusLeft?: number;
   nextFocusRight?: number;
+  screenKey?: string;
+  focusKey?: string;
 }
 
 const SELECT_DEDUPE_MS = 250;
 
-/**
- * The single canonical focusable for the app.
- *
- * Why both `onPress` AND a TV `select` listener?
- *
- * Android docs: "Select button: Selects the on-screen item with focus." On
- * rn-tvos, the path that should deliver this — Pressability's `onClick` on
- * the underlying View when DPAD_CENTER fires `performClick()` — is gated by
- * a filter (`Pressability.js`: drops clicks on Android TV when
- * `event.eventType` is null) that can swallow the OK press depending on how
- * the device's focus engine emits the synthetic click. When that happens,
- * `onPress` never fires, even though the view is correctly focusable.
- *
- * To match the documented Android TV behavior reliably, we ALSO listen for
- * the `select` TV event while this Focusable holds focus. A small dedupe
- * window prevents double-fire when both paths happen to deliver.
- *
- *  - Native focus engine drives navigation (the focused TouchableOpacity).
- *  - `onPress` fires from Pressability when the click event isn't filtered.
- *  - `select` from `useTVEventHandler` fires when this view is focused.
- *  - Whichever arrives first wins; the second is dropped within
- *    `SELECT_DEDUPE_MS`.
- */
 export const Focusable = React.forwardRef<View, FocusableProps>(function Focusable(
   {
     children,
@@ -70,12 +51,25 @@ export const Focusable = React.forwardRef<View, FocusableProps>(function Focusab
     nextFocusDown,
     nextFocusLeft,
     nextFocusRight,
+    screenKey,
+    focusKey,
   },
   ref
 ) {
   const [focused, setFocused] = useState(false);
   const focusedRef = useRef(false);
   const lastFireRef = useRef(0);
+  const internalRef = useRef<View>(null);
+
+  useImperativeHandle(ref, () => internalRef.current as View);
+
+  React.useEffect(() => {
+    if (!screenKey || !focusKey) return;
+    FocusMemory.register(screenKey, focusKey, internalRef);
+    return () => {
+      FocusMemory.unregister(screenKey, focusKey);
+    };
+  }, [screenKey, focusKey]);
 
   const fire = useCallback(() => {
     if (disabled || !onPress) return;
@@ -88,8 +82,11 @@ export const Focusable = React.forwardRef<View, FocusableProps>(function Focusab
   const handleFocus = useCallback(() => {
     focusedRef.current = true;
     setFocused(true);
+    if (screenKey && focusKey) {
+      FocusMemory.set(screenKey, focusKey);
+    }
     onFocus?.();
-  }, [onFocus]);
+  }, [screenKey, focusKey, onFocus]);
 
   const handleBlur = useCallback(() => {
     focusedRef.current = false;
@@ -97,9 +94,6 @@ export const Focusable = React.forwardRef<View, FocusableProps>(function Focusab
     onBlur?.();
   }, [onBlur]);
 
-  // Fallback path: the native focus engine sends `select` here when this
-  // view holds focus. We only subscribe to TV events when the view is actually
-  // focused to avoid performance issues (e.g. 50 listeners for 50 Focusables).
   React.useEffect(() => {
     if (!focused) return;
 
@@ -115,11 +109,9 @@ export const Focusable = React.forwardRef<View, FocusableProps>(function Focusab
     };
 
     if (typeof TVEventHandler === "function") {
-      // Legacy RN API
       tvEventHandler = new (TVEventHandler as any)();
       tvEventHandler.enable(undefined, (_cmp: any, evt: any) => handler(evt));
     } else if (TVEventHandler && typeof (TVEventHandler as any).addListener === "function") {
-      // Modern RN API
       subscription = (TVEventHandler as any).addListener(handler);
     }
 
@@ -133,7 +125,7 @@ export const Focusable = React.forwardRef<View, FocusableProps>(function Focusab
 
   return (
     <TouchableOpacity
-      ref={ref as any}
+      ref={internalRef as any}
       testID={testID}
       activeOpacity={1}
       accessible

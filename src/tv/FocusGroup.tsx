@@ -21,7 +21,7 @@ export interface FocusGroupProps {
 export function FocusGroup({
   children,
   style,
-  autoFocus,
+  autoFocus = false,
   trapUp,
   trapDown,
   trapLeft,

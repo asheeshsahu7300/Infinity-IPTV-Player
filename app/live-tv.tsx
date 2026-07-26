@@ -222,20 +222,25 @@ export default function LiveTVScreen() {
     try {
       reset ? setIsLoading(true) : setLoadingMore(true);
       let list: Channel[] = [];
-      const cat = !categoryId || categoryId === "all" ? undefined : categoryId;
+      const cat = !categoryId || categoryId === "all" || categoryId === "*" ? undefined : categoryId;
 
       if (activePortal.type === "m3u") {
         if (allChannelsCacheRef.current.length === 0) {
+          if (storeChannels.length > 0) {
+            allChannelsCacheRef.current = storeChannels;
+          }
           const api = new M3UApi({ url: activePortal.config.url, portalId: activePortal.id });
           const raw = (await api.getLiveChannels(undefined, 1, 100000)) || [];
-          allChannelsCacheRef.current = raw.map((c: any) => ({
-            id: String(c.id),
-            name: c.name,
-            logo: c.logo,
-            category: c.category,
-            categoryId: c.categoryId ?? c.category,
-            streamUrl: c.streamUrl,
-          }));
+          if (Array.isArray(raw) && raw.length > 0) {
+            allChannelsCacheRef.current = raw.map((c: any) => ({
+              id: String(c.id),
+              name: c.name,
+              logo: c.logo,
+              category: c.category,
+              categoryId: c.categoryId ?? c.category,
+              streamUrl: c.streamUrl,
+            }));
+          }
         }
         const filtered = !cat
           ? allChannelsCacheRef.current
@@ -245,8 +250,13 @@ export default function LiveTVScreen() {
         setHasMore(filtered.length > list.length);
       } else if (activePortal.type === "xtream") {
         if (allChannelsCacheRef.current.length === 0) {
+          if (storeChannels.length > 0) {
+            allChannelsCacheRef.current = storeChannels;
+          }
           const all = (await xtreamApiRef.current!.getitvChannels(undefined, 1, 100000)) || [];
-          allChannelsCacheRef.current = all;
+          if (Array.isArray(all) && all.length > 0) {
+            allChannelsCacheRef.current = all;
+          }
         }
         const filtered = !cat
           ? allChannelsCacheRef.current
@@ -255,16 +265,14 @@ export default function LiveTVScreen() {
         list = filtered.slice(0, pageNum * PAGE_SIZE);
         setHasMore(filtered.length > list.length);
       } else {
-        // MAG / Stalker: server-side pagination. The MAG server controls page
-        // size (typically ~14, never our PAGE_SIZE=28), so use "non-empty" as
-        // the hasMore signal — keep paging until the API returns nothing.
-        // Read the store at call time (not the useCallback closure) so rapid
-        // back-to-back load-more calls can't drop a page.
         const fresh = (await portalApi.getLiveChannels(activePortal, cat, pageNum)) || [];
         const current = usePortalStore.getState().channels;
-        list = reset
-          ? fresh
-          : [...current, ...fresh.filter(i => !current.find(c => c.id === i.id))];
+        if (reset) {
+          // A failed/empty refresh should never blank a screen that already has data.
+          list = fresh.length > 0 || current.length === 0 ? fresh : current;
+        } else {
+          list = [...current, ...fresh.filter(i => !current.find(c => c.id === i.id))];
+        }
         setHasMore(fresh.length > 0);
       }
 
@@ -304,7 +312,8 @@ export default function LiveTVScreen() {
 
     if (activePortal.type === "xtream" || activePortal.type === "m3u") {
       if (allChannelsCacheRef.current.length > 0) {
-        const cat = selectedCategory === "all" ? undefined : selectedCategory;
+        const isAll = !selectedCategory || selectedCategory === "all" || selectedCategory === "*";
+        const cat = isAll ? undefined : selectedCategory;
         const filtered = !cat
           ? allChannelsCacheRef.current
           : allChannelsCacheRef.current.filter(c => String(c.categoryId) === String(cat));
@@ -429,7 +438,7 @@ export default function LiveTVScreen() {
       const matchByCategory =
         (debouncedQuery && isXtreamOrM3U)
           ? true
-          : selectedCategory === "all" || String(c.categoryId) === String(selectedCategory);
+          : selectedCategory === "all" || selectedCategory === "*" || String(c.categoryId) === String(selectedCategory);
 
       const matchBySearch =
         !debouncedQuery || c.name.toLowerCase().includes(debouncedQuery.toLowerCase());

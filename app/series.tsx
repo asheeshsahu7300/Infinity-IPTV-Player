@@ -377,7 +377,8 @@ export default function SeriesScreen() {
 
     if (activePortal.type === "xtream" || activePortal.type === "m3u") {
       if (allSeriesCacheRef.current.length > 0) {
-        const cat = selectedCategory === "all" ? undefined : selectedCategory;
+        const isAll = !selectedCategory || selectedCategory === "all" || selectedCategory === "*";
+        const cat = isAll ? undefined : selectedCategory;
         const filtered = !cat
           ? allSeriesCacheRef.current
           : allSeriesCacheRef.current.filter(s => String(s.categoryId) === String(cat));
@@ -407,13 +408,17 @@ export default function SeriesScreen() {
       } else {
         cats = await portalApi.getSeriesCategories(activePortal);
       }
-      // Read live state at call-time to avoid overwriting live/vod categories
+      const fetchedSeriesCats = (Array.isArray(cats) ? cats : []).map(c => ({
+        ...c,
+        type: "series" as const,
+      }));
       const currentCategories = usePortalStore.getState().categories || [];
-      const others = currentCategories.filter(c => c.type !== "series");
-      setCategories([...others, ...(Array.isArray(cats) ? cats : [])]);
+      const others = currentCategories.filter(c => c.type && c.type !== "series");
+      if (fetchedSeriesCats.length > 0) {
+        setCategories([...others, ...fetchedSeriesCats]);
+      }
     } catch (e) {
-      console.error(e);
-      // On error, do NOT clear categories — leave existing ones intact
+      console.error("Failed to load series categories:", e);
     }
   };
 
@@ -422,46 +427,51 @@ export default function SeriesScreen() {
     try {
       reset ? setIsLoading(true) : setLoadingMore(true);
       let items: Series[] = [];
-      const cat = !categoryId || categoryId === "all" ? undefined : categoryId;
+      const cat = !categoryId || categoryId === "all" || categoryId === "*" ? undefined : categoryId;
 
-      if (activePortal.type === "m3u") {
+      if (activePortal.type === "m3u" || activePortal.type === "xtream") {
         if (allSeriesCacheRef.current.length === 0) {
-          items = await new M3UApi({ url: activePortal.config.url }).getSeries(undefined);
-          allSeriesCacheRef.current = Array.isArray(items) ? items : [];
+          if (series.length > 0) {
+            allSeriesCacheRef.current = series;
+          } else {
+            let fetched: Series[] = [];
+            if (activePortal.type === "m3u") {
+              fetched = await new M3UApi({ url: activePortal.config.url }).getSeries(undefined);
+            } else if (activePortal.type === "xtream") {
+              fetched = await xtreamApiRef.current!.getSeries(undefined, 1, 100000);
+            }
+            if (Array.isArray(fetched) && fetched.length > 0) {
+              allSeriesCacheRef.current = fetched;
+            }
+          }
         }
+
+        const selectedCatObj = (categories || []).find(c => String(c.id) === String(cat));
         const filtered = !cat
           ? allSeriesCacheRef.current
-          : allSeriesCacheRef.current.filter(s => String(s.categoryId) === String(cat));
+          : allSeriesCacheRef.current.filter(s => {
+              const sCatId = String(s.categoryId ?? "");
+              const targetCatId = String(cat);
+              if (sCatId === targetCatId) return true;
+              if (selectedCatObj && s.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
+              return false;
+            });
+
         fullListRef.current = filtered;
         const sliced = filtered.slice(0, pageNum * PAGE_SIZE);
         if (!reset) trapFocusBriefly();
-        setSeries(sliced);
-        setHasMore(filtered.length > sliced.length);
+        if (sliced.length > 0 || series.length === 0) setSeries(sliced);
+        setHasMore(filtered.length > (sliced.length || series.length));
         setPage(pageNum);
-        if (reset) restoreFocusPosition(sliced);
-      } else if (activePortal.type === "xtream") {
-        if (allSeriesCacheRef.current.length === 0) {
-          const all = await xtreamApiRef.current!.getSeries(undefined, 1, 100000);
-          allSeriesCacheRef.current = Array.isArray(all) ? all : [];
-        }
-        const filtered = !cat
-          ? allSeriesCacheRef.current
-          : allSeriesCacheRef.current.filter(s => String(s.categoryId) === String(cat));
-        fullListRef.current = filtered;
-        const sliced = filtered.slice(0, pageNum * PAGE_SIZE);
-        if (!reset) trapFocusBriefly();
-        setSeries(sliced);
-        setHasMore(filtered.length > sliced.length);
-        setPage(pageNum);
-        if (reset) restoreFocusPosition(sliced);
+        if (reset && sliced.length > 0) restoreFocusPosition(sliced);
       } else {
-        // MAG / Stalker: server-side pagination
+        // MAG / Stalker: Server-side pagination (14 items per page, infinite scroll as user scrolls)
         const fresh = await portalApi.getSeries(activePortal, cat, pageNum);
         items = Array.isArray(fresh) ? fresh : [];
         const current = usePortalStore.getState().series;
         const updatedList = reset
-          ? items
-          : [...current, ...items.filter(i => !current.find(s => s.id === i.id))];
+          ? (items.length > 0 || current.length === 0 ? items : current)
+          : [...current, ...items.filter(i => !current.some(s => s.id === i.id))];
         if (!reset) trapFocusBriefly();
         setSeries(updatedList);
         setHasMore(items.length > 0);
@@ -661,14 +671,17 @@ export default function SeriesScreen() {
     index,
   }), [ROW_HEIGHT]);
 
-  const sidebarCategories: Category[] = [
-    { id: "all", name: "All Series", type: "series" },
-    ...categories.filter(c =>
-      c.type === "series" &&
+  const sidebarCategories: Category[] = useMemo(() => {
+    const seriesCats = (categories || []).filter(c =>
+      (!c.type || c.type === "series") &&
       c.name.toLowerCase() !== "all" &&
       c.name.toLowerCase() !== "all series"
-    ),
-  ];
+    );
+    return [
+      { id: "all", name: "All Series", type: "series" as const },
+      ...seriesCats,
+    ];
+  }, [categories]);
 
   const searchInputRef = useRef<TextInput>(null);
 

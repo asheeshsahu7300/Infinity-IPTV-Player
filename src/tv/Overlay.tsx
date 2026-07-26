@@ -88,7 +88,7 @@ export function Overlay({
         />
         <FocusGroup 
           style={[styles.content, contentStyle]}
-          autoFocus={true}
+          autoFocus={false}
           trapUp={trapFocus}
           trapDown={trapFocus}
           trapLeft={trapFocus}

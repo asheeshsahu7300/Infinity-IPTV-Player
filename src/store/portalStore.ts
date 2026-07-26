@@ -378,54 +378,63 @@ export const usePortalStore = create<PortalState>((set, get) => ({
   // TV DATA SETTERS (with AsyncStorage persistence & stale-portal guard)
   // These REPLACE the entire array — used for hard-refresh / initial load.
   // ---------------------------------------
+  // ---------------------------------------
+  // TV DATA SETTERS (with AsyncStorage persistence & stale-portal guard)
+  // These REPLACE the entire array — used for hard-refresh / initial load.
+  // ---------------------------------------
   setChannels: async (channels, targetPortalId) => {
-    const activePortal = get().activePortal;
-    if (targetPortalId && activePortal?.id !== targetPortalId) return;
-    set({ channels });
-    if (activePortal) {
-      await AsyncStorage.setItem(`portal:${activePortal.id}:channels`, JSON.stringify(channels)).catch(console.warn);
+    const portalId = targetPortalId || get().activePortal?.id;
+    if (channels && channels.length > 0) {
+      set({ channels });
+      if (portalId) {
+        await AsyncStorage.setItem(`portal:${portalId}:channels`, JSON.stringify(channels)).catch(console.warn);
+      }
     }
   },
   setVodItems: async (items, targetPortalId) => {
-    const activePortal = get().activePortal;
-    if (targetPortalId && activePortal?.id !== targetPortalId) return;
-    set({ vodItems: items });
-    if (activePortal) {
-      await AsyncStorage.setItem(`portal:${activePortal.id}:vod`, JSON.stringify(items)).catch(console.warn);
+    const portalId = targetPortalId || get().activePortal?.id;
+    if (items && items.length > 0) {
+      set({ vodItems: items });
+      if (portalId) {
+        await AsyncStorage.setItem(`portal:${portalId}:vod`, JSON.stringify(items)).catch(console.warn);
+      }
     }
   },
   setSeries: async (series, targetPortalId) => {
-    const activePortal = get().activePortal;
-    if (targetPortalId && activePortal?.id !== targetPortalId) return;
-    set({ series });
-    if (activePortal) {
-      await AsyncStorage.setItem(`portal:${activePortal.id}:series`, JSON.stringify(series)).catch(console.warn);
+    const portalId = targetPortalId || get().activePortal?.id;
+    if (series && series.length > 0) {
+      set({ series });
+      if (portalId) {
+        await AsyncStorage.setItem(`portal:${portalId}:series`, JSON.stringify(series)).catch(console.warn);
+      }
     }
   },
   setCategories: async (categories, targetPortalId) => {
     const activePortal = get().activePortal;
-    if (targetPortalId && activePortal?.id !== targetPortalId) return;
-    set({ categories });
-    if (activePortal) {
-      // 1. Store in active portal configuration (permanent)
-      const updatedPortal = { ...activePortal, categories };
-      set({ activePortal: updatedPortal });
-
-      // 2. Update in portals list (permanent)
-      const portals = get().portals.map(p => p.id === updatedPortal.id ? updatedPortal : p);
-      set({ portals });
-      await AsyncStorage.setItem("portals", JSON.stringify(portals));
-
-      // 3. Also keep separate for legacy/direct loading if needed
-      await AsyncStorage.setItem(`portal:${activePortal.id}:categories`, JSON.stringify(categories)).catch(console.warn);
+    const portalId = targetPortalId || activePortal?.id;
+    if (categories && categories.length > 0) {
+      const current = get().categories || [];
+      const merged = mergeById(current, categories);
+      set({ categories: merged });
+      if (activePortal) {
+        const updatedPortal = { ...activePortal, categories: merged };
+        set({ activePortal: updatedPortal });
+        const portals = get().portals.map(p => p.id === updatedPortal.id ? updatedPortal : p);
+        set({ portals });
+        await AsyncStorage.setItem("portals", JSON.stringify(portals));
+      }
+      if (portalId) {
+        await AsyncStorage.setItem(`portal:${portalId}:categories`, JSON.stringify(merged)).catch(console.warn);
+      }
     }
   },
   setEpgData: async (data, targetPortalId) => {
-    const activePortal = get().activePortal;
-    if (targetPortalId && activePortal?.id !== targetPortalId) return;
-    set({ epgData: data });
-    if (activePortal) {
-      await AsyncStorage.setItem(`portal:${activePortal.id}:epg`, JSON.stringify(data)).catch(console.warn);
+    const portalId = targetPortalId || get().activePortal?.id;
+    if (data && data.length > 0) {
+      set({ epgData: data });
+      if (portalId) {
+        await AsyncStorage.setItem(`portal:${portalId}:epg`, JSON.stringify(data)).catch(console.warn);
+      }
     }
   },
 
@@ -434,37 +443,37 @@ export const usePortalStore = create<PortalState>((set, get) => ({
   // Used by background sync so paginated data isn't collapsed to page 1.
   // ---------------------------------------
   mergeChannels: async (channels, targetPortalId) => {
-    const activePortal = get().activePortal;
-    if (targetPortalId && activePortal?.id !== targetPortalId) return;
+    const portalId = targetPortalId || get().activePortal?.id;
+    if (!channels || channels.length === 0) return;
     const merged = mergeById(get().channels, channels);
     set({ channels: merged });
-    if (activePortal) {
-      await AsyncStorage.setItem(`portal:${activePortal.id}:channels`, JSON.stringify(merged)).catch(console.warn);
+    if (portalId) {
+      await AsyncStorage.setItem(`portal:${portalId}:channels`, JSON.stringify(merged)).catch(console.warn);
     }
   },
   mergeVodItems: async (items, targetPortalId) => {
-    const activePortal = get().activePortal;
-    if (targetPortalId && activePortal?.id !== targetPortalId) return;
+    const portalId = targetPortalId || get().activePortal?.id;
+    if (!items || items.length === 0) return;
     const merged = mergeById(get().vodItems, items);
     set({ vodItems: merged });
-    if (activePortal) {
-      await AsyncStorage.setItem(`portal:${activePortal.id}:vod`, JSON.stringify(merged)).catch(console.warn);
+    if (portalId) {
+      await AsyncStorage.setItem(`portal:${portalId}:vod`, JSON.stringify(merged)).catch(console.warn);
     }
   },
   mergeSeries: async (series, targetPortalId) => {
-    const activePortal = get().activePortal;
-    if (targetPortalId && activePortal?.id !== targetPortalId) return;
+    const portalId = targetPortalId || get().activePortal?.id;
+    if (!series || series.length === 0) return;
     const merged = mergeById(get().series, series);
     set({ series: merged });
-    if (activePortal) {
-      await AsyncStorage.setItem(`portal:${activePortal.id}:series`, JSON.stringify(merged)).catch(console.warn);
+    if (portalId) {
+      await AsyncStorage.setItem(`portal:${portalId}:series`, JSON.stringify(merged)).catch(console.warn);
     }
   },
 
   // Load portal data from AsyncStorage
   loadPortalData: async (portalId) => {
     try {
-      const [channels, vodItems, series, categories, epgData] = await Promise.all([
+      const [channelsStr, vodItemsStr, seriesStr, categoriesStr, epgDataStr] = await Promise.all([
         AsyncStorage.getItem(`portal:${portalId}:channels`),
         AsyncStorage.getItem(`portal:${portalId}:vod`),
         AsyncStorage.getItem(`portal:${portalId}:series`),
@@ -473,15 +482,22 @@ export const usePortalStore = create<PortalState>((set, get) => ({
       ]);
 
       const nowCutoff = Date.now() - 12 * 60 * 60 * 1000;
-      const parsedEpg: EPGProgram[] = epgData ? JSON.parse(epgData) : [];
+      const parsedEpg: EPGProgram[] = epgDataStr ? JSON.parse(epgDataStr) : [];
       const validEpg = parsedEpg.filter((p) => p.end >= nowCutoff);
 
+      const parsedChannels = channelsStr ? JSON.parse(channelsStr) : [];
+      const parsedVod = vodItemsStr ? JSON.parse(vodItemsStr) : [];
+      const parsedSeries = seriesStr ? JSON.parse(seriesStr) : [];
+      const parsedCats = categoriesStr ? JSON.parse(categoriesStr) : [];
+
+      const current = get();
+
       set({
-        channels: channels ? JSON.parse(channels) : [],
-        vodItems: vodItems ? JSON.parse(vodItems) : [],
-        series: series ? JSON.parse(series) : [],
-        categories: categories ? JSON.parse(categories) : [],
-        epgData: validEpg,
+        channels: parsedChannels.length > 0 ? parsedChannels : current.channels,
+        vodItems: parsedVod.length > 0 ? parsedVod : current.vodItems,
+        series: parsedSeries.length > 0 ? parsedSeries : current.series,
+        categories: parsedCats.length > 0 ? parsedCats : current.categories,
+        epgData: validEpg.length > 0 ? validEpg : current.epgData,
       });
     } catch (err) {
       console.warn("Failed to load portal data from storage:", err);

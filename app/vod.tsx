@@ -421,7 +421,8 @@ export default function VODScreen() {
 
     if (activePortal.type === "xtream" || activePortal.type === "m3u") {
       if (allVodCacheRef.current.length > 0) {
-        const cat = selectedCategory === "all" ? undefined : selectedCategory;
+        const isAll = !selectedCategory || selectedCategory === "all" || selectedCategory === "*";
+        const cat = isAll ? undefined : selectedCategory;
         const filtered = !cat
           ? allVodCacheRef.current
           : allVodCacheRef.current.filter(v => String(v.categoryId) === String(cat));
@@ -466,46 +467,53 @@ export default function VODScreen() {
     try {
       reset ? setIsLoading(true) : setLoadingMore(true);
       let items: VODItem[] = [];
-      const cat = !categoryId || categoryId === "all" ? undefined : categoryId;
+      const cat = !categoryId || categoryId === "all" || categoryId === "*" ? undefined : categoryId;
 
-      if (activePortal.type === "m3u") {
+      if (activePortal.type === "m3u" || activePortal.type === "xtream") {
         if (allVodCacheRef.current.length === 0) {
-          items = await new M3UApi({ url: activePortal.config.url }).getVodItems(undefined);
-          allVodCacheRef.current = Array.isArray(items) ? items : [];
+          if (vodItems.length > 0) {
+            allVodCacheRef.current = vodItems;
+          } else {
+            let fetched: VODItem[] = [];
+            if (activePortal.type === "m3u") {
+              fetched = await new M3UApi({ url: activePortal.config.url }).getVodItems(undefined);
+            } else if (activePortal.type === "xtream") {
+              fetched = await xtreamApiRef.current!.getVodItems(undefined, 1, 100000);
+            }
+            if (Array.isArray(fetched) && fetched.length > 0) {
+              allVodCacheRef.current = fetched;
+            }
+          }
         }
+
+        const selectedCatObj = (categories || []).find(c => String(c.id) === String(cat));
         const filtered = !cat
           ? allVodCacheRef.current
-          : allVodCacheRef.current.filter(v => String(v.categoryId) === String(cat));
+          : allVodCacheRef.current.filter(v => {
+              const vCatId = String(v.categoryId ?? "");
+              const targetCatId = String(cat);
+              if (vCatId === targetCatId) return true;
+              if (selectedCatObj && v.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
+              return false;
+            });
+
         fullListRef.current = filtered;
         const sliced = filtered.slice(0, pageNum * PAGE_SIZE);
         if (!reset) trapFocusBriefly();
-        setVodItems(sliced);
-        setHasMore(filtered.length > sliced.length);
-        setPage(pageNum);
-        if (reset) restoreFocusPosition(sliced);
-      } else if (activePortal.type === "xtream") {
-        if (allVodCacheRef.current.length === 0) {
-          const all = await xtreamApiRef.current!.getVodItems(undefined, 1, 100000);
-          allVodCacheRef.current = Array.isArray(all) ? all : [];
+        if (sliced.length > 0 || vodItems.length === 0) {
+          setVodItems(sliced);
         }
-        const filtered = !cat
-          ? allVodCacheRef.current
-          : allVodCacheRef.current.filter(v => String(v.categoryId) === String(cat));
-        fullListRef.current = filtered;
-        const sliced = filtered.slice(0, pageNum * PAGE_SIZE);
-        if (!reset) trapFocusBriefly();
-        setVodItems(sliced);
-        setHasMore(filtered.length > sliced.length);
+        setHasMore(filtered.length > (sliced.length || vodItems.length));
         setPage(pageNum);
-        if (reset) restoreFocusPosition(sliced);
+        if (reset && sliced.length > 0) restoreFocusPosition(sliced);
       } else {
-        // MAG / Stalker: server-side pagination
+        // MAG / Stalker: Server-side pagination (14 items per page, infinite scroll as user scrolls)
         const fresh = await portalApi.getVodItems(activePortal, cat, pageNum);
         items = Array.isArray(fresh) ? fresh : [];
         const current = usePortalStore.getState().vodItems;
         const updatedList = reset
-          ? items
-          : [...current, ...items.filter(i => !current.find(v => v.id === i.id))];
+          ? (items.length > 0 || current.length === 0 ? items : current)
+          : [...current, ...items.filter(i => !current.some(v => v.id === i.id))];
         if (!reset) trapFocusBriefly();
         setVodItems(updatedList);
         setHasMore(items.length > 0);

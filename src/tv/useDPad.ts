@@ -40,6 +40,12 @@ const isKeyDown = (evt: any): boolean => {
 };
 
 export function useDPad(handlers: DPadHandlers, enabled: boolean = true) {
+  const handlersRef = React.useRef(handlers);
+
+  React.useEffect(() => {
+    handlersRef.current = handlers;
+  }, [handlers]);
+
   React.useEffect(() => {
     if (!enabled) return;
     if (Platform.OS !== "android" && Platform.OS !== "ios") return;
@@ -53,33 +59,35 @@ export function useDPad(handlers: DPadHandlers, enabled: boolean = true) {
       const type = evt?.eventType;
       if (!type) return;
 
+      const current = handlersRef.current;
+
       if (type === "select" || type === "dpad_center" || type === "center") {
-        handlers.onSelect?.();
+        current.onSelect?.();
       } else if (type === "up") {
-        handlers.onUp?.();
+        current.onUp?.();
       } else if (type === "down") {
-        handlers.onDown?.();
+        current.onDown?.();
       } else if (type === "left") {
-        handlers.onLeft?.();
+        current.onLeft?.();
       } else if (type === "right") {
-        handlers.onRight?.();
+        current.onRight?.();
       } else if (type === "longSelect") {
-        handlers.onLongSelect?.();
+        current.onLongSelect?.();
       } else if (type === "playPause") {
-        handlers.onPlayPause?.();
+        current.onPlayPause?.();
       } else if (type === "fastForward") {
-        handlers.onFastForward?.();
+        current.onFastForward?.();
       } else if (type === "rewind") {
-        handlers.onRewind?.();
+        current.onRewind?.();
       } else if (type === "menu") {
-        handlers.onMenu?.();
+        current.onMenu?.();
       } else if (type === "pageUp") {
-        handlers.onPageUp?.();
+        current.onPageUp?.();
       } else if (type === "pageDown") {
-        handlers.onPageDown?.();
+        current.onPageDown?.();
       }
 
-      handlers.onAny?.(type);
+      current.onAny?.(type);
     };
 
     if (typeof TVEventHandler === "function") {
@@ -93,7 +101,7 @@ export function useDPad(handlers: DPadHandlers, enabled: boolean = true) {
       if (tvEventHandler && typeof tvEventHandler.disable === "function") tvEventHandler.disable();
       if (subscription && typeof subscription.remove === "function") subscription.remove();
     };
-  }, [enabled, handlers]);
+  }, [enabled]);
 }
 
 // Default no-op export to keep import paths simple

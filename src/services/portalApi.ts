@@ -134,8 +134,7 @@ const headers = (mac: string, token?: string, url?: string) => {
   }
 
   return {
-    "User-Agent":
-      "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG254 Safari/533.3",
+    "User-Agent": "okhttp/3.12.1",
     "Accept-Encoding": "gzip",
     Accept: "application/json, text/javascript, */*; q=0.01",
     "Accept-Language": "en-US,en;q=0.9",
@@ -262,39 +261,42 @@ const pickDescription = (v: any): string => {
 const tokenRefreshMap = new Map<string, Promise<Portal>>();
 const warmPromiseMap = new Map<string, Promise<void>>();
 
-const isExpired = (p: Portal) =>
-  !p?.config?.token ||
-  !p?.config?.expiry ||
-  Number(p.config.expiry) - Date.now() < 5 * 60 * 1000;
+const isExpired = (p: Portal) => {
+  if (!p?.config?.token) return true;
+  if (!p?.config?.expiry) return false;
+  return Number(p.config.expiry) - Date.now() < 5 * 60 * 1000;
+};
 
-async function refreshToken(portal: Portal): Promise<Portal> {
-  if (!isExpired(portal)) return portal;
+async function refreshToken(portal: Portal, forceRefresh = false): Promise<Portal> {
+  if (!forceRefresh && !isExpired(portal)) return portal;
 
   const key = portal.id;
 
   // Reuse in-flight refresh
-  if (tokenRefreshMap.has(key)) {
+  if (!forceRefresh && tokenRefreshMap.has(key)) {
     return tokenRefreshMap.get(key)!;
   }
 
   const cacheKey = `portal:${key}:auth`;
 
   const refreshPromise = (async () => {
-    // Try cached token first
-    const cached = await cacheManager.get<any>(cacheKey);
-    if (cached && cached.expiry > Date.now() + 5 * 60 * 1000) {
-      const updated = {
-        ...portal,
-        config: { ...portal.config, ...cached },
-      };
-      // 🟢 Sync to global state if still active
-      const store = usePortalStore.getState();
-      if (store.activePortal?.id === portal.id) {
-        await store.setActivePortal(updated);
-      } else {
-        await store.updatePortal(portal.id, { config: updated.config });
+    // Try cached token first unless forceRefresh is true
+    if (!forceRefresh) {
+      const cached = await cacheManager.get<any>(cacheKey);
+      if (cached && cached.expiry > Date.now() + 5 * 60 * 1000) {
+        const updated = {
+          ...portal,
+          config: { ...portal.config, ...cached },
+        };
+        // 🟢 Sync to global state if still active
+        const store = usePortalStore.getState();
+        if (store.activePortal?.id === portal.id) {
+          await store.setActivePortal(updated);
+        } else {
+          await store.updatePortal(portal.id, { config: updated.config });
+        }
+        return updated;
       }
-      return updated;
     }
 
     // Start new auth flow
@@ -323,13 +325,6 @@ async function refreshToken(portal: Portal): Promise<Portal> {
       { token: auth.token, expiry: auth.expiry, serverInfo: auth.serverInfo },
       CACHE_TTL.AUTH
     );
-
-    // Warm portal data on first handshake
-    try {
-      portalApi.warmPortalData(updated).catch(() => { });
-    } catch {
-      // ignore
-    }
 
     return updated;
   })();
@@ -395,18 +390,38 @@ export const portalApi = {
       }
     }
 
+    const handshakeData = handshake?.data?.js ?? {};
     const profileData = profile?.data?.js ?? {};
-    const lifetimeSec = Number(
-      profileData.token_page_lifetime ??
+
+    // Parse explicit epoch timestamp if present (expiresAt or expiry), else calculate from lifetime
+    const rawEpoch = Number(
+      handshakeData.expiresAt ??
+      handshakeData.expiry ??
+      profileData.expiresAt ??
+      profileData.expiry ??
+      0
+    );
+
+    let expiryMs: number;
+    if (rawEpoch > Date.now() / 1000) {
+      // Future epoch timestamp — convert seconds to ms if necessary
+      expiryMs = rawEpoch < 1e12 ? rawEpoch * 1000 : rawEpoch;
+    } else {
+      const lifetimeSec = Number(
+        handshakeData.token_page_lifetime ??
+        handshakeData.account_page_lifetime ??
+        profileData.token_page_lifetime ??
         profileData.account_page_lifetime ??
         3600
-    );
-    const validLifetimeSec = !isNaN(lifetimeSec) && lifetimeSec > 60 ? lifetimeSec : 3600;
+      );
+      const validLifetimeSec = !isNaN(lifetimeSec) && lifetimeSec > 60 ? lifetimeSec : 3600;
+      expiryMs = Date.now() + validLifetimeSec * 1000;
+    }
 
     return {
       token,
-      expiry: Date.now() + validLifetimeSec * 1000,
-      serverInfo: profileData,
+      expiry: expiryMs,
+      serverInfo: { ...handshakeData, ...profileData },
     };
   },
 
@@ -416,7 +431,6 @@ export const portalApi = {
 
     return requestManager.request(cacheKey, async () => {
       const refreshed = await refreshToken(portal);
-      console.log(refreshed);
       const base = safe(refreshed.config.url).replace(/\/$/, "");
       const url = `${base}/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml`;
 
@@ -431,11 +445,17 @@ export const portalApi = {
       });
 
       const rows = extract(res);
-      const result = rows.map((c: any) => ({
-        id: String(c.id ?? c.gid ?? ""),
-        name: c.title ?? c.name ?? c.genre_name ?? "Unknown",
-        type: "live" as const,
-      }));
+      const mapped = rows.map((c: any) => {
+        const rawId = String(c.id ?? c.gid ?? "");
+        const id = rawId === "*" || rawId === "0" ? "all" : rawId;
+        return {
+          id,
+          name: c.title ?? c.name ?? c.genre_name ?? "Unknown",
+          type: "live" as const,
+        };
+      });
+      const hasAll = mapped.some(c => c.id === "all" || c.name.toLowerCase() === "all");
+      const result = hasAll ? mapped : [{ id: "all", name: "All", type: "live" as const }, ...mapped];
 
       if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
       return result;
@@ -455,8 +475,9 @@ export const portalApi = {
       const refreshed = await refreshToken(portal);
       const base = safe(refreshed.config.url).replace(/\/$/, "");
       let url = `${base}/portal.php?type=itv&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
-      if (categoryId && categoryId !== "all") {
-        url += `&genre=${encodeURIComponent(categoryId)}`;
+      const isAllCat = !categoryId || categoryId === "all" || categoryId === "*";
+      if (!isAllCat) {
+        url += `&genre=${encodeURIComponent(categoryId!)}`;
       } else {
         url += `&genre=*`;
       }
@@ -474,7 +495,7 @@ export const portalApi = {
       let rows = extract(res);
 
       // Fallback 1: Try genre=0 if genre=* returned 0 items
-      if ((!rows || rows.length === 0) && (!categoryId || categoryId === "all")) {
+      if ((!rows || rows.length === 0) && isAllCat) {
         const fbUrl1 = `${base}/portal.php?type=itv&action=get_ordered_list&p=${page}&genre=0&JsHttpRequest=1-xml`;
         const fbRes1 = await axios.get(fbUrl1, {
           ...rmAcceptHeader,
@@ -488,7 +509,7 @@ export const portalApi = {
       }
 
       // Fallback 2: Try no genre parameter
-      if ((!rows || rows.length === 0) && (!categoryId || categoryId === "all")) {
+      if ((!rows || rows.length === 0) && isAllCat) {
         const fbUrl2 = `${base}/portal.php?type=itv&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
         const fbRes2 = await axios.get(fbUrl2, {
           ...rmAcceptHeader,
@@ -533,13 +554,18 @@ export const portalApi = {
         ),
         timeout: 60000,
       });
-
       const rows = extract(res);
-      const result = rows.map((c: any) => ({
-        id: String(c.id ?? ""),
-        name: c.title ?? c.name ?? "Unknown",
-        type: "vod" as const,
-      }));
+      const mapped = rows.map((c: any) => {
+        const rawId = String(c.id ?? "");
+        const id = rawId === "*" || rawId === "0" ? "all" : rawId;
+        return {
+          id,
+          name: c.title ?? c.name ?? "Unknown",
+          type: "vod" as const,
+        };
+      });
+      const hasAll = mapped.some(c => c.id === "all" || c.name.toLowerCase() === "all");
+      const result = hasAll ? mapped : [{ id: "all", name: "All", type: "vod" as const }, ...mapped];
 
       if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
       return result;
@@ -558,9 +584,10 @@ export const portalApi = {
       try {
         const refreshed = await refreshToken(portal);
         const base = safe(refreshed.config.url).replace(/\/$/, "");
-        let url = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
-        if (categoryId && categoryId !== "all") {
-          url += `&category=${encodeURIComponent(categoryId)}`;
+        let url = `${base}/portal.php?type=vod&action=get_ordered_list&max_page_items=100000&p=${page}&JsHttpRequest=1-xml`;
+        const isAllCat = !categoryId || categoryId === "all" || categoryId === "*";
+        if (!isAllCat) {
+          url += `&category=${encodeURIComponent(categoryId!)}`;
         } else {
           url += `&category=*`;
         }
@@ -578,7 +605,7 @@ export const portalApi = {
         let rows = extract(res);
 
         // Fallback 1: Try category=0 if category=* returned 0 items
-        if ((!rows || rows.length === 0) && (!categoryId || categoryId === "all")) {
+        if ((!rows || rows.length === 0) && isAllCat) {
           const fbUrl1 = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&category=0&JsHttpRequest=1-xml`;
           const fbRes1 = await axios.get(fbUrl1, {
             ...rmAcceptHeader,
@@ -592,7 +619,7 @@ export const portalApi = {
         }
 
         // Fallback 2: Try no category parameter
-        if ((!rows || rows.length === 0) && (!categoryId || categoryId === "all")) {
+        if ((!rows || rows.length === 0) && isAllCat) {
           const fbUrl2 = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
           const fbRes2 = await axios.get(fbUrl2, {
             ...rmAcceptHeader,
@@ -661,11 +688,17 @@ export const portalApi = {
       });
 
       const rows = extract(res);
-      const result = rows.map((c: any) => ({
-        id: String(c.id ?? ""),
-        name: c.title ?? c.name ?? "Unknown",
-        type: "series" as const,
-      }));
+      const mapped = rows.map((c: any) => {
+        const rawId = String(c.id ?? "");
+        const id = rawId === "*" || rawId === "0" ? "all" : rawId;
+        return {
+          id,
+          name: c.title ?? c.name ?? "Unknown",
+          type: "series" as const,
+        };
+      });
+      const hasAll = mapped.some(c => c.id === "all" || c.name.toLowerCase() === "all");
+      const result = hasAll ? mapped : [{ id: "all", name: "All", type: "series" as const }, ...mapped];
 
       if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
       return result;
@@ -684,9 +717,10 @@ export const portalApi = {
       try {
         const refreshed = await refreshToken(portal);
         const base = safe(refreshed.config.url).replace(/\/$/, "");
-        let url = `${base}/portal.php?type=series&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
-        if (categoryId && categoryId !== "all") {
-          url += `&category=${encodeURIComponent(categoryId)}`;
+        let url = `${base}/portal.php?type=series&action=get_ordered_list&max_page_items=100000&p=${page}&JsHttpRequest=1-xml`;
+        const isAllCat = !categoryId || categoryId === "all" || categoryId === "*";
+        if (!isAllCat) {
+          url += `&category=${encodeURIComponent(categoryId!)}`;
         } else {
           url += `&category=*`;
         }
@@ -704,7 +738,7 @@ export const portalApi = {
         let rows = extract(res);
 
         // Fallback 1: Try category=0 if category=* returned 0 items
-        if ((!rows || rows.length === 0) && (!categoryId || categoryId === "all")) {
+        if ((!rows || rows.length === 0) && isAllCat) {
           const fallbackUrl = `${base}/portal.php?type=series&action=get_ordered_list&p=${page}&category=0&JsHttpRequest=1-xml`;
           const fbRes = await axios.get(fallbackUrl, {
             ...rmAcceptHeader,
@@ -718,7 +752,7 @@ export const portalApi = {
         }
 
         // Fallback 2: Try type=vod&movie_type=series if series returned 0 items
-        if ((!rows || rows.length === 0) && (!categoryId || categoryId === "all")) {
+        if ((!rows || rows.length === 0) && isAllCat) {
           const fallbackUrl2 = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&category=*&movie_type=series&JsHttpRequest=1-xml`;
           const fbRes2 = await axios.get(fallbackUrl2, {
             ...rmAcceptHeader,
@@ -1008,262 +1042,13 @@ export const portalApi = {
         streamUrl: c.cmd ?? "",
         epgId: String(c.epg_id ?? ""),
       }));
-
       await cacheManager.set(cacheKey, result, CACHE_TTL.CHANNELS);
       return result;
     });
   },
 
   async warmPortalData(portal: Portal): Promise<void> {
-    const key = portal.id;
-    if (warmPromiseMap.has(key)) {
-      return warmPromiseMap.get(key)!;
-    }
-
-    const warmPromise = (async () => {
-      try {
-        if (portal.type !== "mag") {
-          return await this.refreshPortalData(portal);
-        }
-
-        // Ensure we have a valid token before warming
-        const refreshed = await refreshToken(portal);
-        const base = safe(refreshed.config.url).replace(/\/$/, "");
-        const mac = refreshed.config.mac ?? "";
-        const token = refreshed.config.token ?? "";
-
-        // Helper to only fetch if cache missing, but always returns current data (cached or loaded)
-        const fetchIfMissing = async <T>(
-          cacheKey: string,
-          loader: () => Promise<T>,
-          ttl: number,
-          setter?: (v: T) => void
-        ): Promise<T | null> => {
-          try {
-            if (await cacheManager.has(cacheKey)) {
-              const cached = await cacheManager.get<T>(cacheKey);
-              if (cached != null) return cached;
-            }
-            const val = await loader();
-            // Validate that we don't overwrite with empty data by accident
-            if (Array.isArray(val) && val.length === 0) return null;
-            await cacheManager.set(cacheKey, val, ttl);
-            if (setter) setter(val);
-            return val;
-          } catch (e) {
-            // non-fatal warming error
-            console.warn(`warmPortalData failed for ${cacheKey}:`, e);
-            return null;
-          }
-        };
-
-        let liveCategories: Category[] = [];
-        let vodCategories: Category[] = [];
-        let seriesCategories: Category[] = [];
-
-        // Live categories
-        const liveCats = (await fetchIfMissing(
-          `portal:${key}:live:categories`,
-          async () => {
-            const url = `${base}/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml`;
-            const res = await axios.get(url, {
-              ...rmAcceptHeader,
-              headers: headers(mac, token, base),
-              timeout: 60000,
-            });
-            const rows = extract(res);
-            return rows.map((c: any) => ({
-              id: String(c.id ?? c.gid ?? ""),
-              name: c.title ?? c.name ?? c.genre_name ?? "Unknown",
-              type: "live" as const,
-            }));
-          },
-          CACHE_TTL.CATEGORIES
-        )) || [];
-        liveCategories = liveCats;
-
-        // All live channels (for search / initial listing)
-        await fetchIfMissing(
-          `portal:${key}:live:channels:search:all`,
-          async () => {
-            const url = `${base}/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml`;
-            const res = await axios.get(url, {
-              ...rmAcceptHeader,
-              headers: headers(mac, token, base),
-              timeout: 60000,
-            });
-            const rows = extract(res);
-            const result = rows.map((c: any) => ({
-              id: String(c.id ?? c.cmd ?? ""),
-              name: c.name ?? c.title ?? "Unknown",
-              logo: c.logo ?? c.logo_30x30 ?? c.screenshot_uri ?? "",
-              category: c.tv_genre_name ?? c.genre ?? c.category_name ?? "",
-              categoryId: String(c.tv_genre_id ?? c.genre_id ?? c.category_id ?? ""),
-              streamUrl: c.cmd ?? "",
-              epgId: String(c.epg_id ?? ""),
-            }));
-            return result;
-          },
-          CACHE_TTL.CHANNELS,
-          (v) => usePortalStore.getState().mergeChannels(v as any, key)
-        );
-
-        // VOD categories
-        const vodCats = (await fetchIfMissing(
-          `portal:${key}:vod:categories`,
-          async () => {
-            const url = `${base}/portal.php?type=vod&action=get_categories&JsHttpRequest=1-xml`;
-            const res = await axios.get(url, {
-              ...rmAcceptHeader,
-              headers: headers(mac, token, base),
-              timeout: 60000,
-            });
-            const rows = extract(res);
-            return rows.map((c: any) => ({
-              id: String(c.id ?? ""),
-              name: c.title ?? c.name ?? "Unknown",
-              type: "vod" as const,
-            }));
-          },
-          CACHE_TTL.CATEGORIES
-        )) || [];
-        vodCategories = vodCats;
-
-        // VOD items (first page)
-        await fetchIfMissing(
-          `portal:${key}:vod:items:all:1`,
-          async () => {
-            const url = `${base}/portal.php?type=vod&action=get_ordered_list&p=1&JsHttpRequest=1-xml`;
-            const res = await axios.get(url, {
-              ...rmAcceptHeader,
-              headers: headers(mac, token, base),
-              timeout: 60000,
-            });
-            const rows = extract(res);
-            const result = rows.map((v: any) => ({
-              id: String(v.id ?? ""),
-              name: v.name ?? v.title ?? "Unknown",
-              logo: v.screenshot_uri ?? v.logo ?? v.stream_icon ?? "",
-              category: v.category_name ?? v.genre ?? "",
-              categoryId: String(v.category_id ?? ""),
-              streamUrl: v.cmd ?? "",
-              description: pickDescription(v),
-              year: pickYear(v),
-              rating: pickRating(v),
-              duration: v.time ?? v.duration ?? "",
-            }));
-            return result;
-          },
-          CACHE_TTL.VOD,
-          (v) => usePortalStore.getState().mergeVodItems(v as any, key)
-        );
-
-        // Series categories
-        const seriesCats = (await fetchIfMissing(
-          `portal:${key}:series:categories`,
-          async () => {
-            const url = `${base}/portal.php?type=series&action=get_categories&JsHttpRequest=1-xml`;
-            const res = await axios.get(url, {
-              ...rmAcceptHeader,
-              headers: headers(mac, token, base),
-              timeout: 60000,
-            });
-            const rows = extract(res);
-            return rows.map((c: any) => ({
-              id: String(c.id ?? ""),
-              name: c.title ?? c.name ?? "Unknown",
-              type: "series" as const,
-            }));
-          },
-          CACHE_TTL.CATEGORIES
-        )) || [];
-        seriesCategories = seriesCats;
-
-        // Push all warmed categories (live, vod, series) to store
-        const allWarmedCategories = [
-          ...liveCategories,
-          ...vodCategories,
-          ...seriesCategories,
-        ];
-        if (allWarmedCategories.length > 0) {
-          await usePortalStore.getState().setCategories(allWarmedCategories, key);
-        }
-
-        // Series list (first page)
-        await fetchIfMissing(
-          `portal:${key}:series:list:all:1`,
-          async () => {
-            const url = `${base}/portal.php?type=series&action=get_ordered_list&p=1&JsHttpRequest=1-xml`;
-            const res = await axios.get(url, {
-              ...rmAcceptHeader,
-              headers: headers(mac, token, base),
-              timeout: 60000,
-            });
-            const rows = extract(res);
-            const result = rows.map((v: any) => ({
-              id: String(v.id ?? ""),
-              name: v.name ?? v.title ?? "Unknown",
-              logo: v.screenshot_uri ?? v.logo ?? "",
-              category: v.category_name ?? v.genre ?? "",
-              categoryId: String(v.category_id ?? ""),
-              description: pickDescription(v),
-              year: pickYear(v),
-              rating: pickRating(v),
-            }));
-            return result;
-          },
-          CACHE_TTL.SERIES,
-          (v) => usePortalStore.getState().mergeSeries(v as any, key)
-        );
-
-        // EPG
-        await fetchIfMissing(
-          `portal:${key}:epg`,
-          async () => {
-            const url = `${base}/portal.php?type=itv&action=epg_info&JsHttpRequest=1-xml`;
-            const res = await axios.get(url, {
-              headers: headers(mac, token, base),
-              timeout: 60000,
-            });
-            const js = res.data?.js ?? {};
-            const out: any[] = [];
-            const toMs = (v: any): number => {
-              if (typeof v === "number") return v < 1e12 ? v * 1000 : v;
-              if (typeof v === "string" && /^\d+$/.test(v)) {
-                const n = Number(v);
-                return n < 1e12 ? n * 1000 : n;
-              }
-              const parsed = Date.parse(v);
-              return isNaN(parsed) ? Date.now() : parsed;
-            };
-            for (const [cid, list] of Object.entries(js)) {
-              if (!Array.isArray(list)) continue;
-              for (const p of list as any[]) {
-                if (!p) continue;
-                out.push({
-                  id: String(p.id ?? `${cid}-${p.start}`),
-                  channelId: cid,
-                  title: p.name ?? p.title ?? "",
-                  description: (p.descr ?? p.description) || "No description available for this content.",
-                  start: toMs(p.start_timestamp ?? p.start),
-                  end: toMs(p.stop_timestamp ?? p.end),
-                });
-              }
-            }
-            return out;
-          },
-          CACHE_TTL.EPG,
-          (v) => usePortalStore.getState().setEpgData(v as any, key)
-        );
-      } catch (e) {
-        console.warn("warmPortalData top-level failure:", e);
-      } finally {
-        warmPromiseMap.delete(key);
-      }
-    })();
-
-    warmPromiseMap.set(key, warmPromise);
-    return warmPromise;
+    return this.refreshPortalData(portal, false);
   },
 
   async refreshPortalData(portal: Portal, forceReset = false): Promise<void> {
@@ -1286,25 +1071,12 @@ export const portalApi = {
           ...(data.seriesCategories || []),
         ];
 
-        if (forceReset) {
-          await Promise.all([
-            store.setCategories(allCategories, portal.id),
-            store.setChannels(data.liveChannels || [], portal.id),
-            store.setVodItems(data.vodItems || [], portal.id),
-            store.setSeries(data.seriesList || [], portal.id),
-            store.setEpgData([], portal.id),
-          ]);
-        } else {
-          await Promise.all([
-            store.setCategories(allCategories, portal.id),
-            data.liveChannels?.length ? store.mergeChannels(data.liveChannels, portal.id) : Promise.resolve(),
-            data.vodItems?.length ? store.mergeVodItems(data.vodItems, portal.id) : Promise.resolve(),
-            data.seriesList?.length ? store.mergeSeries(data.seriesList, portal.id) : Promise.resolve(),
-            store.setEpgData([], portal.id),
-          ]);
-        }
-
-        console.log("✅ Xtream portal data refreshed");
+        const ops: Promise<void>[] = [];
+        if (allCategories.length > 0) ops.push(store.setCategories(allCategories, portal.id));
+        if (data.liveChannels?.length) ops.push(forceReset ? store.setChannels(data.liveChannels, portal.id) : store.mergeChannels(data.liveChannels, portal.id));
+        if (data.vodItems?.length) ops.push(forceReset ? store.setVodItems(data.vodItems, portal.id) : store.mergeVodItems(data.vodItems, portal.id));
+        if (data.seriesList?.length) ops.push(forceReset ? store.setSeries(data.seriesList, portal.id) : store.mergeSeries(data.seriesList, portal.id));
+        await Promise.all(ops);
         return;
       }
 
@@ -1319,56 +1091,124 @@ export const portalApi = {
           ...(data.seriesCategories || []),
         ];
 
-        if (forceReset) {
-          await Promise.all([
-            store.setCategories(allCategories, portal.id),
-            store.setChannels(data.liveChannels || [], portal.id),
-            store.setVodItems(data.vodItems || [], portal.id),
-            store.setSeries(data.seriesList || [], portal.id),
-          ]);
-        } else {
-          await Promise.all([
-            store.setCategories(allCategories, portal.id),
-            data.liveChannels?.length ? store.mergeChannels(data.liveChannels, portal.id) : Promise.resolve(),
-            data.vodItems?.length ? store.mergeVodItems(data.vodItems, portal.id) : Promise.resolve(),
-            data.seriesList?.length ? store.mergeSeries(data.seriesList, portal.id) : Promise.resolve(),
-          ]);
-        }
-
-        console.log("✅ M3U portal data refreshed");
+        const ops: Promise<void>[] = [];
+        if (allCategories.length > 0) ops.push(store.setCategories(allCategories, portal.id));
+        if (data.liveChannels?.length) ops.push(forceReset ? store.setChannels(data.liveChannels, portal.id) : store.mergeChannels(data.liveChannels, portal.id));
+        if (data.vodItems?.length) ops.push(forceReset ? store.setVodItems(data.vodItems, portal.id) : store.mergeVodItems(data.vodItems, portal.id));
+        if (data.seriesList?.length) ops.push(forceReset ? store.setSeries(data.seriesList, portal.id) : store.mergeSeries(data.seriesList, portal.id));
+        await Promise.all(ops);
         return;
       }
 
       // ---------------------------------------
       // STALKER / MAG LOGIC
       // ---------------------------------------
-      // Ensure token is refreshed before fetching
-      const refreshed = await refreshToken(portal);
+      const refreshed = await refreshToken(portal, true); // Always perform fresh session handshake
+      await new Promise(r => setTimeout(r, 300)); // 300ms post-handshake settling delay
+
       const base = safe(refreshed.config.url).replace(/\/$/, "");
       const mac = refreshed.config.mac ?? "";
       const token = refreshed.config.token ?? "";
 
-      // Fetch all data
       const liveCategoriesUrl = `${base}/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml`;
-      const liveCategoriesRes = await axios.get(liveCategoriesUrl, {
-        ...rmAcceptHeader,
+      const liveChannelsUrl = `${base}/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml`;
+      const vodCategoriesUrl = `${base}/portal.php?type=vod&action=get_categories&JsHttpRequest=1-xml`;
+      const vodItemsUrl = `${base}/portal.php?type=vod&action=get_ordered_list&max_page_items=100000&p=1&JsHttpRequest=1-xml`;
+      const seriesCategoriesUrl = `${base}/portal.php?type=series&action=get_categories&JsHttpRequest=1-xml`;
+      const seriesListUrl = `${base}/portal.php?type=series&action=get_ordered_list&max_page_items=100000&p=1&JsHttpRequest=1-xml`;
+      const epgUrl = `${base}/portal.php?type=itv&action=epg_info&JsHttpRequest=1-xml`;
+
+      // Helper to fetch single endpoint sequentially
+      const fetchEndpoint = async (
+        name: string,
+        url: string,
+        targetMac = mac,
+        targetToken = token,
+        targetBase = base
+      ): Promise<any[]> => {
+        try {
+          const response = await axios.get(url, {
+            ...rmAcceptHeader,
+            headers: headers(targetMac, targetToken, targetBase),
+            timeout: 60000,
+          });
+          return extract(response);
+        } catch (error: any) {
+          console.warn(`❌ ${name} failed`, error?.message);
+          return [];
+        }
+      };
+
+      console.log("📡 Fetching MAG categories & content endpoints sequentially with 250ms spacing...");
+      let liveCategoriesRows = await fetchEndpoint("Live Categories", liveCategoriesUrl);
+      await new Promise(r => setTimeout(r, 250));
+
+      let liveChannelsRows = await fetchEndpoint("Live Channels", liveChannelsUrl);
+      await new Promise(r => setTimeout(r, 250));
+
+      let vodCategoriesRows = await fetchEndpoint("VOD Categories", vodCategoriesUrl);
+      await new Promise(r => setTimeout(r, 250));
+
+      let vodItemsRows = await fetchEndpoint("VOD Items", vodItemsUrl);
+      await new Promise(r => setTimeout(r, 250));
+
+      let seriesCategoriesRows = await fetchEndpoint("Series Categories", seriesCategoriesUrl);
+      await new Promise(r => setTimeout(r, 250));
+
+      let seriesListRows = await fetchEndpoint("Series List", seriesListUrl);
+      await new Promise(r => setTimeout(r, 250));
+
+      let epgRes = await axios.get(epgUrl, {
         headers: headers(mac, token, base),
         timeout: 60000,
+      }).catch(err => {
+        console.warn("❌ EPG Info failed", err?.message);
+        return null;
       });
-      const liveCategoriesRows = extract(liveCategoriesRes);
+
+      let hasContent = liveChannelsRows.length > 0 || vodItemsRows.length > 0 || seriesListRows.length > 0;
+      let hasCategories = liveCategoriesRows.length > 0 || vodCategoriesRows.length > 0 || seriesCategoriesRows.length > 0;
+
+      // 1-TIME RETRY IF ALL ENDPOINTS RETURNED EMPTY DATA
+      if (!hasContent && !hasCategories) {
+        console.warn("⚠️ Refresh returned completely empty data. Attempting 1-time fresh session retry in 1500ms...");
+        await new Promise(r => setTimeout(r, 1500));
+
+        const retryPortal = await refreshToken(portal, true);
+        const retryBase = safe(retryPortal.config.url).replace(/\/$/, "");
+        const retryMac = retryPortal.config.mac ?? "";
+        const retryToken = retryPortal.config.token ?? "";
+
+        if (retryToken) {
+          console.log("🔄 Retrying MAG requests with fresh session token...");
+          liveCategoriesRows = await fetchEndpoint("Retry Live Categories", liveCategoriesUrl, retryMac, retryToken, retryBase);
+          await new Promise(r => setTimeout(r, 250));
+          liveChannelsRows = await fetchEndpoint("Retry Live Channels", liveChannelsUrl, retryMac, retryToken, retryBase);
+          await new Promise(r => setTimeout(r, 250));
+          vodCategoriesRows = await fetchEndpoint("Retry VOD Categories", vodCategoriesUrl, retryMac, retryToken, retryBase);
+          await new Promise(r => setTimeout(r, 250));
+          vodItemsRows = await fetchEndpoint("Retry VOD Items", vodItemsUrl, retryMac, retryToken, retryBase);
+          await new Promise(r => setTimeout(r, 250));
+          seriesCategoriesRows = await fetchEndpoint("Retry Series Categories", seriesCategoriesUrl, retryMac, retryToken, retryBase);
+          await new Promise(r => setTimeout(r, 250));
+          seriesListRows = await fetchEndpoint("Retry Series List", seriesListUrl, retryMac, retryToken, retryBase);
+
+          hasContent = liveChannelsRows.length > 0 || vodItemsRows.length > 0 || seriesListRows.length > 0;
+          hasCategories = liveCategoriesRows.length > 0 || vodCategoriesRows.length > 0 || seriesCategoriesRows.length > 0;
+        }
+      }
+
+      if (!hasContent && !hasCategories) {
+        console.warn("⚠️ Retry also returned empty data across all endpoints. Preserving existing cached data.");
+        return;
+      }
+
       const liveCategories = liveCategoriesRows.map((c: any) => ({
         id: String(c.id ?? c.gid ?? ""),
         name: c.title ?? c.name ?? c.genre_name ?? "Unknown",
         type: "live" as const,
       }));
 
-      const liveChannelsUrl = `${base}/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml`;
-      const liveChannelsRes = await axios.get(liveChannelsUrl, {
-        ...rmAcceptHeader,
-        headers: headers(mac, token, base),
-        timeout: 60000,
-      });
-      const liveChannelsRows = extract(liveChannelsRes);
       const liveChannels: Channel[] = liveChannelsRows.map((c: any) => ({
         id: String(c.id ?? c.cmd ?? ""),
         name: c.name ?? c.title ?? "Unknown",
@@ -1379,26 +1219,12 @@ export const portalApi = {
         epgId: String(c.epg_id ?? ""),
       }));
 
-      const vodCategoriesUrl = `${base}/portal.php?type=vod&action=get_categories&JsHttpRequest=1-xml`;
-      const vodCategoriesRes = await axios.get(vodCategoriesUrl, {
-        ...rmAcceptHeader,
-        headers: headers(mac, token, base),
-        timeout: 60000,
-      });
-      const vodCategoriesRows = extract(vodCategoriesRes);
       const vodCategories = vodCategoriesRows.map((c: any) => ({
         id: String(c.id ?? ""),
         name: c.title ?? c.name ?? "Unknown",
         type: "vod" as const,
       }));
 
-      const vodItemsUrl = `${base}/portal.php?type=vod&action=get_ordered_list&p=1&JsHttpRequest=1-xml`;
-      const vodItemsRes = await axios.get(vodItemsUrl, {
-        ...rmAcceptHeader,
-        headers: headers(mac, token, base),
-        timeout: 60000,
-      });
-      const vodItemsRows = extract(vodItemsRes);
       const vodItems: VODItem[] = vodItemsRows.map((v: any) => ({
         id: String(v.id ?? ""),
         name: v.name ?? v.title ?? "Unknown",
@@ -1412,26 +1238,12 @@ export const portalApi = {
         duration: v.time ?? v.duration ?? "",
       }));
 
-      const seriesCategoriesUrl = `${base}/portal.php?type=series&action=get_categories&JsHttpRequest=1-xml`;
-      const seriesCategoriesRes = await axios.get(seriesCategoriesUrl, {
-        ...rmAcceptHeader,
-        headers: headers(mac, token, base),
-        timeout: 60000,
-      });
-      const seriesCategoriesRows = extract(seriesCategoriesRes);
       const seriesCategories = seriesCategoriesRows.map((c: any) => ({
         id: String(c.id ?? ""),
         name: c.title ?? c.name ?? "Unknown",
         type: "series" as const,
       }));
 
-      const seriesListUrl = `${base}/portal.php?type=series&action=get_ordered_list&p=1&JsHttpRequest=1-xml`;
-      const seriesListRes = await axios.get(seriesListUrl, {
-        ...rmAcceptHeader,
-        headers: headers(mac, token, base),
-        timeout: 60000,
-      });
-      const seriesListRows = extract(seriesListRes);
       const seriesList: Series[] = seriesListRows.map((v: any) => ({
         id: String(v.id ?? ""),
         name: v.name ?? v.title ?? "Unknown",
@@ -1443,12 +1255,7 @@ export const portalApi = {
         rating: pickRating(v),
       }));
 
-      const epgUrl = `${base}/portal.php?type=itv&action=epg_info&JsHttpRequest=1-xml`;
-      const epgRes = await axios.get(epgUrl, {
-        headers: headers(mac, token, base),
-        timeout: 60000,
-      });
-      const js = epgRes.data?.js ?? {};
+      const js = epgRes?.data?.js ?? {};
       const epgPrograms: EPGProgram[] = [];
       const toMs = (v: any): number => {
         if (typeof v === "number") return v < 1e12 ? v * 1000 : v;
@@ -1474,18 +1281,23 @@ export const portalApi = {
         }
       }
 
-      // Check if data is valid before persisting
-      if (liveChannels.length === 0 && vodItems.length === 0 && seriesList.length === 0) {
-        throw new Error("Portal returned empty data. Token may be invalid.");
+      // Save to canonical cache keys
+      if (liveChannels.length > 0) {
+        await cacheManager.set(`portal:${key}:live:channels:all`, liveChannels, CACHE_TTL.CHANNELS);
+        await cacheManager.set(`portal:${key}:live:channels:search:all`, liveChannels, CACHE_TTL.CHANNELS);
       }
-
-      // Save to cache and store — only cache/set non-empty lists to avoid
-      // poisoning the cache or wiping a specific content type due to a
-      // transient server error on that one endpoint.
-      if (liveChannels.length > 0) await cacheManager.set(`portal:${key}:live:channels:search:all`, liveChannels, CACHE_TTL.CHANNELS);
-      if (vodItems.length > 0) await cacheManager.set(`portal:${key}:vod:items:all:1`, vodItems, CACHE_TTL.VOD);
-      if (seriesList.length > 0) await cacheManager.set(`portal:${key}:series:list:all:1`, seriesList, CACHE_TTL.SERIES);
-      if (epgPrograms.length > 0) await cacheManager.set(`portal:${key}:epg`, epgPrograms, CACHE_TTL.EPG);
+      if (vodItems.length > 0) {
+        await cacheManager.set(`portal:${key}:vod:items:all`, vodItems, CACHE_TTL.VOD);
+        await cacheManager.set(`portal:${key}:vod:items:all:1`, vodItems, CACHE_TTL.VOD);
+      }
+      if (seriesList.length > 0) {
+        await cacheManager.set(`portal:${key}:series:list:all`, seriesList, CACHE_TTL.SERIES);
+        await cacheManager.set(`portal:${key}:series:list:all:1`, seriesList, CACHE_TTL.SERIES);
+      }
+      if (epgPrograms.length > 0) {
+        await cacheManager.set(`portal:${key}:epg:all`, epgPrograms, CACHE_TTL.EPG);
+        await cacheManager.set(`portal:${key}:epg`, epgPrograms, CACHE_TTL.EPG);
+      }
 
       const allMagCategories = [
         ...(liveCategories || []),
@@ -1493,27 +1305,32 @@ export const portalApi = {
         ...(seriesCategories || []),
       ];
 
-      if (forceReset) {
-        // Hard refresh — replace everything
-        await Promise.all([
-          store.setCategories(allMagCategories, key),
-          store.setChannels(liveChannels, key),
-          store.setVodItems(vodItems, key),
-          store.setSeries(seriesList, key),
-          store.setEpgData(epgPrograms, key)
-        ]);
-      } else {
-        // Background sync — merge by id, skip empty lists
-        const ops: Promise<void>[] = [store.setCategories(allMagCategories, key)];
-        if (liveChannels.length > 0) ops.push(store.mergeChannels(liveChannels, key));
-        if (vodItems.length > 0) ops.push(store.mergeVodItems(vodItems, key));
-        if (seriesList.length > 0) ops.push(store.mergeSeries(seriesList, key));
-        if (epgPrograms.length > 0) ops.push(store.setEpgData(epgPrograms, key));
-        await Promise.all(ops);
+      const ops: Promise<void>[] = [];
+
+      // NEVER overwrite store arrays with empty data
+      if (allMagCategories.length > 0) {
+        ops.push(store.setCategories(allMagCategories, key));
+      }
+      if (liveChannels.length > 0) {
+        ops.push(forceReset ? store.setChannels(liveChannels, key) : store.mergeChannels(liveChannels, key));
+      }
+      if (vodItems.length > 0) {
+        ops.push(forceReset ? store.setVodItems(vodItems, key) : store.mergeVodItems(vodItems, key));
+      }
+      if (seriesList.length > 0) {
+        ops.push(forceReset ? store.setSeries(seriesList, key) : store.mergeSeries(seriesList, key));
+      }
+      if (epgPrograms.length > 0) {
+        ops.push(store.setEpgData(epgPrograms, key));
       }
 
+      await Promise.all(ops);
       console.log("✅ MAG portal data refreshed and persisted");
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.message?.includes("empty data")) {
+        console.warn("⚠️ Portal refresh returned empty data. Keeping existing cached data.");
+        return;
+      }
       console.warn("❌ refreshPortalData failed:", e);
     }
   },
@@ -1531,21 +1348,26 @@ export const portalApi = {
 
       // Load other cached data in parallel
       const [
-        liveChannelsFull, liveChannelsPage1,
-        vodItemsPage1,
-        seriesListPage1,
-        epg
+        liveChannelsFull, liveChannelsSearch, liveChannelsPage1,
+        vodItemsFull, vodItemsPage1,
+        seriesListFull, seriesListPage1,
+        epgFull, epgPage1
       ] = await Promise.all([
+        cacheManager.get<Channel[]>(`portal:${key}:live:channels:all`),
         cacheManager.get<Channel[]>(`portal:${key}:live:channels:search:all`),
         cacheManager.get<Channel[]>(`portal:${key}:live:channels:all:1`),
+        cacheManager.get<VODItem[]>(`portal:${key}:vod:items:all`),
         cacheManager.get<VODItem[]>(`portal:${key}:vod:items:all:1`),
+        cacheManager.get<Series[]>(`portal:${key}:series:list:all`),
         cacheManager.get<Series[]>(`portal:${key}:series:list:all:1`),
+        cacheManager.get<EPGProgram[]>(`portal:${key}:epg:all`),
         cacheManager.get<EPGProgram[]>(`portal:${key}:epg`),
       ]);
 
-      const liveChannels = liveChannelsFull || liveChannelsPage1;
-      const vodItems = vodItemsPage1;
-      const seriesList = seriesListPage1;
+      const liveChannels = liveChannelsFull || liveChannelsSearch || liveChannelsPage1;
+      const vodItems = vodItemsFull || vodItemsPage1;
+      const seriesList = seriesListFull || seriesListPage1;
+      const epg = epgFull || epgPage1;
 
       const nowCutoff = Date.now() - 12 * 60 * 60 * 1000;
       const validEpg = (epg || []).filter((p) => p.end >= nowCutoff);
