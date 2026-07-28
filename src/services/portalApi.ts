@@ -135,7 +135,7 @@ const headers = (mac: string, token?: string, url?: string) => {
 
   return {
     "User-Agent": "okhttp/3.12.1",
-    "Accept-Encoding": "gzip",
+    "Accept-Encoding": "identity",
     Accept: "application/json, text/javascript, */*; q=0.01",
     "Accept-Language": "en-US,en;q=0.9",
     Cookie: cookieParts.join("; "),

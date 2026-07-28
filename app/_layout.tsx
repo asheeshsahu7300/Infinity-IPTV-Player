@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { Stack, useRouter } from "expo-router";
+import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -8,23 +8,20 @@ import {
   StyleSheet,
   AppState,
   AppStateStatus,
-  View,
-  Text,
-  TextInput,
-  BackHandler,
   Platform,
-  TVEventHandler,
-  Dimensions,
   Animated,
   Image as RNImage,
 } from "react-native";
-import { Image } from "expo-image";
+import * as Linking from "expo-linking";
 import { LinearGradient } from "expo-linear-gradient";
+import { TenorSans_400Regular } from "@expo-google-fonts/tenor-sans";
 
 import ErrorBoundary from "../src/components/ErrorBoundary";
 import { usePortalStore } from "../src/store/portalStore";
 import { ThemeProvider } from "../src/context/ThemeContext";
 import { AppBootManager } from "../src/services/AppBootManager";
+import { DeepLink } from "../src/services/DeepLink";
+import { PlaybackState } from "../src/services/PlaybackState";
 import { isTV } from "../src/utils/tvUtils";
 import { THEME, ps, ph, pw } from "../src/theme/tokens";
 
@@ -78,41 +75,6 @@ function SplashScreen() {
   );
 }
 
-import { TenorSans_400Regular } from "@expo-google-fonts/tenor-sans";
-
-import { FocusableRegistry } from "../src/tv/FocusableRegistry";
-
-function TVDebugListener() {
-  React.useEffect(() => {
-    if (Platform.OS !== "android" && Platform.OS !== "ios") return;
-    let subscription: any;
-    let tvEventHandler: any;
-
-    const handler = (event: any) => {
-      const type = event?.eventType;
-      const isSelect = type === "select" || type === "dpad_center" || type === "center";
-      const isDown = event?.eventKeyAction === 0 || event?.eventKeyAction == null;
-      if (isSelect && isDown && event?.tag) {
-        FocusableRegistry.press(event.tag);
-      }
-    };
-
-    if (typeof TVEventHandler === "function") {
-      tvEventHandler = new (TVEventHandler as any)();
-      tvEventHandler.enable(null, (_cmp: any, event: any) => handler(event));
-    } else if (TVEventHandler && typeof (TVEventHandler as any).addListener === "function") {
-      subscription = (TVEventHandler as any).addListener(handler);
-    }
-
-    return () => {
-      if (tvEventHandler && typeof tvEventHandler.disable === "function") tvEventHandler.disable();
-      if (subscription && typeof subscription.remove === "function") subscription.remove();
-    };
-  }, []);
-
-  return null;
-}
-
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
   const isHydrated = usePortalStore((s) => s.isHydrated);
@@ -122,9 +84,12 @@ export default function RootLayout() {
     "Tenor Sans": TenorSans_400Regular,
   });
 
-  // Boot the app via AppBootManager
+  // Boot the app via AppBootManager. Capture the launch URL first so
+  // app/index.tsx can replay it once the store is hydrated.
   useEffect(() => {
-    AppBootManager.initialize()
+    DeepLink.capture()
+      .catch(() => {})
+      .then(() => AppBootManager.initialize())
       .then(() => {
         setIsReady(true);
       })
@@ -134,56 +99,52 @@ export default function RootLayout() {
       });
   }, []);
 
-  // Handle auto-refresh every 30 minutes
+  // Links that arrive while the app is already running.
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (isHydrated && isReady) {
-      interval = setInterval(async () => {
-        const portal = usePortalStore.getState().activePortal;
-        if (portal) {
-          try {
-            const { portalApi } = await import("../src/services/portalApi");
-            await portalApi.warmPortalData(portal);
-            console.log("✅ Auto-refresh complete");
-          } catch (e) {
-            console.warn("Auto-refresh failed:", e);
-          }
-        }
-      }, 30 * 60 * 1000); // 30 minutes
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    const sub = Linking.addEventListener("url", ({ url }) => DeepLink.push(url));
+    return () => sub.remove();
+  }, []);
+
+  // Handle auto-refresh every 30 minutes. Skipped during playback — warming
+  // the portal pulls large payloads through the JS thread and stutters video.
+  useEffect(() => {
+    if (!isHydrated || !isReady) return;
+
+    const interval = setInterval(async () => {
+      if (PlaybackState.isActive) return;
+      const portal = usePortalStore.getState().activePortal;
+      if (!portal) return;
+      try {
+        const { portalApi } = await import("../src/services/portalApi");
+        await portalApi.warmPortalData(portal);
+      } catch (e) {
+        console.warn("Auto-refresh failed:", e);
+      }
+    }, 30 * 60 * 1000); // 30 minutes
+
+    return () => clearInterval(interval);
   }, [isHydrated, isReady]);
 
   // Handle app resume - refresh token if needed
   useEffect(() => {
     const handleAppStateChange = async (state: AppStateStatus) => {
-      if (state === "active" && isHydrated) {
-        try {
-          const portal = usePortalStore.getState().activePortal;
-          if (portal) {
-            const { portalApi } = await import("../src/services/portalApi");
-            await portalApi.warmPortalData(portal);
-          }
-        } catch (e) {
-          console.warn("Resume refresh failed (non-fatal):", e);
+      if (state !== "active" || !isHydrated) return;
+      // Returning from an external player must not stall playback resume.
+      if (PlaybackState.isActive) return;
+      try {
+        const portal = usePortalStore.getState().activePortal;
+        if (portal) {
+          const { portalApi } = await import("../src/services/portalApi");
+          await portalApi.warmPortalData(portal);
         }
+      } catch (e) {
+        console.warn("Resume refresh failed (non-fatal):", e);
       }
     };
 
     const subscription = AppState.addEventListener("change", handleAppStateChange);
     return () => subscription.remove();
   }, [isHydrated]);
-
-  // Global TV back-button handler for Android TV remote
-  useEffect(() => {
-    if (!isTV) return;
-    const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
-      return false;
-    });
-    return () => backHandler.remove();
-  }, []);
 
   if (!isReady || !isHydrated || !fontsLoaded) {
     return (
@@ -204,13 +165,16 @@ export default function RootLayout() {
       <ThemeProvider>
         <SafeAreaProvider>
           <GestureHandlerRootView style={styles.container}>
-            <TVDebugListener />
             <StatusBar style="light" />
             <Stack
               screenOptions={{
                 headerShown: false,
                 contentStyle: { backgroundColor: "#08080a" },
                 animation: isTV ? "none" : "slide_from_right",
+                // Inactive screens keep their scroll/focus state but stop
+                // re-rendering, so backgrounded grids don't compete with the
+                // foreground screen (or the player) for the JS thread.
+                freezeOnBlur: true,
               }}
               initialRouteName="index"
             >
@@ -223,8 +187,6 @@ export default function RootLayout() {
               <Stack.Screen name="series" />
               <Stack.Screen name="series-details" />
               <Stack.Screen name="player" options={{ animation: "fade" }} />
-              <Stack.Screen name="epg" />
-              <Stack.Screen name="favorites" />
               <Stack.Screen name="search" />
               <Stack.Screen name="settings" />
             </Stack>

@@ -6,7 +6,6 @@ import React, {
   useState,
 } from "react";
 import {
-  findNodeHandle,
   Pressable,
   StyleProp,
   StyleSheet,
@@ -14,9 +13,9 @@ import {
   ViewStyle,
 } from "react-native";
 
-import { FocusableRegistry } from "./FocusableRegistry";
 import { FocusMemory } from "./FocusMemory";
 import { useIsFocusTrapped, InsideOverlayContext, NextFocusTags } from "./FocusTrapContext";
+import { useDPad, DPAD_PRIORITY } from "./useDPad";
 
 export interface FocusableProps {
   children?: React.ReactNode | ((focused: boolean) => React.ReactNode);
@@ -40,8 +39,16 @@ export interface FocusableProps {
   nextFocusLeft?: number;
   nextFocusRight?: number;
 
+  /** Enables focus memory for this item. Both keys are required. */
   screenKey?: string;
   focusKey?: string;
+
+  /** Spoken by the screen reader. Always set this on icon-only controls. */
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  accessibilityRole?: "button" | "link" | "menuitem" | "tab" | "checkbox" | "radio" | "switch" | "imagebutton";
+  /** Reflected into `accessibilityState.selected`. */
+  selected?: boolean;
 
   testID?: string;
 }
@@ -67,6 +74,10 @@ export const Focusable = forwardRef<View, FocusableProps>(
       nextFocusRight,
       screenKey,
       focusKey,
+      accessibilityLabel,
+      accessibilityHint,
+      accessibilityRole = "button",
+      selected,
       testID,
     },
     forwardedRef
@@ -107,17 +118,10 @@ export const Focusable = forwardRef<View, FocusableProps>(
     React.useEffect(() => {
       if (!screenKey || !focusKey) return;
 
-      FocusMemory.register?.(
-        screenKey,
-        focusKey,
-        nativeRef
-      );
+      FocusMemory.register(screenKey, focusKey, nativeRef);
 
       return () => {
-        FocusMemory.unregister?.(
-          screenKey,
-          focusKey
-        );
+        FocusMemory.unregister(screenKey, focusKey);
       };
     }, [screenKey, focusKey]);
 
@@ -130,6 +134,9 @@ export const Focusable = forwardRef<View, FocusableProps>(
         return () => clearTimeout(timer);
       }
     }, [hasTVPreferredFocus, isDisabled]);
+
+    const isInsideOverlay = Boolean(overlayController);
+    const lastPressTimeRef = useRef(0);
 
     const handleFocus = useCallback(() => {
       setFocused(true);
@@ -148,18 +155,22 @@ export const Focusable = forwardRef<View, FocusableProps>(
     }, [onBlur]);
 
     const handlePress = useCallback(() => {
+      if (isDisabled) return;
+      const now = Date.now();
+      if (now - lastPressTimeRef.current < 200) return;
+      lastPressTimeRef.current = now;
       onPress?.();
-    }, [onPress]);
+    }, [onPress, isDisabled]);
 
-    React.useEffect(() => {
-      if (!focused || disabled || !onPress) return;
-      const tag = findNodeHandle(nativeRef.current);
-      if (!tag) return;
-      FocusableRegistry.register(tag, handlePress);
-      return () => {
-        FocusableRegistry.unregister(tag);
-      };
-    }, [focused, disabled, onPress, handlePress]);
+    useDPad(
+      {
+        onSelect: handlePress,
+      },
+      {
+        enabled: focused && !isDisabled && Boolean(onPress),
+        priority: isInsideOverlay ? DPAD_PRIORITY.OVERLAY + 10 : DPAD_PRIORITY.SCREEN,
+      }
+    );
 
     const content =
       typeof children === "function"
@@ -179,7 +190,10 @@ export const Focusable = forwardRef<View, FocusableProps>(
         disabled={isDisabled}
         focusable={!isDisabled}
         accessible
-        accessibilityRole="button"
+        accessibilityRole={accessibilityRole}
+        accessibilityLabel={accessibilityLabel}
+        accessibilityHint={accessibilityHint}
+        accessibilityState={{ disabled: isDisabled, selected }}
         hasTVPreferredFocus={!isFocusTrapped && hasTVPreferredFocus}
         nextFocusUp={effUp}
         nextFocusDown={effDown}
@@ -190,6 +204,9 @@ export const Focusable = forwardRef<View, FocusableProps>(
         onPress={isDisabled ? undefined : handlePress}
         onLongPress={onLongPress}
         style={({ pressed }) => [
+          // Reserve the ring's border box up front so gaining focus recolours
+          // it instead of resizing the element and reflowing the row.
+          ringOnFocus && styles.ringReserved,
           style,
           focused && ringOnFocus && styles.focused,
           focused && focusStyle,
@@ -203,8 +220,12 @@ export const Focusable = forwardRef<View, FocusableProps>(
 );
 
 const styles = StyleSheet.create({
-  focused: {
+  ringReserved: {
     borderWidth: 3,
+    borderColor: "transparent",
+  },
+
+  focused: {
     borderColor: "#fff",
   },
 

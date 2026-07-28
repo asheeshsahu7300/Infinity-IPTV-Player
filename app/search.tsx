@@ -27,13 +27,11 @@ import { XtreamApi } from "../src/services/xtreamApi";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
-import { THEME } from "../src/theme/tokens";
+// This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
+import { THEME, pw, ph, psRaw as ps } from "../src/theme/tokens";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 
-const { width: W, height: H } = Dimensions.get("window");
-const pw = (pct: number) => (W * pct) / 100;
-const ph = (pct: number) => (H * pct) / 100;
-const ps = (pct: number) => (pw(pct) + ph(pct)) / 2;
+const { width: W } = Dimensions.get("window");
 
 const TRENDING = [
   "Last of Us Season 2",
@@ -326,11 +324,28 @@ export default function SearchScreen() {
     if (isExternal) {
       launchExternalPlayer({ url: streamUrl, title: selectedItem.name });
     } else {
-      router.push({ pathname: "/player", params: { url: streamUrl, title: selectedItem.name, type: "vod" } });
+      router.push({
+        pathname: "/player",
+        params: {
+          url: streamUrl,
+          title: selectedItem.name,
+          type: "vod",
+          contentId: `vod:${selectedItem.id}`,
+        },
+      });
     }
   };
   const RESULT_COLUMNS = isTV ? 7 : (W >= 1024 ? 6 : (W >= 768 ? 4 : 3));
   const CARD_WIDTH = (W - pw(4)) / RESULT_COLUMNS;
+
+  const renderResultItem = useCallback(({ item }: any) => (
+    <ResultCard
+      item={item}
+      itemWidth={CARD_WIDTH}
+      onPress={() => handleResultPress(item)}
+      onFocus={() => item.logo && setFocusedImage(item.logo)}
+    />
+  ), [CARD_WIDTH, handleResultPress]);
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
@@ -362,14 +377,33 @@ export default function SearchScreen() {
                   style={[
                     S.searchBarGradient,
                     (focused || searchFocused) && S.searchBarFocused,
+                    { borderRadius: 25 }
                   ]}
                 >
-                  <View style={[S.searchBarInner, { backgroundColor: "#111015" }]}>
-                    <Ionicons name="search" size={isTV ? ps(2.3) : ps(2.2)} color="rgba(255,255,255,0.5)" />
+                  <LinearGradient
+                    colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
+                  />
+                  {(focused || searchFocused) && (
+                    <LinearGradient
+                      colors={[THEME.colors.primary, THEME.colors.secondary]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
+                    />
+                  )}
+                  <View style={[
+                    S.searchBarInner,
+                    { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
+                    (focused || searchFocused) && { backgroundColor: "#0b0b10" }
+                  ]}>
+                    <Ionicons name="search" size={isTV ? ps(1.8) : ps(1.4)} color={(focused || searchFocused) ? "#fff" : "rgba(255,255,255,0.4)"} style={{ marginRight: pw(1.5) }} />
                     <TextInput
                       ref={inputRef}
                       style={S.searchInput}
-                      placeholder="Search movies, shows, and more..."
+                      placeholder="Search movies, series, channels..."
                       placeholderTextColor="rgba(255,255,255,0.3)"
                       value={query}
                       onChangeText={setQuery}
@@ -450,17 +484,12 @@ export default function SearchScreen() {
             keyExtractor={(item: any) => `${item.type}-${item.id}`}
             contentContainerStyle={{ paddingHorizontal: pw(2), paddingBottom: ph(6) }}
             columnWrapperStyle={{ justifyContent: 'flex-start' }}
-            removeClippedSubviews={false}
-            initialNumToRender={RESULT_COLUMNS * 4}
-            maxToRenderPerBatch={RESULT_COLUMNS * 4}
-            renderItem={({ item }: any) => (
-              <ResultCard
-                item={item}
-                itemWidth={CARD_WIDTH}
-                onPress={() => handleResultPress(item)}
-                onFocus={() => item.logo && setFocusedImage(item.logo)}
-              />
-            )}
+            removeClippedSubviews={Platform.OS === 'android'}
+            initialNumToRender={RESULT_COLUMNS * 3}
+            maxToRenderPerBatch={RESULT_COLUMNS * 2}
+            windowSize={5}
+            updateCellsBatchingPeriod={50}
+            renderItem={renderResultItem}
             ListEmptyComponent={
               !isLoading ? (
                 <View style={S.emptyState}>

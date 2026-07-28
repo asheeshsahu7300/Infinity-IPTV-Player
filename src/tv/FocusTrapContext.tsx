@@ -8,6 +8,9 @@ export interface NextFocusTags {
   nextFocusRight?: number;
 }
 
+/** Direction the overlay's focusable items are laid out in. */
+export type OverlayAxis = "vertical" | "horizontal";
+
 export interface OverlayFocusController {
   registerItem: (id: string, ref: React.RefObject<View>) => () => void;
   subscribe: (listener: () => void) => () => void;
@@ -17,33 +20,64 @@ export interface OverlayFocusController {
 export const InsideOverlayContext = React.createContext<OverlayFocusController | null>(null);
 
 // ── Global overlay tracking ──────────────────────────────────────────────────
+// This has to be an observable store, not a bare module variable: components
+// call `useIsFocusTrapped()` during render, and memoised list rows will not
+// re-render on their own when an overlay opens. Without a subscription the
+// background stays focusable and the trap only exists on paper.
 
 let _overlayCount = 0;
+const _listeners = new Set<() => void>();
+
+const getOverlayCount = () => _overlayCount;
+
+const subscribeOverlayCount = (listener: () => void) => {
+  _listeners.add(listener);
+  return () => {
+    _listeners.delete(listener);
+  };
+};
+
+const emit = () => {
+  _listeners.forEach((listener) => listener());
+};
 
 export const FocusTrap = {
   register() {
     _overlayCount++;
+    emit();
   },
   unregister() {
     _overlayCount = Math.max(0, _overlayCount - 1);
+    emit();
   },
-  getCount() {
-    return _overlayCount;
-  },
+  getCount: getOverlayCount,
+  subscribe: subscribeOverlayCount,
 };
 
 /**
- * Returns `true` when component is inside an active overlay.
+ * Returns `true` when the component is in the background behind an active
+ * overlay (i.e. an overlay is open and this component is not inside it).
  */
 export function useIsFocusTrapped(): boolean {
   const overlayController = React.useContext(InsideOverlayContext);
-  return _overlayCount > 0 && overlayController === null;
+  const count = React.useSyncExternalStore(
+    subscribeOverlayCount,
+    getOverlayCount,
+    getOverlayCount
+  );
+  return count > 0 && overlayController === null;
 }
 
 /**
- * Helper hook to create an OverlayFocusController instance for Overlay
+ * Creates an OverlayFocusController for `Overlay`.
+ *
+ * Items are chained along `axis` via native `nextFocus*` tags so the OS focus
+ * engine walks them in mount order. The cross axis is deliberately left
+ * undefined — containment is the job of the surrounding `TVFocusGuideView`'s
+ * `trapFocus*` props. Pinning the cross axis back to the item itself would
+ * make a horizontally laid-out overlay impossible to navigate.
  */
-export function useOverlayFocusController(): OverlayFocusController {
+export function useOverlayFocusController(axis: OverlayAxis = "vertical"): OverlayFocusController {
   const itemsRef = React.useRef<{ id: string; ref: React.RefObject<View> }[]>([]);
   const listenersRef = React.useRef<Set<() => void>>(new Set());
 
@@ -85,16 +119,17 @@ export function useOverlayFocusController(): OverlayFocusController {
         const selfTag = findNodeHandle(list[index].ref.current) ?? undefined;
         if (!selfTag) return {};
 
-        const prevTag = index > 0 ? (findNodeHandle(list[index - 1].ref.current) ?? selfTag) : selfTag;
-        const nextTag = index < list.length - 1 ? (findNodeHandle(list[index + 1].ref.current) ?? selfTag) : selfTag;
+        const prevTag =
+          index > 0 ? (findNodeHandle(list[index - 1].ref.current) ?? selfTag) : selfTag;
+        const nextTag =
+          index < list.length - 1
+            ? (findNodeHandle(list[index + 1].ref.current) ?? selfTag)
+            : selfTag;
 
-        return {
-          nextFocusUp: prevTag,
-          nextFocusDown: nextTag,
-          nextFocusLeft: selfTag,
-          nextFocusRight: selfTag,
-        };
+        return axis === "horizontal"
+          ? { nextFocusLeft: prevTag, nextFocusRight: nextTag }
+          : { nextFocusUp: prevTag, nextFocusDown: nextTag };
       },
     };
-  }, [notifyListeners]);
+  }, [notifyListeners, axis]);
 }

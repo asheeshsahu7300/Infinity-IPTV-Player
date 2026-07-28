@@ -23,17 +23,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { Focusable } from "../src/tv";
-import { THEME } from "../src/theme/tokens";
+// This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
+import { THEME, pw, ph, psRaw as ps } from "../src/theme/tokens";
 
-// ─── Percentage helpers ───────────────────────────────────────────────────────
-const { width: W, height: H } = Dimensions.get("window");
-
-/** % of screen width  */
-const pw = (pct: number) => (W * pct) / 100;
-/** % of screen height */
-const ph = (pct: number) => (H * pct) / 100;
-/** averaged scale — good for font sizes */
-const ps = (pct: number) => (pw(pct) + ph(pct)) / 2;
+const { width: W } = Dimensions.get("window");
 
 // ─── Carousel geometry (all percentage-based) ────────────────────────────────
 const CARD_WIDTH = isTV ? pw(28) : pw(85);

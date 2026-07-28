@@ -17,15 +17,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePortalStore } from '../src/store/portalStore';
 import { isTV } from '../src/utils/tvUtils';
 import { LinearGradient } from 'expo-linear-gradient';
-import { THEME } from '../src/theme/tokens';
+import { THEME, pw, ph, psRaw as ps } from '../src/theme/tokens';
 import { BlurView } from 'expo-blur';
 import MaskedView from "@react-native-masked-view/masked-view";
 import { Focusable, FocusGroup } from "../src/tv";
-
-const { width: W, height: H } = Dimensions.get("window");
-const pw = (pct: number) => (W * pct) / 100;
-const ph = (pct: number) => (H * pct) / 100;
-const ps = (pct: number) => (pw(pct) + ph(pct)) / 2;
 
 
 
@@ -142,18 +137,10 @@ export default function SettingsScreen() {
   }, []);
 
   const handleDisconnect = useCallback(async () => {
-    if (activePortal) {
-      try {
-        const { portalApi } = await import("../src/services/portalApi");
-        await portalApi.deletePortalData(activePortal);
-      } catch (e) {
-        console.warn("Failed to delete portal cache data on disconnect:", e);
-      }
-    }
     await setActivePortal(null);
     clearPortalData();
     router.replace('/');
-  }, [activePortal, setActivePortal, clearPortalData, router]);
+  }, []);
 
   const focusId = (id: string) => () => setFocusedId(id);
   const blurId = () => setFocusedId(null);

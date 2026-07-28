@@ -142,6 +142,9 @@ interface SkeletonListProps {
   itemStyle?: any;
 }
 
+const ChannelGridItemSkeleton = (props: any) => <ChannelItemSkeleton grid {...props} />;
+ChannelGridItemSkeleton.displayName = "ChannelGridItemSkeleton";
+
 export const SkeletonList: React.FC<SkeletonListProps> = ({
   contentType,
   layoutMode = "list",
@@ -157,7 +160,7 @@ export const SkeletonList: React.FC<SkeletonListProps> = ({
     if (layoutMode === "grid") {
       if (!count) count = 15; // 3 × 5
       containerStyle = styles.channelGrid;
-      Component = (props: any) => <ChannelItemSkeleton grid {...props} />;
+      Component = ChannelGridItemSkeleton;
     } else {
       if (!count) count = 5;
       Component = ChannelItemSkeleton;

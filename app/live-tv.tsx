@@ -28,9 +28,12 @@ import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import CategorySidebar from "../src/components/CategorySidebar";
-import { Focusable, FocusGroup } from "../src/tv";
+import { Focusable, FocusGroup, FocusMemory, useFocusRestore } from "../src/tv";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+/** Namespace for this screen's focus memory. */
+const SCREEN_KEY = "live-tv";
 
 // ─────────────────────────────────────────────
 // Channel Card — single Focusable, no per-item TVEventHandler
@@ -68,6 +71,9 @@ const ChannelCard = React.memo(function ChannelCard({
         hasTVPreferredFocus={isFocusedItem}
         ringOnFocus={false}
         style={S.cardWrapper}
+        screenKey={SCREEN_KEY}
+        focusKey={String(item.id)}
+        accessibilityLabel={item.category ? `${item.name}, ${item.category}` : item.name}
       >
         {(focused) => (
           <View
@@ -309,6 +315,8 @@ export default function LiveTVScreen() {
     setPage(1);
     prevCategoryIdRef.current = selectedCategory;
     focusedIdRef.current = "";
+    // A remembered tile from the previous category is not in the new list.
+    FocusMemory.forget(SCREEN_KEY);
 
     if (activePortal.type === "xtream" || activePortal.type === "m3u") {
       if (allChannelsCacheRef.current.length > 0) {
@@ -463,6 +471,14 @@ export default function LiveTVScreen() {
   }, [filteredChannels.length]);
 
   // Build sidebar categories with "All" at top
+  // Restore the exact tile we left from; fall back to the first only when
+  // there is no memory for this category.
+  const autoFocusFirst = useFocusRestore(
+    SCREEN_KEY,
+    !isLoading && chunkedChannels.length > 0,
+    selectedCategory
+  );
+
   const sidebarCategories: Category[] = [
     { id: "all", name: "All Channels", type: "live" },
     ...localCategories.filter(c =>
@@ -492,6 +508,17 @@ export default function LiveTVScreen() {
 
       {/* ─── Header ─── */}
       <View style={S.header}>
+        <Focusable
+          ringOnFocus={false}
+          focusStyle={S.backBtnFocused}
+          style={S.backBtn}
+          accessibilityLabel="Back"
+          onPress={safeGoBack}
+        >
+          {(focused) => (
+            <Ionicons name="chevron-back" size={ps(1.6)} color={focused ? "#000" : "#fff"} />
+          )}
+        </Focusable>
         <Text style={S.headerTitle}>Live TV</Text>
 
         <FocusGroup style={S.searchWrapper}>
@@ -567,13 +594,13 @@ export default function LiveTVScreen() {
             getItemLayout={getItemLayout}
             onEndReached={onEndReached}
             onEndReachedThreshold={0.5}
-            removeClippedSubviews={true}
+            removeClippedSubviews={Platform.OS === "android"}
             contentContainerStyle={[S.gridContent, (isLoading || chunkedChannels.length === 0) && { flexGrow: 1 }]}
             extraData={filteredChannels.length}
-            initialNumToRender={6}
-            maxToRenderPerBatch={4}
-            windowSize={3}
-            updateCellsBatchingPeriod={30}
+            initialNumToRender={isTV ? 8 : 6}
+            maxToRenderPerBatch={isTV ? 6 : 4}
+            windowSize={5}
+            updateCellsBatchingPeriod={50}
             ref={flatListRef}
             renderItem={useCallback(({ item: row, index: rowIndex }: { item: { id: string; items: Channel[] }; index: number }) => (
               <FocusGroup style={{ flexDirection: "row" }}>
@@ -585,22 +612,20 @@ export default function LiveTVScreen() {
                       item={channel}
                       index={itemIndex}
                       itemWidth={itemWidth}
-                      isFocusedItem={
-                        !focusedIdRef.current && itemIndex === 0 && !searchFocused
-                      }
+                      isFocusedItem={autoFocusFirst && itemIndex === 0 && !searchFocused}
                       onPress={handleChannelPress}
                       onFocus={handleChannelFocus}
                     />
                   );
                 })}
               </FocusGroup>
-            ), [itemWidth, searchFocused, numColumns, handleChannelPress, handleChannelFocus])}
+            ), [itemWidth, searchFocused, numColumns, autoFocusFirst, handleChannelPress, handleChannelFocus])}
             ListEmptyComponent={
               isLoading ? (
-                <Focusable hasTVPreferredFocus={!searchFocused} style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }} ringOnFocus={false}>
+                <View style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }}>
                   <ActivityIndicator color={THEME.colors.primary} size="large" />
                   <Text style={[S.loadingText, { marginTop: 10 }]}>Loading channels...</Text>
-                </Focusable>
+                </View>
               ) : (
                 <View style={S.emptyState}>
                   <Ionicons name="tv-outline" size={64} color="rgba(255,255,255,0.08)" />
@@ -650,6 +675,18 @@ const S = StyleSheet.create({
     borderBottomColor: "rgba(255,255,255,0.03)",
   },
   headerTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", minWidth: pw(10) },
+  backBtn: {
+    width: ps(3.2),
+    height: ps(3.2),
+    borderRadius: ps(1.6),
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backBtnFocused: {
+    backgroundColor: "#fff",
+    transform: [{ scale: 1.1 }],
+  },
   searchWrapper: {
     flex: 1,
     height: ph(6.5),

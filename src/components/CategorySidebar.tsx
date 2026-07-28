@@ -22,6 +22,7 @@ interface CategorySidebarProps {
   selectedId: string;
   onSelect: (id: string) => void;
   width?: number;
+  autoFocusFirst?: boolean;
 }
 
 // ─────────────────────────────────────────────
@@ -116,12 +117,14 @@ const getCategoryIcon = (name: string): any => {
 const CategoryItem = React.memo(function CategoryItem({
   item,
   isActive,
+  hasTVPreferredFocus,
   onSelect,
   onFocus,
   index,
 }: {
   item: Category;
   isActive: boolean;
+  hasTVPreferredFocus?: boolean;
   onSelect: (id: string) => void;
   onFocus: (index: number) => void;
   index: number;
@@ -137,6 +140,7 @@ const CategoryItem = React.memo(function CategoryItem({
   return (
     <View style={[S.itemWrapper, { overflow: "visible" }]}>
       <Focusable
+        hasTVPreferredFocus={hasTVPreferredFocus}
         onPress={handleSelect}
         onFocus={handleFocus}
         ringOnFocus={false}
@@ -174,6 +178,7 @@ const CategoryItem = React.memo(function CategoryItem({
   return (
     prevProps.item.id === nextProps.item.id &&
     prevProps.isActive === nextProps.isActive &&
+    prevProps.hasTVPreferredFocus === nextProps.hasTVPreferredFocus &&
     prevProps.index === nextProps.index
   );
 });
@@ -183,6 +188,7 @@ export default function CategorySidebar({
   selectedId,
   onSelect,
   width = 240,
+  autoFocusFirst = false,
 }: CategorySidebarProps) {
   const flatListRef = useRef<FlatList>(null);
   const isMounted = useRef(true);
@@ -243,11 +249,12 @@ export default function CategorySidebar({
             <CategoryItem
               item={item}
               isActive={selectedId === item.id}
+              hasTVPreferredFocus={autoFocusFirst && (selectedId === item.id || index === 0)}
               onSelect={onSelect}
               onFocus={scrollToIndex}
               index={index}
             />
-          ), [selectedId, onSelect, scrollToIndex])}
+          ), [selectedId, autoFocusFirst, onSelect, scrollToIndex])}
         />
       </View>
     </View>

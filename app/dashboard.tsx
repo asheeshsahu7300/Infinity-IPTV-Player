@@ -1,10 +1,9 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  FlatList,
   RefreshControl,
   Image,
   Dimensions,
@@ -14,8 +13,6 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from "expo-blur";
-import MaskedView from "@react-native-masked-view/masked-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePortalStore } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
@@ -26,141 +23,12 @@ import LoadingOverlay from "../src/components/LoadingOverlay";
 import { isTV } from "../src/utils/tvUtils";
 import { Focusable, Overlay } from "../src/tv";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
-import { THEME } from "../src/theme/tokens";
+// This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
+import { THEME, pw, ph, psRaw as ps } from "../src/theme/tokens";
 
-// ─── Percentage helpers ───────────────────────────────────────────────────────
-const { width: W, height: H } = Dimensions.get("window");
-const pw = (pct: number) => (W * pct) / 100;
-const ph = (pct: number) => (H * pct) / 100;
-const ps = (pct: number) => (pw(pct) + ph(pct)) / 2;
-
-// ─── Geometry ───────────────────────────────────────────────────────────────
 const RAIL_H_PAD = pw(isTV ? 5 : 4);
-const RAIL_GAP = pw(1);
-
-// Sized so exactly 7 tiles fit per row inside `RAIL_H_PAD` (pw(5) per side)
-// with a `RAIL_GAP` of pw(1) between tiles:
-//   7 × tileW + 6 × pw(1) = 100% − 2 × pw(5)
-//   tileW = (90 − 6) / 7 = 12% of width  ⇒ pw(12)
-const PORTRAIT_W = pw(isTV ? 12 : 18);
-const PORTRAIT_H = PORTRAIT_W * 1.5;
-const LANDSCAPE_W = pw(isTV ? 12 : 26);
-const LANDSCAPE_H = LANDSCAPE_W * (9 / 16);
-
-const GRADIENT_COLORS = [THEME.colors.primary, THEME.colors.secondary] as const;
 
 // ─── Components ───────────────────────────────────────────────────────────────
-
-
-
-const RailItem = React.memo(({
-  title,
-  subtitle,
-  image,
-  type = "landscape",
-  onFocus,
-  onPress,
-}: {
-  title: string;
-  subtitle?: string;
-  image?: string;
-  type?: "landscape" | "portrait";
-  onFocus?: (img: string) => void;
-  onPress: () => void;
-}) => {
-  const width = type === "landscape" ? LANDSCAPE_W : PORTRAIT_W;
-  const height = type === "landscape" ? LANDSCAPE_H : PORTRAIT_H;
-
-  const handleFocus = useCallback(() => {
-    onFocus?.(image || "");
-  }, [onFocus, image]);
-
-  return (
-    <View style={{ marginRight: RAIL_GAP, paddingVertical: ps(1), overflow: "visible" }}>
-      <Focusable
-        onFocus={handleFocus}
-        onPress={onPress}
-        ringOnFocus={false}
-        style={{ width, height }}
-      >
-        {(focused) => (
-          <View
-            style={[
-              S.cardBorder,
-              focused && S.cardBorderFocused,
-              focused && { transform: [{ scale: 1.06 }] }
-            ]}
-          >
-            <View style={S.railInner}>
-              {image ? (
-                <Image source={{ uri: image }} style={S.railItemImage} resizeMode="cover" />
-              ) : (
-                <View style={[S.railItemImage, S.placeholderBg]}>
-                  <Ionicons name={type === "landscape" ? "tv" : "film"} size={ps(2)} color="rgba(255,255,255,0.15)" />
-                </View>
-              )}
-              <LinearGradient
-                colors={
-                  focused
-                    ? ["transparent", "rgba(0,0,0,0.8)", "rgba(0,0,0,1)"]
-                    : ["transparent", "rgba(0,0,0,0.6)", "rgba(0,0,0,0.9)"]
-                }
-                style={[
-                  S.cardContent,
-                  {
-                    borderBottomLeftRadius: ps(1.1),
-                    borderBottomRightRadius: ps(1.1),
-                    overflow: 'hidden'
-                  }
-                ]}
-              >
-                <Text numberOfLines={1} style={S.cardTitle}>{title}</Text>
-                {subtitle && <Text numberOfLines={1} style={S.cardSubtitle}>{subtitle}</Text>}
-              </LinearGradient>
-            </View>
-          </View>
-        )}
-      </Focusable>
-    </View>
-  );
-});
-
-const ContentSection = React.memo(({ title, data, type, onFocus, onPress }: any) => {
-  if (!data?.length) return null;
-
-  const renderRailItem = React.useCallback(({ item }: { item: any }) => (
-    <RailItem
-      key={item.id}
-      title={item.title}
-      subtitle={item.subtitle}
-      image={item.image}
-      type={type}
-      onFocus={(img: string) => onFocus?.(img)}
-      onPress={() => onPress(item.data)}
-    />
-  ), [type, onFocus, onPress]);
-
-  return (
-    <View style={S.section}>
-      <View style={S.sectionHeader}>
-        <Text style={S.sectionTitle}>{title}</Text>
-      </View>
-      <FlatList
-        horizontal
-        data={data}
-        renderItem={renderRailItem}
-        keyExtractor={(item: any) => item.id}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={S.sectionScroll}
-        decelerationRate="fast"
-        initialNumToRender={5}
-        maxToRenderPerBatch={3}
-        windowSize={3}
-        removeClippedSubviews={true}
-      />
-    </View>
-  );
-});
 
 const HeroPill = ({
   icon,
@@ -221,7 +89,7 @@ const HeroPill = ({
 export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { activePortal, channels, vodItems, series, favorites, loadFavorites, setActivePortal, updatePortal } = usePortalStore();
+  const { activePortal, loadFavorites } = usePortalStore();
 
   const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -294,29 +162,17 @@ export default function DashboardScreen() {
     if (isExternal) {
       launchExternalPlayer({ url: streamUrl, title: selectedItem.name });
     } else {
-      router.push({ pathname: "/player", params: { url: streamUrl, title: selectedItem.name, type: "vod" } });
+      router.push({
+        pathname: "/player",
+        params: {
+          url: streamUrl,
+          title: selectedItem.name,
+          type: "vod",
+          contentId: `vod:${selectedItem.id}`,
+        },
+      });
     }
   }, [selectedItem, activePortal, router]);
-
-  // Channels Filtering (Indian Comprehensive)
-  const indianChannels = useMemo(() => {
-    return (channels || [])
-      .filter(c => {
-        const cat = (c.category || "").toLowerCase();
-        const name = (c.name || "").toLowerCase();
-        return cat.includes("india") || cat.includes("hindi") || name.includes("hindi");
-      })
-      .slice(0, 80)
-      .map(c => ({ id: c.id, title: c.name, subtitle: (c.category || "INDIA").toUpperCase(), image: c.logo || null, data: c }));
-  }, [channels]);
-
-  const movieRails = useMemo(() => {
-    return (vodItems || []).slice(0, 40).map(v => ({ id: v.id, title: v.name, subtitle: v.year || "MOVIE", image: v.logo || null, data: v }));
-  }, [vodItems]);
-
-  const seriesRails = useMemo(() => {
-    return (series || []).slice(0, 40).map(s => ({ id: s.id, title: s.name, subtitle: "SERIES", image: s.logo || null, data: s }));
-  }, [series]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -410,41 +266,6 @@ export default function DashboardScreen() {
                 </Focusable>
               ))}
             </View>
-          </View>
-
-          <View style={S.railsPadding}>
-            {indianChannels.length > 0 && (
-              <ContentSection
-                title="Indian Television"
-                data={indianChannels}
-                type="landscape"
-                onFocus={(img: string) => updateCinematicBackground(img)}
-                onPress={(c: any) => router.push({ pathname: "/player", params: { url: c.streamUrl, title: c.name, type: "live" } })}
-              />
-            )}
-
-            {movieRails.length > 0 && (
-              <ContentSection
-                title="Must-Watch Movies"
-                data={movieRails}
-                type="portrait"
-                onFocus={(img: string) => updateCinematicBackground(img)}
-                onPress={(m: any) => {
-                  setSelectedItem(m);
-                  setPlayModalVisible(true);
-                }}
-              />
-            )}
-
-            {seriesRails.length > 0 && (
-              <ContentSection
-                title="Compelling Series"
-                data={seriesRails}
-                type="portrait"
-                onFocus={(img: string) => updateCinematicBackground(img)}
-                onPress={(s: any) => router.push({ pathname: "/series-details", params: { id: s.id, name: s.name, logo: s.logo } })}
-              />
-            )}
           </View>
         </ScrollView>
       </View>
@@ -613,7 +434,7 @@ const S = StyleSheet.create({
   // ── Hero ──
   heroSection: {
     paddingHorizontal: RAIL_H_PAD,
-    marginBottom: ph(6),
+    marginBottom: ph(10),
     maxWidth: pw(70),
   },
   heroTagline: {

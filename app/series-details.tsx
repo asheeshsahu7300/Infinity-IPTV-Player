@@ -293,7 +293,17 @@ export default function SeriesDetailsScreen() {
       if (isExternal) {
         launchExternalPlayer({ url: streamUrl, title: playTitle });
       } else {
-        router.push({ pathname: "/player", params: { url: streamUrl, title: playTitle, type: "vod" } });
+        router.push({
+          pathname: "/player",
+          params: {
+            url: streamUrl,
+            title: playTitle,
+            type: "vod",
+            // Scoped to the series so the same episode number in a different
+            // show cannot collide in the resume store.
+            contentId: `episode:${params.id}:${episodeSnapshot.id}`,
+          },
+        });
       }
     } catch (err) {
       console.error("Episode playback launch error:", err);
@@ -437,10 +447,11 @@ export default function SeriesDetailsScreen() {
               key={`ep-grid-${numColumns}-${selectedSeasonId}`}
               ListHeaderComponent={heroAndSeasons}
               contentContainerStyle={[S.epListContent, { paddingBottom: ph(10) }]}
-              removeClippedSubviews={false}
-              initialNumToRender={numColumns * 4}
-              maxToRenderPerBatch={numColumns * 4}
-              windowSize={11}
+              removeClippedSubviews={Platform.OS === "android"}
+              initialNumToRender={numColumns * 3}
+              maxToRenderPerBatch={numColumns * 2}
+              windowSize={5}
+              updateCellsBatchingPeriod={50}
               showsVerticalScrollIndicator={false}
               ListEmptyComponent={
                 <View style={{ alignItems: "center", justifyContent: "center", paddingTop: ph(5), opacity: 0.3 }}>

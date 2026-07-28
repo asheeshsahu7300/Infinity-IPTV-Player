@@ -31,9 +31,12 @@ import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import CategorySidebar from "../src/components/CategorySidebar";
-import { Focusable, FocusGroup, Overlay } from "../src/tv";
+import { Focusable, FocusGroup, Overlay, FocusMemory, useFocusRestore } from "../src/tv";
 
 const { width: SCREEN_WIDTH_VAL } = Dimensions.get("window");
+
+/** Namespace for this screen's focus memory. */
+const SCREEN_KEY = "vod";
 
 // ─────────────────────────────────────────────
 // Styles Defined at Top
@@ -50,6 +53,18 @@ const S = StyleSheet.create({
     borderBottomColor: "rgba(255,255,255,0.03)",
   },
   headerTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", minWidth: pw(10) },
+  backBtn: {
+    width: ps(3.2),
+    height: ps(3.2),
+    borderRadius: ps(1.6),
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backBtnFocused: {
+    backgroundColor: "#fff",
+    transform: [{ scale: 1.1 }],
+  },
   searchWrapper: {
     flex: 1,
     height: ph(6.5),
@@ -211,6 +226,10 @@ const MovieItem = React.memo(function MovieItem({
         onLongPress={handleFavoritePress}
         hasTVPreferredFocus={isFocusedItem}
         ringOnFocus={false}
+        screenKey={SCREEN_KEY}
+        focusKey={String(item.id)}
+        accessibilityLabel={item.name}
+        accessibilityHint={isFavorite ? "In favourites. Hold to remove" : "Hold to add to favourites"}
       >
         {(focused) => (
           <View
@@ -424,6 +443,9 @@ export default function VODScreen() {
   useEffect(() => {
     if (!activePortal) return;
     setPage(1);
+    // A remembered tile from the previous category is not in the new list.
+    FocusMemory.forget(SCREEN_KEY);
+    focusedIdRef.current = "";
     const cat = selectedCategory;
     if (activePortal?.type === "m3u" || activePortal?.type === "xtream") {
       if (allVodCacheRef.current.length > 0) {
@@ -576,6 +598,16 @@ export default function VODScreen() {
     }
   }, []);
 
+  // Real focus restoration: FocusMemory re-focuses the exact tile we left from
+  // (each MovieItem registers itself via screenKey/focusKey). Only when there
+  // is nothing to restore do we fall back to the first tile — and that is
+  // state, so flipping it actually re-renders the grid.
+  const autoFocusFirst = useFocusRestore(
+    SCREEN_KEY,
+    !isLoading && displayVodItems.length > 0,
+    selectedCategory
+  );
+
   // After a refresh/reset, scroll the list back to the previously focused item
   const restoreFocusPosition = useCallback((items: VODItem[]) => {
     if (!focusedIdRef.current || !flatListRef.current) return;
@@ -604,14 +636,29 @@ export default function VODScreen() {
     toggleFavorite("vod", item.id);
   }, [toggleFavorite]);
 
-  const startPlayback = async (url: string | null, isExternal: boolean = false, title?: string) => {
+  const startPlayback = async (
+    url: string | null,
+    isExternal: boolean = false,
+    title?: string,
+    contentId?: string
+  ) => {
     if (!url) { Alert.alert("Error", "No stream URL found"); return; }
     setPlayModalVisible(false);
     try {
       if (isExternal) {
         launchExternalPlayer({ url, title: title || selectedVod?.name || "Movie" });
       } else {
-        router.push({ pathname: "/player", params: { url, title: title || selectedVod?.name || "Movie", type: "vod" } });
+        router.push({
+          pathname: "/player",
+          params: {
+            url,
+            title: title || selectedVod?.name || "Movie",
+            type: "vod",
+            // Required for resume — the player only saves/restores position
+            // when it is given a stable content id.
+            ...(contentId ? { contentId } : {}),
+          },
+        });
       }
     } catch (err) {
       console.error("Playback launch error:", err);
@@ -622,6 +669,7 @@ export default function VODScreen() {
   const handleModalAction = async (isExternal: boolean) => {
     if (!selectedVod) return;
     const titleSnapshot = selectedVod.name;
+    const contentIdSnapshot = `vod:${selectedVod.id}`;
     let streamUrl: string | undefined = selectedVod.streamUrl;
 
     try {
@@ -641,7 +689,7 @@ export default function VODScreen() {
       return;
     }
 
-    startPlayback(streamUrl, isExternal, titleSnapshot);
+    startPlayback(streamUrl, isExternal, titleSnapshot, contentIdSnapshot);
   };
 
   const renderRow = useCallback(({ item: row, index: rowIndex }: { item: { id: string; items: VODItem[] }; index: number }) => (
@@ -658,14 +706,12 @@ export default function VODScreen() {
             onFavoritePress={handleFavoritePress}
             isFavorite={favorites.vod.includes(movie.id)}
             itemWidth={itemWidth}
-            isFocusedItem={
-              !focusedIdRef.current && itemIndex === 0 && !searchFocused
-            }
+            isFocusedItem={autoFocusFirst && itemIndex === 0 && !searchFocused}
           />
         );
       })}
     </FocusGroup>
-  ), [favorites.vod, itemWidth, searchFocused, numColumns, handleVodPress, handleVodFocus, handleFavoritePress]);
+  ), [favorites.vod, itemWidth, searchFocused, numColumns, autoFocusFirst, handleVodPress, handleVodFocus, handleFavoritePress]);
 
 
 
@@ -795,6 +841,17 @@ export default function VODScreen() {
         <StatusBar hidden />
 
         <View style={S.header}>
+          <Focusable
+            ringOnFocus={false}
+            focusStyle={S.backBtnFocused}
+            style={S.backBtn}
+            accessibilityLabel="Back"
+            onPress={safeGoBack}
+          >
+            {(focused) => (
+              <Ionicons name="chevron-back" size={ps(1.6)} color={focused ? "#000" : "#fff"} />
+            )}
+          </Focusable>
           <Text style={S.headerTitle}>Movies</Text>
           <FocusGroup style={S.searchWrapper}>
             <Focusable
@@ -861,21 +918,21 @@ export default function VODScreen() {
               keyExtractor={(item) => item.id}
               getItemLayout={getItemLayout}
               contentContainerStyle={[S.list, (isLoading || chunkedMovies.length === 0) && { flexGrow: 1 }]}
-              removeClippedSubviews={true}
+              removeClippedSubviews={Platform.OS === "android"}
               extraData={filteredMovies.length}
-              initialNumToRender={6}
-              maxToRenderPerBatch={4}
-              windowSize={3}
-              updateCellsBatchingPeriod={30}
+              initialNumToRender={isTV ? 8 : 6}
+              maxToRenderPerBatch={isTV ? 6 : 4}
+              windowSize={5}
+              updateCellsBatchingPeriod={50}
               onEndReached={handleLoadMore}
               onEndReachedThreshold={1.5}
               refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
               ListEmptyComponent={
                 isLoading ? (
-                  <Focusable hasTVPreferredFocus={!searchFocused} style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }} ringOnFocus={false}>
+                  <View style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }}>
                     <ActivityIndicator color={THEME.colors.primary} size="large" />
                     <Text style={[S.loadingText, { marginTop: 10 }]}>Brewing cinematic magic...</Text>
-                  </Focusable>
+                  </View>
                 ) : (
                   <View style={S.emptyState}>
                     <MaterialCommunityIcons name="movie-filter-outline" size={ps(4)} color="rgba(255,255,255,0.05)" />

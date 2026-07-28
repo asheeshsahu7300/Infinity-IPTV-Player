@@ -12,6 +12,8 @@ import {
   PanResponder,
   ScrollView,
   BackHandler,
+  AppState,
+  AppStateStatus,
   findNodeHandle,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -25,10 +27,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useKeepAwake } from "expo-keep-awake";
 import { StreamManager } from "../src/services/StreamManager";
+import { PlaybackState } from "../src/services/PlaybackState";
 import { usePortalStore } from "../src/store/portalStore";
 import { isTV } from "../src/utils/tvUtils";
 import { THEME, ps, pw, ph } from "../src/theme/tokens";
-import { Focusable, FocusGroup, Overlay, useDPad } from "../src/tv";
+import { Focusable, FocusGroup, Overlay, useDPad, DPAD_PRIORITY } from "../src/tv";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -111,7 +114,6 @@ export default function PlayerScreen() {
   const [volumeIndicator, setVolumeIndicator] = useState<number | null>(null);
   const [brightnessIndicator, setBrightnessIndicator] = useState<number | null>(null);
   const [showCastToast, setShowCastToast] = useState(false);
-  const [vlcPosition, setVlcPosition] = useState(0);
 
   const hasSetInitialPosition = useRef(false);
   const savedResumePosition = useRef(0);
@@ -143,6 +145,10 @@ export default function PlayerScreen() {
   const showAudioModalRef = useRef(showAudioModal);
   const showSubtitleModalRef = useRef(showSubtitleModal);
   const seekBarFocusedRef = useRef(seekBarFocused);
+  // Progress mirrors so teardown paths can persist the *current* position
+  // instead of whatever was captured when the effect was created.
+  const positionRef = useRef(position);
+  const durationRef = useRef(duration);
 
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
   useEffect(() => { showControlsRef.current = showControls; }, [showControls]);
@@ -150,6 +156,23 @@ export default function PlayerScreen() {
   useEffect(() => { showAudioModalRef.current = showAudioModal; }, [showAudioModal]);
   useEffect(() => { showSubtitleModalRef.current = showSubtitleModal; }, [showSubtitleModal]);
   useEffect(() => { seekBarFocusedRef.current = seekBarFocused; }, [seekBarFocused]);
+  useEffect(() => { positionRef.current = position; }, [position]);
+  useEffect(() => { durationRef.current = duration; }, [duration]);
+
+  // Persist wherever we are, from any exit path (back, unmount, app kill).
+  const persistProgress = useCallback(() => {
+    const id = params.contentId;
+    if (!id || params.type === "live") return;
+    if (positionRef.current > 0 && durationRef.current > 0) {
+      StreamManager.savePlaybackPosition(id, positionRef.current, durationRef.current);
+    }
+  }, [params.contentId, params.type]);
+
+  // Let background sync back off while video is on screen.
+  useEffect(() => {
+    PlaybackState.setActive(true);
+    return () => PlaybackState.setActive(false);
+  }, []);
 
   useEffect(() => {
     if (showControls && seekBarRef.current) {
@@ -182,11 +205,17 @@ export default function PlayerScreen() {
         ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
       }
       Brightness.restoreSystemBrightnessAsync();
-      if (params.contentId && position > 0 && duration > 0) {
-        StreamManager.savePlaybackPosition(params.contentId, position, duration);
-      }
+      persistProgress();
     };
   }, []);
+
+  // Save on backgrounding too — HOME or a task-switch never runs unmount.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state !== "active") persistProgress();
+    });
+    return () => sub.remove();
+  }, [persistProgress]);
 
   // Handle hardware back button: hide controls first, then navigate back
   useEffect(() => {
@@ -202,14 +231,12 @@ export default function PlayerScreen() {
         return true;
       }
       // Controls are hidden – navigate back
-      if (params.contentId && position > 0 && duration > 0) {
-        StreamManager.savePlaybackPosition(params.contentId, position, duration);
-      }
+      persistProgress();
       router.back();
       return true;
     });
     return () => sub.remove();
-  }, [position, duration, params.contentId]);
+  }, [persistProgress, router]);
 
   useEffect(() => {
     const loadSettingsAndResume = async () => {
@@ -451,7 +478,9 @@ export default function PlayerScreen() {
         resetControlsTimeout();
       }
     },
-    isTV && !showAudioModal && !showSubtitleModal
+    // An open Overlay outranks the player on the event bus, so track-selection
+    // modals intercept the remote without the player having to opt out.
+    { enabled: isTV, priority: DPAD_PRIORITY.PLAYER }
   );
 
   const cycleAspectRatio = () => setAspectRatioIndex(p => (p + 1) % ASPECT_RATIOS.length);
@@ -483,7 +512,7 @@ export default function PlayerScreen() {
       if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
       return;
     }
-    if (params.contentId && position > 0 && duration > 0) StreamManager.savePlaybackPosition(params.contentId, position, duration);
+    persistProgress();
     router.back();
   };
 
@@ -555,10 +584,6 @@ export default function PlayerScreen() {
       }
     }
 
-    if (data.position !== undefined) {
-      setVlcPosition(data.position);
-    }
-
     if (params.contentId && params.type !== "live" && Date.now() - lastPositionSaveTime.current > 10000) {
       lastPositionSaveTime.current = Date.now();
       StreamManager.savePlaybackPosition(params.contentId, cur, data.duration || duration);
@@ -598,7 +623,10 @@ export default function PlayerScreen() {
     return ResizeMode.STRETCH;
   };
 
-  const progressPercent = isLive ? 0 : (vlcPosition > 0 ? vlcPosition * 100 : (duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0));
+  const progressPercent =
+    isLive || duration <= 0
+      ? 0
+      : Math.min(100, Math.max(0, (position / duration) * 100));
 
   return (
     <View style={S.container} {...panResponder.panHandlers}>
@@ -652,6 +680,7 @@ export default function PlayerScreen() {
           hasTVPreferredFocus
           style={StyleSheet.absoluteFill}
           ringOnFocus={false}
+          accessibilityLabel="Show playback controls"
           onPress={() => {
             setShowControls(true);
             resetControlsTimeout();
@@ -710,6 +739,7 @@ export default function PlayerScreen() {
                 ringOnFocus={false}
                 focusStyle={S.controlFocused}
                 style={S.backBtn}
+                accessibilityLabel="Back"
                 onPress={handleBack}
               >
                 <Ionicons name="arrow-back" size={ps(1.8)} color="#fff" />
@@ -729,9 +759,10 @@ export default function PlayerScreen() {
                   ringOnFocus={false}
                   focusStyle={S.skipBtnFocused}
                   style={S.skipBtn}
+                  accessibilityLabel="Rewind 10 seconds"
                   onPress={() => seek(-10000)}
                 >
-                  {(focused) => (
+                  {() => (
                     <View style={S.skipInner}>
                       <MaterialCommunityIcons name="rewind-10" size={ps(1.8)} color="#fff" />
                     </View>
@@ -744,6 +775,7 @@ export default function PlayerScreen() {
                   ringOnFocus={false}
                   focusStyle={S.mainPlayBtnFocused}
                   style={S.mainPlayBtn}
+                  accessibilityLabel={isPlaying ? "Pause" : "Play"}
                   onPress={togglePlay}
                 >
                   <LinearGradient colors={["rgba(255,255,255,0.2)", "rgba(255,255,255,0.05)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.mainPlayGradient}>
@@ -756,9 +788,10 @@ export default function PlayerScreen() {
                   ringOnFocus={false}
                   focusStyle={S.skipBtnFocused}
                   style={S.skipBtn}
+                  accessibilityLabel="Forward 10 seconds"
                   onPress={() => seek(10000)}
                 >
-                  {(focused) => (
+                  {() => (
                     <View style={S.skipInner}>
                       <MaterialCommunityIcons name="fast-forward-10" size={ps(1.8)} color="#fff" />
                     </View>
@@ -800,6 +833,9 @@ export default function PlayerScreen() {
                         ringOnFocus={false}
                         focusStyle={S.progressBarFocused}
                         style={S.progressBarWrapper}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Seek bar, ${formatTime(position)} of ${formatTime(duration)}`}
+                        accessibilityHint="Left and right to scrub, select to play or pause"
                         onFocus={() => setSeekBarFocused(true)}
                         onBlur={() => setSeekBarFocused(false)}
                         onPress={togglePlay}
@@ -835,6 +871,7 @@ export default function PlayerScreen() {
                           ringOnFocus={false}
                           focusStyle={S.iconChipFocused}
                           style={S.iconChip}
+                          accessibilityLabel="Rewind 10 seconds"
                           onPress={() => seek(-10000)}
                         >
                           <MaterialCommunityIcons name="rewind-10" size={ps(1.6)} color="white" />
@@ -843,6 +880,7 @@ export default function PlayerScreen() {
                           ringOnFocus={false}
                           focusStyle={S.iconChipFocused}
                           style={S.iconChip}
+                          accessibilityLabel="Forward 60 seconds"
                           onPress={() => seek(60000)}
                         >
                           <MaterialCommunityIcons name="fast-forward-60" size={ps(1.6)} color="white" />
@@ -855,6 +893,8 @@ export default function PlayerScreen() {
                       ringOnFocus={false}
                       focusStyle={S.iconChipFocused}
                       style={S.settingBtn}
+                      accessibilityLabel={`Playback speed, currently ${playbackSpeed.toFixed(2)} times`}
+                      accessibilityHint="Select to cycle speed"
                       onPress={cyclePlaybackSpeed}
                     >
                       <Ionicons name="speedometer-outline" size={ps(1.4)} color="white" />
@@ -864,6 +904,7 @@ export default function PlayerScreen() {
                       ringOnFocus={false}
                       focusStyle={S.iconChipFocused}
                       style={S.settingBtn}
+                      accessibilityLabel="Subtitles"
                       onPress={() => setShowSubtitleModal(true)}
                     >
                       <Ionicons name="text-outline" size={ps(1.4)} color="white" />
@@ -873,6 +914,7 @@ export default function PlayerScreen() {
                       ringOnFocus={false}
                       focusStyle={S.iconChipFocused}
                       style={S.settingBtn}
+                      accessibilityLabel="Audio track"
                       onPress={() => setShowAudioModal(true)}
                     >
                       <Ionicons name="musical-notes-outline" size={ps(1.4)} color="white" />
@@ -882,6 +924,8 @@ export default function PlayerScreen() {
                       ringOnFocus={false}
                       focusStyle={S.iconChipFocused}
                       style={S.settingBtn}
+                      accessibilityLabel={`Aspect ratio, currently ${ASPECT_RATIOS[aspectRatioIndex].label}`}
+                      accessibilityHint="Select to cycle aspect ratio"
                       onPress={cycleAspectRatio}
                     >
                       <Ionicons name="expand" size={ps(1.4)} color="white" />
@@ -942,6 +986,8 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
                 ringOnFocus={false}
                 style={[S.modalOption, isSelected && S.modalOptionSelected]}
                 focusStyle={S.modalOptionFocused}
+                accessibilityLabel={trackName}
+                selected={isSelected}
                 onPress={() => onSelect(id)}
               >
                 {(focused: boolean) => (
@@ -978,6 +1024,8 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
             ringOnFocus={false}
             style={[S.modalOption, selected === -1 && S.modalOptionSelected]}
             focusStyle={S.modalOptionFocused}
+            accessibilityLabel="Disable subtitles"
+            selected={selected === -1}
             onPress={() => onSelect(-1)}
           >
             {(focused: boolean) => (
@@ -1014,6 +1062,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
         ringOnFocus={false}
         style={S.modalCloseBtn}
         focusStyle={S.modalCloseBtnFocused}
+        accessibilityLabel="Close"
         onPress={onClose}
       >
         <Text style={S.modalCloseBtnText}>CLOSE</Text>

@@ -9,13 +9,15 @@ import {
   Animated,
   TVFocusGuideView,
 } from "react-native";
-import { useDPad } from "./useDPad";
+import { useDPad, DPAD_PRIORITY } from "./useDPad";
 import {
   InsideOverlayContext,
   FocusTrap,
   useOverlayFocusController,
+  OverlayAxis,
 } from "./FocusTrapContext";
 import { lastFocusedRef } from "./Focusable";
+import { useReducedMotion } from "./useReducedMotion";
 
 export interface OverlayProps {
   visible: boolean;
@@ -25,6 +27,8 @@ export interface OverlayProps {
   contentStyle?: StyleProp<ViewStyle>;
   trapFocus?: boolean;
   closeOnBack?: boolean;
+  /** Layout direction of the overlay's focusable actions. Default "vertical". */
+  axis?: OverlayAxis;
 }
 
 /**
@@ -32,9 +36,14 @@ export interface OverlayProps {
  * overlay inside the same React tree (no native dialog), so the focus engine
  * traverses correctly and `hasTVPreferredFocus` works on the first action.
  *
- * Focus trapping is enforced at both the native OS level via `OverlayFocusController`
- * (which assigns native `nextFocus*` tags locking focus to modal buttons) and at the
- * React component level via `FocusTrapContext` (which disables background elements).
+ * Containment is enforced three ways:
+ *  - the surrounding `TVFocusGuideView` traps directional focus natively;
+ *  - `OverlayFocusController` chains the overlay's items with `nextFocus*`;
+ *  - `FocusTrap` marks background `Focusable`s non-focusable (observable, so
+ *    memoised rows actually re-render when an overlay opens).
+ *
+ * While open it also takes top priority on the remote event bus, so screens
+ * underneath stop receiving D-pad input.
  */
 export function Overlay({
   visible,
@@ -44,11 +53,13 @@ export function Overlay({
   contentStyle,
   trapFocus = true,
   closeOnBack = true,
+  axis = "vertical",
 }: OverlayProps) {
   const previousFocusedRef = React.useRef<View | null>(null);
   const opacity = React.useRef(new Animated.Value(0)).current;
   const [render, setRender] = React.useState(visible);
-  const overlayController = useOverlayFocusController();
+  const overlayController = useOverlayFocusController(axis);
+  const reduceMotion = useReducedMotion();
 
   // Hardware back button handler
   React.useEffect(() => {
@@ -60,19 +71,18 @@ export function Overlay({
     return () => sub.remove();
   }, [visible, closeOnBack, onClose]);
 
-  // Remote menu button handler
+  // Remote menu button handler — highest priority while open.
   useDPad(
     {
       onMenu: () => onClose?.(),
     },
-    visible
+    { enabled: visible, priority: DPAD_PRIORITY.OVERLAY }
   );
 
-  // Focus trap registration & focus save/restore
+  // Focus trap registration + saving the background element we came from.
   React.useEffect(() => {
     if (!visible) return;
 
-    // Save currently focused background element before opening
     previousFocusedRef.current = lastFocusedRef.current;
 
     if (trapFocus) {
@@ -83,35 +93,40 @@ export function Overlay({
       if (trapFocus) {
         FocusTrap.unregister();
       }
-      // Restore focus to background element when modal closes
-      const prev = previousFocusedRef.current;
-      if (prev) {
-        setTimeout(() => {
-          (prev as any)?.focus?.();
-        }, 50);
-      }
     };
   }, [visible, trapFocus]);
 
-  // Visibility fade animation
+  // Visibility animation. Focus is handed back only once the overlay has
+  // actually left the tree — restoring while the focus guide is still mounted
+  // just bounces focus straight back into the closing overlay.
   React.useEffect(() => {
+    const duration = reduceMotion ? 0 : 200;
+
     if (visible) {
       setRender(true);
       Animated.timing(opacity, {
         toValue: 1,
-        duration: 200,
+        duration,
         useNativeDriver: true,
       }).start();
-    } else {
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start(() => {
-        setRender(false);
-      });
+      return;
     }
-  }, [visible, opacity]);
+
+    Animated.timing(opacity, {
+      toValue: 0,
+      duration,
+      useNativeDriver: true,
+    }).start(() => {
+      setRender(false);
+      const prev = previousFocusedRef.current;
+      previousFocusedRef.current = null;
+      if (prev) {
+        requestAnimationFrame(() => {
+          (prev as any)?.focus?.();
+        });
+      }
+    });
+  }, [visible, opacity, reduceMotion]);
 
   if (!render) return null;
 
@@ -160,5 +175,3 @@ const styles = StyleSheet.create({
 });
 
 export default Overlay;
-
-

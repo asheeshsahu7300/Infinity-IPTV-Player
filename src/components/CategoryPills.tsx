@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { View, TouchableOpacity, Text, StyleSheet, FlatList, Platform, Animated } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, FlatList, Animated } from 'react-native';
 import { Category } from '../store/portalStore';
 import { THEME } from '../theme/tokens';
 
@@ -8,8 +8,6 @@ interface CategoryPillsProps {
   selectedId: string;
   onSelect: (id: string) => void;
 }
-
-const isTV = Platform.isTV || (Platform.OS === "android" && Platform.isTV);
 
 const PillItem = React.memo(({ item, isActive, isFocused, onSelect, onFocus, onBlur, index }: {
   item: Category;
@@ -76,6 +74,8 @@ const PillItem = React.memo(({ item, isActive, isFocused, onSelect, onFocus, onB
     prevProps.index === nextProps.index
   );
 });
+
+PillItem.displayName = "PillItem";
 
 export default function CategoryPills({ categories, selectedId, onSelect }: CategoryPillsProps) {
   const flatListRef = useRef<FlatList>(null);
@@ -156,8 +156,11 @@ export default function CategoryPills({ categories, selectedId, onSelect }: Cate
         ), [selectedId, focusedId, onSelect, handleFocus, handleBlur])}
         keyExtractor={(item) => item.id}
         horizontal
-        showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.content}
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
+        windowSize={5}
+        updateCellsBatchingPeriod={50}
         removeClippedSubviews={false}
       />
     </View>

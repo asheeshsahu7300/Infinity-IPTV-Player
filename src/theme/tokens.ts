@@ -9,9 +9,18 @@ const IS_TV =
 
 const TV_SCALE = IS_TV ? 1.3 : 1;
 
+/** The one custom family app/_layout.tsx actually loads via useFonts(). */
+export const FONT_FAMILY = "Tenor Sans";
+
 export const pw = (pct: number) => (W * pct) / 100;
 export const ph = (pct: number) => (H * pct) / 100;
 export const ps = (pct: number) => ((pw(pct) + ph(pct)) / 2) * TV_SCALE;
+/**
+ * `ps` without the TV bump. Screens that predate the TV_SCALE tier are sized
+ * against this — import it rather than redeclaring a local `ps`, otherwise the
+ * same call renders at two different sizes depending on the file.
+ */
+export const psRaw = (pct: number) => (pw(pct) + ph(pct)) / 2;
 
 export const THEME = {
   colors: {
@@ -63,9 +72,12 @@ export const THEME = {
     caption: ps(1.1),
     tiny: ps(0.8),
   },
+  // Only families registered by useFonts() render; anything else silently
+  // falls back to the system font. Weight is carried by `fontWeight`, so all
+  // three aliases point at the single loaded family.
   fonts: {
-    regular: "GoogleSans-Regular",
-    medium: "GoogleSans-Medium",
-    bold: "GoogleSans-Bold",
+    regular: FONT_FAMILY,
+    medium: FONT_FAMILY,
+    bold: FONT_FAMILY,
   }
 };

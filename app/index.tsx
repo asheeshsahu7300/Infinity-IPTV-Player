@@ -3,11 +3,12 @@ import { View, StyleSheet } from "react-native";
 import { Redirect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePortalStore } from "../src/store/portalStore";
+import { DeepLink } from "../src/services/DeepLink";
 import LoadingOverlay from "../src/components/LoadingOverlay";
 
 export default function IndexScreen() {
   const insets = useSafeAreaInsets();
-  
+
   // Use hydrated store state directly - AppBootManager already restored everything
   const activePortal = usePortalStore((s) => s.activePortal);
   const isHydrated = usePortalStore((s) => s.isHydrated);
@@ -30,12 +31,21 @@ export default function IndexScreen() {
     );
   }
 
-  // Once hydrated, natively redirect to the correct screen
+  // A link the app was launched with wins over the default landing screen —
+  // but only once we have a portal, otherwise there is nothing to resolve it
+  // against. Held links survive onboarding and replay on the next pass.
+  if (activePortal && DeepLink.hasPending) {
+    const target = DeepLink.consume();
+    if (target) {
+      return <Redirect href={{ pathname: target.pathname as any, params: target.params }} />;
+    }
+  }
+
   if (activePortal) {
     return <Redirect href="/dashboard" />;
-  } else {
-    return <Redirect href="/portals" />;
   }
+
+  return <Redirect href="/portals" />;
 }
 
 const styles = StyleSheet.create({
