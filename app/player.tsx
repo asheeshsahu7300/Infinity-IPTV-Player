@@ -590,27 +590,11 @@ export default function PlayerScreen() {
     }
   };
 
-  const stallTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
 
   const onExpoStatusUpdate = (status: AVPlaybackStatus) => {
     if (!status.isLoaded) { if (status.error) handleSilentRetry(); return; }
-    setIsLoading(false);
     setIsBuffering(status.isBuffering);
-
-    if (status.isBuffering && status.shouldPlay) {
-      if (!stallTimeoutRef.current) {
-        stallTimeoutRef.current = setTimeout(() => {
-          stallTimeoutRef.current = null;
-          expoVideoRef.current?.playAsync().catch(() => {});
-        }, 4000);
-      }
-    } else {
-      if (stallTimeoutRef.current) {
-        clearTimeout(stallTimeoutRef.current);
-        stallTimeoutRef.current = null;
-      }
-    }
-
     if (status.durationMillis) setDuration(status.durationMillis);
     if (status.positionMillis !== undefined) onProgress({ currentTime: status.positionMillis, duration: status.durationMillis });
     if (status.didJustFinish) { setIsPlaying(false); if (params.contentId) StreamManager.savePlaybackPosition(params.contentId, 0, status.durationMillis || duration); }
