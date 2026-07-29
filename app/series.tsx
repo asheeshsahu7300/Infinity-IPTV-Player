@@ -393,39 +393,44 @@ export default function SeriesScreen() {
 
   useEffect(() => {
     if (!activePortal) return;
+    setIsLoading(true);
     setPage(1);
     prevCategoryIdRef.current = selectedCategory;
     focusedIdRef.current = "";
     // A remembered tile from the previous category is not in the new list.
     FocusMemory.forget(SCREEN_KEY);
 
-    if (activePortal.type === "xtream" || activePortal.type === "m3u") {
-      if (allSeriesCacheRef.current.length > 0) {
-        const isAll = !selectedCategory || selectedCategory === "all" || selectedCategory === "*";
-        const cat = isAll ? undefined : selectedCategory;
-        const selectedCatObj = (categories || []).find(c => String(c.id) === String(cat));
-        const filtered = !cat
-          ? allSeriesCacheRef.current
-          : allSeriesCacheRef.current.filter(s => {
-              const sCatId = String(s.categoryId ?? "");
-              const target = String(cat);
-              if (sCatId === target) return true;
-              if (selectedCatObj && s.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
-              return false;
-            });
-        fullListRef.current = filtered;
-        const sliced = filtered.slice(0, PAGE_SIZE);
-        setDisplaySeries(sliced);  // local state — never blocked
-        setHasMore(filtered.length > sliced.length);
-        setIsLoading(false);
+    const timer = setTimeout(() => {
+      if (activePortal.type === "xtream" || activePortal.type === "m3u") {
+        if (allSeriesCacheRef.current.length > 0) {
+          const isAll = !selectedCategory || selectedCategory === "all" || selectedCategory === "*";
+          const cat = isAll ? undefined : selectedCategory;
+          const selectedCatObj = (categories || []).find(c => String(c.id) === String(cat));
+          const filtered = !cat
+            ? allSeriesCacheRef.current
+            : allSeriesCacheRef.current.filter(s => {
+                const sCatId = String(s.categoryId ?? "");
+                const target = String(cat);
+                if (sCatId === target) return true;
+                if (selectedCatObj && s.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
+                return false;
+              });
+          fullListRef.current = filtered;
+          const sliced = filtered.slice(0, PAGE_SIZE);
+          setDisplaySeries(sliced);  // local state — never blocked
+          setHasMore(filtered.length > sliced.length);
+          setIsLoading(false);
+        } else {
+          setHasMore(true);
+          loadSeries(selectedCategory, 1, true);
+        }
       } else {
         setHasMore(true);
         loadSeries(selectedCategory, 1, true);
       }
-    } else {
-      setHasMore(true);
-      loadSeries(selectedCategory, 1, true);
-    }
+    }, 50);
+
+    return () => clearTimeout(timer);
   }, [selectedCategory, activePortal?.id]);
 
   const loadCategories = async () => {

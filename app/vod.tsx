@@ -442,36 +442,43 @@ export default function VODScreen() {
 
   useEffect(() => {
     if (!activePortal) return;
+    setIsLoading(true);
     setPage(1);
     // A remembered tile from the previous category is not in the new list.
     FocusMemory.forget(SCREEN_KEY);
     focusedIdRef.current = "";
     const cat = selectedCategory;
-    if (activePortal?.type === "m3u" || activePortal?.type === "xtream") {
-      if (allVodCacheRef.current.length > 0) {
-        const selectedCatObj = (categories || []).find(c => String(c.id) === String(cat));
-        const filtered = (!cat || cat === "all" || cat === "*")
-          ? allVodCacheRef.current
-          : allVodCacheRef.current.filter(v => {
-              const vCatId = String(v.categoryId ?? "");
-              const targetCatId = String(cat);
-              if (vCatId === targetCatId) return true;
-              if (selectedCatObj && v.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
-              return false;
-            });
-        fullListRef.current = filtered;
-        const sliced = filtered.slice(0, PAGE_SIZE);
-        setDisplayVodItems(sliced);  // local state — never blocked
-        setHasMore(filtered.length > sliced.length);
-        restoreFocusPosition(sliced);
+
+    const timer = setTimeout(() => {
+      if (activePortal?.type === "m3u" || activePortal?.type === "xtream") {
+        if (allVodCacheRef.current.length > 0) {
+          const selectedCatObj = (categories || []).find(c => String(c.id) === String(cat));
+          const filtered = (!cat || cat === "all" || cat === "*")
+            ? allVodCacheRef.current
+            : allVodCacheRef.current.filter(v => {
+                const vCatId = String(v.categoryId ?? "");
+                const targetCatId = String(cat);
+                if (vCatId === targetCatId) return true;
+                if (selectedCatObj && v.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
+                return false;
+              });
+          fullListRef.current = filtered;
+          const sliced = filtered.slice(0, PAGE_SIZE);
+          setDisplayVodItems(sliced);  // local state — never blocked
+          setHasMore(filtered.length > sliced.length);
+          setIsLoading(false);
+          restoreFocusPosition(sliced);
+        } else {
+          setHasMore(true);
+          loadVodItems(selectedCategory, 1, true);
+        }
       } else {
         setHasMore(true);
         loadVodItems(selectedCategory, 1, true);
       }
-    } else {
-      setHasMore(true);
-      loadVodItems(selectedCategory, 1, true);
-    }
+    }, 50);
+
+    return () => clearTimeout(timer);
   }, [selectedCategory, activePortal?.id]);
 
   const loadCategories = async () => {

@@ -312,32 +312,37 @@ export default function LiveTVScreen() {
   // Category change — Xtream/M3U slice the cached full list; MAG hits the API.
   useEffect(() => {
     if (!activePortal || prevCategoryIdRef.current === selectedCategory) return;
+    setIsLoading(true);
     setPage(1);
     prevCategoryIdRef.current = selectedCategory;
     focusedIdRef.current = "";
     // A remembered tile from the previous category is not in the new list.
     FocusMemory.forget(SCREEN_KEY);
 
-    if (activePortal.type === "xtream" || activePortal.type === "m3u") {
-      if (allChannelsCacheRef.current.length > 0) {
-        const isAll = !selectedCategory || selectedCategory === "all" || selectedCategory === "*";
-        const cat = isAll ? undefined : selectedCategory;
-        const filtered = !cat
-          ? allChannelsCacheRef.current
-          : allChannelsCacheRef.current.filter(c => String(c.categoryId) === String(cat));
-        fullListRef.current = filtered;
-        const sliced = filtered.slice(0, PAGE_SIZE);
-        setChannels(sliced);
-        setHasMore(filtered.length > sliced.length);
-        setIsLoading(false);
+    const timer = setTimeout(() => {
+      if (activePortal.type === "xtream" || activePortal.type === "m3u") {
+        if (allChannelsCacheRef.current.length > 0) {
+          const isAll = !selectedCategory || selectedCategory === "all" || selectedCategory === "*";
+          const cat = isAll ? undefined : selectedCategory;
+          const filtered = !cat
+            ? allChannelsCacheRef.current
+            : allChannelsCacheRef.current.filter(c => String(c.categoryId) === String(cat));
+          fullListRef.current = filtered;
+          const sliced = filtered.slice(0, PAGE_SIZE);
+          setChannels(sliced);
+          setHasMore(filtered.length > sliced.length);
+          setIsLoading(false);
+        } else {
+          setHasMore(true);
+          loadChannels(selectedCategory, 1, true);
+        }
       } else {
         setHasMore(true);
         loadChannels(selectedCategory, 1, true);
       }
-    } else {
-      setHasMore(true);
-      loadChannels(selectedCategory, 1, true);
-    }
+    }, 50);
+
+    return () => clearTimeout(timer);
   }, [selectedCategory]);
 
   // Channel press
