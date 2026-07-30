@@ -1,8 +1,9 @@
 // portalApi.ts
-import axios from "axios";
+import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { cacheManager, CACHE_TTL } from "./cacheManager";
 import { requestManager } from "./requestManager";
+import { prewarmDns } from "./dnsResolver";
 import {
   Portal,
   Channel,
@@ -137,14 +138,120 @@ const headers = (mac: string, token?: string, url?: string) => {
     "User-Agent": "okhttp/3.12.1",
     "Accept-Encoding": "identity",
     Accept: "application/json, text/javascript, */*; q=0.01",
-    "Accept-Language": "en-US,en;q=0.9",
     Cookie: cookieParts.join("; "),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...originHeaders,
-    "X-User-Agent": "Model: MAG254; Link: Ethernet",
+
     Connection: "Keep-Alive",
   };
 };
+
+/**
+ * Resilient Axios wrapper for MAG/Stalker portal endpoints.
+ * Automatically injects active session token into headers & query string,
+ * detects HTTP 200 OK responses with empty bodies ("" or {}),
+ * re-authenticates session token on attempt 0/1, and retries with exponential backoff.
+ */
+async function portalGet(
+  portal: Portal,
+  rawUrl: string,
+  options: AxiosRequestConfig = {},
+  retries: number = 2
+): Promise<AxiosResponse<any>> {
+  let currentPortal = portal;
+  let lastError: any = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      prewarmDns(rawUrl);
+      const refreshed = await refreshToken(currentPortal, attempt > 0);
+      const base = safe(refreshed.config.url).replace(/\/$/, "");
+      const mac = refreshed.config.mac ?? "";
+      const token = refreshed.config.token ?? "";
+
+      // Ensure token is attached to query string if present
+      let url = rawUrl;
+      if (token && !/([?&])token=/i.test(url)) {
+        const separator = url.includes("?") ? "&" : "?";
+        url = `${url}${separator}token=${encodeURIComponent(token)}`;
+      }
+
+      const reqConfig: AxiosRequestConfig = {
+        ...rmAcceptHeader,
+        ...options,
+        headers: {
+          ...headers(mac, token, base),
+          ...(options.headers || {}),
+        },
+        timeout: options.timeout || 30000,
+      };
+
+      const res = await axios.get(url, reqConfig);
+      const data = res?.data;
+
+      // Check for HTTP 200 OK with empty body ("", null, {}, or empty js payload)
+      const isEmpty =
+        res.status === 200 &&
+        (data === "" ||
+          data == null ||
+          (typeof data === "string" && data.trim().length === 0) ||
+          (typeof data === "object" && Object.keys(data).length === 0) ||
+          (data?.js === "" || (data?.js == null && !data?.data && !data?.result && !Array.isArray(data))));
+
+      if (!isEmpty) {
+        return res;
+      }
+
+      console.warn("⚠️ [MAG Portal] HTTP 200 OK with empty response body:", {
+        url,
+        status: res.status,
+        attempt,
+      });
+
+      // Force session token refresh on empty body response
+      if (attempt < retries) {
+        try {
+          const auth = await portalApi.authenticate(currentPortal);
+          if (auth?.token) {
+            currentPortal = {
+              ...currentPortal,
+              config: {
+                ...currentPortal.config,
+                token: auth.token,
+                expiry: auth.expiry,
+              },
+            };
+            const store = usePortalStore.getState();
+            if (store.activePortal?.id === currentPortal.id) {
+              await store.setActivePortal(currentPortal);
+            }
+          }
+        } catch (authErr) {
+          console.warn("⚠️ Re-authentication retry failed:", authErr);
+        }
+      }
+
+      const delay = 300 * (attempt + 1);
+      await new Promise((r) => setTimeout(r, delay));
+
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`⚠️ [MAG Portal] Request error on attempt ${attempt}:`, err?.message || err);
+      if (attempt === retries) throw err;
+      const delay = 300 * (attempt + 1);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+
+  // Return clean empty response if server returns empty body persistently
+  return {
+    status: 200,
+    statusText: "OK",
+    headers: {},
+    config: options as any,
+    data: { js: [] },
+  };
+}
 
 const extract = (res: any): any[] => {
   let data = res?.data?.js?.data ?? res?.data?.js ?? res?.data ?? res ?? [];
@@ -1319,50 +1426,60 @@ export const portalApi = {
         }
       }
 
-      // Save to canonical cache keys
-      if (liveChannels.length > 0) {
-        await cacheManager.set(`portal:${key}:live:channels:all`, liveChannels, CACHE_TTL.CHANNELS);
-        await cacheManager.set(`portal:${key}:live:channels:search:all`, liveChannels, CACHE_TTL.CHANNELS);
-      }
-      if (vodItems.length > 0) {
-        await cacheManager.set(`portal:${key}:vod:items:all`, vodItems, CACHE_TTL.VOD);
-        await cacheManager.set(`portal:${key}:vod:items:all:1`, vodItems, CACHE_TTL.VOD);
-      }
-      if (seriesList.length > 0) {
-        await cacheManager.set(`portal:${key}:series:list:all`, seriesList, CACHE_TTL.SERIES);
-        await cacheManager.set(`portal:${key}:series:list:all:1`, seriesList, CACHE_TTL.SERIES);
-      }
-      if (epgPrograms.length > 0) {
-        await cacheManager.set(`portal:${key}:epg:all`, epgPrograms, CACHE_TTL.EPG);
-        await cacheManager.set(`portal:${key}:epg`, epgPrograms, CACHE_TTL.EPG);
-      }
-
       const allMagCategories = [
         ...(liveCategories || []),
         ...(vodCategories || []),
         ...(seriesCategories || []),
       ];
 
-      const ops: Promise<void>[] = [];
-
-      // NEVER overwrite store arrays with empty data
+      // 1. Update Zustand store immediately for instant UI responsiveness
       if (allMagCategories.length > 0) {
-        ops.push(store.setCategories(allMagCategories, key));
+        store.setCategories(allMagCategories, key);
       }
       if (liveChannels.length > 0) {
-        ops.push(forceReset ? store.setChannels(liveChannels, key) : store.mergeChannels(liveChannels, key));
+        if (forceReset) store.setChannels(liveChannels, key);
+        else store.mergeChannels(liveChannels, key);
       }
       if (vodItems.length > 0) {
-        ops.push(forceReset ? store.setVodItems(vodItems, key) : store.mergeVodItems(vodItems, key));
+        if (forceReset) store.setVodItems(vodItems, key);
+        else store.mergeVodItems(vodItems, key);
       }
       if (seriesList.length > 0) {
-        ops.push(forceReset ? store.setSeries(seriesList, key) : store.mergeSeries(seriesList, key));
+        if (forceReset) store.setSeries(seriesList, key);
+        else store.mergeSeries(seriesList, key);
       }
       if (epgPrograms.length > 0) {
-        ops.push(store.setEpgData(epgPrograms, key));
+        store.setEpgData(epgPrograms, key);
       }
 
-      await Promise.all(ops);
+      // 2. Offload heavy disk cache persistence to non-blocking background tasks spaced 200ms apart
+      setTimeout(() => {
+        if (liveChannels.length > 0) {
+          cacheManager.set(`portal:${key}:live:channels:all`, liveChannels, CACHE_TTL.CHANNELS).catch(() => {});
+          cacheManager.set(`portal:${key}:live:channels:search:all`, liveChannels, CACHE_TTL.CHANNELS).catch(() => {});
+        }
+      }, 100);
+
+      setTimeout(() => {
+        if (vodItems.length > 0) {
+          cacheManager.set(`portal:${key}:vod:items:all`, vodItems, CACHE_TTL.VOD).catch(() => {});
+          cacheManager.set(`portal:${key}:vod:items:all:1`, vodItems, CACHE_TTL.VOD).catch(() => {});
+        }
+      }, 300);
+
+      setTimeout(() => {
+        if (seriesList.length > 0) {
+          cacheManager.set(`portal:${key}:series:list:all`, seriesList, CACHE_TTL.SERIES).catch(() => {});
+          cacheManager.set(`portal:${key}:series:list:all:1`, seriesList, CACHE_TTL.SERIES).catch(() => {});
+        }
+      }, 500);
+
+      setTimeout(() => {
+        if (epgPrograms.length > 0) {
+          cacheManager.set(`portal:${key}:epg:all`, epgPrograms, CACHE_TTL.EPG).catch(() => {});
+          cacheManager.set(`portal:${key}:epg`, epgPrograms, CACHE_TTL.EPG).catch(() => {});
+        }
+      }, 700);
       console.log("✅ MAG portal data refreshed and persisted");
     } catch (e: any) {
       if (e?.message?.includes("empty data")) {

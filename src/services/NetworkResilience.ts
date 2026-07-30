@@ -44,7 +44,6 @@ class NetworkResilienceClass {
 
             // Notify listeners
             if (wasConnected !== this.isConnected) {
-                console.log(`📡 Network: ${this.isConnected ? "Connected" : "Disconnected"}`);
                 this.listeners.forEach((callback) => callback(this.isConnected));
 
                 // Process offline queue when back online
@@ -111,7 +110,6 @@ class NetworkResilienceClass {
 
                 // If offline, wait for connection
                 if (!this.isConnected) {
-                    console.log("⏳ Waiting for network connection...");
                     await this.waitForConnection(30000); // 30s timeout
                 }
 
@@ -121,7 +119,6 @@ class NetworkResilienceClass {
                     maxDelayMs
                 );
 
-                console.log(`🔄 Retry attempt ${attempt + 1}/${maxRetries} after ${Math.round(delay)}ms`);
                 await this.sleep(delay);
             }
         }
@@ -152,8 +149,6 @@ class NetworkResilienceClass {
                 reject,
                 options,
             });
-
-            console.log(`📥 Queued request: ${id} (${this.offlineQueue.length} in queue)`);
         });
     }
 
@@ -164,7 +159,6 @@ class NetworkResilienceClass {
         if (this.isProcessingQueue || this.offlineQueue.length === 0) return;
 
         this.isProcessingQueue = true;
-        console.log(`📤 Processing ${this.offlineQueue.length} queued requests...`);
 
         while (this.offlineQueue.length > 0 && this.isConnected) {
             const request = this.offlineQueue.shift()!;
@@ -178,7 +172,6 @@ class NetworkResilienceClass {
         }
 
         this.isProcessingQueue = false;
-        console.log("✅ Offline queue processed");
     }
 
     /**

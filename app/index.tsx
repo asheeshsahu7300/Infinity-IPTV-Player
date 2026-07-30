@@ -6,10 +6,16 @@ import { usePortalStore } from "../src/store/portalStore";
 import { DeepLink } from "../src/services/DeepLink";
 import LoadingOverlay from "../src/components/LoadingOverlay";
 
+import { AppBootManager } from "../src/services/AppBootManager";
+
 export default function IndexScreen() {
   const insets = useSafeAreaInsets();
 
-  // Use hydrated store state directly - AppBootManager already restored everything
+  React.useEffect(() => {
+    AppBootManager.initialize();
+  }, []);
+
+  // Use hydrated store state directly
   const activePortal = usePortalStore((s) => s.activePortal);
   const isHydrated = usePortalStore((s) => s.isHydrated);
 

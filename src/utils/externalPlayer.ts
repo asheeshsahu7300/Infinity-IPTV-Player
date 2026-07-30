@@ -30,8 +30,9 @@ import { Platform, AppState, AppStateStatus } from "react-native";
 import * as IntentLauncher from "expo-intent-launcher";
 import * as Linking from "expo-linking";
 
-// FLAG_ACTIVITY_NEW_TASK — launch VLC as a standalone top-level activity.
-const FLAG_ACTIVITY_NEW_TASK = 0x10000000;
+// Intent flag to bring calling app task back to front when external activity finishes
+const FLAG_ACTIVITY_CLEAR_TOP = 0x04000000;
+const FLAG_ACTIVITY_SINGLE_TOP = 0x20000000;
 
 export interface LaunchExternalPlayerOptions {
   url: string;
@@ -44,11 +45,10 @@ export interface LaunchExternalPlayerOptions {
 /**
  * Launch an external video player.
  *
- * On Android it fires an ACTION_VIEW intent (fire-and-forget).
+ * On Android it fires an ACTION_VIEW intent.
  * On iOS it falls back to Linking.openURL().
  *
- * Returns a cleanup function that unsubscribes the AppState listener;
- * call it if the component unmounts before the user returns.
+ * Returns a cleanup function that unsubscribes the AppState listener.
  */
 export function launchExternalPlayer({
   url,
@@ -63,44 +63,41 @@ export function launchExternalPlayer({
     subscription = null;
   };
 
-  // Watch for the app coming back to the foreground (user closes VLC).
-  if (onReturn) {
-    subscription = AppState.addEventListener(
-      "change",
-      (nextState: AppStateStatus) => {
-        if (nextState === "active" && !hasReturned) {
-          hasReturned = true;
-          cleanup();
-          // Small delay so the app's own UI has time to re-render before the
-          // callback tries to change navigation state.
-          setTimeout(onReturn, 300);
+  // Watch for the app coming back to the foreground (user closes external player).
+  subscription = AppState.addEventListener(
+    "change",
+    (nextState: AppStateStatus) => {
+      if (nextState === "active" && !hasReturned) {
+        hasReturned = true;
+        cleanup();
+        if (onReturn) {
+          setTimeout(onReturn, 200);
         }
       }
-    );
-  }
+    }
+  );
 
   if (Platform.OS === "android") {
-    // Fire-and-forget: do NOT await — VLC never resolves the promise.
-    // 1. First, attempt to launch VLC directly using its package name (faster, bypasses chooser)
+    // Fire-and-forget: launch external player activity over current app stack
+    // without NEW_TASK isolation so pressing BACK in VLC returns directly to iptv-hub.
+    const intentFlags = FLAG_ACTIVITY_CLEAR_TOP | FLAG_ACTIVITY_SINGLE_TOP;
+
     IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
       data: url,
       type: "video/*",
-      flags: FLAG_ACTIVITY_NEW_TASK,
+      flags: intentFlags,
       packageName: "org.videolan.vlc",
-      // VLC reads this extra as the stream title.
       extra: title ? { title } : undefined,
-    } as any).catch((err) => {
-      console.log("[externalPlayer] VLC direct package launch failed, trying generic video chooser:", err);
-      // 2. Fallback: launch generic video view intent (shows chooser with MX Player, Just Play, etc.)
+    } as any).catch(() => {
+      // 2. Fallback: launch generic video view chooser intent
       return IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
         data: url,
         type: "video/*",
-        flags: FLAG_ACTIVITY_NEW_TASK,
+        flags: intentFlags,
         extra: title ? { title } : undefined,
       } as any);
-    }).catch((err) => {
-      // 3. Fallback: use standard URL linking as a last resort
-      console.warn("[externalPlayer] Generic intent failed, falling back to Linking:", err);
+    }).catch(() => {
+      // 3. Fallback: standard URL linking
       Linking.openURL(url).catch(() => {});
     });
   } else {

@@ -454,7 +454,7 @@ export default function SeriesScreen() {
         setCategories([...others, ...fetchedSeriesCats]);
       }
     } catch (e) {
-      console.error("Failed to load series categories:", e);
+      console.warn("Failed to load series categories:", e);
     }
   };
 

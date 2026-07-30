@@ -511,11 +511,11 @@ export const usePortalStore = create<PortalState>((set, get) => ({
   loadPortalData: async (portalId) => {
     try {
       const [channelsStr, vodItemsStr, seriesStr, categoriesStr, epgDataStr] = await Promise.all([
-        AsyncStorage.getItem(`portal:${portalId}:channels`),
-        AsyncStorage.getItem(`portal:${portalId}:vod`),
-        AsyncStorage.getItem(`portal:${portalId}:series`),
-        AsyncStorage.getItem(`portal:${portalId}:categories`),
-        AsyncStorage.getItem(`portal:${portalId}:epg`),
+        safeStorage.getItem(`portal:${portalId}:channels`),
+        safeStorage.getItem(`portal:${portalId}:vod`),
+        safeStorage.getItem(`portal:${portalId}:series`),
+        safeStorage.getItem(`portal:${portalId}:categories`),
+        safeStorage.getItem(`portal:${portalId}:epg`),
       ]);
 
       const nowCutoff = Date.now() - 12 * 60 * 60 * 1000;

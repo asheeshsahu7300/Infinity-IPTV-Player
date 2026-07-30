@@ -732,9 +732,9 @@ export default function PlayerScreen() {
                           ringOnFocus={false}
                           focusStyle={S.iconChipFocused}
                           style={S.iconChip}
-                          onPress={() => seek(30000)}
+                          onPress={() => seek(60000)}
                         >
-                          <MaterialCommunityIcons name="fast-forward-30" size={ps(1.6)} color="white" />
+                          <MaterialCommunityIcons name="fast-forward-60" size={ps(1.6)} color="white" />
                         </Focusable>
                       </>
                     )}

@@ -75,12 +75,9 @@ class StreamManagerClass {
             return { url: "", success: false, error: `Failed after ${this.maxRetries} retries` };
         }
 
-        console.log(`🔄 Stream retry ${retryCount + 1}/${this.maxRetries}...`);
-
         try {
             // 1. Ensure we have network
             if (!NetworkResilience.connected) {
-                console.log("⏳ Waiting for network before retry...");
                 await new Promise((resolve) => setTimeout(resolve, 2000));
 
                 if (!NetworkResilience.connected) {
@@ -116,7 +113,6 @@ class StreamManagerClass {
             const result = await this.getStreamUrl(content, freshPortal, type, episodeNum);
 
             if (result.success) {
-                console.log("✅ Stream retry successful");
                 return result;
             }
 

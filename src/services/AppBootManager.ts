@@ -2,6 +2,7 @@
 // Centralized boot orchestration - hydration-before-render
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { safeStorage } from "./safeStorage";
 import { usePortalStore, Portal } from "../store/portalStore";
 
 export interface BootResult {
@@ -31,62 +32,45 @@ class AppBootManagerClass {
 
     private async _doInitialize(): Promise<BootResult> {
         try {
+            // 1. Read core metadata in parallel (Fast: < 30ms)
+            const [portalsData, activePortalId, favoritesData] = await Promise.all([
+                safeStorage.getItem("portals"),
+                safeStorage.getItem("activePortalId"),
+                safeStorage.getItem("favorites"),
+            ]);
 
-            // 1. Load all portals from AsyncStorage
-            const portalsData = await AsyncStorage.getItem("portals");
             const portals: Portal[] = portalsData ? JSON.parse(portalsData) : [];
 
-            // 2. Load active portal ID
-            const activePortalId = await AsyncStorage.getItem("activePortalId");
-
-            // 3. Find active portal
             let activePortal: Portal | null = null;
             if (activePortalId) {
                 activePortal = portals.find((p) => p.id === activePortalId) || null;
             }
 
-            // 4. Hydrate the store synchronously
             const store = usePortalStore.getState();
-
-            // Set portals list
             usePortalStore.setState({ portals });
 
+            if (favoritesData) {
+                try {
+                    const fav = JSON.parse(favoritesData);
+                    usePortalStore.setState({ favorites: fav });
+                } catch {}
+            }
+
             if (activePortal) {
-                // Set active portal
-                usePortalStore.setState({ activePortal });
+                usePortalStore.setState({
+                    activePortal,
+                    categories: activePortal.categories || [],
+                });
 
-                // 5. Load all cached content data for this portal
-                await this.loadPortalDataFromStorage(activePortal);
-
-                // Check if we effectively loaded data
-                const currentState = usePortalStore.getState();
-                const hasData =
-                    currentState.categories.length > 0 ||
-                    currentState.channels.length > 0 ||
-                    currentState.vodItems.length > 0 ||
-                    currentState.series.length > 0;
-
-                if (!hasData) {
-                    try {
-                        const { portalApi } = await import("./portalApi");
-                        await portalApi.warmPortalData(activePortal);
-                        await AsyncStorage.setItem(`portal:${activePortal.id}:lastSync`, Date.now().toString());
-                    } catch (e) {
-                        console.warn("❌ Network warming failed during boot:", e);
-                    }
-                } else {
-                    // Background sync with 30-min throttle
-                    this.triggerBackgroundSync(activePortal).catch(console.warn);
-                }
-
-                // 6. Load favorites
-                await store.loadFavorites();
-
-                // 7. Mark hydration complete
+                // MARK HYDRATED IMMEDIATELY so app UI renders instantly (< 50ms)
                 usePortalStore.setState({ isHydrated: true });
 
+                // Asynchronously load content data in background without freezing UI
+                setTimeout(() => {
+                    this.loadPortalDataFromStorage(activePortal!).catch(console.warn);
+                }, 50);
+
             } else {
-                // No active portal - mark hydrated anyway
                 usePortalStore.setState({ isHydrated: true });
             }
 
@@ -99,8 +83,6 @@ class AppBootManagerClass {
                 error: null,
             };
         } catch (error: any) {
-
-            // Even on error, mark as hydrated so UI can render
             usePortalStore.setState({ isHydrated: true });
 
             return {
@@ -113,18 +95,27 @@ class AppBootManagerClass {
     }
 
     /**
-     * Load all portal-scoped data from cacheManager into the store
-     * Uses portalApi.restoreCachedPortalData() which has the correct cache keys
+     * Load portal-scoped data in background without blocking initial app render
      */
     private async loadPortalDataFromStorage(portal: Portal): Promise<void> {
         try {
-            // 1. Load durable non-expiring data from AsyncStorage into store first
             const store = usePortalStore.getState();
             await store.loadPortalData(portal.id);
 
-            // 2. Import portalApi dynamically and upgrade from cacheManager if available
-            const { portalApi } = await import("./portalApi");
-            await portalApi.restoreCachedPortalData(portal);
+            const currentState = usePortalStore.getState();
+            const hasData =
+                currentState.categories.length > 0 ||
+                currentState.channels.length > 0 ||
+                currentState.vodItems.length > 0 ||
+                currentState.series.length > 0;
+
+            if (!hasData) {
+                const { portalApi } = await import("./portalApi");
+                await portalApi.warmPortalData(portal);
+                await safeStorage.setItem(`portal:${portal.id}:lastSync`, Date.now().toString());
+            } else {
+                this.triggerBackgroundSync(portal).catch(console.warn);
+            }
         } catch (e) {
             console.warn("Failed to load portal data from storage:", e);
         }
@@ -144,10 +135,8 @@ class AppBootManagerClass {
             // Only sync if last sync was more than 30 minutes ago
             const SYNC_INTERVAL = 30 * 60 * 1000; // 30 minutes
             if (now - lastSync < SYNC_INTERVAL) {
-                console.log("⏭️ Skipping background sync - recently synced");
                 return;
             }
-
 
             // Import portalApi dynamically to avoid circular deps
             const { portalApi } = await import("./portalApi");
@@ -157,8 +146,6 @@ class AppBootManagerClass {
 
             // Update last sync time
             await AsyncStorage.setItem(lastSyncKey, now.toString());
-
-            console.log("✅ Background sync complete");
         } catch (e) {
             console.warn("Background sync failed (non-fatal):", e);
         }
