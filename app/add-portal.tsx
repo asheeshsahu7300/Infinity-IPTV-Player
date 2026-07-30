@@ -523,12 +523,6 @@ export default function AddPortalScreen() {
         </View>
       )}
 
-      {step === 1 && !isTV && (
-        <TouchableOpacity style={S.step1BackButton} onPress={handleBack}>
-          <Ionicons name="chevron-back" size={ps(2.4)} color="#fff" />
-        </TouchableOpacity>
-      )}
-
       <ScrollView
         style={S.content}
         contentContainerStyle={S.scrollContent}

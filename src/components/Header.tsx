@@ -13,20 +13,14 @@ interface HeaderProps {
   };
 }
 
-export default function Header({ title, showBack = true, rightAction }: HeaderProps) {
+export default function Header({ title, showBack = false, rightAction }: HeaderProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.content}>
-        {showBack ? (
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={28} color="#fff" />
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.placeholder} />
-        )}
+        <View style={styles.placeholder} />
         
         <Text style={styles.title} numberOfLines={1}>{title}</Text>
         

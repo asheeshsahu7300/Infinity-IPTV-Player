@@ -53,6 +53,8 @@ export interface FocusableProps {
   testID?: string;
 }
 
+let globalLastPressTime = 0;
+
 export const lastFocusedRef: React.MutableRefObject<View | null> = { current: null };
 
 export const Focusable = forwardRef<View, FocusableProps>(
@@ -128,6 +130,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
     // Auto-focus on mount if this item hasTVPreferredFocus and is active
     React.useEffect(() => {
       if (hasTVPreferredFocus && !isDisabled) {
+        focusTimeRef.current = Date.now();
         const timer = setTimeout(() => {
           nativeRef.current?.focus?.();
         }, 50);
@@ -137,9 +140,11 @@ export const Focusable = forwardRef<View, FocusableProps>(
 
     const isInsideOverlay = Boolean(overlayController);
     const lastPressTimeRef = useRef(0);
+    const focusTimeRef = useRef(0);
 
     const handleFocus = useCallback(() => {
       setFocused(true);
+      focusTimeRef.current = Date.now();
       lastFocusedRef.current = nativeRef.current;
 
       if (screenKey && focusKey) {
@@ -157,7 +162,13 @@ export const Focusable = forwardRef<View, FocusableProps>(
     const handlePress = useCallback(() => {
       if (isDisabled) return;
       const now = Date.now();
+      // Global press lock: ignore any press across all components if another press occurred within 350ms
+      if (now - globalLastPressTime < 350) return;
+      // Block accidental press bleed-through when focus was acquired very recently (< 250ms)
+      // (e.g. when category or search selection auto-focuses the first grid item)
+      if (now - focusTimeRef.current < 250) return;
       if (now - lastPressTimeRef.current < 200) return;
+      globalLastPressTime = now;
       lastPressTimeRef.current = now;
       onPress?.();
     }, [onPress, isDisabled]);

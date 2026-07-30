@@ -345,10 +345,6 @@ export default function SeriesDetailsScreen() {
     <>
       {/* --- Header Section --- */}
       <View style={S.heroSection}>
-        <Focusable style={S.backBtn} ringOnFocus={false} focusStyle={{ borderColor: "#fff", borderWidth: 2 }} onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={ps(1.8)} color="#fff" />
-        </Focusable>
-
         <View style={S.metaContent}>
           <View style={S.posterWrapper}>
             {params.logo ? (

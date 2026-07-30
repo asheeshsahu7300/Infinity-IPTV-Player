@@ -181,17 +181,6 @@ export default function SettingsScreen() {
 
       {/* Modern Centered Header */}
       <View style={S.headerBranding}>
-        <View style={S.headerTopRow}>
-          <Focusable
-            ringOnFocus={false}
-            onPress={() => router.back()}
-            style={S.backBtn}
-            focusStyle={S.backBtnFocused}
-          >
-            <Ionicons name="chevron-back" size={ps(2.5)} color="#fff" />
-          </Focusable>
-          <View style={{ flex: 1 }} />
-        </View>
         <Image source={require("../assets/images/TV.png")} style={S.headerLogoImage} resizeMode="contain" />
       </View>
 

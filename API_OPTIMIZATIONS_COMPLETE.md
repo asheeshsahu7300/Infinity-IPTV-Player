@@ -127,7 +127,6 @@ export const CACHE_TTL = {
 - `app/vod.tsx`: Uses APIs with 2-column grid pagination
 - `app/series.tsx`: Uses APIs with series pagination
 - `app/search.tsx`: Uses all APIs via searchService
-- `app/favorites.tsx`: Reads from cached API results
 - `app/series-details.tsx`: Uses series info caching
 - `app/epg.tsx`: Uses portal EPG caching
 

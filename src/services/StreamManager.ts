@@ -5,6 +5,7 @@ import { Portal, Channel, VODItem, Episode } from "../store/portalStore";
 import { usePortalStore } from "../store/portalStore";
 import { NetworkResilience } from "./NetworkResilience";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { safeStorage } from "./safeStorage";
 
 export type StreamableContent = Channel | VODItem | Episode;
 
@@ -183,7 +184,7 @@ class StreamManagerClass {
             timestamp: Date.now(),
         };
 
-        await AsyncStorage.setItem(key, JSON.stringify(data)).catch(console.warn);
+        await safeStorage.setItem(key, JSON.stringify(data)).catch(console.warn);
     }
 
     /**

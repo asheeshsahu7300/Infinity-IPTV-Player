@@ -605,14 +605,6 @@ export default function PlayerScreen() {
 
           <View style={[S.header, { paddingTop: insets.top + (isTV ? ph(2) : ph(1)) }]}>
             <View style={S.headerLeft}>
-              <Focusable
-                ringOnFocus={false}
-                focusStyle={S.controlFocused}
-                style={S.backBtn}
-                onPress={handleBack}
-              >
-                <Ionicons name="arrow-back" size={ps(1.8)} color="#fff" />
-              </Focusable>
               <View style={S.headerInfo}>
                 <Text style={S.mainTitle} numberOfLines={1}>{params.title || "Unknown Content"}</Text>
                 <Text style={S.subTitle}>{isLive ? "LIVE STREAM" : ""}</Text>

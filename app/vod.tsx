@@ -441,7 +441,8 @@ export default function VODScreen() {
   }, [selectedCategory]);
 
   useEffect(() => {
-    if (!activePortal) return;
+    if (!activePortal || prevCategoryIdRef.current === selectedCategory) return;
+    prevCategoryIdRef.current = selectedCategory;
     setIsLoading(true);
     setPage(1);
     // A remembered tile from the previous category is not in the new list.
@@ -848,17 +849,6 @@ export default function VODScreen() {
         <StatusBar hidden />
 
         <View style={S.header}>
-          <Focusable
-            ringOnFocus={false}
-            focusStyle={S.backBtnFocused}
-            style={S.backBtn}
-            accessibilityLabel="Back"
-            onPress={safeGoBack}
-          >
-            {(focused) => (
-              <Ionicons name="chevron-back" size={ps(1.6)} color={focused ? "#000" : "#fff"} />
-            )}
-          </Focusable>
           <Text style={S.headerTitle}>Movies</Text>
           <FocusGroup style={S.searchWrapper}>
             <Focusable

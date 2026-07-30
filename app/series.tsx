@@ -748,17 +748,6 @@ export default function SeriesScreen() {
       <StatusBar hidden />
 
       <View style={S.header}>
-        <Focusable
-          ringOnFocus={false}
-          focusStyle={S.backBtnFocused}
-          style={S.backBtn}
-          accessibilityLabel="Back"
-          onPress={safeGoBack}
-        >
-          {(focused) => (
-            <Ionicons name="chevron-back" size={ps(1.6)} color={focused ? "#000" : "#fff"} />
-          )}
-        </Focusable>
         <Text style={S.headerTitle}>TV Series</Text>
         <FocusGroup style={S.searchWrapper}>
           <Focusable

@@ -109,8 +109,8 @@ function dispatch(evt: any) {
 
   const isSelect = SELECT_TYPES.has(type);
 
-  // For non-select events (e.g. directional keys), filter out key-up (action 1)
-  if (!isSelect && !isKeyDown(evt)) return;
+  // Filter out key-up (action 1) events so only key-down triggers actions
+  if (!isKeyDown(evt)) return;
 
   // Debounce select events (150ms) because Android TV remotes can send action 1 and 0 back-to-back
   if (isSelect) {

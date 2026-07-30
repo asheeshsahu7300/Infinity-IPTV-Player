@@ -1,5 +1,6 @@
 // cacheManager.ts (fully fixed)
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { safeStorage } from "./safeStorage";
 import pako from "pako";
 
 export const CACHE_TTL = {
@@ -227,9 +228,9 @@ class DiskCache {
       if (serialized.length > 10000) {
         const compressed = pako.gzip(serialized);
         const b64 = uint8ToBase64(compressed);
-        await AsyncStorage.setItem(storageKey, `gz:${b64}`);
+        await safeStorage.setItem(storageKey, `gz:${b64}`);
       } else {
-        await AsyncStorage.setItem(storageKey, `raw:${serialized}`);
+        await safeStorage.setItem(storageKey, `raw:${serialized}`);
       }
     } catch (e) {
       console.warn("DiskCache set failed:", e);

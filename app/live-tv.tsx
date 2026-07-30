@@ -144,6 +144,7 @@ export default function LiveTVScreen() {
   } = usePortalStore();
 
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [displayChannels, setDisplayChannels] = useState<Channel[]>([]);
 
   const [isLoading, setIsLoading] = useState(storeChannels.length === 0);
   const [refreshing, setRefreshing] = useState(false);
@@ -284,6 +285,7 @@ export default function LiveTVScreen() {
 
       list = Array.isArray(list) ? list : [];
       setChannels(list);
+      setDisplayChannels(list);
       setPage(pageNum);
       // Restore scroll position after a reset-load so focus doesn't snap to top
       if (reset) restoreFocusPosition(list);
@@ -324,11 +326,18 @@ export default function LiveTVScreen() {
         if (allChannelsCacheRef.current.length > 0) {
           const isAll = !selectedCategory || selectedCategory === "all" || selectedCategory === "*";
           const cat = isAll ? undefined : selectedCategory;
+          const selectedCatObj = (storeCategories || []).find(c => String(c.id) === String(selectedCategory));
           const filtered = !cat
             ? allChannelsCacheRef.current
-            : allChannelsCacheRef.current.filter(c => String(c.categoryId) === String(cat));
+            : allChannelsCacheRef.current.filter(c => {
+                const cCatId = String(c.categoryId ?? "");
+                if (cCatId === String(selectedCategory)) return true;
+                if (selectedCatObj && c.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
+                return false;
+              });
           fullListRef.current = filtered;
           const sliced = filtered.slice(0, PAGE_SIZE);
+          setDisplayChannels(sliced);
           setChannels(sliced);
           setHasMore(filtered.length > sliced.length);
           setIsLoading(false);
@@ -406,6 +415,7 @@ export default function LiveTVScreen() {
       // Grow the slice from the cached full list — no network.
       const nextPage = page + 1;
       const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
+      setDisplayChannels(sliced);
       setChannels(sliced);
       setPage(nextPage);
       setHasMore(fullListRef.current.length > sliced.length);
@@ -434,31 +444,20 @@ export default function LiveTVScreen() {
 
   // ── Filter ──
   // When searching on Xtream/M3U: search across fullListRef (uncapped).
-  // Otherwise: show the paginated store list (respecting category + search).
+  // Otherwise: show displayChannels (local category-filtered state).
   const filteredChannels = useMemo(() => {
     const isXtreamOrM3U = activePortal?.type === "xtream" || activePortal?.type === "m3u";
 
-    // Pick the right source
-    let source: typeof storeChannels;
-    if (debouncedQuery && isXtreamOrM3U) {
-      source = fullListRef.current;           // full current-category list
-    } else {
-      source = storeChannels;                 // paginated store slice
+    if (debouncedQuery) {
+      if (isXtreamOrM3U) {
+        return allChannelsCacheRef.current
+          .filter(c => c.name.toLowerCase().includes(debouncedQuery.toLowerCase()))
+          .slice(0, 100);
+      }
     }
 
-    return source.filter(c => {
-      // Category filter (skip for Xtream/M3U search – fullListRef is already category-filtered)
-      const matchByCategory =
-        (debouncedQuery && isXtreamOrM3U)
-          ? true
-          : selectedCategory === "all" || selectedCategory === "*" || String(c.categoryId) === String(selectedCategory);
-
-      const matchBySearch =
-        !debouncedQuery || c.name.toLowerCase().includes(debouncedQuery.toLowerCase());
-
-    return matchByCategory && matchBySearch;
-    });
-  }, [storeChannels, selectedCategory, debouncedQuery, activePortal?.type]);
+    return displayChannels;
+  }, [displayChannels, debouncedQuery, activePortal?.type]);
 
   const chunkedChannels = useMemo(() => {
     const chunks = [];
@@ -513,17 +512,6 @@ export default function LiveTVScreen() {
 
       {/* ─── Header ─── */}
       <View style={S.header}>
-        <Focusable
-          ringOnFocus={false}
-          focusStyle={S.backBtnFocused}
-          style={S.backBtn}
-          accessibilityLabel="Back"
-          onPress={safeGoBack}
-        >
-          {(focused) => (
-            <Ionicons name="chevron-back" size={ps(1.6)} color={focused ? "#000" : "#fff"} />
-          )}
-        </Focusable>
         <Text style={S.headerTitle}>Live TV</Text>
 
         <FocusGroup style={S.searchWrapper}>
@@ -585,7 +573,7 @@ export default function LiveTVScreen() {
         <FocusGroup style={{ width: SIDEBAR_WIDTH }}>
           <CategorySidebar
             categories={sidebarCategories}
-            selectedId={selectedCategory}
+            selectedId={selectedCategory || "all"}
             onSelect={setSelectedCategory}
             width={SIDEBAR_WIDTH}
           />

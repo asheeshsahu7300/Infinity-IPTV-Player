@@ -914,35 +914,62 @@ export const portalApi = {
         timeout: 30000,
       });
 
-      let out = String(
-        res?.data?.js?.cmd ??
-        res?.data?.js?.url ??
-        res?.data?.js?.playlist ??
-        ""
-      ).trim();
+      // Extract raw stream URL string from various response formats (object or string)
+      let rawOut = "";
+      const js = res?.data?.js;
+      if (typeof js === "string") {
+        rawOut = js;
+      } else if (js && typeof js === "object") {
+        rawOut = String(js.cmd ?? js.url ?? js.playlist ?? js.link ?? "").trim();
+      }
+      if (!rawOut && res?.data) {
+        if (typeof res.data === "string") rawOut = res.data;
+        else rawOut = String(res.data.cmd ?? res.data.url ?? res.data.link ?? "").trim();
+      }
 
-      // Clean ffmpeg prefix
-      out = out.replace(/^ffmpeg\s+|^ffrt\d*\s+/i, "").trim();
+      // Clean backslashes and command prefixes (ffmpeg, ffrt, auto, -i, vlc)
+      let out = rawOut.replace(/\\/g, "").trim();
+      out = out.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
 
-      // Prefer first http(s) URL
+      // Extract candidate HTTP/HTTPS/RTMP/RTSP URL
       const candidates = out
         .split(/\s+|\|/)
         .map((s) => s.trim())
         .filter(Boolean);
       const httpUrl =
-        candidates.find((c) => /^https?:\/\//i.test(c)) ??
-        (out.startsWith("http") ? out : "");
+        candidates.find((c) => /^(https?|rtmp|rtsp):\/\//i.test(c)) ??
+        (/^(https?|rtmp|rtsp):\/\//i.test(out) ? out : "");
 
-      // Prefer HLS playlist (m3u8) when possible: if the httpUrl is a .ts
-      // segment or otherwise not an m3u8, attempt to probe likely .m3u8
-      // candidates and prefer the first reachable playlist.
-      const finalUrl = httpUrl || out || "";
+      let finalUrl = httpUrl || out || "";
+
+      // Fix empty stream parameter (e.g. "stream=&") if portal stripped stream ID
+      if (finalUrl && /stream=(&|$)/i.test(finalUrl)) {
+        let streamId = "";
+        const streamMatch = cmd.match(/stream=([a-zA-Z0-9_\-]+)/i);
+        if (streamMatch && streamMatch[1]) {
+          streamId = streamMatch[1];
+        } else if (/^\d+$/.test(cmd.trim())) {
+          streamId = cmd.trim();
+        } else {
+          const chMatch = cmd.match(/(?:ch|channel|stream)\/([a-zA-Z0-9_\-]+)/i);
+          if (chMatch && chMatch[1]) streamId = chMatch[1];
+        }
+
+        if (streamId) {
+          finalUrl = finalUrl.replace(/stream=(&|$)/i, `stream=${streamId}$1`);
+        }
+      }
+
+      // Fallback: If create_link returned empty/invalid URL, but original cmd is a direct HTTP stream URL, use original cmd
+      if (!finalUrl && /^https?:\/\//i.test(cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim())) {
+        finalUrl = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
+      }
+
       try {
         if (finalUrl && /\.ts(\?|$)/i.test(finalUrl)) {
           const converted = await tryConvertToM3U8(finalUrl);
           if (converted) return converted;
         }
-        // if returned URL already contains m3u8, prefer it
         if (finalUrl && /\.m3u8(\?|$)/i.test(finalUrl)) return finalUrl;
       } catch (e) {
         // ignore conversion errors
@@ -951,7 +978,10 @@ export const portalApi = {
       return finalUrl || out || "";
     } catch (e) {
       console.warn("getStreamUrl failed:", e);
-      return "";
+      // Fallback to original cmd if it is a valid direct URL
+      const cleanCmd = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
+      if (/^https?:\/\//i.test(cleanCmd)) console.log("cleanCmd", cleanCmd); return cleanCmd;
+
     }
   },
 
