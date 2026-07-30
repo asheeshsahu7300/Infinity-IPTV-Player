@@ -965,23 +965,13 @@ export const portalApi = {
         finalUrl = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
       }
 
-      try {
-        if (finalUrl && /\.ts(\?|$)/i.test(finalUrl)) {
-          const converted = await tryConvertToM3U8(finalUrl);
-          if (converted) return converted;
-        }
-        if (finalUrl && /\.m3u8(\?|$)/i.test(finalUrl)) return finalUrl;
-      } catch (e) {
-        // ignore conversion errors
-      }
-
       return finalUrl || out || "";
     } catch (e) {
       console.warn("getStreamUrl failed:", e);
       // Fallback to original cmd if it is a valid direct URL
       const cleanCmd = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
-      if (/^https?:\/\//i.test(cleanCmd)) console.log("cleanCmd", cleanCmd); return cleanCmd;
-
+      if (/^https?:\/\//i.test(cleanCmd)) return cleanCmd;
+      return "";
     }
   },
 
