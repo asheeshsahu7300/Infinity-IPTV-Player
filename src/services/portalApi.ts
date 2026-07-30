@@ -1451,36 +1451,6 @@ export const portalApi = {
       if (epgPrograms.length > 0) {
         store.setEpgData(epgPrograms, key);
       }
-
-      // 2. Offload heavy disk cache persistence to non-blocking background tasks spaced 200ms apart
-      setTimeout(() => {
-        if (liveChannels.length > 0) {
-          cacheManager.set(`portal:${key}:live:channels:all`, liveChannels, CACHE_TTL.CHANNELS).catch(() => {});
-          cacheManager.set(`portal:${key}:live:channels:search:all`, liveChannels, CACHE_TTL.CHANNELS).catch(() => {});
-        }
-      }, 100);
-
-      setTimeout(() => {
-        if (vodItems.length > 0) {
-          cacheManager.set(`portal:${key}:vod:items:all`, vodItems, CACHE_TTL.VOD).catch(() => {});
-          cacheManager.set(`portal:${key}:vod:items:all:1`, vodItems, CACHE_TTL.VOD).catch(() => {});
-        }
-      }, 300);
-
-      setTimeout(() => {
-        if (seriesList.length > 0) {
-          cacheManager.set(`portal:${key}:series:list:all`, seriesList, CACHE_TTL.SERIES).catch(() => {});
-          cacheManager.set(`portal:${key}:series:list:all:1`, seriesList, CACHE_TTL.SERIES).catch(() => {});
-        }
-      }, 500);
-
-      setTimeout(() => {
-        if (epgPrograms.length > 0) {
-          cacheManager.set(`portal:${key}:epg:all`, epgPrograms, CACHE_TTL.EPG).catch(() => {});
-          cacheManager.set(`portal:${key}:epg`, epgPrograms, CACHE_TTL.EPG).catch(() => {});
-        }
-      }, 700);
-      console.log("✅ MAG portal data refreshed and persisted");
     } catch (e: any) {
       if (e?.message?.includes("empty data")) {
         console.warn("⚠️ Portal refresh returned empty data. Keeping existing cached data.");

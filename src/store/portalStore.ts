@@ -383,49 +383,27 @@ export const usePortalStore = create<PortalState>((set, get) => ({
 
   // ---------------------------------------
   // ---------------------------------------
-  // TV DATA SETTERS (with non-blocking safeStorage persistence)
+  // TV DATA SETTERS (pure in-memory for maximum speed)
   // ---------------------------------------
-  setChannels: async (channels, targetPortalId) => {
-    const portalId = targetPortalId || get().activePortal?.id;
+  setChannels: async (channels) => {
     if (channels && channels.length > 0) {
       set({ channels });
-      if (portalId) {
-        setTimeout(() => {
-          const slice = channels.length > 1000 ? channels.slice(0, 1000) : channels;
-          safeStorage.setItem(`portal:${portalId}:channels`, JSON.stringify(slice)).catch(console.warn);
-        }, 500);
-      }
     }
   },
-  setVodItems: async (items, targetPortalId) => {
-    const portalId = targetPortalId || get().activePortal?.id;
+  setVodItems: async (items) => {
     if (items && items.length > 0) {
       set({ vodItems: items });
-      if (portalId) {
-        setTimeout(() => {
-          const slice = items.length > 1000 ? items.slice(0, 1000) : items;
-          safeStorage.setItem(`portal:${portalId}:vod`, JSON.stringify(slice)).catch(console.warn);
-        }, 500);
-      }
     }
   },
-  setSeries: async (series, targetPortalId) => {
-    const portalId = targetPortalId || get().activePortal?.id;
+  setSeries: async (series) => {
     if (series && series.length > 0) {
       set({ series });
-      if (portalId) {
-        setTimeout(() => {
-          const slice = series.length > 1000 ? series.slice(0, 1000) : series;
-          safeStorage.setItem(`portal:${portalId}:series`, JSON.stringify(slice)).catch(console.warn);
-        }, 500);
-      }
     }
   },
   setCategories: async (categories, targetPortalId) => {
     const activePortal = get().activePortal;
     const portalId = targetPortalId || activePortal?.id;
     if (categories && categories.length > 0) {
-      // Set categories strictly for target/active portal
       if (!targetPortalId || targetPortalId === activePortal?.id) {
         set({ categories });
       }
@@ -434,76 +412,41 @@ export const usePortalStore = create<PortalState>((set, get) => ({
         set({ activePortal: updatedPortal });
         const portals = get().portals.map(p => p.id === updatedPortal.id ? updatedPortal : p);
         set({ portals });
-        setTimeout(() => {
-          safeStorage.setItem("portals", JSON.stringify(portals)).catch(console.warn);
-        }, 500);
-      }
-      if (portalId) {
-        setTimeout(() => {
-          safeStorage.setItem(`portal:${portalId}:categories`, JSON.stringify(categories)).catch(console.warn);
-        }, 500);
+        safeStorage.setItem("portals", JSON.stringify(portals)).catch(console.warn);
       }
     }
   },
-  setEpgData: async (data, targetPortalId) => {
-    const portalId = targetPortalId || get().activePortal?.id;
+  setEpgData: async (data) => {
     if (data && data.length > 0) {
       set({ epgData: data });
-      if (portalId) {
-        setTimeout(() => {
-          const slice = data.length > 500 ? data.slice(0, 500) : data;
-          safeStorage.setItem(`portal:${portalId}:epg`, JSON.stringify(slice)).catch(console.warn);
-        }, 500);
-      }
     }
   },
 
   // ---------------------------------------
-  // MERGE SETTERS — non-blocking background sync
+  // MERGE SETTERS — in-memory sync
   // ---------------------------------------
-  mergeChannels: async (channels, targetPortalId) => {
-    const portalId = targetPortalId || get().activePortal?.id;
+  mergeChannels: async (channels) => {
     if (!channels || channels.length === 0) return;
     const existing = get().channels;
     const merged = mergeById(existing, channels);
     if (merged.length !== existing.length) {
       set({ channels: merged });
-      if (portalId) {
-        setTimeout(() => {
-          const slice = merged.length > 1000 ? merged.slice(0, 1000) : merged;
-          safeStorage.setItem(`portal:${portalId}:channels`, JSON.stringify(slice)).catch(console.warn);
-        }, 500);
-      }
     }
   },
-  mergeVodItems: async (items, targetPortalId) => {
-    const portalId = targetPortalId || get().activePortal?.id;
+  mergeVodItems: async (items) => {
     if (!items || items.length === 0) return;
     const existing = get().vodItems;
     const merged = mergeById(existing, items);
     if (merged.length !== existing.length) {
       set({ vodItems: merged });
-      if (portalId) {
-        setTimeout(() => {
-          const slice = merged.length > 1000 ? merged.slice(0, 1000) : merged;
-          safeStorage.setItem(`portal:${portalId}:vod`, JSON.stringify(slice)).catch(console.warn);
-        }, 500);
-      }
     }
   },
-  mergeSeries: async (series, targetPortalId) => {
-    const portalId = targetPortalId || get().activePortal?.id;
+  mergeSeries: async (series) => {
     if (!series || series.length === 0) return;
     const existing = get().series;
     const merged = mergeById(existing, series);
     if (merged.length !== existing.length) {
       set({ series: merged });
-      if (portalId) {
-        setTimeout(() => {
-          const slice = merged.length > 1000 ? merged.slice(0, 1000) : merged;
-          safeStorage.setItem(`portal:${portalId}:series`, JSON.stringify(slice)).catch(console.warn);
-        }, 500);
-      }
     }
   },
 

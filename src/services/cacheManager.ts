@@ -212,100 +212,30 @@ class MemoryCache {
 }
 
 class DiskCache {
-  private prefix = "cache:";
-
-  async set<T>(key: string, data: T, ttl: number): Promise<void> {
-    try {
-      const entry: CacheEntry<T> = {
-        data,
-        expiry: Date.now() + ttl,
-        timestamp: Date.now(),
-        size: 0,
-      };
-      const serialized = JSON.stringify(entry);
-      const storageKey = this.prefix + key;
-
-      if (serialized.length > 10000) {
-        const compressed = pako.gzip(serialized);
-        const b64 = uint8ToBase64(compressed);
-        await safeStorage.setItem(storageKey, `gz:${b64}`);
-      } else {
-        await safeStorage.setItem(storageKey, `raw:${serialized}`);
-      }
-    } catch (e) {
-      console.warn("DiskCache set failed:", e);
-    }
+  async set<T>(_key: string, _data: T, _ttl: number): Promise<void> {
+    // Disk caching disabled per user request
+    return;
   }
 
-  async get<T>(key: string): Promise<T | null> {
-    const raw = await this.getRaw<T>(key);
-    return raw ? raw.data : null;
+  async get<T>(_key: string): Promise<T | null> {
+    return null;
   }
 
-  /** Returns the full CacheEntry (with expiry) or null, for TTL-preserving restores */
-  async getRaw<T>(key: string): Promise<CacheEntry<T> | null> {
-    try {
-      const storageKey = this.prefix + key;
-      const value = await AsyncStorage.getItem(storageKey);
-      if (!value) return null;
-
-      let json: string;
-      if (value.startsWith("gz:")) {
-        const b64 = value.slice(3);
-        const u8 = base64ToUint8(b64);
-        json = pako.ungzip(u8, { to: "string" });
-      } else if (value.startsWith("raw:")) {
-        json = value.slice(4);
-      } else {
-        json = value;
-      }
-
-      const entry = JSON.parse(json) as CacheEntry<T>;
-      if (entry.expiry < Date.now()) {
-        await this.remove(key);
-        return null;
-      }
-      return entry;
-    } catch (e) {
-      console.warn("DiskCache getRaw failed:", e);
-      return null;
-    }
+  async getRaw<T>(_key: string): Promise<CacheEntry<T> | null> {
+    return null;
   }
 
-  async has(key: string): Promise<boolean> {
-    return !!(await this.get(key));
+  async has(_key: string): Promise<boolean> {
+    return false;
   }
 
-  async remove(key: string): Promise<void> {
-    await AsyncStorage.removeItem(this.prefix + key).catch(console.warn);
-  }
+  async remove(_key: string): Promise<void> {}
 
-  async clear(): Promise<void> {
-    const keys = await AsyncStorage.getAllKeys();
-    const toRemove = keys.filter((k) => k.startsWith(this.prefix));
-    await AsyncStorage.multiRemove(toRemove).catch(console.warn);
-  }
+  async clear(): Promise<void> {}
 
-  async clearExpired(): Promise<void> {
-    const keys = await AsyncStorage.getAllKeys();
-    const cacheKeys = keys.filter((k) => k.startsWith(this.prefix));
-    for (const key of cacheKeys) {
-      await this.get(key.replace(this.prefix, "")); // get removes expired
-    }
-  }
+  async clearExpired(): Promise<void> {}
 
-  async removeByPrefix(prefix: string): Promise<void> {
-    try {
-      const keys = await AsyncStorage.getAllKeys();
-      const targetPrefix = this.prefix + prefix;
-      const toRemove = keys.filter((k) => k.startsWith(targetPrefix));
-      if (toRemove.length > 0) {
-        await AsyncStorage.multiRemove(toRemove);
-      }
-    } catch (e) {
-      console.warn("DiskCache removeByPrefix failed:", e);
-    }
-  }
+  async removeByPrefix(_prefix: string): Promise<void> {}
 }
 
 class CacheManager {
