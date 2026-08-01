@@ -1,6 +1,13 @@
 import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { safeStorage } from "../services/safeStorage";
+import {
+  loadSlot,
+  saveSlot,
+  clearSlot,
+  PortalSlot,
+  PORTAL_SLOTS,
+} from "../services/portalPersistence";
 
 // ---------------------------------------
 // PORTAL MODEL
@@ -119,10 +126,44 @@ function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] 
 }
 
 // ---------------------------------------
+// WRITE-BEHIND PERSISTENCE
+// ---------------------------------------
+// Content lists are large, so they are written off the interaction path: a
+// setter updates memory synchronously and schedules the disk write. Without
+// this the app has no cache at all and every cold start blocks on the network.
+
+const PERSIST_DELAY = 1200;
+const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function schedulePersist<T>(portalId: string | undefined, slot: PortalSlot, items: T[]) {
+  if (!portalId || !items || items.length === 0) return;
+  const key = `${portalId}:${slot}`;
+  const existing = persistTimers.get(key);
+  if (existing) clearTimeout(existing);
+  persistTimers.set(
+    key,
+    setTimeout(() => {
+      persistTimers.delete(key);
+      saveSlot(portalId, slot, items).catch(console.warn);
+    }, PERSIST_DELAY)
+  );
+}
+
+/** Drop queued writes for a portal so a cache clear cannot be undone by one. */
+function cancelPendingPersists(portalId: string) {
+  for (const [key, timer] of persistTimers) {
+    if (key.startsWith(`${portalId}:`)) {
+      clearTimeout(timer);
+      persistTimers.delete(key);
+    }
+  }
+}
+
+// ---------------------------------------
 // STORE INTERFACE
 // ---------------------------------------
 
-interface PortalState {
+export interface PortalState {
   portals: Portal[];
   activePortal: Portal | null;
   channels: Channel[];
@@ -149,6 +190,7 @@ interface PortalState {
   updatePortal: (id: string, portal: Partial<Portal>) => Promise<void>;
   deletePortal: (id: string) => Promise<void>;
   setActivePortal: (portal: Portal | null) => Promise<void>;
+  persistPortalConfig: (portal: Portal) => Promise<void>;
 
   setChannels: (channels: Channel[], targetPortalId?: string) => Promise<void>;
   setVodItems: (items: VODItem[], targetPortalId?: string) => Promise<void>;
@@ -175,6 +217,7 @@ interface PortalState {
   setError: (error: string | null) => void;
 
   clearPortalData: () => void;
+  clearPersistedPortalData: (portalId?: string) => Promise<void>;
 }
 
 // ---------------------------------------
@@ -359,46 +402,100 @@ export const usePortalStore = create<PortalState>((set, get) => ({
   // SET ACTIVE PORTAL
   // ---------------------------------------
   setActivePortal: async (portal) => {
-    // Wipe previous portal's in-memory data first to prevent cross-portal leak
-    get().clearPortalData();
-
-    set({ activePortal: portal });
-    if (portal) {
-      // Persist the active portal ID
-      await AsyncStorage.setItem("activePortalId", portal.id);
-
-      // Load saved portal data from storage for this specific portal
-      await get().loadPortalData(portal.id);
-
-      // Update the portal in the portals list to ensure tokens are saved
-      const portals = get().portals.map((p) =>
-        p.id === portal.id ? portal : p
-      );
-      await AsyncStorage.setItem("portals", JSON.stringify(portals));
-      set({ portals });
-    } else {
+    if (!portal) {
+      set({
+        activePortal: null,
+        channels: [],
+        vodItems: [],
+        series: [],
+        categories: [],
+        epgData: [],
+      });
       await AsyncStorage.removeItem("activePortalId");
+      return;
     }
+
+    // Swap portal and wipe the previous one's content in a single commit —
+    // separate `set` calls made every subscriber render twice and briefly
+    // showed the new portal alongside the old portal's channels.
+    // Categories ride along on the portal object, so the sidebar has content
+    // before any storage read completes.
+    set({
+      activePortal: portal,
+      channels: [],
+      vodItems: [],
+      series: [],
+      categories: portal.categories || [],
+      epgData: [],
+    });
+
+    const portals = get().portals.map((p) => (p.id === portal.id ? portal : p));
+    set({ portals });
+
+    // Storage writes and the cache read are off the critical path; the UI is
+    // already rendering the new portal.
+    Promise.all([
+      AsyncStorage.setItem("activePortalId", portal.id),
+      AsyncStorage.setItem("portals", JSON.stringify(portals)),
+    ]).catch(console.warn);
+
+    await get().loadPortalData(portal.id);
   },
 
   // ---------------------------------------
+  // PERSIST PORTAL CONFIG (token refresh)
   // ---------------------------------------
-  // TV DATA SETTERS (pure in-memory for maximum speed)
+  // Saves a refreshed token/expiry without touching content.
+  //
+  // Token refreshes ran through `setActivePortal`, which clears channels, VOD,
+  // series and categories — so every re-handshake (and MAG portals re-handshake
+  // constantly) blanked the whole library out from under whatever screen was
+  // open. Switching portals should wipe content; refreshing a token should not.
+  persistPortalConfig: async (portal) => {
+    const portals = get().portals.map((p) =>
+      p.id === portal.id ? { ...p, config: portal.config } : p
+    );
+    const isActive = get().activePortal?.id === portal.id;
+
+    set({
+      portals,
+      ...(isActive
+        ? { activePortal: { ...get().activePortal!, config: portal.config } }
+        : {}),
+    });
+
+    await safeStorage.setItem("portals", JSON.stringify(portals));
+  },
+
   // ---------------------------------------
-  setChannels: async (channels) => {
-    if (channels && channels.length > 0) {
-      set({ channels });
-    }
+  // TV DATA SETTERS
+  // ---------------------------------------
+  // In-memory update is synchronous; the disk write is scheduled behind it.
+  // `targetPortalId` is enforced, not decorative — a background refresh for the
+  // portal the user just switched away from must not land in the active one.
+  setChannels: async (channels, targetPortalId) => {
+    if (!channels || channels.length === 0) return;
+    const activeId = get().activePortal?.id;
+    const portalId = targetPortalId || activeId;
+    if (targetPortalId && activeId && targetPortalId !== activeId) return;
+    set({ channels });
+    schedulePersist(portalId, "channels", channels);
   },
-  setVodItems: async (items) => {
-    if (items && items.length > 0) {
-      set({ vodItems: items });
-    }
+  setVodItems: async (items, targetPortalId) => {
+    if (!items || items.length === 0) return;
+    const activeId = get().activePortal?.id;
+    const portalId = targetPortalId || activeId;
+    if (targetPortalId && activeId && targetPortalId !== activeId) return;
+    set({ vodItems: items });
+    schedulePersist(portalId, "vod", items);
   },
-  setSeries: async (series) => {
-    if (series && series.length > 0) {
-      set({ series });
-    }
+  setSeries: async (series, targetPortalId) => {
+    if (!series || series.length === 0) return;
+    const activeId = get().activePortal?.id;
+    const portalId = targetPortalId || activeId;
+    if (targetPortalId && activeId && targetPortalId !== activeId) return;
+    set({ series });
+    schedulePersist(portalId, "series", series);
   },
   setCategories: async (categories, targetPortalId) => {
     const activePortal = get().activePortal;
@@ -409,76 +506,97 @@ export const usePortalStore = create<PortalState>((set, get) => ({
       }
       if (activePortal && activePortal.id === portalId) {
         const updatedPortal = { ...activePortal, categories };
-        set({ activePortal: updatedPortal });
         const portals = get().portals.map(p => p.id === updatedPortal.id ? updatedPortal : p);
-        set({ portals });
+        // One `set` — three in a row meant three renders of every subscriber.
+        set({ activePortal: updatedPortal, portals });
         safeStorage.setItem("portals", JSON.stringify(portals)).catch(console.warn);
       }
+      schedulePersist(portalId, "categories", categories);
     }
   },
-  setEpgData: async (data) => {
-    if (data && data.length > 0) {
-      set({ epgData: data });
-    }
+  setEpgData: async (data, targetPortalId) => {
+    if (!data || data.length === 0) return;
+    const activeId = get().activePortal?.id;
+    if (targetPortalId && activeId && targetPortalId !== activeId) return;
+    // EPG is deliberately memory-only: it is the largest payload and expires
+    // within the hour, so persisting it burns the storage budget for nothing.
+    set({ epgData: data });
   },
 
   // ---------------------------------------
   // MERGE SETTERS — in-memory sync
   // ---------------------------------------
-  mergeChannels: async (channels) => {
+  mergeChannels: async (channels, targetPortalId) => {
     if (!channels || channels.length === 0) return;
+    const activeId = get().activePortal?.id;
+    if (targetPortalId && activeId && targetPortalId !== activeId) return;
     const existing = get().channels;
     const merged = mergeById(existing, channels);
     if (merged.length !== existing.length) {
       set({ channels: merged });
+      schedulePersist(targetPortalId || activeId, "channels", merged);
     }
   },
-  mergeVodItems: async (items) => {
+  mergeVodItems: async (items, targetPortalId) => {
     if (!items || items.length === 0) return;
+    const activeId = get().activePortal?.id;
+    if (targetPortalId && activeId && targetPortalId !== activeId) return;
     const existing = get().vodItems;
     const merged = mergeById(existing, items);
     if (merged.length !== existing.length) {
       set({ vodItems: merged });
+      schedulePersist(targetPortalId || activeId, "vod", merged);
     }
   },
-  mergeSeries: async (series) => {
+  mergeSeries: async (series, targetPortalId) => {
     if (!series || series.length === 0) return;
+    const activeId = get().activePortal?.id;
+    if (targetPortalId && activeId && targetPortalId !== activeId) return;
     const existing = get().series;
     const merged = mergeById(existing, series);
     if (merged.length !== existing.length) {
       set({ series: merged });
+      schedulePersist(targetPortalId || activeId, "series", merged);
     }
   },
 
-  // Load portal data from AsyncStorage
+  // Load portal data from AsyncStorage.
+  //
+  // Strictly additive: a slot is only written when the cache actually held
+  // something for it, and only when that beats what is already in memory.
+  // Blanking a slot here is what made screens flash to zero items — this runs
+  // during boot and on every portal switch, so a cache miss must be a no-op,
+  // not a wipe.
   loadPortalData: async (portalId) => {
+    if (!portalId) return;
     try {
-      const [channelsStr, vodItemsStr, seriesStr, categoriesStr, epgDataStr] = await Promise.all([
-        safeStorage.getItem(`portal:${portalId}:channels`),
-        safeStorage.getItem(`portal:${portalId}:vod`),
-        safeStorage.getItem(`portal:${portalId}:series`),
-        safeStorage.getItem(`portal:${portalId}:categories`),
-        safeStorage.getItem(`portal:${portalId}:epg`),
+      const [cachedChannels, cachedVod, cachedSeries, cachedCats] = await Promise.all([
+        loadSlot<Channel>(portalId, "channels"),
+        loadSlot<VODItem>(portalId, "vod"),
+        loadSlot<Series>(portalId, "series"),
+        loadSlot<Category>(portalId, "categories"),
       ]);
 
-      const nowCutoff = Date.now() - 12 * 60 * 60 * 1000;
-      const parsedEpg: EPGProgram[] = epgDataStr ? JSON.parse(epgDataStr) : [];
-      const validEpg = parsedEpg.filter((p) => p.end >= nowCutoff);
-
-      const parsedChannels = channelsStr ? JSON.parse(channelsStr) : [];
-      const parsedVod = vodItemsStr ? JSON.parse(vodItemsStr) : [];
-      const parsedSeries = seriesStr ? JSON.parse(seriesStr) : [];
-      const parsedCats = categoriesStr ? JSON.parse(categoriesStr) : [];
+      // A portal switch mid-read must not drop the new portal's data.
+      if (get().activePortal?.id !== portalId) return;
 
       const current = get();
+      const next: Partial<PortalState> = {};
 
-      set({
-        channels: parsedChannels,
-        vodItems: parsedVod,
-        series: parsedSeries,
-        categories: parsedCats,
-        epgData: validEpg,
-      });
+      if (cachedChannels && cachedChannels.length > current.channels.length) {
+        next.channels = cachedChannels;
+      }
+      if (cachedVod && cachedVod.length > current.vodItems.length) {
+        next.vodItems = cachedVod;
+      }
+      if (cachedSeries && cachedSeries.length > current.series.length) {
+        next.series = cachedSeries;
+      }
+      if (cachedCats && cachedCats.length > current.categories.length) {
+        next.categories = cachedCats;
+      }
+
+      if (Object.keys(next).length > 0) set(next);
     } catch (err) {
       console.warn("Failed to load portal data from storage:", err);
     }
@@ -522,5 +640,22 @@ export const usePortalStore = create<PortalState>((set, get) => ({
       categories: [],
       epgData: [],
     }),
+
+  // Clears memory *and* the on-disk cache. Without the disk half, "Clear Cache"
+  // only emptied the current session and everything reappeared on next launch.
+  clearPersistedPortalData: async (portalId) => {
+    const id = portalId || get().activePortal?.id;
+    if (!id) {
+      get().clearPortalData();
+      return;
+    }
+
+    cancelPendingPersists(id);
+    get().clearPortalData();
+
+    await Promise.all(PORTAL_SLOTS.map((slot) => clearSlot(id, slot)));
+    // Drop the sync gate so the next load refetches instead of waiting 30 min.
+    await safeStorage.removeItem(`portal:${id}:lastSync`);
+  },
 }));
 

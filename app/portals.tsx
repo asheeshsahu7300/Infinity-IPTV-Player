@@ -39,8 +39,14 @@ export default function PortalsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const { portals, activePortal, loadPortals, setActivePortal, updatePortal, deletePortal } =
-    usePortalStore();
+  // Selectors — see the note in live-tv.tsx. This screen is often mounted while
+  // a background refresh is writing content it does not display.
+  const portals = usePortalStore((s) => s.portals);
+  const activePortal = usePortalStore((s) => s.activePortal);
+  const loadPortals = usePortalStore((s) => s.loadPortals);
+  const setActivePortal = usePortalStore((s) => s.setActivePortal);
+  const updatePortal = usePortalStore((s) => s.updatePortal);
+  const deletePortal = usePortalStore((s) => s.deletePortal);
 
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");

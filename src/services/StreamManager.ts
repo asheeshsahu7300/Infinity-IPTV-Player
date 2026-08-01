@@ -102,8 +102,10 @@ class StreamManagerClass {
                         },
                     };
 
-                    // Update store with fresh token
-                    usePortalStore.getState().setActivePortal(freshPortal);
+                    // Update store with fresh token — config only. Going through
+                    // setActivePortal here cleared every loaded list, so a single
+                    // stream retry emptied the app behind the player.
+                    usePortalStore.getState().persistPortalConfig(freshPortal);
                 } catch (authError) {
                     console.warn("Token refresh failed during retry:", authError);
                 }

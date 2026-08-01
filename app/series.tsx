@@ -11,6 +11,7 @@ import {
   TextInput,
   FlatList,
   Platform,
+  InteractionManager,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -27,7 +28,10 @@ import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import CategorySidebar from "../src/components/CategorySidebar";
-import { Focusable, FocusGroup, FocusMemory, useFocusRestore } from "../src/tv";
+import { AppBootManager } from "../src/services/AppBootManager";
+import { filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
+import { useNetworkActivity } from "../src/services/networkActivity";
+import { Focusable, FocusGroup, FocusMemory, useInitialFocusPulse } from "../src/tv";
 
 const { width: SCREEN_WIDTH_VAL } = Dimensions.get("window");
 
@@ -137,6 +141,18 @@ const S = StyleSheet.create({
   loadingText: { color: "rgba(255,255,255,0.4)", marginTop: 15, fontSize: ps(1), fontFamily: THEME.fonts.regular },
   emptyState: { flex: 1, justifyContent: "center", alignItems: "center", opacity: 0.5 },
   emptyTitle: { color: "#fff", fontSize: ps(1.2), marginTop: 10, fontFamily: THEME.fonts.bold },
+  emptySubtitle: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.95), marginTop: 6, textAlign: "center" },
+  retryBtn: { marginTop: ph(2) },
+  retryInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: pw(3),
+    paddingVertical: ph(1.2),
+    borderRadius: ps(1),
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  retryInnerFocused: { backgroundColor: "#fff" },
+  retryText: { color: "#fff", fontSize: ps(1), fontWeight: "800", marginLeft: pw(0.6) },
   loadMoreFooter: { paddingVertical: ph(3), alignItems: "center", justifyContent: "center" },
   loadMoreBtn: { flexDirection: "row", alignItems: "center", gap: pw(0.8), paddingHorizontal: pw(3), paddingVertical: ph(1.4), backgroundColor: "rgba(255,255,255,0.06)", borderRadius: ps(1), borderWidth: 2, borderColor: "transparent" },
   loadMoreBtnFocused: { borderColor: "#fff", backgroundColor: THEME.colors.primary, shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 12, elevation: 12 },
@@ -319,18 +335,22 @@ export default function SeriesScreen() {
     else router.replace("/dashboard");
   }, [router]);
 
-  const {
-    activePortal,
-    favorites,
-    toggleFavorite,
-    series: storeSeries,
-    setSeries,
-    categories,
-    setCategories,
-  } = usePortalStore();
+  // Per-field selectors — see the note in live-tv.tsx. Whole-store
+  // destructuring re-rendered the grid on every unrelated store write.
+  const activePortal = usePortalStore((s) => s.activePortal);
+  const favorites = usePortalStore((s) => s.favorites);
+  const toggleFavorite = usePortalStore((s) => s.toggleFavorite);
+  const storeSeries = usePortalStore((s) => s.series);
+  const setSeries = usePortalStore((s) => s.setSeries);
+  const categories = usePortalStore((s) => s.categories);
+  const setCategories = usePortalStore((s) => s.setCategories);
 
   // Local display state — drives FlatList directly, never blocked by store guards
   const [displaySeries, setDisplaySeries] = useState<Series[]>([]);
+  const displaySeriesRef = useRef<Series[]>([]);
+  displaySeriesRef.current = displaySeries;
+  // An empty response is a load failure, not "this portal has no series".
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
@@ -340,6 +360,9 @@ export default function SeriesScreen() {
   const [searchResults, setSearchResults] = useState<Series[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // True while *any* portal request is in flight, including ones this screen did
+  // not start — the boot sync, the periodic refresh, the empty-body retry.
+  const syncing = useNetworkActivity();
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -399,22 +422,15 @@ export default function SeriesScreen() {
     focusedIdRef.current = "";
     // A remembered tile from the previous category is not in the new list.
     FocusMemory.forget(SCREEN_KEY);
+    // Focus stays in the sidebar on a category switch, so nothing else scrolls
+    // the grid back up — do it here, or the new category renders half-scrolled
+    // at wherever the previous one was left.
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
 
     const timer = setTimeout(() => {
       if (activePortal.type === "xtream" || activePortal.type === "m3u") {
         if (allSeriesCacheRef.current.length > 0) {
-          const isAll = !selectedCategory || selectedCategory === "all" || selectedCategory === "*";
-          const cat = isAll ? undefined : selectedCategory;
-          const selectedCatObj = (categories || []).find(c => String(c.id) === String(cat));
-          const filtered = !cat
-            ? allSeriesCacheRef.current
-            : allSeriesCacheRef.current.filter(s => {
-                const sCatId = String(s.categoryId ?? "");
-                const target = String(cat);
-                if (sCatId === target) return true;
-                if (selectedCatObj && s.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
-                return false;
-              });
+          const filtered = filterByCategory(allSeriesCacheRef.current, selectedCategory, categories);
           fullListRef.current = filtered;
           const sliced = filtered.slice(0, PAGE_SIZE);
           setDisplaySeries(sliced);  // local state — never blocked
@@ -464,6 +480,43 @@ export default function SeriesScreen() {
     selectedSeriesCategoryRef.current = selectedCategory;
   }, [selectedCategory]);
 
+  // Marks the screen as failed-to-load and asks the portal to resync once.
+  // The resync performs a fresh handshake and retries endpoints that answer
+  // 200-with-an-empty-body, so it recovers from the stale-token case a plain
+  // fetch reads as "this portal has nothing". The adoption hook below then picks
+  // the content up without the user navigating away and back.
+  const resyncRequestedRef = useRef(false);
+  const reportLoadFailure = useCallback(() => {
+    setLoadFailed(true);
+    setHasMore(false);
+    setIsLoading(false);
+    setLoadingMore(false);
+    if (resyncRequestedRef.current || !activePortal) return;
+    resyncRequestedRef.current = true;
+    AppBootManager.triggerBackgroundSync(activePortal, true).catch(() => {});
+  }, [activePortal]);
+
+  const applyAdopted = useCallback((slice: Series[], filteredTotal: number) => {
+    setDisplaySeries(slice);
+    setHasMore(filteredTotal > slice.length);
+    setLoadFailed(false);
+    setIsLoading(false);
+    setPage(1);
+  }, []);
+
+  // Pick up series that reach the store after this screen mounted.
+  useAdoptStoreContent<Series>({
+    storeItems: storeSeries,
+    cacheRef: allSeriesCacheRef,
+    fullListRef,
+    displayRef: displaySeriesRef,
+    categoryRef: selectedSeriesCategoryRef,
+    categories,
+    pageSize: PAGE_SIZE,
+    slicesFullList: activePortal?.type === "xtream" || activePortal?.type === "m3u",
+    onAdopt: applyAdopted,
+  });
+
   const loadSeries = async (categoryId?: string, pageNum: number = 1, reset: boolean = false) => {
     if (!activePortal || loadingMore || (!hasMore && !reset)) return;
     const requestId = ++seriesRequestIdRef.current;
@@ -486,28 +539,31 @@ export default function SeriesScreen() {
             }
             if (Array.isArray(fetched) && fetched.length > 0) {
               allSeriesCacheRef.current = fetched;
+              // The store holds the complete list, never a page of it — search
+              // reads it too, and it is what gets persisted for the next boot.
+              setSeries(fetched, activePortal.id);
+            } else {
+              // Empty response and nothing cached. Report it as a failure and
+              // let the portal sync retry with a fresh session — it detects the
+              // empty-body case that a bare fetch reads as "no content".
+              reportLoadFailure();
+              return;
             }
           }
         }
 
         if (requestId !== seriesRequestIdRef.current || selectedSeriesCategoryRef.current !== targetCatId) return;
 
-        const selectedCatObj = (categories || []).find(c => String(c.id) === String(cat));
-        const filtered = !cat
-          ? allSeriesCacheRef.current
-          : allSeriesCacheRef.current.filter(s => {
-              const sCatId = String(s.categoryId ?? "");
-              const target = String(cat);
-              if (sCatId === target) return true;
-              if (selectedCatObj && s.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
-              return false;
-            });
+        const filtered = filterByCategory(allSeriesCacheRef.current, cat, categories);
 
         fullListRef.current = filtered;
         const sliced = filtered.slice(0, pageNum * PAGE_SIZE);
         if (!reset) trapFocusBriefly();
-        setDisplaySeries(sliced);  // always update local display state
-        setSeries(sliced);  // also persist to store cache
+        // Local state only. Writing each page into the store re-rendered every
+        // subscriber mid-scroll, and left the store holding a category slice
+        // that search and the next boot then treated as the whole library.
+        setLoadFailed(false);
+        setDisplaySeries(sliced);
         setHasMore(filtered.length > sliced.length);
         setPage(pageNum);
         if (reset && sliced.length > 0) restoreFocusPosition(sliced);
@@ -521,9 +577,16 @@ export default function SeriesScreen() {
         const updatedList = reset
           ? items
           : [...current, ...items.filter(i => !current.some(s => s.id === i.id))];
+        if (reset && updatedList.length === 0) {
+          reportLoadFailure();
+          return;
+        }
         if (!reset) trapFocusBriefly();
-        setDisplaySeries(updatedList);  // local state
-        setSeries(updatedList);  // persist to store
+        setLoadFailed(false);
+        setDisplaySeries(updatedList);
+        // MAG paginates server-side, so the accumulated list *is* everything we
+        // have — worth keeping in the store for search and the next cold start.
+        setSeries(updatedList, activePortal.id);
         setHasMore(items.length > 0);
         setPage(pageNum);
         if (reset) restoreFocusPosition(updatedList);
@@ -540,6 +603,9 @@ export default function SeriesScreen() {
     setRefreshing(true);
     setPage(1);
     setHasMore(true);
+    // An explicit refresh re-arms the one-shot resync so a repeat failure can
+    // ask the portal for a fresh session again.
+    resyncRequestedRef.current = false;
     if (activePortal?.type === "xtream" || activePortal?.type === "m3u") {
       allSeriesCacheRef.current = [];
       fullListRef.current = [];
@@ -569,8 +635,10 @@ export default function SeriesScreen() {
     updateCinematicBackground(item.logo || null);
     focusedIdRef.current = String(item.id);
 
+    // Deferred: committing new cells while the native focus engine is still
+    // resolving the key press is what makes focus land on the wrong tile.
     if (index !== undefined && totalCountRef.current > 0 && index >= totalCountRef.current - 12) {
-      handleLoadMoreRef.current();
+      InteractionManager.runAfterInteractions(() => handleLoadMoreRef.current());
     }
   }, []);
 
@@ -593,13 +661,6 @@ export default function SeriesScreen() {
     toggleFavorite("series", item.id);
   }, [toggleFavorite]);
 
-  // Restore the exact tile we left from; fall back to the first only when
-  // there is no memory for this category.
-  const autoFocusFirst = useFocusRestore(
-    SCREEN_KEY,
-    !isLoading && displaySeries.length > 0,
-    selectedCategory
-  );
 
   const renderRow = useCallback(({ item: row, index: rowIndex }: { item: { id: string; items: Series[] }; index: number }) => (
     <FocusGroup style={{ flexDirection: "row" }}>
@@ -615,12 +676,11 @@ export default function SeriesScreen() {
             onFavoritePress={handleFavoritePress}
             isFavorite={favorites.series.includes(seriesItem.id)}
             itemWidth={itemWidth}
-            isFocusedItem={autoFocusFirst && itemIndex === 0 && !searchFocused}
           />
         );
       })}
     </FocusGroup>
-  ), [favorites.series, itemWidth, searchFocused, numColumns, autoFocusFirst, handleSeriesPress, handleSeriesFocus, handleFavoritePress]);
+  ), [favorites.series, itemWidth, numColumns, handleSeriesPress, handleSeriesFocus, handleFavoritePress]);
 
 
 
@@ -686,6 +746,10 @@ export default function SeriesScreen() {
     return displaySeries;
   }, [displaySeries, debouncedQuery, isXtreamOrM3U, searchResults]);
 
+  // Only relevant while the grid has nothing to show; a background refresh must
+  // never replace content that is already on screen with a spinner.
+  const busy = isLoading || (syncing && filteredSeries.length === 0);
+
   useEffect(() => {
     totalCountRef.current = filteredSeries.length;
   }, [filteredSeries.length]);
@@ -697,8 +761,8 @@ export default function SeriesScreen() {
       // Grow the slice from the cached full list — no network.
       const nextPage = page + 1;
       const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
-      setDisplaySeries(sliced);  // local state for immediate render
-      setSeries(sliced);
+      // Local state only — no store write mid-scroll. See loadSeries.
+      setDisplaySeries(sliced);
       setPage(nextPage);
       setHasMore(fullListRef.current.length > sliced.length);
     } else {
@@ -722,9 +786,11 @@ export default function SeriesScreen() {
   }, [filteredSeries, numColumns]);
 
   const ROW_HEIGHT = itemWidth * 1.5 + pw(1);
+  // No leading pad: FlatList already accounts for contentContainerStyle padding,
+  // so adding it here made scrollToIndex land one pad short of the target row.
   const getItemLayout = useCallback((_: any, index: number) => ({
     length: ROW_HEIGHT,
-    offset: pw(1) + index * ROW_HEIGHT,
+    offset: index * ROW_HEIGHT,
     index,
   }), [ROW_HEIGHT]);
 
@@ -739,6 +805,11 @@ export default function SeriesScreen() {
       ...seriesCats,
     ];
   }, [categories]);
+
+  // The sidebar owns focus on this screen: it takes the initial focus on entry
+  // and keeps it when the category changes. No grid tile claims
+  // `hasTVPreferredFocus`, so the user moves right into the grid deliberately.
+  const focusSidebar = useInitialFocusPulse(sidebarCategories.length > 0);
 
   const searchInputRef = useRef<TextInput>(null);
 
@@ -793,7 +864,7 @@ export default function SeriesScreen() {
           </Focusable>
         </FocusGroup>
         <View style={S.countBadge}>
-          <Text style={S.countText}>{isLoading ? "..." : String(filteredSeries.length)}</Text>
+          <Text style={S.countText}>{busy ? "..." : String(filteredSeries.length)}</Text>
         </View>
       </View>
 
@@ -804,6 +875,7 @@ export default function SeriesScreen() {
             selectedId={selectedCategory || "all"}
             onSelect={setSelectedCategory}
             width={SIDEBAR_WIDTH_VAL}
+            autoFocusFirst={focusSidebar}
           />
         </FocusGroup>
         <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapUp={trappingFocus}>
@@ -814,7 +886,7 @@ export default function SeriesScreen() {
             keyExtractor={(item) => item.id}
             getItemLayout={getItemLayout}
             contentContainerStyle={[S.list, (isLoading || chunkedSeries.length === 0) && { flexGrow: 1 }]}
-            removeClippedSubviews={Platform.OS === "android"}
+            removeClippedSubviews={Platform.OS === "android" && !isTV}
             extraData={filteredSeries.length}
             initialNumToRender={isTV ? 8 : 6}
             maxToRenderPerBatch={isTV ? 6 : 4}
@@ -824,15 +896,36 @@ export default function SeriesScreen() {
             onEndReachedThreshold={1.5}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
             ListEmptyComponent={
-              isLoading ? (
+              busy ? (
                 <View style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }}>
                   <ActivityIndicator color={THEME.colors.primary} size="large" />
                   <Text style={[S.loadingText, { marginTop: 10 }]}>Loading series library...</Text>
                 </View>
               ) : (
                 <View style={S.emptyState}>
-                  <Ionicons name="tv-outline" size={ps(4)} color="rgba(255,255,255,0.05)" />
-                  <Text style={S.emptyTitle}>No Series Available</Text>
+                  <Ionicons
+                    name={loadFailed ? "cloud-offline-outline" : "tv-outline"}
+                    size={ps(4)}
+                    color="rgba(255,255,255,0.05)"
+                  />
+                  <Text style={S.emptyTitle}>
+                    {loadFailed ? "Couldn't Load Series" : "No Series Available"}
+                  </Text>
+                  {loadFailed ? (
+                    <>
+                      <Text style={S.emptySubtitle}>
+                        The portal returned no data. Retrying in the background…
+                      </Text>
+                      <Focusable onPress={onRefresh} ringOnFocus={false} style={S.retryBtn}>
+                        {(focused) => (
+                          <View style={[S.retryInner, focused && S.retryInnerFocused]}>
+                            <Ionicons name="refresh" size={ps(1.1)} color={focused ? "#000" : "#fff"} />
+                            <Text style={[S.retryText, focused && { color: "#000" }]}>Retry</Text>
+                          </View>
+                        )}
+                      </Focusable>
+                    </>
+                  ) : null}
                 </View>
               )
             }

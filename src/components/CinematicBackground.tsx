@@ -46,17 +46,19 @@ export const CinematicBackground = React.memo(function CinematicBackground({ uri
         />
       ) : null}
       
-      {/* Dark tint gradient overlay for text readability */}
+      {/* Dark tint for text readability.
+          One layer, and it never reaches full opacity. This used to be two
+          stacked full-screen gradients that both ended at solid #08080a, and
+          they compounded: (1-a1)(1-a2) left the artwork 11% visible at half
+          height, 4% at 70%, and 0% below that. The image was technically
+          full-bleed but looked like it stopped two-thirds of the way down.
+          Ending at 0.78 keeps it faintly present all the way to the bottom
+          edge while still darkening enough to read text over. */}
       <LinearGradient
-        colors={["rgba(8,8,10,0.55)", "#08080a"]}
+        colors={["rgba(8,8,10,0.45)", "rgba(8,8,10,0.78)"]}
         style={StyleSheet.absoluteFillObject}
       />
-      
-      <LinearGradient
-        colors={["transparent", "#08080a"]}
-        style={StyleSheet.absoluteFillObject}
-      />
-      
+
       {/* Top-Right Glow */}
       <LinearGradient
         colors={["#2a0845", "transparent"]}

@@ -11,6 +11,7 @@ import {
   RefreshControl,
   FlatList,
   Platform,
+  InteractionManager,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -28,7 +29,10 @@ import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import CategorySidebar from "../src/components/CategorySidebar";
-import { Focusable, FocusGroup, FocusMemory, useFocusRestore } from "../src/tv";
+import { Focusable, FocusGroup, FocusMemory, useInitialFocusPulse } from "../src/tv";
+import { useNetworkActivity } from "../src/services/networkActivity";
+import { AppBootManager } from "../src/services/AppBootManager";
+import { filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -135,19 +139,34 @@ export default function LiveTVScreen() {
     else router.replace("/dashboard");
   }, [router]);
 
-  const {
-    channels: storeChannels,
-    categories: storeCategories,
-    activePortal,
-    setChannels,
-    setCategories,
-  } = usePortalStore();
+  // Per-field selectors. Destructuring the whole store re-rendered this entire
+  // screen — grid included — on every unrelated store write, and a background
+  // refresh performs several in a row. That is the navigation stutter.
+  const storeChannels = usePortalStore((s) => s.channels);
+  const storeCategories = usePortalStore((s) => s.categories);
+  const activePortal = usePortalStore((s) => s.activePortal);
+  const setChannels = usePortalStore((s) => s.setChannels);
+  const setCategories = usePortalStore((s) => s.setCategories);
 
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [displayChannels, setDisplayChannels] = useState<Channel[]>([]);
+  // Read inside async loaders so appending a page never depends on a stale
+  // closure — and so pagination doesn't have to round-trip through the store.
+  const displayChannelsRef = useRef<Channel[]>([]);
+  displayChannelsRef.current = displayChannels;
+  const selectedCategoryRef = useRef(selectedCategory);
+  selectedCategoryRef.current = selectedCategory;
 
   const [isLoading, setIsLoading] = useState(storeChannels.length === 0);
   const [refreshing, setRefreshing] = useState(false);
+  // True while *any* portal request is in flight, including ones this screen did
+  // not start — the boot sync, the periodic refresh, the empty-body retry. An
+  // empty grid should read as "loading" whenever something is still fetching.
+  const syncing = useNetworkActivity();
+  // An empty response is a load failure, not "this portal has no channels".
+  // Conflating them showed "No Channels Found" for what was actually a stale
+  // session token, and the user had no way to tell the difference.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -216,6 +235,83 @@ export default function LiveTVScreen() {
     }
   }, [activePortal, setCategories]);
 
+  // ── Fetch the complete channel list (Xtream / M3U) ──
+  // Both portal types serve everything in one request, so the whole list is
+  // fetched once and every category view is a slice of it.
+  const fetchAllChannels = useCallback(async (): Promise<Channel[]> => {
+    if (!activePortal) return [];
+    let all: Channel[] = [];
+
+    if (activePortal.type === "m3u") {
+      const api = new M3UApi({ url: activePortal.config.url, portalId: activePortal.id });
+      const raw = (await api.getLiveChannels(undefined, 1, 100000)) || [];
+      if (Array.isArray(raw)) {
+        all = raw.map((c: any) => ({
+          id: String(c.id),
+          name: c.name,
+          logo: c.logo,
+          category: c.category,
+          categoryId: c.categoryId ?? c.category,
+          streamUrl: c.streamUrl,
+        }));
+      }
+    } else if (activePortal.type === "xtream") {
+      all = (await xtreamApiRef.current!.getitvChannels(undefined, 1, 100000)) || [];
+    }
+
+    // The store holds the complete channel list, never a page of it — search and
+    // EPG read it, and it is what gets persisted for the next cold start.
+    if (all.length > 0) setChannels(all, activePortal.id);
+    return all;
+  }, [activePortal, setChannels]);
+
+  /** Refresh the full list without blocking what is already on screen. */
+  const fetchAllChannelsInBackground = useCallback(() => {
+    InteractionManager.runAfterInteractions(() => {
+      fetchAllChannels()
+        .then((all) => {
+          if (all.length > 0) allChannelsCacheRef.current = all;
+        })
+        .catch((e) => console.warn("Background channel refresh failed:", e));
+    });
+  }, [fetchAllChannels]);
+
+  // Marks the screen as failed-to-load and asks the portal to resync once.
+  //
+  // The resync path performs a fresh handshake and retries endpoints that answer
+  // 200-with-an-empty-body, so it recovers from the stale-token case that a plain
+  // fetch silently reads as "this portal has nothing". When it lands, the
+  // adoption hook below picks the content up without the user navigating away.
+  const resyncRequestedRef = useRef(false);
+  const reportLoadFailure = useCallback(() => {
+    setLoadFailed(true);
+    setHasMore(false);
+    if (resyncRequestedRef.current || !activePortal) return;
+    resyncRequestedRef.current = true;
+    AppBootManager.triggerBackgroundSync(activePortal, true).catch(() => {});
+  }, [activePortal]);
+
+  const applyAdopted = useCallback((slice: Channel[], filteredTotal: number) => {
+    setDisplayChannels(slice);
+    setHasMore(filteredTotal > slice.length);
+    setLoadFailed(false);
+    setIsLoading(false);
+    setPage(1);
+  }, []);
+
+  // Pick up channels that reach the store after this screen mounted.
+  useAdoptStoreContent<Channel>({
+    storeItems: storeChannels,
+    cacheRef: allChannelsCacheRef,
+    fullListRef,
+    displayRef: displayChannelsRef,
+    categoryRef: selectedCategoryRef,
+    categories: storeCategories,
+    pageSize: PAGE_SIZE,
+    slicesFullList: activePortal?.type === "xtream" || activePortal?.type === "m3u",
+    onAdopt: applyAdopted,
+  });
+
   // ── Load Channels (mirrors VOD/Series pattern) ──
   const loadChannels = useCallback(async (
     categoryId?: string,
@@ -231,60 +327,57 @@ export default function LiveTVScreen() {
       let list: Channel[] = [];
       const cat = !categoryId || categoryId === "all" || categoryId === "*" ? undefined : categoryId;
 
-      if (activePortal.type === "m3u") {
+      if (activePortal.type === "m3u" || activePortal.type === "xtream") {
         if (allChannelsCacheRef.current.length === 0) {
           if (storeChannels.length > 0) {
+            // Cache hit: render from it and let the refresh happen in the
+            // background. This branch used to await the network even with a full
+            // store, so opening Live TV always paid for a 100k-item download
+            // before drawing a single tile.
             allChannelsCacheRef.current = storeChannels;
-          }
-          const api = new M3UApi({ url: activePortal.config.url, portalId: activePortal.id });
-          const raw = (await api.getLiveChannels(undefined, 1, 100000)) || [];
-          if (Array.isArray(raw) && raw.length > 0) {
-            allChannelsCacheRef.current = raw.map((c: any) => ({
-              id: String(c.id),
-              name: c.name,
-              logo: c.logo,
-              category: c.category,
-              categoryId: c.categoryId ?? c.category,
-              streamUrl: c.streamUrl,
-            }));
+            fetchAllChannelsInBackground();
+          } else {
+            const fetched = await fetchAllChannels();
+            if (fetched.length > 0) {
+              allChannelsCacheRef.current = fetched;
+            } else {
+              // Empty response and nothing cached. Report it as a failure and
+              // let the portal sync retry with a fresh session — it detects the
+              // empty-body case that a bare fetch reads as "no content".
+              reportLoadFailure();
+              return;
+            }
           }
         }
-        const filtered = !cat
-          ? allChannelsCacheRef.current
-          : allChannelsCacheRef.current.filter(c => String(c.categoryId) === String(cat));
-        fullListRef.current = filtered;
-        list = filtered.slice(0, pageNum * PAGE_SIZE);
-        setHasMore(filtered.length > list.length);
-      } else if (activePortal.type === "xtream") {
-        if (allChannelsCacheRef.current.length === 0) {
-          if (storeChannels.length > 0) {
-            allChannelsCacheRef.current = storeChannels;
-          }
-          const all = (await xtreamApiRef.current!.getitvChannels(undefined, 1, 100000)) || [];
-          if (Array.isArray(all) && all.length > 0) {
-            allChannelsCacheRef.current = all;
-          }
-        }
-        const filtered = !cat
-          ? allChannelsCacheRef.current
-          : allChannelsCacheRef.current.filter(c => String(c.categoryId) === String(cat));
+        const filtered = filterByCategory(
+          allChannelsCacheRef.current,
+          cat,
+          usePortalStore.getState().categories
+        );
         fullListRef.current = filtered;
         list = filtered.slice(0, pageNum * PAGE_SIZE);
         setHasMore(filtered.length > list.length);
       } else {
         const fresh = (await portalApi.getLiveChannels(activePortal, cat, pageNum)) || [];
-        const current = usePortalStore.getState().channels;
+        const current = reset ? [] : displayChannelsRef.current;
         if (reset) {
           // A failed/empty refresh should never blank a screen that already has data.
-          list = fresh.length > 0 || current.length === 0 ? fresh : current;
+          list = fresh.length > 0 || displayChannelsRef.current.length === 0
+            ? fresh
+            : displayChannelsRef.current;
         } else {
           list = [...current, ...fresh.filter(i => !current.find(c => c.id === i.id))];
         }
+        if (reset && fresh.length === 0 && list.length === 0) {
+          reportLoadFailure();
+          return;
+        }
+        fullListRef.current = list;
         setHasMore(fresh.length > 0);
       }
 
       list = Array.isArray(list) ? list : [];
-      setChannels(list);
+      setLoadFailed(false);
       setDisplayChannels(list);
       setPage(pageNum);
       // Restore scroll position after a reset-load so focus doesn't snap to top
@@ -296,7 +389,7 @@ export default function LiveTVScreen() {
       setLoadingMore(false);
       setRefreshing(false);
     }
-  }, [activePortal, loadingMore, hasMore, setChannels]);
+  }, [activePortal, loadingMore, hasMore, fetchAllChannels, fetchAllChannelsInBackground, reportLoadFailure]);
 
   // Initial load
   useEffect(() => {
@@ -320,25 +413,22 @@ export default function LiveTVScreen() {
     focusedIdRef.current = "";
     // A remembered tile from the previous category is not in the new list.
     FocusMemory.forget(SCREEN_KEY);
+    // Focus stays in the sidebar on a category switch, so nothing else scrolls
+    // the grid back up — do it here, or the new category renders half-scrolled
+    // at wherever the previous one was left.
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
 
     const timer = setTimeout(() => {
       if (activePortal.type === "xtream" || activePortal.type === "m3u") {
         if (allChannelsCacheRef.current.length > 0) {
-          const isAll = !selectedCategory || selectedCategory === "all" || selectedCategory === "*";
-          const cat = isAll ? undefined : selectedCategory;
-          const selectedCatObj = (storeCategories || []).find(c => String(c.id) === String(selectedCategory));
-          const filtered = !cat
-            ? allChannelsCacheRef.current
-            : allChannelsCacheRef.current.filter(c => {
-                const cCatId = String(c.categoryId ?? "");
-                if (cCatId === String(selectedCategory)) return true;
-                if (selectedCatObj && c.category?.toLowerCase() === selectedCatObj.name.toLowerCase()) return true;
-                return false;
-              });
+          const filtered = filterByCategory(
+            allChannelsCacheRef.current,
+            selectedCategory,
+            storeCategories
+          );
           fullListRef.current = filtered;
           const sliced = filtered.slice(0, PAGE_SIZE);
           setDisplayChannels(sliced);
-          setChannels(sliced);
           setHasMore(filtered.length > sliced.length);
           setIsLoading(false);
         } else {
@@ -376,8 +466,11 @@ export default function LiveTVScreen() {
     updateCinematicBackground(channel.logo || null);
     focusedIdRef.current = String(channel.id);
 
+    // Growing the list synchronously inside a focus handler makes React commit
+    // new cells while the native focus engine is still resolving the key press,
+    // and focus lands somewhere unrelated. Let the focus event finish first.
     if (index !== undefined && totalCountRef.current > 0 && index >= totalCountRef.current - 12) {
-      onEndReachedRef.current();
+      InteractionManager.runAfterInteractions(() => onEndReachedRef.current());
     }
   }, []);
 
@@ -398,7 +491,15 @@ export default function LiveTVScreen() {
     setRefreshing(true);
     setPage(1);
     setHasMore(true);
-    if (activePortal?.type === "xtream") allChannelsCacheRef.current = [];
+    // An explicit refresh re-arms the one-shot resync so a repeat failure can
+    // ask the portal for a fresh session again.
+    resyncRequestedRef.current = false;
+    // M3U caches the full list the same way Xtream does, so pull-to-refresh has
+    // to drop it too or the refresh returns the same stale list.
+    if (activePortal?.type === "xtream" || activePortal?.type === "m3u") {
+      allChannelsCacheRef.current = [];
+      fullListRef.current = [];
+    }
     await loadCategories();
     await loadChannels(selectedCategory, 1, true);
     setRefreshing(false);
@@ -412,11 +513,12 @@ export default function LiveTVScreen() {
     trapFocusBriefly();
 
     if (activePortal?.type === "xtream" || activePortal?.type === "m3u") {
-      // Grow the slice from the cached full list — no network.
+      // Grow the slice from the cached full list — no network, and no store
+      // write: pushing each page into the store re-rendered every subscriber
+      // mid-scroll for data only this list uses.
       const nextPage = page + 1;
       const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
       setDisplayChannels(sliced);
-      setChannels(sliced);
       setPage(nextPage);
       setHasMore(fullListRef.current.length > sliced.length);
       return;
@@ -424,7 +526,7 @@ export default function LiveTVScreen() {
 
     // MAG: fetch the next server page.
     loadChannels(selectedCategory, page + 1, false);
-  }, [isLoading, loadingMore, hasMore, selectedCategory, page, loadChannels, activePortal, setChannels, trapFocusBriefly]);
+  }, [isLoading, loadingMore, hasMore, selectedCategory, page, loadChannels, activePortal, trapFocusBriefly]);
 
   useEffect(() => {
     onEndReachedRef.current = onEndReached;
@@ -474,23 +576,25 @@ export default function LiveTVScreen() {
     totalCountRef.current = filteredChannels.length;
   }, [filteredChannels.length]);
 
-  // Build sidebar categories with "All" at top
-  // Restore the exact tile we left from; fall back to the first only when
-  // there is no memory for this category.
-  const autoFocusFirst = useFocusRestore(
-    SCREEN_KEY,
-    !isLoading && chunkedChannels.length > 0,
-    selectedCategory
+  // Build sidebar categories with "All" at top.
+  // Memoised: a fresh array on every render made CategorySidebar's FlatList
+  // treat the data as changed each time, re-running its scroll effect.
+  const sidebarCategories: Category[] = useMemo(
+    () => [
+      { id: "all", name: "All Channels", type: "live" as const },
+      ...localCategories.filter(c =>
+        c.type === "live" &&
+        c.name.toLowerCase() !== "all" &&
+        c.name.toLowerCase() !== "all channels"
+      ),
+    ],
+    [localCategories]
   );
 
-  const sidebarCategories: Category[] = [
-    { id: "all", name: "All Channels", type: "live" },
-    ...localCategories.filter(c =>
-      c.type === "live" &&
-  c.name.toLowerCase() !== "all" &&
-      c.name.toLowerCase() !== "all channels"
-    ),
-  ];
+  // The sidebar owns focus on this screen: it takes the initial focus on entry
+  // and keeps it when the category changes. No grid tile claims
+  // `hasTVPreferredFocus`, so the user moves right into the grid deliberately.
+  const focusSidebar = useInitialFocusPulse(sidebarCategories.length > 0);
 
   const SIDEBAR_WIDTH = isTV ? 260 : 220;
   const GRID_H_PADDING = pw(1.5) * 2;
@@ -499,11 +603,39 @@ export default function LiveTVScreen() {
     (SCREEN_WIDTH - SIDEBAR_WIDTH - GRID_H_PADDING - SAFETY_MARGIN) / numColumns
   );
   const ROW_HEIGHT = Math.floor(itemWidth / 0.85) + pw(1.2);
+  // FlatList already accounts for contentContainerStyle padding, so the extra
+  // pw(1.5) here offset every row by one pad — scrollToIndex landed short and
+  // the restored item sat half off-screen.
   const getItemLayout = useCallback((_: any, index: number) => ({
     length: ROW_HEIGHT,
-    offset: pw(1.5) + index * ROW_HEIGHT,
+    offset: index * ROW_HEIGHT,
     index,
   }), [ROW_HEIGHT]);
+
+  // Only relevant while the grid has nothing to show; a background refresh must
+  // never replace content that is already on screen with a spinner.
+  const busy = isLoading || (syncing && filteredChannels.length === 0);
+
+  const renderRow = useCallback(
+    ({ item: row, index: rowIndex }: { item: { id: string; items: Channel[] }; index: number }) => (
+      <FocusGroup style={S.gridRow}>
+        {row.items.map((channel, colIndex) => {
+          const itemIndex = rowIndex * numColumns + colIndex;
+          return (
+            <ChannelCard
+              key={channel.id}
+              item={channel}
+              index={itemIndex}
+              itemWidth={itemWidth}
+              onPress={handleChannelPress}
+              onFocus={handleChannelFocus}
+            />
+          );
+        })}
+      </FocusGroup>
+    ),
+    [itemWidth, numColumns, handleChannelPress, handleChannelFocus]
+  );
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
@@ -562,7 +694,7 @@ export default function LiveTVScreen() {
 
         <View style={S.countBadge}>
           <Text style={S.countText}>
-            {isLoading ? "..." : String(filteredChannels.length)}
+            {busy ? "..." : String(filteredChannels.length)}
           </Text>
         </View>
       </View>
@@ -576,6 +708,7 @@ export default function LiveTVScreen() {
             selectedId={selectedCategory || "all"}
             onSelect={setSelectedCategory}
             width={SIDEBAR_WIDTH}
+            autoFocusFirst={focusSidebar}
           />
         </FocusGroup>
 
@@ -587,7 +720,7 @@ export default function LiveTVScreen() {
             getItemLayout={getItemLayout}
             onEndReached={onEndReached}
             onEndReachedThreshold={0.5}
-            removeClippedSubviews={Platform.OS === "android"}
+            removeClippedSubviews={Platform.OS === "android" && !isTV}
             contentContainerStyle={[S.gridContent, (isLoading || chunkedChannels.length === 0) && { flexGrow: 1 }]}
             extraData={filteredChannels.length}
             initialNumToRender={isTV ? 8 : 6}
@@ -595,37 +728,40 @@ export default function LiveTVScreen() {
             windowSize={5}
             updateCellsBatchingPeriod={50}
             ref={flatListRef}
-            renderItem={useCallback(({ item: row, index: rowIndex }: { item: { id: string; items: Channel[] }; index: number }) => (
-              <FocusGroup style={{ flexDirection: "row" }}>
-                {row.items.map((channel, colIndex) => {
-                  const itemIndex = rowIndex * numColumns + colIndex;
-                  return (
-                    <ChannelCard
-                      key={channel.id}
-                      item={channel}
-                      index={itemIndex}
-                      itemWidth={itemWidth}
-                      isFocusedItem={autoFocusFirst && itemIndex === 0 && !searchFocused}
-                      onPress={handleChannelPress}
-                      onFocus={handleChannelFocus}
-                    />
-                  );
-                })}
-              </FocusGroup>
-            ), [itemWidth, searchFocused, numColumns, autoFocusFirst, handleChannelPress, handleChannelFocus])}
+            renderItem={renderRow}
             ListEmptyComponent={
-              isLoading ? (
+              busy ? (
                 <View style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }}>
                   <ActivityIndicator color={THEME.colors.primary} size="large" />
                   <Text style={[S.loadingText, { marginTop: 10 }]}>Loading channels...</Text>
                 </View>
               ) : (
                 <View style={S.emptyState}>
-                  <Ionicons name="tv-outline" size={64} color="rgba(255,255,255,0.08)" />
-                  <Text style={S.emptyTitle}>No Channels Found</Text>
-                  <Text style={S.emptySubtitle}>
-                    {searchQuery ? "Try a different search term" : "No channels in this category"}
+                  <Ionicons
+                    name={loadFailed ? "cloud-offline-outline" : "tv-outline"}
+                    size={64}
+                    color="rgba(255,255,255,0.08)"
+                  />
+                  <Text style={S.emptyTitle}>
+                    {loadFailed ? "Couldn't Load Channels" : "No Channels Found"}
                   </Text>
+                  <Text style={S.emptySubtitle}>
+                    {loadFailed
+                      ? "The portal returned no data. Retrying in the background…"
+                      : searchQuery
+                        ? "Try a different search term"
+                        : "No channels in this category"}
+                  </Text>
+                  {loadFailed ? (
+                    <Focusable onPress={onRefresh} ringOnFocus={false} style={S.retryBtn}>
+                      {(focused) => (
+                        <View style={[S.retryInner, focused && S.retryInnerFocused]}>
+                          <Ionicons name="refresh" size={ps(1.1)} color={focused ? "#000" : "#fff"} />
+                          <Text style={[S.retryText, focused && { color: "#000" }]}>Retry</Text>
+                        </View>
+                      )}
+                    </Focusable>
+                  ) : null}
                 </View>
               )
             }
@@ -729,6 +865,7 @@ const S = StyleSheet.create({
     paddingBottom: ph(4),
   },
   gridRow: {
+    flexDirection: "row",
     justifyContent: "flex-start",
   },
   cardWrapper: {
@@ -823,6 +960,27 @@ const S = StyleSheet.create({
   emptySubtitle: {
     color: "rgba(255,255,255,0.22)",
     fontSize: ps(0.95),
+  },
+  retryBtn: {
+    marginTop: ph(2),
+  },
+  retryInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: pw(0.8),
+    paddingHorizontal: pw(3),
+    paddingVertical: ph(1.2),
+    borderRadius: ps(1),
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  retryInnerFocused: {
+    backgroundColor: "#fff",
+  },
+  retryText: {
+    color: "#fff",
+    fontSize: ps(1),
+    fontWeight: "800",
+    marginLeft: pw(0.6),
   },
   loadingMore: {
     width: "100%",

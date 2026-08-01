@@ -9,6 +9,7 @@ import {
   Dimensions,
   Alert,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -21,7 +22,8 @@ import { M3UApi } from "../src/services/m3uApi";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import LoadingOverlay from "../src/components/LoadingOverlay";
 import { isTV } from "../src/utils/tvUtils";
-import { Focusable, Overlay } from "../src/tv";
+import { Focusable, Overlay, useInitialFocusPulse } from "../src/tv";
+import { useNetworkActivity } from "../src/services/networkActivity";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 // This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
 import { THEME, pw, ph, psRaw as ps } from "../src/theme/tokens";
@@ -89,10 +91,19 @@ const HeroPill = ({
 export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { activePortal, loadFavorites } = usePortalStore();
+  // Selectors, not whole-store destructuring — the dashboard stays mounted
+  // behind pushed screens and was re-rendering on every content write.
+  const activePortal = usePortalStore((s) => s.activePortal);
+  const loadFavorites = usePortalStore((s) => s.loadFavorites);
 
   const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // True while any portal request is in flight, including the boot sync and the
+  // periodic refresh that this screen never started.
+  const syncing = useNetworkActivity();
+
+  // Hands initial focus to the Live TV tile once the screen has a portal.
+  const focusLiveTile = useInitialFocusPulse(!!activePortal);
 
   // ── Play Modal ──────────────────────────────────────────────────────────────
   const [playModalVisible, setPlayModalVisible] = useState(false);
@@ -176,6 +187,96 @@ export default function DashboardScreen() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  const dashboardContent = (
+    <>
+      {/* Cinematic Header Branding */}
+      <View style={S.headerBranding}>
+        <View style={S.logoRow}>
+          <Image source={require("../assets/images/TV.png")} style={S.headerLogoImage} resizeMode="contain" />
+        </View>
+        <View style={S.headerActions}>
+          {/* Doubles as the sync indicator. A background refresh must not raise
+              the blocking LoadingOverlay — that is reserved for a refresh the
+              user asked for — so in-flight traffic surfaces here instead. */}
+          <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={handleFullRefresh} style={S.roundBtn}>
+            {syncing ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="refresh" size={ps(2)} color="#fff" />
+            )}
+          </Focusable>
+          <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/portals")} style={S.roundBtn}>
+            <Ionicons name="apps" size={ps(2)} color="#fff" />
+          </Focusable>
+          <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/settings")} style={S.roundBtn}>
+            <Ionicons name="settings" size={ps(2)} color="#fff" />
+          </Focusable>
+        </View>
+      </View>
+
+      <View style={S.heroSection}>
+        <Text style={S.heroTitle}>Unlimited Entertainment</Text>
+        <Text style={S.heroDesc}>Access thousands of Indian channels, global movies and exclusive series directly on your screen.</Text>
+        <View style={S.heroButtons}>
+          {/* Initial focus belongs to the Live TV tile below, not here. */}
+          <HeroPill icon="search" text="Search Content" onPress={() => router.push("/search")} />
+        </View>
+      </View>
+
+      {/* Browse Category Cards */}
+      <View style={S.browseSection}>
+        <View style={S.browseContainer}>
+          {(
+            [
+              { id: "cat-live", title: "Live TV", icon: "tv", img: "https://i.pinimg.com/1200x/c2/f5/f5/c2f5f508392fc27ab89483fe3037fd30.jpg", route: "/live-tv" },
+              { id: "cat-movies", title: "Movies", icon: "film", img: "https://i.pinimg.com/736x/eb/f1/4a/ebf14a5d3b21e60b907ae26b90205271.jpg", route: "/vod" },
+              { id: "cat-series", title: "Series", icon: "albums", img: "https://i.pinimg.com/1200x/8b/5b/e2/8b5be2acd7c6909b99a2b03b6f63999a.jpg", route: "/series" },
+            ]
+          ).map((cat) => (
+            <Focusable
+              key={cat.id}
+              // Live TV is where most sessions start, so it owns the
+              // dashboard's initial focus.
+              hasTVPreferredFocus={focusLiveTile && cat.id === "cat-live"}
+              onFocus={() => updateCinematicBackground(cat.img)}
+              onPress={() => router.push(cat.route as any)}
+              ringOnFocus={false}
+              // TV: no fixed height — `flex: 1` shares the row's width and
+              // the height comes from the parent stretching, so the row fits
+              // whatever space is left instead of overflowing the screen.
+              style={S.browseCard}
+            >
+              {(focused) => (
+                <View
+                  style={[
+                    S.cardBorder,
+                    focused && S.cardBorderFocused,
+                    focused && { transform: [{ scale: 1.05 }] }
+                  ]}
+                >
+                  <View style={S.browseCardInner}>
+                    <Image source={{ uri: cat.img }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+                    <LinearGradient
+                      colors={
+                        focused
+                          ? ["transparent", "rgba(0,0,0,0.7)"]
+                          : ["transparent", "rgba(0,0,0,0.5)"]
+                      }
+                      style={S.browseCardContent}
+                    >
+                      <Ionicons name={cat.icon as any} size={ps(2.2)} color="#fff" />
+                      <Text style={S.browseCardTitle}>{cat.title}</Text>
+                    </LinearGradient>
+                  </View>
+                </View>
+              )}
+            </Focusable>
+          ))}
+        </View>
+      </View>
+    </>
+  );
+
   return (
     <View style={S.container}>
       <View
@@ -190,84 +291,23 @@ export default function DashboardScreen() {
 
         {isLoading && <LoadingOverlay message="Refreshing your library..." />}
 
-        <ScrollView
-          style={{ flex: 1 }}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingTop: insets.top + ph(2), paddingBottom: ph(10) }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ff1b8a" />}
-        >
-          {/* Cinematic Header Branding */}
-          <View style={S.headerBranding}>
-            <View style={S.logoRow}>
-              <Image source={require("../assets/images/TV.png")} style={S.headerLogoImage} resizeMode="contain" />
-            </View>
-            <View style={S.headerActions}>
-              <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={handleFullRefresh} style={S.roundBtn}>
-                <Ionicons name="refresh" size={ps(2)} color="#fff" />
-              </Focusable>
-              <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/portals")} style={S.roundBtn}>
-                <Ionicons name="apps" size={ps(2)} color="#fff" />
-              </Focusable>
-              <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/settings")} style={S.roundBtn}>
-                <Ionicons name="settings" size={ps(2)} color="#fff" />
-              </Focusable>
-            </View>
-          </View>
-
-          <View style={S.heroSection}>
-            <Text style={S.heroTitle}>Unlimited Entertainment</Text>
-            <Text style={S.heroDesc}>Access thousands of Indian channels, global movies and exclusive series directly on your screen.</Text>
-            <View style={S.heroButtons}>
-              <HeroPill icon="search" text="Search Content" autoFocus onPress={() => router.push("/search")} />
-            </View>
-          </View>
-
-          {/* Browse Category Cards */}
-          <View style={S.browseSection}>
-            <View style={S.browseContainer}>
-              {(
-                [
-                  { id: "cat-live", title: "Live TV", icon: "tv", img: "https://i.pinimg.com/1200x/c2/f5/f5/c2f5f508392fc27ab89483fe3037fd30.jpg", route: "/live-tv" },
-                  { id: "cat-movies", title: "Movies", icon: "film", img: "https://i.pinimg.com/736x/eb/f1/4a/ebf14a5d3b21e60b907ae26b90205271.jpg", route: "/vod" },
-                  { id: "cat-series", title: "Series", icon: "albums", img: "https://i.pinimg.com/1200x/8b/5b/e2/8b5be2acd7c6909b99a2b03b6f63999a.jpg", route: "/series" },
-                ]
-              ).map((cat) => (
-                <Focusable
-                  key={cat.id}
-                  onFocus={() => updateCinematicBackground(cat.img)}
-                  onPress={() => router.push(cat.route as any)}
-                  ringOnFocus={false}
-                  style={[{ flex: 1, height: ph(35), minHeight: ph(35), padding: pw(1), overflow: "visible" }]}
-                >
-                  {(focused) => (
-                    <View
-                      style={[
-                        S.cardBorder,
-                        focused && S.cardBorderFocused,
-                        focused && { transform: [{ scale: 1.05 }] }
-                      ]}
-                    >
-                      <View style={S.browseCardInner}>
-                        <Image source={{ uri: cat.img }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-                        <LinearGradient
-                          colors={
-                            focused
-                              ? ["transparent", "rgba(0,0,0,0.7)"]
-                              : ["transparent", "rgba(0,0,0,0.5)"]
-                          }
-                          style={S.browseCardContent}
-                        >
-                          <Ionicons name={cat.icon as any} size={ps(2.2)} color="#fff" />
-                          <Text style={S.browseCardTitle}>{cat.title}</Text>
-                        </LinearGradient>
-                      </View>
-                    </View>
-                  )}
-                </Focusable>
-              ))}
-            </View>
-          </View>
-        </ScrollView>
+        {/* On TV the dashboard is a single screen — the browse row absorbs
+            whatever height is left over, so there is nothing to scroll and the
+            D-pad never drags the view around. Touch layouts stack the three
+            cards vertically and genuinely cannot fit, so they keep the
+            ScrollView (and with it pull-to-refresh). */}
+        {isTV ? (
+          <View style={[S.body, { paddingTop: insets.top + ph(2) }]}>{dashboardContent}</View>
+        ) : (
+          <ScrollView
+            style={{ flex: 1 }}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingTop: insets.top + ph(2), paddingBottom: ph(10) }}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ff1b8a" />}
+          >
+            {dashboardContent}
+          </ScrollView>
+        )}
       </View>
 
       {/* ── Play Modal ────────────────────────────────────────────────────── */}
@@ -372,9 +412,14 @@ const S = StyleSheet.create({
     flex: 1,
     backgroundColor: "#08080a",
   },
+  /** TV: the non-scrolling column. */
+  body: {
+    flex: 1,
+  },
   backgroundArea: {
+    // Full-bleed. The old ph(70) cap ended the backdrop 70% down the screen and
+    // left a hard seam with the flat container colour below it.
     ...StyleSheet.absoluteFillObject,
-    height: ph(70),
   },
   bgImage: {
     ...StyleSheet.absoluteFillObject,
@@ -396,8 +441,9 @@ const S = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: RAIL_H_PAD,
-    marginBottom: ph(4),
-    marginTop: ph(4),
+    // Tighter on TV so everything fits one screen without scrolling.
+    marginBottom: isTV ? ph(2) : ph(4),
+    marginTop: isTV ? ph(1.5) : ph(4),
   },
   logoRow: {
     flexDirection: "row",
@@ -434,8 +480,14 @@ const S = StyleSheet.create({
   // ── Hero ──
   heroSection: {
     paddingHorizontal: RAIL_H_PAD,
-    marginBottom: ph(10),
     maxWidth: pw(70),
+    // TV: this band absorbs the leftover height instead of the browse row, so
+    // the cards keep their landscape shape (their artwork is landscape — letting
+    // them stretch to fill crops the sides off) and the slack becomes breathing
+    // room around the hero text rather than a dead black strip under the cards.
+    ...(isTV
+      ? { flex: 1, justifyContent: "center" as const, marginBottom: ph(2) }
+      : { marginBottom: ph(10) }),
   },
   heroTagline: {
     fontSize: ps(1.1),
@@ -452,7 +504,7 @@ const S = StyleSheet.create({
     fontSize: ps(1.4),
     color: "#a0a4b8",
     lineHeight: ph(2.5),
-    marginBottom: ph(5),
+    marginBottom:  ph(5),
   },
   heroButtons: {
     flexDirection: "row",
@@ -500,11 +552,28 @@ const S = StyleSheet.create({
   // Browse Section ──
   browseSection: {
     paddingHorizontal: RAIL_H_PAD,
-    marginBottom: ph(6),
+    // A flex *weight*, not a ph() height. `ph()` derives from the window size
+    // captured when tokens.ts was imported; if that reading is short of the real
+    // display the whole column ends above the bottom edge. A weight is resolved
+    // against the parent's actual laid-out height, so the column always reaches
+    // the bottom, and the 1 : 1.6 split against heroSection keeps the cards
+    // roughly landscape.
+    ...(isTV
+      ? { flex: 1.6, marginBottom: ph(3) }
+      : { marginBottom: ph(6) }),
   },
   browseContainer: {
     flexDirection: isTV ? "row" : "column",
     gap: pw(2),
+    ...(isTV ? { flex: 1 } : null),
+  },
+  browseCard: {
+    flex: 1,
+    padding: pw(1),
+    overflow: "visible",
+    // Touch layouts stack these vertically inside a ScrollView, so they still
+    // need an explicit height; on TV the row stretches them.
+    height: ph(35), minHeight: ph(35) 
   },
   cardBorder: {
     flex: 1,

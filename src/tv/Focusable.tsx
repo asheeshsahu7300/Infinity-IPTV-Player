@@ -86,8 +86,10 @@ export const Focusable = forwardRef<View, FocusableProps>(
   ) {
     const nativeRef = useRef<View>(null);
     const [focused, setFocused] = useState(false);
+    // Mirror of `focused` readable from timers without stale-closure risk.
+    const focusedRef = useRef(false);
     const isFocusTrapped = useIsFocusTrapped();
-    const isDisabled = disabled || isFocusTrapped;
+    const isDisabled = disabled;
 
     // Overlay focus controller for locking navigation inside modal
     const overlayController = React.useContext(InsideOverlayContext);
@@ -127,16 +129,45 @@ export const Focusable = forwardRef<View, FocusableProps>(
       };
     }, [screenKey, focusKey]);
 
-    // Auto-focus on mount if this item hasTVPreferredFocus and is active
+    // Auto-focus on mount if this item hasTVPreferredFocus and is active.
+    //
+    // Strictly one grab per mounted instance. `hasTVPreferredFocus` is usually
+    // derived from state that stays true for the life of a screen (see
+    // useFocusRestore), so without this guard every remount of the first cell —
+    // FlatList windowing, removeClippedSubviews, or any prop flip that
+    // retriggers the effect — yanked focus back to the top of the grid while the
+    // user was somewhere else entirely. That is the focus-jumping.
+    const didAutoFocusRef = useRef(false);
     React.useEffect(() => {
-      if (hasTVPreferredFocus && !isDisabled) {
-        focusTimeRef.current = Date.now();
-        const timer = setTimeout(() => {
-          nativeRef.current?.focus?.();
-        }, 50);
-        return () => clearTimeout(timer);
+      if (!hasTVPreferredFocus || isDisabled) return;
+      if (didAutoFocusRef.current) return;
+      didAutoFocusRef.current = true;
+
+      const epochAtRequest = FocusMemory.focusEpoch;
+      focusTimeRef.current = Date.now();
+      if (!focusedRef.current && FocusMemory.focusEpoch === epochAtRequest) {
+        nativeRef.current?.focus?.();
       }
     }, [hasTVPreferredFocus, isDisabled]);
+
+    // Automatic focus restore pulse when overlay/modal closes
+    const wasTrappedRef = useRef(false);
+    const [restorePulse, setRestorePulse] = useState(false);
+
+    React.useEffect(() => {
+      if (isFocusTrapped) {
+        wasTrappedRef.current = true;
+      } else if (wasTrappedRef.current) {
+        wasTrappedRef.current = false;
+        const isLastFocusedByMemory = Boolean(screenKey && focusKey && FocusMemory.get(screenKey) === focusKey);
+        const isLastFocusedByRef = Boolean(lastFocusedRef.current && lastFocusedRef.current === nativeRef.current);
+        if (isLastFocusedByMemory || isLastFocusedByRef) {
+          setRestorePulse(true);
+          const timer = setTimeout(() => setRestorePulse(false), 400);
+          return () => clearTimeout(timer);
+        }
+      }
+    }, [isFocusTrapped, screenKey, focusKey]);
 
     const isInsideOverlay = Boolean(overlayController);
     const lastPressTimeRef = useRef(0);
@@ -144,18 +175,25 @@ export const Focusable = forwardRef<View, FocusableProps>(
 
     const handleFocus = useCallback(() => {
       setFocused(true);
+      focusedRef.current = true;
       focusTimeRef.current = Date.now();
-      lastFocusedRef.current = nativeRef.current;
+      if (!isInsideOverlay && !isFocusTrapped) {
+        lastFocusedRef.current = nativeRef.current;
+      }
+      // Bumping the epoch tells any pending programmatic focus request that the
+      // focus has moved on and it should abandon its attempt.
+      FocusMemory.noteFocusEvent();
 
-      if (screenKey && focusKey) {
+      if (!isInsideOverlay && !isFocusTrapped && screenKey && focusKey) {
         FocusMemory.set(screenKey, focusKey);
       }
 
       onFocus?.();
-    }, [screenKey, focusKey, onFocus]);
+    }, [isInsideOverlay, isFocusTrapped, screenKey, focusKey, onFocus]);
 
     const handleBlur = useCallback(() => {
       setFocused(false);
+      focusedRef.current = false;
       onBlur?.();
     }, [onBlur]);
 
@@ -170,8 +208,17 @@ export const Focusable = forwardRef<View, FocusableProps>(
       if (now - lastPressTimeRef.current < 200) return;
       globalLastPressTime = now;
       lastPressTimeRef.current = now;
+
+      // Lock this component as the last focused component right when pressed
+      if (!isInsideOverlay) {
+        lastFocusedRef.current = nativeRef.current;
+        if (screenKey && focusKey) {
+          FocusMemory.set(screenKey, focusKey);
+        }
+      }
+
       onPress?.();
-    }, [onPress, isDisabled]);
+    }, [isDisabled, isInsideOverlay, screenKey, focusKey, onPress]);
 
     useDPad(
       {
@@ -205,7 +252,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
         accessibilityLabel={accessibilityLabel}
         accessibilityHint={accessibilityHint}
         accessibilityState={{ disabled: isDisabled, selected }}
-        hasTVPreferredFocus={!isFocusTrapped && hasTVPreferredFocus}
+        hasTVPreferredFocus={hasTVPreferredFocus || restorePulse}
         nextFocusUp={effUp}
         nextFocusDown={effDown}
         nextFocusLeft={effLeft}

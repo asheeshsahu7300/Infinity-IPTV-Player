@@ -19,7 +19,7 @@ import { TenorSans_400Regular } from "@expo-google-fonts/tenor-sans";
 import ErrorBoundary from "../src/components/ErrorBoundary";
 import { usePortalStore } from "../src/store/portalStore";
 import { ThemeProvider } from "../src/context/ThemeContext";
-import { AppBootManager } from "../src/services/AppBootManager";
+import { AppBootManager, SYNC_INTERVAL } from "../src/services/AppBootManager";
 import { DeepLink } from "../src/services/DeepLink";
 import { PlaybackState } from "../src/services/PlaybackState";
 import { isTV } from "../src/utils/tvUtils";
@@ -105,41 +105,33 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
-  // Handle auto-refresh every 30 minutes. Skipped during playback — warming
-  // the portal pulls large payloads through the JS thread and stutters video.
+  // Periodic refresh. Skipped during playback — warming the portal pulls large
+  // payloads through the JS thread and stutters video. Routed through
+  // AppBootManager so it shares the 30-minute gate and the single-flight lock
+  // with boot and resume instead of racing them.
   useEffect(() => {
     if (!isHydrated || !isReady) return;
 
-    const interval = setInterval(async () => {
+    const interval = setInterval(() => {
       if (PlaybackState.isActive) return;
       const portal = usePortalStore.getState().activePortal;
       if (!portal) return;
-      try {
-        const { portalApi } = await import("../src/services/portalApi");
-        await portalApi.warmPortalData(portal);
-      } catch (e) {
-        console.warn("Auto-refresh failed:", e);
-      }
-    }, 30 * 60 * 1000); // 30 minutes
+      AppBootManager.triggerBackgroundSync(portal).catch(() => {});
+    }, SYNC_INTERVAL);
 
     return () => clearInterval(interval);
   }, [isHydrated, isReady]);
 
-  // Handle app resume - refresh token if needed
+  // Handle app resume. Also gated: every foreground used to kick off a full
+  // portal refetch, so tabbing away and back re-downloaded the entire library.
   useEffect(() => {
-    const handleAppStateChange = async (state: AppStateStatus) => {
+    const handleAppStateChange = (state: AppStateStatus) => {
       if (state !== "active" || !isHydrated) return;
       // Returning from an external player must not stall playback resume.
       if (PlaybackState.isActive) return;
-      try {
-        const portal = usePortalStore.getState().activePortal;
-        if (portal) {
-          const { portalApi } = await import("../src/services/portalApi");
-          await portalApi.warmPortalData(portal);
-        }
-      } catch (e) {
-        console.warn("Resume refresh failed (non-fatal):", e);
-      }
+      const portal = usePortalStore.getState().activePortal;
+      if (!portal) return;
+      AppBootManager.triggerBackgroundSync(portal).catch(() => {});
     };
 
     const subscription = AppState.addEventListener("change", handleAppStateChange);

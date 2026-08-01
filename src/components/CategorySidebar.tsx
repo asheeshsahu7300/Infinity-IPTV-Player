@@ -119,30 +119,23 @@ const CategoryItem = React.memo(function CategoryItem({
   isActive,
   hasTVPreferredFocus,
   onSelect,
-  onFocus,
   index,
 }: {
   item: Category;
   isActive: boolean;
   hasTVPreferredFocus?: boolean;
   onSelect: (id: string) => void;
-  onFocus: (index: number) => void;
   index: number;
 }) {
   const handleSelect = useCallback(() => {
     onSelect(item.id);
   }, [onSelect, item.id]);
 
-  const handleFocus = useCallback(() => {
-    onFocus(index);
-  }, [onFocus, index]);
-
   return (
     <View style={[S.itemWrapper, { overflow: "visible" }]}>
       <Focusable
         hasTVPreferredFocus={hasTVPreferredFocus}
         onPress={handleSelect}
-        onFocus={handleFocus}
         ringOnFocus={false}
         style={{ overflow: "visible" }}
       >
@@ -198,25 +191,63 @@ export default function CategorySidebar({
     return () => { isMounted.current = false; };
   }, []);
 
-  const scrollToIndex = useCallback((index: number) => {
-    if (flatListRef.current && index >= 0 && index < categories.length) {
+  const countRef = useRef(categories.length);
+  countRef.current = categories.length;
+
+  const scrollToIndex = useCallback((index: number, animated: boolean) => {
+    if (flatListRef.current && index >= 0 && index < countRef.current) {
       try {
-        flatListRef.current.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+        flatListRef.current.scrollToIndex({ index, animated, viewPosition: 0.5 });
       } catch { /* ignore */ }
     }
-  }, [categories.length]);
+  }, []);
 
+  // Only scroll on an actual selection change.
+  //
+  // This used to depend on the `categories` array itself, which callers rebuild
+  // on every render — so the effect re-fired continuously and kept animating the
+  // list under the focus engine. `animated: false` for the same reason: a moving
+  // container is what makes D-pad focus land on the wrong row.
+  const lastScrolledIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (categories.length > 0 && selectedId) {
-      const index = categories.findIndex((c) => c.id === selectedId);
-      if (index !== -1) {
-        const timer = setTimeout(() => scrollToIndex(index), 100);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [selectedId, categories, scrollToIndex]);
+    if (!selectedId || categories.length === 0) return;
+    if (lastScrolledIdRef.current === selectedId) return;
+    lastScrolledIdRef.current = selectedId;
+
+    const index = categories.findIndex((c) => c.id === selectedId);
+    if (index === -1) return;
+    const timer = setTimeout(() => scrollToIndex(index, false), 100);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, categories.length, scrollToIndex]);
 
   const ITEM_HEIGHT = ph(7.2);
+
+  // Exactly one row may claim initial focus. The old condition
+  // (`selectedId === item.id || index === 0`) matched two rows whenever the
+  // selection was not the first one, leaving which of them won up to the
+  // native focus engine.
+  const preferredIndex = useMemo(() => {
+    if (!autoFocusFirst) return -1;
+    const selected = categories.findIndex((c) => c.id === selectedId);
+    return selected >= 0 ? selected : 0;
+  }, [autoFocusFirst, categories, selectedId]);
+
+  // The native focus engine already scrolls a focused child into view. Doing it
+  // again from onFocus meant every D-pad press animated the list, which is what
+  // made focus feel like it was skipping rows.
+  const renderItem = useCallback(
+    ({ item, index }: { item: Category; index: number }) => (
+      <CategoryItem
+        item={item}
+        isActive={selectedId === item.id}
+        hasTVPreferredFocus={index === preferredIndex}
+        onSelect={onSelect}
+        index={index}
+      />
+    ),
+    [selectedId, preferredIndex, onSelect]
+  );
 
   return (
     <View style={[S.container, { width }]}>
@@ -241,20 +272,13 @@ export default function CategorySidebar({
           onScrollToIndexFailed={(info) => {
             setTimeout(() => {
               if (isMounted.current && flatListRef.current) {
-                flatListRef.current.scrollToIndex({ index: info.index, animated: false });
+                try {
+                  flatListRef.current.scrollToIndex({ index: info.index, animated: false });
+                } catch { /* list shrank in the meantime */ }
               }
             }, 100);
           }}
-          renderItem={useCallback(({ item, index }: { item: Category; index: number }) => (
-            <CategoryItem
-              item={item}
-              isActive={selectedId === item.id}
-              hasTVPreferredFocus={autoFocusFirst && (selectedId === item.id || index === 0)}
-              onSelect={onSelect}
-              onFocus={scrollToIndex}
-              index={index}
-            />
-          ), [selectedId, autoFocusFirst, onSelect, scrollToIndex])}
+          renderItem={renderItem}
         />
       </View>
     </View>

@@ -167,7 +167,10 @@ const GradientBorderInput = ({
 export default function AddPortalScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { addPortal, setActivePortal, deletePortal } = usePortalStore();
+  // Selectors — see the note in live-tv.tsx.
+  const addPortal = usePortalStore((s) => s.addPortal);
+  const setActivePortal = usePortalStore((s) => s.setActivePortal);
+  const deletePortal = usePortalStore((s) => s.deletePortal);
 
   const [step, setStep] = useState<1 | 2>(1);
   const [type, setType] = useState<CardType>("m3u");

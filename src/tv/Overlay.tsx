@@ -8,6 +8,7 @@ import {
   ViewStyle,
   Animated,
   TVFocusGuideView,
+  findNodeHandle,
 } from "react-native";
 import { useDPad, DPAD_PRIORITY } from "./useDPad";
 import {
@@ -18,6 +19,7 @@ import {
 } from "./FocusTrapContext";
 import { lastFocusedRef } from "./Focusable";
 import { useReducedMotion } from "./useReducedMotion";
+import { FocusMemory } from "./FocusMemory";
 
 export interface OverlayProps {
   visible: boolean;
@@ -56,10 +58,24 @@ export function Overlay({
   axis = "vertical",
 }: OverlayProps) {
   const previousFocusedRef = React.useRef<View | null>(null);
+  const previousScreenKey = React.useRef<string | null>(null);
   const opacity = React.useRef(new Animated.Value(0)).current;
   const [render, setRender] = React.useState(visible);
   const overlayController = useOverlayFocusController(axis);
   const reduceMotion = useReducedMotion();
+  const contentRef = React.useRef<View>(null);
+  const [destinations, setDestinations] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    if (visible && contentRef.current) {
+      const handle = findNodeHandle(contentRef.current);
+      if (handle) {
+        setDestinations([handle]);
+      }
+    } else {
+      setDestinations([]);
+    }
+  }, [visible]);
 
   // Hardware back button handler
   React.useEffect(() => {
@@ -79,11 +95,12 @@ export function Overlay({
     { enabled: visible, priority: DPAD_PRIORITY.OVERLAY }
   );
 
-  // Focus trap registration + saving the background element we came from.
+  // Focus trap registration + saving the background element and screen we came from.
   React.useEffect(() => {
     if (!visible) return;
 
     previousFocusedRef.current = lastFocusedRef.current;
+    previousScreenKey.current = FocusMemory.getLastActiveScreen();
 
     if (trapFocus) {
       FocusTrap.register();
@@ -96,9 +113,53 @@ export function Overlay({
     };
   }, [visible, trapFocus]);
 
-  // Visibility animation. Focus is handed back only once the overlay has
-  // actually left the tree — restoring while the focus guide is still mounted
-  // just bounces focus straight back into the closing overlay.
+  const restorePreviousFocusWithRetry = React.useCallback(() => {
+    const startEpoch = FocusMemory.focusEpoch;
+    const targetRef = previousFocusedRef.current;
+    const targetScreen = previousScreenKey.current || FocusMemory.getLastActiveScreen();
+
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    const tryRestore = () => {
+      // If focus epoch already moved (meaning an element gained focus), stop retrying!
+      if (FocusMemory.focusEpoch !== startEpoch) {
+        return true;
+      }
+
+      // 1. Try focusing the direct native view ref of the tile
+      if (targetRef && typeof (targetRef as any).focus === "function") {
+        try {
+          (targetRef as any).focus();
+          if (FocusMemory.focusEpoch !== startEpoch) return true;
+        } catch {
+          // ignore
+        }
+      }
+
+      // 2. Fall back to FocusMemory for the active screen
+      if (targetScreen) {
+        if (FocusMemory.restore(targetScreen)) {
+          if (FocusMemory.focusEpoch !== startEpoch) return true;
+        }
+      }
+
+      return false;
+    };
+
+    // Attempt immediately
+    if (tryRestore()) return;
+
+    // Retry every 35ms while native view focusability settles
+    const timer = setInterval(() => {
+      attempts++;
+      if (tryRestore() || attempts >= maxAttempts) {
+        clearInterval(timer);
+      }
+    }, 35);
+  }, []);
+
+  // Visibility animation + focus restoration retry loop on close.
   React.useEffect(() => {
     const duration = reduceMotion ? 0 : 200;
 
@@ -112,21 +173,19 @@ export function Overlay({
       return;
     }
 
+    // Immediately trigger focus restoration retry loop when modal starts closing.
+    restorePreviousFocusWithRetry();
+
     Animated.timing(opacity, {
       toValue: 0,
       duration,
       useNativeDriver: true,
     }).start(() => {
       setRender(false);
-      const prev = previousFocusedRef.current;
       previousFocusedRef.current = null;
-      if (prev) {
-        requestAnimationFrame(() => {
-          (prev as any)?.focus?.();
-        });
-      }
+      previousScreenKey.current = null;
     });
-  }, [visible, opacity, reduceMotion]);
+  }, [visible, opacity, reduceMotion, restorePreviousFocusWithRetry]);
 
   if (!render) return null;
 
@@ -134,12 +193,13 @@ export function Overlay({
     <TVFocusGuideView
       style={StyleSheet.absoluteFillObject}
       autoFocus
-      trapFocusUp={trapFocus}
-      trapFocusDown={trapFocus}
-      trapFocusLeft={trapFocus}
-      trapFocusRight={trapFocus}
+      destinations={destinations}
+      trapFocusUp={trapFocus && visible}
+      trapFocusDown={trapFocus && visible}
+      trapFocusLeft={trapFocus && visible}
+      trapFocusRight={trapFocus && visible}
     >
-      <Animated.View style={[styles.backdrop, style, { opacity }]} pointerEvents="auto">
+      <Animated.View style={[styles.backdrop, style, { opacity }]} pointerEvents={visible ? "auto" : "none"}>
         <Pressable
           style={StyleSheet.absoluteFillObject}
           focusable={false}
@@ -150,7 +210,7 @@ export function Overlay({
           }}
         />
         <InsideOverlayContext.Provider value={overlayController}>
-          <View style={[styles.content, contentStyle]}>
+          <View ref={contentRef} style={[styles.content, contentStyle]}>
             {children}
           </View>
         </InsideOverlayContext.Provider>

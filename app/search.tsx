@@ -141,7 +141,11 @@ const ResultCard = ({ item, onPress, onFocus, itemWidth }: any) => {
 export default function SearchScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { activePortal, channels, vodItems, series } = usePortalStore();
+  // Selectors — see the note in live-tv.tsx.
+  const activePortal = usePortalStore((s) => s.activePortal);
+  const channels = usePortalStore((s) => s.channels);
+  const vodItems = usePortalStore((s) => s.vodItems);
+  const series = usePortalStore((s) => s.series);
   const searchTimeout = useRef<any>(null);
 
   const [query, setQuery] = useState("");
@@ -360,7 +364,8 @@ export default function SearchScreen() {
         <FocusGroup>
           <View style={S.headerRow}>
             <Focusable
-              hasTVPreferredFocus
+              hasTVPreferredFocus={!playModalVisible}
+              disabled={playModalVisible}
               onFocus={() => {
                 setSearchFocused(true);
                 setTimeout(() => inputRef.current?.focus(), 100);
@@ -413,6 +418,8 @@ export default function SearchScreen() {
                       showSoftInputOnFocus={true}
                       onFocus={() => setSearchFocused(true)}
                       onBlur={() => setSearchFocused(false)}
+                      editable={!playModalVisible}
+                      focusable={!playModalVisible}
                     />
                     {query.length > 0 && (
                       <TouchableOpacity onPress={() => setQuery("")} style={{ padding: 8 }}>
@@ -484,7 +491,7 @@ export default function SearchScreen() {
             keyExtractor={(item: any) => `${item.type}-${item.id}`}
             contentContainerStyle={{ paddingHorizontal: pw(2), paddingBottom: ph(6) }}
             columnWrapperStyle={{ justifyContent: 'flex-start' }}
-            removeClippedSubviews={Platform.OS === 'android'}
+            removeClippedSubviews={Platform.OS === 'android' && !isTV}
             initialNumToRender={RESULT_COLUMNS * 3}
             maxToRenderPerBatch={RESULT_COLUMNS * 2}
             windowSize={5}

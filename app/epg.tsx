@@ -176,7 +176,9 @@ const ChannelRow = ({ item, onFocusProgram, onProgramPress, timeSlots, isFirst }
 export default function EPGScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { activePortal, channels } = usePortalStore();
+  // Selectors — see the note in live-tv.tsx.
+  const activePortal = usePortalStore((s) => s.activePortal);
+  const channels = usePortalStore((s) => s.channels);
 
   const [epgData, setEpgData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);

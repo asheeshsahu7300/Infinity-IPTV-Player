@@ -420,7 +420,6 @@ export default function SeriesDetailsScreen() {
         style={{ flex: 1 }}
         accessibilityElementsHidden={playModalVisible}
         importantForAccessibility={playModalVisible ? "no-hide-descendants" : "auto"}
-        pointerEvents={playModalVisible ? "none" : "auto"}
       >
         <CinematicBackground uri={params.logo} />
         <StatusBar hidden />
@@ -443,7 +442,7 @@ export default function SeriesDetailsScreen() {
               key={`ep-grid-${numColumns}-${selectedSeasonId}`}
               ListHeaderComponent={heroAndSeasons}
               contentContainerStyle={[S.epListContent, { paddingBottom: ph(10) }]}
-              removeClippedSubviews={Platform.OS === "android"}
+              removeClippedSubviews={Platform.OS === "android" && !isTV}
               initialNumToRender={numColumns * 3}
               maxToRenderPerBatch={numColumns * 2}
               windowSize={5}

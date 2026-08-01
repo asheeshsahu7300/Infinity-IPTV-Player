@@ -1,6 +1,7 @@
 // src/services/requestManager.ts
 import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
 import { CACHE_REJECT } from "./cacheManager";
+import { NetworkActivity } from "./networkActivity";
 
 interface PendingRequest<T> {
   promise: Promise<T>;
@@ -32,7 +33,13 @@ class RequestManager {
       return pending.promise;
     }
 
-    // 🚀 Execute with cleanup
+    // 🚀 Execute with cleanup.
+    // Every deduplicated portal request funnels through here — portalApi,
+    // xtreamApi and m3uApi all call it — so raising the shared in-flight counter
+    // at this one point is what lets screens render a loading state instead of an
+    // empty one while a fetch they did not start is still running. Deduped
+    // callers that reuse a pending promise above deliberately do not re-count.
+    NetworkActivity.begin();
     const promise = executor()
       .then((result) => {
         // 🛑 Skip cache if result is CACHE_REJECT
@@ -42,6 +49,7 @@ class RequestManager {
         return result;
       })
       .finally(() => {
+        NetworkActivity.end();
         // Auto-cleanup after TTL
         setTimeout(() => {
           if (this.pendingRequests.get(key)?.timestamp === now) {

@@ -3,6 +3,7 @@ import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { cacheManager, CACHE_TTL } from "./cacheManager";
 import { requestManager } from "./requestManager";
+import { NetworkActivity } from "./networkActivity";
 import { prewarmDns } from "./dnsResolver";
 import {
   Portal,
@@ -136,7 +137,7 @@ const headers = (mac: string, token?: string, url?: string) => {
 
   return {
     "User-Agent": "okhttp/3.12.1",
-    "Accept-Encoding": "identity",
+    "Accept-Encoding": "gzip",
     Accept: "application/json, text/javascript, */*; q=0.01",
     Cookie: cookieParts.join("; "),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -221,10 +222,8 @@ async function portalGet(
                 expiry: auth.expiry,
               },
             };
-            const store = usePortalStore.getState();
-            if (store.activePortal?.id === currentPortal.id) {
-              await store.setActivePortal(currentPortal);
-            }
+            // Config only — this is a token refresh, not a portal switch.
+            await usePortalStore.getState().persistPortalConfig(currentPortal);
           }
         } catch (authErr) {
           console.warn("⚠️ Re-authentication retry failed:", authErr);
@@ -395,13 +394,8 @@ async function refreshToken(portal: Portal, forceRefresh = false): Promise<Porta
           ...portal,
           config: { ...portal.config, ...cached },
         };
-        // 🟢 Sync to global state if still active
-        const store = usePortalStore.getState();
-        if (store.activePortal?.id === portal.id) {
-          await store.setActivePortal(updated);
-        } else {
-          await store.updatePortal(portal.id, { config: updated.config });
-        }
+        // 🟢 Sync token to global state — config only, never content.
+        await usePortalStore.getState().persistPortalConfig(updated);
         return updated;
       }
     }
@@ -418,13 +412,9 @@ async function refreshToken(portal: Portal, forceRefresh = false): Promise<Porta
       },
     };
 
-    // 🟢 CRITICAL: Persist updated portal (token!) to store & disk if still active
-    const store = usePortalStore.getState();
-    if (store.activePortal?.id === portal.id) {
-      await store.setActivePortal(updated);
-    } else {
-      await store.updatePortal(portal.id, { config: updated.config });
-    }
+    // 🟢 CRITICAL: Persist updated portal (token!) to store & disk — config
+    // only. Routing this through setActivePortal wiped all loaded content.
+    await usePortalStore.getState().persistPortalConfig(updated);
 
     // Cache for fast-path next time
     await cacheManager.set(
@@ -443,6 +433,48 @@ async function refreshToken(portal: Portal, forceRefresh = false): Promise<Porta
   } finally {
     tokenRefreshMap.delete(key);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAG sequential-fetch pacing
+// ─────────────────────────────────────────────────────────────────────────────
+// Stalker portals throttle bursts, so the content endpoints are fetched one at a
+// time with a gap between them. The gap was 250ms across seven calls, which put
+// ~2s of pure sleeping on the startup path before the first item could render.
+// 120ms is still comfortably above the rate limits these portals enforce.
+const SPACING_MS = 120;
+/** Settling pause after the session handshake before the first content call. */
+const SETTLE_MS = 150;
+
+/**
+ * Push categories into the store as soon as they arrive, ahead of the content
+ * endpoints. The sidebar is the first thing a user looks at and it only needs
+ * these, so it should not wait on the channel/VOD/series downloads.
+ */
+function publishCategories(
+  liveRows: any[],
+  vodRows: any[],
+  seriesRows: any[],
+  portalId: string,
+  store: ReturnType<typeof usePortalStore.getState>
+): void {
+  const mapCats = (rows: any[], type: "live" | "vod" | "series") =>
+    rows.map((c: any) => {
+      const rawId = String(c.id ?? c.gid ?? "");
+      const id = rawId === "*" || rawId === "0" ? "all" : `${type}:${rawId}`;
+      return {
+        id,
+        name: c.title ?? c.name ?? c.genre_name ?? "Unknown",
+        type,
+      };
+    });
+
+  const all = [
+    ...mapCats(liveRows, "live"),
+    ...mapCats(vodRows, "vod"),
+    ...mapCats(seriesRows, "series"),
+  ];
+  if (all.length > 0) store.setCategories(all, portalId).catch(() => {});
 }
 
 export const portalApi = {
@@ -1184,7 +1216,15 @@ export const portalApi = {
     return this.refreshPortalData(portal, false);
   },
 
+  // The MAG branch below drives raw axios calls rather than going through
+  // requestManager, so the in-flight counter is raised here explicitly. This is
+  // the boot / resume / 30-minute-refresh / empty-body-retry path — the traffic
+  // no screen knows it started.
   async refreshPortalData(portal: Portal, forceReset = false): Promise<void> {
+    return NetworkActivity.track(() => this._refreshPortalData(portal, forceReset));
+  },
+
+  async _refreshPortalData(portal: Portal, forceReset = false): Promise<void> {
     try {
       const key = portal.id;
       const store = usePortalStore.getState();
@@ -1237,7 +1277,7 @@ export const portalApi = {
       // STALKER / MAG LOGIC
       // ---------------------------------------
       const refreshed = await refreshToken(portal, true); // Always perform fresh session handshake
-      await new Promise(r => setTimeout(r, 300)); // 300ms post-handshake settling delay
+      await new Promise(r => setTimeout(r, SETTLE_MS)); // post-handshake settling delay
 
       const base = safe(refreshed.config.url).replace(/\/$/, "");
       const mac = refreshed.config.mac ?? "";
@@ -1251,7 +1291,15 @@ export const portalApi = {
       const seriesListUrl = `${base}/portal.php?type=series&action=get_ordered_list&max_page_items=100000&p=1&JsHttpRequest=1-xml`;
       const epgUrl = `${base}/portal.php?type=itv&action=epg_info&JsHttpRequest=1-xml`;
 
-      // Helper to fetch single endpoint sequentially
+      // Helper to fetch a single endpoint sequentially.
+      //
+      // Stalker portals routinely answer 200 OK with an empty body when the
+      // session token has gone stale — see the `livebox.pro` VOD-categories
+      // case. A bare axios.get turns that into `extract() -> []`, i.e. "this
+      // portal has no VOD categories", and because the retry below only fires
+      // when *every* endpoint came back empty, one stale-token response silently
+      // zeroed a whole section until the next sync 30 minutes later. Retry
+      // per-endpoint with a fresh session instead of accepting the empty answer.
       const fetchEndpoint = async (
         name: string,
         url: string,
@@ -1259,45 +1307,82 @@ export const portalApi = {
         targetToken = token,
         targetBase = base
       ): Promise<any[]> => {
-        try {
-          const response = await axios.get(url, {
-            ...rmAcceptHeader,
-            headers: headers(targetMac, targetToken, targetBase),
-            timeout: 60000,
-          });
-          return extract(response);
-        } catch (error: any) {
-          console.warn(`❌ ${name} failed`, error?.message);
-          return [];
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            if (attempt > 0) {
+              const retried = await refreshToken(portal, true);
+              targetBase = safe(retried.config.url).replace(/\/$/, "");
+              targetMac = retried.config.mac ?? targetMac;
+              targetToken = retried.config.token ?? targetToken;
+              await new Promise(r => setTimeout(r, SETTLE_MS));
+            }
+
+            const response = await axios.get(url, {
+              ...rmAcceptHeader,
+              headers: headers(targetMac, targetToken, targetBase),
+              timeout: 60000,
+            });
+
+            const rows = extract(response);
+            if (rows.length > 0) return rows;
+
+            const body = response?.data;
+            const isEmptyBody =
+              body === "" ||
+              body == null ||
+              (typeof body === "string" && body.trim().length === 0) ||
+              (typeof body === "object" && Object.keys(body).length === 0) ||
+              body?.js === "";
+
+            // A genuinely empty section is a valid answer; an empty *body* is not.
+            if (!isEmptyBody) return rows;
+            console.warn(`⚠️ ${name} returned HTTP ${response.status} with an empty body`);
+          } catch (error: any) {
+            console.warn(`❌ ${name} failed`, error?.message);
+          }
         }
+        return [];
       };
 
-      console.log("📡 Fetching MAG categories & content endpoints sequentially with 250ms spacing...");
-      let liveCategoriesRows = await fetchEndpoint("Live Categories", liveCategoriesUrl);
-      await new Promise(r => setTimeout(r, 250));
+      console.log(`📡 Fetching MAG categories & content endpoints sequentially with ${SPACING_MS}ms spacing...`);
 
-      let liveChannelsRows = await fetchEndpoint("Live Channels", liveChannelsUrl);
-      await new Promise(r => setTimeout(r, 250));
+      // Categories are small and are what the sidebar needs first, so they are
+      // pushed to the store before the heavy content endpoints are fetched
+      // rather than after all seven calls finish.
+      let liveCategoriesRows = await fetchEndpoint("Live Categories", liveCategoriesUrl);
+      await new Promise(r => setTimeout(r, SPACING_MS));
 
       let vodCategoriesRows = await fetchEndpoint("VOD Categories", vodCategoriesUrl);
-      await new Promise(r => setTimeout(r, 250));
-
-      let vodItemsRows = await fetchEndpoint("VOD Items", vodItemsUrl);
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, SPACING_MS));
 
       let seriesCategoriesRows = await fetchEndpoint("Series Categories", seriesCategoriesUrl);
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, SPACING_MS));
+
+      publishCategories(liveCategoriesRows, vodCategoriesRows, seriesCategoriesRows, key, store);
+
+      let liveChannelsRows = await fetchEndpoint("Live Channels", liveChannelsUrl);
+      await new Promise(r => setTimeout(r, SPACING_MS));
+
+      let vodItemsRows = await fetchEndpoint("VOD Items", vodItemsUrl);
+      await new Promise(r => setTimeout(r, SPACING_MS));
 
       let seriesListRows = await fetchEndpoint("Series List", seriesListUrl);
-      await new Promise(r => setTimeout(r, 250));
 
-      let epgRes = await axios.get(epgUrl, {
-        headers: headers(mac, token, base),
-        timeout: 60000,
-      }).catch(err => {
-        console.warn("❌ EPG Info failed", err?.message);
-        return null;
-      });
+      // EPG is only ever read by the EPG screen, which fetches it itself. It is
+      // also the largest payload here, so pulling it on every warm was adding
+      // seconds to startup for data nothing was about to display. Fetch it only
+      // on an explicit full refresh.
+      let epgRes = null;
+      if (forceReset) {
+        await new Promise(r => setTimeout(r, SPACING_MS));
+        epgRes = await axios.get(epgUrl, {
+          headers: headers(mac, token, base),
+          timeout: 60000,
+        }).catch(err => {
+          console.warn("❌ EPG Info failed", err?.message);
+          return null;
+        });
+      }
 
       let hasContent = liveChannelsRows.length > 0 || vodItemsRows.length > 0 || seriesListRows.length > 0;
       let hasCategories = liveCategoriesRows.length > 0 || vodCategoriesRows.length > 0 || seriesCategoriesRows.length > 0;
@@ -1315,15 +1400,15 @@ export const portalApi = {
         if (retryToken) {
           console.log("🔄 Retrying MAG requests with fresh session token...");
           liveCategoriesRows = await fetchEndpoint("Retry Live Categories", liveCategoriesUrl, retryMac, retryToken, retryBase);
-          await new Promise(r => setTimeout(r, 250));
+          await new Promise(r => setTimeout(r, SPACING_MS));
           liveChannelsRows = await fetchEndpoint("Retry Live Channels", liveChannelsUrl, retryMac, retryToken, retryBase);
-          await new Promise(r => setTimeout(r, 250));
+          await new Promise(r => setTimeout(r, SPACING_MS));
           vodCategoriesRows = await fetchEndpoint("Retry VOD Categories", vodCategoriesUrl, retryMac, retryToken, retryBase);
-          await new Promise(r => setTimeout(r, 250));
+          await new Promise(r => setTimeout(r, SPACING_MS));
           vodItemsRows = await fetchEndpoint("Retry VOD Items", vodItemsUrl, retryMac, retryToken, retryBase);
-          await new Promise(r => setTimeout(r, 250));
+          await new Promise(r => setTimeout(r, SPACING_MS));
           seriesCategoriesRows = await fetchEndpoint("Retry Series Categories", seriesCategoriesUrl, retryMac, retryToken, retryBase);
-          await new Promise(r => setTimeout(r, 250));
+          await new Promise(r => setTimeout(r, SPACING_MS));
           seriesListRows = await fetchEndpoint("Retry Series List", seriesListUrl, retryMac, retryToken, retryBase);
 
           hasContent = liveChannelsRows.length > 0 || vodItemsRows.length > 0 || seriesListRows.length > 0;

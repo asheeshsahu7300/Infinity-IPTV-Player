@@ -42,7 +42,12 @@ const GradientText = ({ text, style, colors }: { text: string; style?: any; colo
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { portals, activePortal, setActivePortal, clearPortalData } = usePortalStore();
+  // Selectors — see the note in live-tv.tsx.
+  const portals = usePortalStore((s) => s.portals);
+  const activePortal = usePortalStore((s) => s.activePortal);
+  const setActivePortal = usePortalStore((s) => s.setActivePortal);
+  const clearPortalData = usePortalStore((s) => s.clearPortalData);
+  const clearPersistedPortalData = usePortalStore((s) => s.clearPersistedPortalData);
 
   const [autoPlay, setAutoPlay] = useState(true);
   const [hardwareAcceleration, setHardwareAcceleration] = useState(true);
@@ -101,7 +106,7 @@ export default function SettingsScreen() {
           text: 'Clear',
           onPress: async () => {
             try {
-              clearPortalData();
+              await clearPersistedPortalData();
               Alert.alert('Success', 'Cache cleared successfully');
             } catch (error) {
               Alert.alert('Error', 'Failed to clear cache');
