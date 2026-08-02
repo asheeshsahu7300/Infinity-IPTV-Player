@@ -1,68 +1,104 @@
-# 📺 IPTV Hub (Mobile & TV Player)
+# Infinity IPTV Player App (Expo + React Native)
 
-> **⚠️ This is a player application only. It does not provide, host, or include any IPTV content, streams, or subscriptions. Users must provide their own legal IPTV service credentials.**
+> **WARNING: This is a player application only. It does not provide, host, or include any IPTV content, streams, or subscriptions. Users must provide their own legal IPTV service credentials.**
 
-A modern, highly-optimized IPTV player built with **Expo**, **React Native**, and **TypeScript**. It supports **M3U**, **Xtream**, and **MAG/Stalker** portals. 
-Optimized for performance, dynamic media loading, fast pagination, and smooth playback on both Mobile and Android TV.
-
----
-
-## 📸 Screenshots (Mobile Experience)
-
-<p align="center" style="display: flex; justify-content: center; gap: 10px; flex-wrap: nowrap;">
-  <img width="220" alt="image1" src="https://github.com/user-attachments/assets/8e5bdf02-0f4d-4949-88dd-cc1ee2067e46" />
-  <img width="220" alt="image2" src="https://github.com/user-attachments/assets/cdca60f0-bf37-4d86-bfd1-defa93c14e22" />
-  <img width="220" alt="image3" src="https://github.com/user-attachments/assets/ade19036-9b4f-4c23-9ff0-b6c5830fb384" />
-  <img width="220" alt="image4" src="https://github.com/user-attachments/assets/ae8bb1f0-cd3d-41ad-8b02-bb1866bd2faa" />
-</p>
+A modern, high-performance IPTV player built with **Expo**, **React Native**, and **TypeScript**, supporting **M3U**, **Xtream Codes**, and **MAG/Stalker** portals.
+Optimized for mobile touchscreens, tablets, and full **Android TV 10-foot D-pad remote navigation**.
 
 ---
 
-## ✨ Features
+## Screenshots
 
-- **Multi-Platform Support**: Enjoy a seamless mobile experience (iOS/Android) and an optimized 10-foot UI for Android TV.
-- **Dynamic Player**: Uses `expo-video` for standard formats and dynamically loads `react-native-vlc-media-player` for Live TV streams to reduce mobile bundle/app size.
-- **Live TV, VOD, & Series**: Full categorization, pagination, and support for massive catalogs.
-- **Multiple Portal Types**:
-  - M3U Playlists (both `.m3u` and `.m3u8`)
-  - Xtream Codes API
-  - MAG / Stalker Portals
-- **Premium UI Aesthetics**: Glassmorphism, smooth gradients, dynamic micro-animations, and a responsive layout using custom Google TV typography (`GoogleSans`).
-- **External Player Support**: Long press to open streams in VLC, MX Player, etc. (Android).
-- **Built for Scale**: Uses Zustand for fast state management and FlashList for 60FPS list rendering.
+### Mobile Experience
 
----
+| Splash screen | Dashboard |
+| :---: | :---: |
+|<img width="220" alt="Live TV" src="https://github.com/user-attachments/assets/4f87144c-cc7c-45f4-bebf-69dc1c0b178f" />| <img width="220" alt="Dashboard" src="https://github.com/user-attachments/assets/1d75ffc1-e34d-4fb7-927c-b31f6ec9a6c3" /> | 
 
-## 🛠️ Tech Stack
-
-- **Expo & React Native** (SDK 54)
-- **TypeScript** & **Expo Router**
-- **Zustand** (State Management)
-- **Axios** (Networking)
-- **FlashList / FlatList** (High-Performance Lists)
-- **Expo Video** & **VLC Player** (Video Playback)
+| VOD Movies | Series |
+| :---: | :---: |
+| <img width="220" alt="VOD Movies" src="https://github.com/user-attachments/assets/bbe9eb64-6e7e-41a1-bfef-b601832c3db7" /> | <img width="220" alt="Series" src="https://github.com/user-attachments/assets/0e2e8493-ee19-4557-845e-a1098e9cefbb" /> |
 
 ---
 
-## 📁 Project Structure
+### Android TV & Large Screen Experience
 
-```text
+| Splash screen |
+| :---: |
+| <img width="600" alt="Android TV Dashboard" src="https://github.com/user-attachments/assets/36b817b0-1ac7-4e06-ab64-5d23c0999d17" /> |
+
+| Dashboard | Movies | Series |
+| :---: | :---: | :---: |
+| <img width="280" alt="TV Category Browsing" src="https://github.com/user-attachments/assets/27318928-8c0a-4c6a-87bb-7775abd77449" /> | <img width="280" alt="TV Grid Browsing" src="https://github.com/user-attachments/assets/cc512c7a-c7cd-4688-b740-0aee6edb7566" /> | <img width="280" alt="TV Focus Highlight" src="https://github.com/user-attachments/assets/f6b6bc2a-9269-4d8a-a910-c634011ecdd1" /> |
+
+---
+
+## Features
+
+- **Multi-Portal Support**:
+  - **M3U / M3U8 Playlists**
+  - **Xtream Codes API**
+  - **MAG / Stalker Portal API**
+- **Content Coverage**: Live TV, VOD Movies, and TV Series (with Season & Episode browser)
+- **Full Android TV & D-Pad Remote Control**: Smooth directional focus navigation, glowing TV focus rings, and Leanback launcher support
+- **Performance & Pagination**: Smart chunking, infinite scroll, and background cache management for large playlists
+- **Favorites System**: Quick-access bookmarking for Live TV, Movies, and Series
+- **Built-in & External Video Players**: Integrated video player with subtitle and audio track switching + Android Intent launcher for external players (VLC, MX Player, etc.)
+- **Modern Aesthetics**: Sleek dark mode, poster tile overlays with top-right rating badges, smooth gradients, and typography
+
+---
+
+## Tech Stack
+
+- **Framework**: Expo (SDK 52+), React Native, TypeScript
+- **Navigation**: Expo Router (File-based routing)
+- **State Management**: Zustand
+- **Networking & API**: Axios (Custom M3U, Xtream, and MAG Stalker client engines)
+- **Lists**: `@shopify/flash-list` & React Native `FlatList`
+- **Media Playback**: `expo-video` & Android Intent Launchers
+- **TV Support**: Custom TV Focus Engine (`Focusable`, `FocusGroup`, D-Pad direction management)
+
+---
+
+## Project Structure
+
+```
 ├── app/                # File-based routing (Expo Router)
-├── assets/             # Images, fonts, and screenshots
+│   ├── index.tsx       # Splash & portal auth gate
+│   ├── portals.tsx     # Saved portal selection screen
+│   ├── add-portal.tsx  # Add/configure portal (M3U, Xtream, MAG)
+│   ├── dashboard.tsx   # Main hub (Hero, category rails, quick links)
+│   ├── live-tv.tsx     # Live TV channels & category browser
+│   ├── vod.tsx          # Movies catalog with poster overlay & rating
+│   ├── series.tsx       # Series catalog
+│   ├── series-details.tsx # Seasons & episodes browser
+│   ├── search.tsx       # Global content search across Live/VOD/Series
+│   ├── player.tsx       # Built-in player with audio/subtitle track modals
+│   └── settings.tsx     # Hardware acceleration, cache, and active portal settings
 ├── src/
-│   ├── components/     # Reusable UI components (CinematicBackground, Focusable, etc.)
-│   ├── services/       # API layers (M3U, Xtream, MAG) & Boot Managers
-│   ├── store/          # Zustand state store
-│   ├── theme/          # Design tokens (THEME, typography, scaling)
-│   └── utils/          # Helpers & normalizers
-├── android/            # Native Android project
-├── ios/                # Native iOS project
+│   ├── components/     # Reusable TV & Mobile UI components (Sidebar, Pills, Overlays)
+│   ├── services/       # Portal API implementations (M3U, Xtream, MAG)
+│   ├── store/          # Zustand global state (Portals, Favorites, Active Content)
+│   ├── theme/          # Design tokens, responsive dimensions (`ps`, `pw`, `ph`), colors
+│   ├── tv/             # D-Pad focus management components (`Focusable`, `FocusGroup`)
+│   └── utils/          # Device detection (`isTV`, `isPhone`, `isTablet`) & helpers
+├── assets/             # Icons, splash screen GIF, and screenshots
+├── android/             # Native Android project configuration
 └── README.md
 ```
 
 ---
 
-## 🚀 Installation & Local Development
+## Prerequisites
+
+- **Node.js** ≥ 18
+- **npm** or **yarn**
+- **Expo CLI** (`npm install -g expo-cli`)
+- **Android Studio** (for Android emulator & APK builds)
+
+---
+
+## Installation & Running Locally
 
 1. **Clone the repository:**
    ```bash
@@ -75,81 +111,118 @@ Optimized for performance, dynamic media loading, fast pagination, and smooth pl
    npm install
    ```
 
-3. **Start the development server:**
+3. **Start Expo Dev Server:**
    ```bash
    npx expo start
    ```
 
-4. **Run on device/emulator:**
-   - Press `a` for Android
-   - Press `i` for iOS
-   - Scan the QR code with the Expo Go app.
+4. **Run on Device or Emulator:**
+   - Press `a` for Android Emulator / TV Box
+   - Scan QR code using **Expo Go**
 
 ---
 
-## 📱 Building for Production
+## Building for Production
 
-### Android (Mobile & TV)
-
-Native builds have been optimized to exclude unused ABI architectures (like `x86`), greatly reducing the APK size for mobile devices.
+### Android (APK & Android TV)
 
 ```bash
-# Generate native Android project
+# Generate native Android project files
 npx expo prebuild --platform android
 
-# Build Release APK
+# Build Release APK locally
 cd android
 ./gradlew assembleRelease
 
-# Or build seamlessly with EAS
-npx eas build --platform android
+# Or build via Expo Application Services (EAS)
+npx eas build --platform android --profile production
 ```
 
-### iOS
+---
 
+## Portal Setup & Configuration
+
+The app allows users to configure multiple IPTV portals:
+
+1. **M3U Playlist**
+   - Provide direct M3U or M3U8 URL.
+2. **Xtream Codes**
+   - Provide Server URL, Username, and Password.
+3. **MAG / Stalker**
+   - Provide Portal URL and MAC Address (e.g. `00:1A:79:XX:XX:XX`).
+
+---
+
+## Android TV & Remote Control Experience
+
+Infinity IPTV Player is built ground-up for TV screens:
+- **D-Pad Directional Navigation**: Seamlessly navigate channels, categories, and settings using standard TV remote controls (Up / Down / Left / Right / Select / Back).
+- **Focus Rings & Visual Feedback**: Highlighted focus borders with high-contrast active pill states.
+- **10-Foot Interface**: Optimized typography and large touch targets readable from a distance.
+
+---
+
+## Troubleshooting
+
+### Gradle Execution Permissions (macOS/Linux)
 ```bash
-# Generate native iOS project
-npx expo prebuild --platform ios
+chmod +x android/gradlew
+```
 
-# Build with EAS
-npx eas build --platform ios
+### Clean Rebuild
+```bash
+cd android
+./gradlew clean
+cd ..
+rm -rf node_modules
+npm install
 ```
 
 ---
 
-## 🔧 Configuration
+## Contributing Guidelines
 
-### Portal Setup
+Contributions, bug reports, and feature requests are welcome. To ensure code quality and consistency across mobile and Android TV platforms, please follow these guidelines:
 
-The app securely manages your credentials locally and supports three connection types:
-
-1. **M3U Playlist**: Provide a valid M3U/M3U8 URL.
-2. **Xtream Codes**: Requires Server URL, Username, and Password.
-3. **MAG/Stalker**: Requires Portal URL and a registered MAC address.
-
-Configure these securely in the app's **Settings → Add Portal**.
+1. **Fork the Repository**: Create your personal fork on GitHub.
+2. **Create a Feature Branch**:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+3. **Coding Standards**:
+   - Write clean, type-safe TypeScript code.
+   - Maintain Android TV D-Pad focus compatibility by wrapping interactive elements with `Focusable` or `FocusGroup` components.
+   - Use design system tokens (`ps`, `pw`, `ph`, `fw`) from `src/theme/tokens`.
+4. **Validation & Type Checking**:
+   - Run local type checks prior to submitting:
+     ```bash
+     npx tsc --noEmit
+     ```
+5. **Commit & Push**:
+   ```bash
+   git commit -m "feat: add support for custom EPG source"
+   git push origin feature/your-feature-name
+   ```
+6. **Open a Pull Request**: Submit a PR explaining the problem solved or feature added.
 
 ---
 
-## 🤝 Contributing
+## License
 
-Contributions are highly welcome! 
-
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/amazing-feature`).
-3. Commit your changes (`git commit -m 'Add amazing feature'`).
-4. Push to the branch (`git push origin feature/amazing-feature`).
-5. Open a Pull Request.
+This project is intended for **learning and personal media player use**. Ensure compliance with local laws and provider terms of service.
 
 ---
 
-## ⚠️ Legal Disclaimer
+## Disclaimer
 
 **This is a player application only.**
 
-- ❌ This app **does NOT** provide any IPTV content, channels, or streams.
-- ❌ This app **does NOT** include any subscriptions or services.
-- ❌ This app **does NOT** host or distribute any media content.
-- ✅ This app **ONLY** plays content from IPTV services you already legally subscribe to.
+- This app **does NOT** provide, host, or include any IPTV content, channels, or streams.
+- This app **does NOT** sell subscriptions or IPTV credentials.
+- Users MUST provide their own legal IPTV service credentials from authorized providers.
 
-Users are solely responsible for obtaining legal access to IPTV services, providing their own valid credentials, and complying with local copyright laws. The developers do not endorse piracy and will not provide support for accessing illegal content.
+Developers are not responsible for content streamed through third-party services.
+
+---
+
+**Made using Expo, React Native & TypeScript**
