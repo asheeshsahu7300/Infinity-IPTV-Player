@@ -495,7 +495,7 @@ const S = StyleSheet.create({
     letterSpacing: 2.5,
   },
   heroTitle: {
-    fontSize: ps(4.2),
+    fontSize: ps(3),
     color: "#fff",
     fontWeight: "500",
     marginVertical: ph(1),
@@ -504,7 +504,7 @@ const S = StyleSheet.create({
     fontSize: ps(1.4),
     color: "#a0a4b8",
     lineHeight: ph(2.5),
-    marginBottom:  ph(5),
+    marginBottom: ph(5),
   },
   heroButtons: {
     flexDirection: "row",
@@ -573,7 +573,7 @@ const S = StyleSheet.create({
     overflow: "visible",
     // Touch layouts stack these vertically inside a ScrollView, so they still
     // need an explicit height; on TV the row stretches them.
-    height: ph(35), minHeight: ph(35) 
+    height: ph(40), minHeight: ph(40)
   },
   cardBorder: {
     flex: 1,

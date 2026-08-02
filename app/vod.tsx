@@ -27,6 +27,7 @@ import { usePortalStore, VODItem, Category } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
+import { cacheManager } from "../src/services/cacheManager";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
@@ -446,6 +447,52 @@ export default function VODScreen() {
   const focusedIdRef = useRef<string>("");
   const flatListRef = useRef<FlatList>(null);
 
+  const loadCategories = useCallback(async (force = false) => {
+    const portal = usePortalStore.getState().activePortal;
+    if (!portal) return;
+    try {
+      if (force) {
+        await cacheManager.removeByPrefix(`portal:${portal.id}:vod:categories`);
+        await cacheManager.removeByPrefix(`portal:${portal.id}:categories`);
+      }
+      let cats: Category[] = [];
+      if (portal.type === "m3u") {
+        cats = await new M3UApi({ url: portal.config.url }).getVodCategories();
+      } else if (portal.type === "xtream") {
+        cats = await xtreamApiRef.current!.getVodCategories();
+      } else {
+        cats = await portalApi.getVodCategories(portal);
+      }
+
+      // Fallback: If API returned empty categories, try deriving categories from cached/store VOD items
+      if ((!cats || cats.length === 0) && allVodCacheRef.current.length > 0) {
+        const seen = new Set<string>();
+        cats = [];
+        for (const item of allVodCacheRef.current) {
+          const cId = item.categoryId || item.category;
+          const cName = item.category || item.categoryId;
+          if (cId && !seen.has(cId) && cId !== "all" && cId !== "*") {
+            seen.add(cId);
+            cats.push({
+              id: cId.startsWith("vod:") ? cId : `vod:${cId}`,
+              name: cName || cId,
+              type: "vod",
+            });
+          }
+        }
+      }
+
+      // Read live state at call-time to avoid overwriting live/series categories
+      const currentCategories = usePortalStore.getState().categories || [];
+      const others = currentCategories.filter(c => c.type !== "vod");
+      if (Array.isArray(cats) && cats.length > 0) {
+        setCategories([...others, ...cats]);
+      }
+    } catch (e) {
+      console.warn("Failed to load VOD categories:", e);
+    }
+  }, [setCategories]);
+
   useEffect(() => {
     if (!activePortal) { router.replace("/"); return; }
     if (activePortal.type === "xtream") {
@@ -456,7 +503,7 @@ export default function VODScreen() {
       });
     }
     loadCategories();
-  }, [activePortal?.id]);
+  }, [activePortal?.id, loadCategories]);
 
   const selectedCategoryRef = useRef(selectedCategory);
   useEffect(() => {
@@ -468,12 +515,8 @@ export default function VODScreen() {
     prevCategoryIdRef.current = selectedCategory;
     setIsLoading(true);
     setPage(1);
-    // A remembered tile from the previous category is not in the new list.
     FocusMemory.forget(SCREEN_KEY);
     focusedIdRef.current = "";
-    // Focus stays in the sidebar on a category switch, so nothing else scrolls
-    // the grid back up — do it here, or the new category renders half-scrolled
-    // at wherever the previous one was left.
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
     const cat = selectedCategory;
 
@@ -483,7 +526,7 @@ export default function VODScreen() {
           const filtered = filterByCategory(allVodCacheRef.current, cat, categories);
           fullListRef.current = filtered;
           const sliced = filtered.slice(0, PAGE_SIZE);
-          setDisplayVodItems(sliced);  // local state — never blocked
+          setDisplayVodItems(sliced);
           setHasMore(filtered.length > sliced.length);
           setIsLoading(false);
           restoreFocusPosition(sliced);
@@ -499,27 +542,6 @@ export default function VODScreen() {
 
     return () => clearTimeout(timer);
   }, [selectedCategory, activePortal?.id]);
-
-  const loadCategories = async () => {
-    if (!activePortal) return;
-    try {
-      let cats: Category[] = [];
-      if (activePortal.type === "m3u") {
-        cats = await new M3UApi({ url: activePortal.config.url }).getVodCategories();
-      } else if (activePortal.type === "xtream") {
-        cats = await xtreamApiRef.current!.getVodCategories();
-      } else {
-        cats = await portalApi.getVodCategories(activePortal);
-      }
-      // Read live state at call-time to avoid overwriting live/series categories
-      const currentCategories = usePortalStore.getState().categories || [];
-      const others = currentCategories.filter(c => c.type !== "vod");
-      setCategories([...others, ...(Array.isArray(cats) ? cats : [])]);
-    } catch (e) {
-      console.warn(e);
-      // On error, do NOT clear categories — leave existing ones intact
-    }
-  };
 
   const vodRequestIdRef = useRef(0);
 
@@ -653,9 +675,10 @@ export default function VODScreen() {
       allVodCacheRef.current = [];
       fullListRef.current = [];
     }
+    await loadCategories(true);
     await loadVodItems(selectedCategory, 1, true);
     setRefreshing(false);
-  }, [selectedCategory, activePortal]);
+  }, [selectedCategory, activePortal, loadCategories]);
 
   const handleVodPress = useCallback(async (vod: VODItem) => {
     setSelectedVod(vod);

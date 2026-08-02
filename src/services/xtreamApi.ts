@@ -64,13 +64,16 @@ export class XtreamApi {
         timeout: 15000,
       });
 
-      const categories = (res.data || []).map((c: any) => ({
+      const rawData = Array.isArray(res.data) ? res.data : [];
+      const categories = rawData.map((c: any) => ({
         id: `live:${c.category_id}`,
         name: c.category_name,
         type: "live",
       }));
 
-      await cacheManager.set(cacheKey, categories, CACHE_TTL.CATEGORIES);
+      if (categories.length > 0) {
+        await cacheManager.set(cacheKey, categories, CACHE_TTL.CATEGORIES);
+      }
       return categories;
     });
   }
@@ -143,13 +146,16 @@ export class XtreamApi {
         timeout: 15000,
       });
 
-      const categories = res.data.map((c: any) => ({
+      const rawData = Array.isArray(res.data) ? res.data : [];
+      const categories = rawData.map((c: any) => ({
         id: `vod:${c.category_id}`,
         name: c.category_name,
         type: "vod",
       }));
 
-      await cacheManager.set(cacheKey, categories, CACHE_TTL.CATEGORIES);
+      if (categories.length > 0) {
+        await cacheManager.set(cacheKey, categories, CACHE_TTL.CATEGORIES);
+      }
       return categories;
     });
   }
@@ -225,13 +231,16 @@ export class XtreamApi {
         timeout: 15000,
       });
 
-      const categories = res.data.map((c: any) => ({
+      const rawData = Array.isArray(res.data) ? res.data : [];
+      const categories = rawData.map((c: any) => ({
         id: `series:${c.category_id}`,
         name: c.category_name,
         type: "series",
       }));
 
-      await cacheManager.set(cacheKey, categories, CACHE_TTL.CATEGORIES);
+      if (categories.length > 0) {
+        await cacheManager.set(cacheKey, categories, CACHE_TTL.CATEGORIES);
+      }
       return categories;
     });
   }

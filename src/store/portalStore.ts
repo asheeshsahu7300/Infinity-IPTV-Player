@@ -501,6 +501,12 @@ export const usePortalStore = create<PortalState>((set, get) => ({
     const activePortal = get().activePortal;
     const portalId = targetPortalId || activePortal?.id;
     if (categories && categories.length > 0) {
+      const currentCategories = get().categories;
+      const isSame =
+        currentCategories.length === categories.length &&
+        currentCategories.every((c, i) => c.id === categories[i]?.id && c.name === categories[i]?.name);
+      if (isSame) return;
+
       if (!targetPortalId || targetPortalId === activePortal?.id) {
         set({ categories });
       }

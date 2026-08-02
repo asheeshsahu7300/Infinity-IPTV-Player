@@ -30,6 +30,7 @@ interface CategorySidebarProps {
 // ─────────────────────────────────────────────
 const S = StyleSheet.create({
   container: {
+    flex: 1,
     backgroundColor: "transparent",
     paddingTop: ph(1),
   },
@@ -46,16 +47,17 @@ const S = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: pw(1.5),
-    paddingBottom: ph(4),
+    paddingBottom: ph(8),
   },
   itemWrapper: {
     marginBottom: ph(1),
   },
   itemContainer: {
     height: ph(6),
-    borderRadius: ps(2),
+    borderRadius: ps(1),
     justifyContent: "center",
-    paddingLeft: pw(2),
+    alignItems: "center",
+    paddingHorizontal: pw(1.5),
     overflow: "hidden",
     borderWidth: 1,
     borderColor: "transparent",
@@ -78,12 +80,14 @@ const S = StyleSheet.create({
   itemInner: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
   },
   itemText: {
     color: "rgba(255,255,255,0.5)",
     fontSize: ps(1.15),
     fontWeight: "600",
     letterSpacing: 0.3,
+    textAlign: "center",
   },
   itemTextActive: {
     color: "#fff",
@@ -93,26 +97,7 @@ const S = StyleSheet.create({
   },
 });
 
-// ─────────────────────────────────────────────
-// Icon Mapping Utility
-// ─────────────────────────────────────────────
-const getCategoryIcon = (name: string): any => {
-  const n = (name || "").toLowerCase();
-  if (n.includes("all")) return { lib: MaterialCommunityIcons, name: "movie-open-play-outline" };
-  if (n.includes("oscar")) return { lib: MaterialCommunityIcons, name: "trophy-variant-outline" };
-  if (n.includes("trending") || n.includes("top")) return { lib: MaterialCommunityIcons, name: "trending-up" };
-  if (n.includes("new")) return { lib: MaterialCommunityIcons, name: "new-box" };
-  if (n.includes("genre") || n.includes("category")) return { lib: MaterialCommunityIcons, name: "shape-outline" };
-  if (n.includes("action")) return { lib: MaterialCommunityIcons, name: "sword-cross" };
-  if (n.includes("comedy")) return { lib: MaterialCommunityIcons, name: "emoticon-happy-outline" };
-  if (n.includes("horror")) return { lib: MaterialCommunityIcons, name: "ghost-outline" };
-  if (n.includes("drama")) return { lib: MaterialCommunityIcons, name: "drama-masks" };
-  if (n.includes("animation") || n.includes("kids")) return { lib: MaterialCommunityIcons, name: "robot-happy-outline" };
-  if (n.includes("sci-fi")) return { lib: MaterialCommunityIcons, name: "alien-outline" };
-  if (n.includes("documentary")) return { lib: MaterialCommunityIcons, name: "camera-outline" };
-  
-  return { lib: Ionicons, name: "chevron-forward-outline" };
-};
+
 
 const CategoryItem = React.memo(function CategoryItem({
   item,
@@ -141,15 +126,15 @@ const CategoryItem = React.memo(function CategoryItem({
       >
         {(focused) => {
           return (
-            <View 
+            <View
               style={[
-                S.itemContainer, 
+                S.itemContainer,
                 focused && S.itemContainerFocused,
                 isActive && !focused && { backgroundColor: "rgba(255,255,255,0.15)" },
                 focused && { backgroundColor: "#fff", transform: [{ scale: 1.05 }] }
               ]}
             >
-              <View style={[S.itemInner, { paddingLeft: focused ? pw(0.5) : 0 }]}>
+              <View style={S.itemInner}>
                 <Text
                   style={[
                     S.itemText,
@@ -197,7 +182,11 @@ export default function CategorySidebar({
   const scrollToIndex = useCallback((index: number, animated: boolean) => {
     if (flatListRef.current && index >= 0 && index < countRef.current) {
       try {
-        flatListRef.current.scrollToIndex({ index, animated, viewPosition: 0.5 });
+        if (index <= 2) {
+          flatListRef.current.scrollToOffset({ offset: 0, animated });
+        } else {
+          flatListRef.current.scrollToIndex({ index, animated, viewPosition: 0.2 });
+        }
       } catch { /* ignore */ }
     }
   }, []);
@@ -221,7 +210,7 @@ export default function CategorySidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, categories.length, scrollToIndex]);
 
-  const ITEM_HEIGHT = ph(7.2);
+  const ITEM_HEIGHT = ph(7);
 
   // Exactly one row may claim initial focus. The old condition
   // (`selectedId === item.id || index === 0`) matched two rows whenever the
@@ -255,7 +244,7 @@ export default function CategorySidebar({
         <Text style={S.sidebarLabel}>CATEGORIES</Text>
       </View>
 
-      <View style={{ height: ITEM_HEIGHT * 10 }}>
+      <View style={{ flex: 1 }}>
         <FlatList
           ref={flatListRef}
           data={categories}

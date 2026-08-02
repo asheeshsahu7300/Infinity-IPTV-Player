@@ -25,6 +25,7 @@ import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { StreamManager } from "../src/services/StreamManager";
+import { cacheManager } from "../src/services/cacheManager";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
@@ -210,30 +211,53 @@ export default function LiveTVScreen() {
   const fullListRef = useRef<Channel[]>([]);
   const prevCategoryIdRef = useRef<string | undefined>(undefined);
 
-  // ── Load Categories ──
-  // NOTE: Read current categories from store at call-time (not closure)
-  // to avoid stale-closure bugs when the store is cleared/evicted.
-  const loadCategories = useCallback(async () => {
-    if (!activePortal) return;
+  const loadCategories = useCallback(async (force = false) => {
+    const portal = usePortalStore.getState().activePortal;
+    if (!portal) return;
     try {
+      if (force) {
+        await cacheManager.removeByPrefix(`portal:${portal.id}:live:categories`);
+        await cacheManager.removeByPrefix(`portal:${portal.id}:categories`);
+      }
       let cats: Category[] = [];
-      if (activePortal.type === "m3u") {
-        const api = new M3UApi({ url: activePortal.config.url, portalId: activePortal.id });
+      if (portal.type === "m3u") {
+        const api = new M3UApi({ url: portal.config.url, portalId: portal.id });
         cats = ((await api.getLiveCategories()) || []) as Category[];
-      } else if (activePortal.type === "xtream") {
+      } else if (portal.type === "xtream") {
         const raw = (await xtreamApiRef.current!.getitvCategories()) || [];
         cats = raw.map((c: any) => ({ id: c.id, name: c.name, type: "live" as const }));
       } else {
-        cats = (await portalApi.getLiveCategories(activePortal)) || [];
+        cats = (await portalApi.getLiveCategories(portal)) || [];
       }
+
+      // Fallback: If API returned empty categories, try deriving categories from cached/store Channel items
+      if (cats.length === 0 && allChannelsCacheRef.current.length > 0) {
+        const seen = new Set<string>();
+        cats = [];
+        for (const item of allChannelsCacheRef.current) {
+          const cId = item.categoryId || item.category;
+          const cName = item.category || item.categoryId;
+          if (cId && !seen.has(cId) && cId !== "all" && cId !== "*") {
+            seen.add(cId);
+            cats.push({
+              id: cId,
+              name: cName || cId,
+              type: "live" as const,
+            });
+          }
+        }
+      }
+
       // Read live state at call-time to avoid stale closure wiping non-live categories
       const currentCategories = usePortalStore.getState().categories || [];
       const others = currentCategories.filter(c => c.type !== "live");
-      setCategories([...others, ...cats]);
+      if (cats.length > 0) {
+        setCategories([...others, ...cats]);
+      }
     } catch (e) {
       console.warn("loadCategories error:", e);
     }
-  }, [activePortal, setCategories]);
+  }, [setCategories]);
 
   // ── Fetch the complete channel list (Xtream / M3U) ──
   // Both portal types serve everything in one request, so the whole list is
@@ -500,7 +524,7 @@ export default function LiveTVScreen() {
       allChannelsCacheRef.current = [];
       fullListRef.current = [];
     }
-    await loadCategories();
+    await loadCategories(true);
     await loadChannels(selectedCategory, 1, true);
     setRefreshing(false);
   }, [selectedCategory, activePortal, loadChannels, loadCategories]);

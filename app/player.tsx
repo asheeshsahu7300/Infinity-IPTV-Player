@@ -624,8 +624,8 @@ export default function PlayerScreen() {
                 >
                   {(focused) => (
                     <View style={S.skipInner}>
-                      <Ionicons name="play-back" size={ps(2.2)} color="#fff" style={{ opacity: focused ? 1 : 0.7 }} />
-                      {focused && <Text style={S.skipLabel}>-10s</Text>}
+                      <Ionicons name="play-back" size={ps(1.4)} color="#fff" style={{ opacity: focused ? 1 : 0.7 }} />
+                      <Text style={[S.skipLabel, focused && { color: "#fff" }]}>-10s</Text>
                     </View>
                   )}
                 </Focusable>
@@ -638,7 +638,7 @@ export default function PlayerScreen() {
                   style={S.mainPlayBtn}
                   onPress={togglePlay}
                 >
-                  <LinearGradient colors={["rgba(255,255,255,0.15)", "rgba(255,255,255,0.05)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.mainPlayGradient}>
+                  <LinearGradient colors={["rgba(255,255,255,0.05)", "rgba(255,255,255,0.05)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.mainPlayGradient}>
                     <Ionicons name={isPlaying ? "pause" : "play"} size={ps(2)} color="#fff" />
                   </LinearGradient>
                 </Focusable>
@@ -652,8 +652,8 @@ export default function PlayerScreen() {
                 >
                   {(focused) => (
                     <View style={S.skipInner}>
-                      <Ionicons name="play-forward" size={ps(2.2)} color="#fff" style={{ opacity: focused ? 1 : 0.7 }} />
-                      {focused && <Text style={S.skipLabel}>+10s</Text>}
+                      <Ionicons name="play-forward" size={ps(1.4)} color="#fff" style={{ opacity: focused ? 1 : 0.7 }} />
+                      <Text style={[S.skipLabel, focused && { color: "#fff" }]}>+10s</Text>
                     </View>
                   )}
                 </Focusable>
@@ -690,7 +690,6 @@ export default function PlayerScreen() {
                     <Focusable
                       ref={seekBarRef}
                       ringOnFocus={false}
-                      focusStyle={S.progressBarFocused}
                       style={S.progressBarWrapper}
                       onFocus={() => setSeekBarFocused(true)}
                       onBlur={() => setSeekBarFocused(false)}
@@ -698,7 +697,7 @@ export default function PlayerScreen() {
                     >
                       {(focused) => (
                         <View style={S.progressBarInner}>
-                          <View ref={progressViewRef} style={[S.progressRail, focused && S.progressRailFocused]} onTouchEnd={handleProgressPress}>
+                          <View ref={progressViewRef} style={S.progressRail} onTouchEnd={handleProgressPress}>
                             <View style={[S.bufferBar, { width: isBuffering ? '100%' : '0%' }]} />
                             <View style={[S.progressFill, { width: `${progressPercent}%` }]}>
                               <LinearGradient colors={["#db0482", "#3305eb"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
@@ -960,14 +959,24 @@ const S = StyleSheet.create({
   qualityBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.1)", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
   qualityBadgeText: { color: "#fff", fontSize: ps(0.7), fontWeight: "900", fontFamily: THEME.fonts.bold, letterSpacing: 1 },
   centerRow: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: pw(8) },
-  playBtnContainer: { width: ps(5.5), height: ps(5.5), alignItems: "center", justifyContent: "center" },
-  mainPlayBtn: { width: ps(4.8), height: ps(4.8), borderRadius: ps(2.4), overflow: "hidden", elevation: 4, borderWidth: 2, borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(0,0,0,0.5)" },
+  playBtnContainer: { width: ps(6), height: ps(6), alignItems: "center", justifyContent: "center" },
+  mainPlayBtn: { width: ps(4.8), height: ps(4.8), borderRadius: ps(2.4), overflow: "hidden", borderWidth: 2, borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(0,0,0,0.5)" },
   mainPlayBtnFocused: { borderColor: "#fff", transform: [{ scale: 1.08 }], backgroundColor: "rgba(255,255,255,0.1)" },
-  mainPlayGradient: { flex: 1, alignItems: "center", justifyContent: "center" },
-  skipBtn: { padding: 16, borderRadius: ps(3), borderWidth: 2, borderColor: "transparent" },
-  skipInner: { alignItems: "center", gap: 4 },
-  skipLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.75), fontWeight: "700", fontFamily: THEME.fonts.bold },
-  controlFocused: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.08)" },
+  mainPlayGradient: { flex: 1, width: "100%", height: "100%", borderRadius: ps(2.4), alignItems: "center", justifyContent: "center" },
+  skipBtn: {
+    width: ps(4.2),
+    height: ps(4.2),
+    borderRadius: ps(2.1),
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    overflow: "hidden",
+  },
+  skipInner: { flex: 1, width: "100%", height: "100%", borderRadius: ps(2.1), alignItems: "center", justifyContent: "center", gap: 1 },
+  skipLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.65), fontWeight: "800", fontFamily: THEME.fonts.bold },
+  controlFocused: { borderColor: "#fff", transform: [{ scale: 1.08 }], backgroundColor: "rgba(255,255,255,0.1)" },
   bottomOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: pw(5), zIndex: 10 },
   glassControls: { backgroundColor: "rgba(25,25,30,0.85)", borderRadius: 16, paddingVertical: 8, paddingHorizontal: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)" },
   progressSection: { gap: 4, marginBottom: 4 },
@@ -981,18 +990,14 @@ const S = StyleSheet.create({
     borderWidth: 2,
     borderColor: "transparent",
   },
-  progressBarFocused: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
   progressBarInner: {
     gap: 4,
   },
   progressRail: { height: 4, width: "100%", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 2, overflow: "visible" },
-  progressRailFocused: { height: 6, borderRadius: 3 },
   bufferBar: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,255,255,0.1)" },
   progressFill: { height: "100%", borderRadius: 2, overflow: "hidden" },
   scrubber: { position: "absolute", top: -6, width: 14, height: 14, borderRadius: 7, backgroundColor: "white", borderWidth: 3, borderColor: "rgba(255, 27, 35, 0.8)", marginLeft: -7 },
-  scrubberFocused: { width: 20, height: 20, borderRadius: 10, top: -8, marginLeft: -10, borderWidth: 4, borderColor: "#fff", shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 10 },
+  scrubberFocused: { width: 22, height: 22, borderRadius: 11, top: -9, marginLeft: -11, borderWidth: 4, borderColor: "#fff", shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 10 },
   seekHint: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   seekHintText: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.7), fontWeight: "600", fontFamily: THEME.fonts.medium },
 

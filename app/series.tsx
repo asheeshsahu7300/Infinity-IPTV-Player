@@ -24,6 +24,7 @@ import { usePortalStore, Series, Category } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
+import { cacheManager } from "../src/services/cacheManager";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
@@ -402,6 +403,55 @@ export default function SeriesScreen() {
   const fullListRef = useRef<Series[]>([]);
   const prevCategoryIdRef = useRef<string | undefined>(undefined);
 
+  const loadCategories = useCallback(async (force = false) => {
+    const portal = usePortalStore.getState().activePortal;
+    if (!portal) return;
+    try {
+      if (force) {
+        await cacheManager.removeByPrefix(`portal:${portal.id}:series:categories`);
+        await cacheManager.removeByPrefix(`portal:${portal.id}:categories`);
+      }
+      let cats: Category[] = [];
+      if (portal.type === "m3u") {
+        cats = await new M3UApi({ url: portal.config.url }).getSeriesCategories();
+      } else if (portal.type === "xtream") {
+        cats = await xtreamApiRef.current!.getSeriesCategories();
+      } else {
+        cats = await portalApi.getSeriesCategories(portal);
+      }
+      let fetchedSeriesCats = (Array.isArray(cats) ? cats : []).map(c => ({
+        ...c,
+        type: "series" as const,
+      }));
+
+      // Fallback: If API returned empty categories, try deriving categories from cached/store Series items
+      if (fetchedSeriesCats.length === 0 && allSeriesCacheRef.current.length > 0) {
+        const seen = new Set<string>();
+        fetchedSeriesCats = [];
+        for (const item of allSeriesCacheRef.current) {
+          const cId = item.categoryId || item.category;
+          const cName = item.category || item.categoryId;
+          if (cId && !seen.has(cId) && cId !== "all" && cId !== "*") {
+            seen.add(cId);
+            fetchedSeriesCats.push({
+              id: cId.startsWith("series:") ? cId : `series:${cId}`,
+              name: cName || cId,
+              type: "series" as const,
+            });
+          }
+        }
+      }
+
+      const currentCategories = usePortalStore.getState().categories || [];
+      const others = currentCategories.filter(c => c.type && c.type !== "series");
+      if (fetchedSeriesCats.length > 0) {
+        setCategories([...others, ...fetchedSeriesCats]);
+      }
+    } catch (e) {
+      console.warn("Failed to load series categories:", e);
+    }
+  }, [setCategories]);
+
   useEffect(() => {
     if (!activePortal) { router.replace("/"); return; }
     if (activePortal.type === "xtream") {
@@ -412,19 +462,15 @@ export default function SeriesScreen() {
       });
     }
     loadCategories();
-  }, [activePortal?.id]);
+  }, [activePortal?.id, loadCategories]);
 
   useEffect(() => {
-    if (!activePortal) return;
+    if (!activePortal || prevCategoryIdRef.current === selectedCategory) return;
+    prevCategoryIdRef.current = selectedCategory;
     setIsLoading(true);
     setPage(1);
-    prevCategoryIdRef.current = selectedCategory;
-    focusedIdRef.current = "";
-    // A remembered tile from the previous category is not in the new list.
     FocusMemory.forget(SCREEN_KEY);
-    // Focus stays in the sidebar on a category switch, so nothing else scrolls
-    // the grid back up — do it here, or the new category renders half-scrolled
-    // at wherever the previous one was left.
+    focusedIdRef.current = "";
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
 
     const timer = setTimeout(() => {
@@ -433,7 +479,7 @@ export default function SeriesScreen() {
           const filtered = filterByCategory(allSeriesCacheRef.current, selectedCategory, categories);
           fullListRef.current = filtered;
           const sliced = filtered.slice(0, PAGE_SIZE);
-          setDisplaySeries(sliced);  // local state — never blocked
+          setDisplaySeries(sliced);
           setHasMore(filtered.length > sliced.length);
           setIsLoading(false);
         } else {
@@ -448,31 +494,6 @@ export default function SeriesScreen() {
 
     return () => clearTimeout(timer);
   }, [selectedCategory, activePortal?.id]);
-
-  const loadCategories = async () => {
-    if (!activePortal) return;
-    try {
-      let cats: Category[] = [];
-      if (activePortal.type === "m3u") {
-        cats = await new M3UApi({ url: activePortal.config.url }).getSeriesCategories();
-      } else if (activePortal.type === "xtream") {
-        cats = await xtreamApiRef.current!.getSeriesCategories();
-      } else {
-        cats = await portalApi.getSeriesCategories(activePortal);
-      }
-      const fetchedSeriesCats = (Array.isArray(cats) ? cats : []).map(c => ({
-        ...c,
-        type: "series" as const,
-      }));
-      const currentCategories = usePortalStore.getState().categories || [];
-      const others = currentCategories.filter(c => c.type && c.type !== "series");
-      if (fetchedSeriesCats.length > 0) {
-        setCategories([...others, ...fetchedSeriesCats]);
-      }
-    } catch (e) {
-      console.warn("Failed to load series categories:", e);
-    }
-  };
 
   const selectedSeriesCategoryRef = useRef(selectedCategory);
   const seriesRequestIdRef = useRef(0);
@@ -610,9 +631,10 @@ export default function SeriesScreen() {
       allSeriesCacheRef.current = [];
       fullListRef.current = [];
     }
+    await loadCategories(true);
     await loadSeries(selectedCategory, 1, true);
     setRefreshing(false);
-  }, [selectedCategory, activePortal]);
+  }, [selectedCategory, activePortal, loadCategories]);
 
   const handleSeriesPress = useCallback((item: Series) => {
     router.push({
