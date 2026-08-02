@@ -92,7 +92,7 @@ export default function PortalsScreen() {
   }, [portals.length, enter]);
 
   const goDashboard = useCallback((portal: Portal) => {
-    
+
     router.replace("/dashboard");
   }, [router, updatePortal]);
 
@@ -191,7 +191,7 @@ export default function PortalsScreen() {
               <Text style={S.cardUrl} numberOfLines={1}>{detail}</Text>
               <Text style={[S.cardType, { color: accent[1] }]}>{info.label}</Text>
 
-            
+
 
               <View style={S.cardDivider} />
 
@@ -218,7 +218,7 @@ export default function PortalsScreen() {
       {/* Header */}
       <View style={[S.header, { paddingTop: insets.top + (isPhone ? 10 : ph(1.5)) }]}>
         <View style={S.headerText}>
-          <Text style={S.title}>IPTV Hub</Text>
+          <Text style={S.title}>INFINITY IPTV PLAYER</Text>
           <Text style={S.subtitle}>Choose a portal to continue</Text>
         </View>
         {!isEmpty && (
@@ -305,7 +305,7 @@ const S = StyleSheet.create({
   },
   headerText: { flex: 1 },
   title: {
-    fontSize: isTV ? ps(2) : ps(2.4),
+    fontSize: isTV ? ps(2) : ps(2.2),
     fontWeight: fw("500"),
     color: "#fff",
     letterSpacing: 0.3,

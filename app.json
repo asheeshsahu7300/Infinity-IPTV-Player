@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "IPTV Hub",
+    "name": "Infinity IPTV Player",
     "slug": "frontend",
     "version": "1.0.6",
     "orientation": "portrait",
@@ -10,10 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.iptvhub.iptvplayer"
+      "bundleIdentifier": "com.inifinity.iptvplayer"
     },
     "android": {
-      "package": "com.iptvhub.iptvplayer",
+      "package": "com.inifinity.iptvplayer",
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
@@ -36,7 +36,7 @@
     "tvos": {
       "icon": "./assets/images/tv-icon.png",
       "topShelfImage": "./assets/images/tv-top-shelf.png",
-      "bundleIdentifier": "com.iptvhub.iptvplayer"
+      "bundleIdentifier": "com.inifinity.iptvplayer"
     },
     "web": {
       "bundler": "metro",
@@ -48,7 +48,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/splash-icon.gif",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#000000"

@@ -363,7 +363,7 @@ export default function AddPortalScreen() {
     return (
       <View style={S.step1Container}>
         <View style={S.logoRow}>
-          <Text style={S.logoTitle}>IPTV HUB</Text>
+          <Text style={S.logoTitle}>INFINITY IPTV PLAYER</Text>
         </View>
 
         <Text style={S.step1Subtitle}>
@@ -619,7 +619,7 @@ export default function AddPortalScreen() {
           <View style={S.disclaimer}>
             <Text style={S.disclaimerTitle}>Content Responsibility</Text>
             <Text style={S.disclaimerText}>
-              IPTV Hub does not provide or host media. Please ensure you have permission to access your content.
+              Infinity IPTV Player does not provide or host media. Please ensure you have permission to access your content.
             </Text>
           </View>
         </GlassView>
@@ -636,36 +636,11 @@ export default function AddPortalScreen() {
 
       {step === 2 && (
         <View style={S.premiumHeader}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            {Dimensions.get("window").width >= 768 && (
-              <Focusable
-                onPress={handleBack}
-                onFocus={() => setFocusedField("back")}
-                onBlur={() => setFocusedField(null)}
-                ringOnFocus={false}
-                style={[
-                  S.premiumTopActionBtn,
-                  focusedField === "back" && S.premiumTopActionBtnFocused,
-                ]}
-              >
-                {(focused) => (
-                  <Ionicons name="arrow-back" size={ps(2.2)} color="#fff" />
-                )}
-              </Focusable>
-            )}
-  
-            <Text style={S.premiumHeaderTitle}>IPTV HUB</Text>
-          </View>
-
-         
+          <Text style={S.premiumHeaderTitle}>INFINITY IPTV PLAYER</Text>
         </View>
       )}
 
-      {step === 1 && !isTV && (
-        <TouchableOpacity style={S.step1BackButton} onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={ps(2.4)} color="#fff" />
-        </TouchableOpacity>
-      )}
+
 
       <ScrollView
         style={S.content}
@@ -730,6 +705,8 @@ const S = StyleSheet.create({
   logoRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
     gap: pw(1),
     marginBottom: ph(0.6),
   },
@@ -738,9 +715,10 @@ const S = StyleSheet.create({
     fontSize: ps(2.2),
     fontWeight: fw("600"),
     letterSpacing: 3,
+    textAlign: "center",
   },
   step1Subtitle: {
-    fontSize: ps(1.3),
+    fontSize: ps(1),
     color: "#9ca3af",
     textAlign: "center",
     marginBottom: isPhone ? ph(2.5) : ph(5),
@@ -820,7 +798,8 @@ const S = StyleSheet.create({
   premiumHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
+    width: "100%",
     paddingHorizontal: pw(3),
     paddingVertical: ph(2),
   },
@@ -829,6 +808,7 @@ const S = StyleSheet.create({
     fontWeight: fw("500"),
     color: "#fff",
     letterSpacing: 5,
+    textAlign: "center",
   },
   premiumSupportBtnFocused: {
     backgroundColor: "rgba(255,255,255,0.15)",

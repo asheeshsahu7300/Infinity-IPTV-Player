@@ -95,29 +95,10 @@ const formatMac = (mac: string) =>
     ?.join(":") ?? mac;
 
 const headers = (mac: string, token?: string) => ({
-  // Core MAG identity
-  "User-Agent":
-    "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG254 Safari/533.3",
-
-  // Compression
+  "User-Agent": "okhttp/3.12.1",
   "Accept-Encoding": "gzip",
-
-  // Expected by Stalker portals
-  Accept: "application/json, text/javascript, */*; q=0.01",
-  "Accept-Language": "en-US,en;q=0.9",
-
-  // MAG session identity
-  Cookie: [
-    `mac=${encodeURIComponent(formatMac(mac))}`,
-    "stb_lang=en",
-    "timezone=Europe/London",
-  ].join("; "),
-
-  // Optional token after handshake
+  Cookie: `mac=${encodeURIComponent(formatMac(mac))}`,
   ...(token ? { Authorization: `Bearer ${token}` } : {}),
-
-  // Legacy headers seen in MAG traffic
-  "X-User-Agent": "Model: MAG254; Link: Ethernet",
   Connection: "Keep-Alive",
 });
 

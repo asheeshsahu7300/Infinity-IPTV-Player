@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, FlatList, Platform, Animated } from 'react-native';
 import { Category } from '../store/portalStore';
-import { THEME , fw, ps } from '../theme/tokens';
+import { THEME, fw, ps } from '../theme/tokens';
 import { isTV } from '../utils/tvUtils';
 import { MIN_TOUCH } from '../theme/responsive';
 
@@ -191,7 +191,8 @@ const styles = StyleSheet.create({
   },
 
   pillTextActive: {
-    color: "#fff",
+    color: "#000000",
+    fontWeight: fw("800"),
   },
 });
 

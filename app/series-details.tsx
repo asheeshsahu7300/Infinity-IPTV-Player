@@ -650,7 +650,7 @@ const S = StyleSheet.create({
     backgroundColor: "transparent",
   },
   seasonPillText: { color: "rgba(255,255,255,0.5)", fontSize: ps(1), fontWeight: fw("900"), letterSpacing: 0.5 },
-  seasonPillTextActive: { color: "#fff" },
+  seasonPillTextActive: { color: "#000000" },
 
   listArea: { flex: 1, minHeight: ph(40), marginTop: ph(2) },
   epListContent: { paddingBottom: ph(5), paddingHorizontal: pw(4) },

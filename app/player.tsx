@@ -861,7 +861,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
                     </View>
                     {isSelected && (
                       <View style={S.checkBadge}>
-                        <Ionicons name="checkmark" size={isPhone ? ps(1) : ps(1.4)} color="#fff" />
+                        <Ionicons name="checkmark" size={isPhone ? ps(1) : ps(1.4)} color="#000000" />
                       </View>
                     )}
                   </View>
@@ -880,7 +880,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
               <View style={S.modalOptionInner}>
                 <View style={S.modalOptionLeft}>
                   <View style={[S.trackIndexBadge, selected === -1 && S.trackIndexBadgeActive]}>
-                    <Ionicons name="close" size={ps(1)} color={selected === -1 ? "#fff" : "rgba(255,255,255,0.5)"} />
+                    <Ionicons name="close" size={ps(1)} color={selected === -1 ? "#000000" : "rgba(255,255,255,0.5)"} />
                   </View>
                   <Text
                     style={[
@@ -894,7 +894,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
                 </View>
                 {selected === -1 && (
                   <View style={S.checkBadge}>
-                    <Ionicons name="checkmark" size={isPhone ? ps(1) : ps(1.4)} color="#fff" />
+                    <Ionicons name="checkmark" size={isPhone ? ps(1) : ps(1.4)} color="#000000" />
                   </View>
                 )}
               </View>
@@ -1146,7 +1146,7 @@ const S = StyleSheet.create({
     fontFamily: THEME.fonts.bold,
   },
   trackIndexTextActive: {
-    color: "#fff",
+    color: "#000000",
   },
   modalOptionText: {
     color: "#fff",

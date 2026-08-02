@@ -23,7 +23,7 @@ import LoadingOverlay from "../src/components/LoadingOverlay";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { isTV } from "../src/utils/tvUtils";
 import { Focusable, Overlay } from "../src/tv";
-import { THEME , fw, isTablet } from '../src/theme/tokens';
+import { THEME, fw, isTablet } from '../src/theme/tokens';
 import { useResponsive } from "../src/theme/responsive";
 
 // ─── Percentage helpers ───────────────────────────────────────────────────────
@@ -338,7 +338,8 @@ export default function DashboardScreen() {
         {/* Cinematic Header Branding */}
         <View style={[S.headerBranding, isMobile && { marginTop: 0, marginBottom: 16 }]}>
           <View style={S.logoRow}>
-            <Text style={[S.logoTitle, isMobile && { fontSize: ps(3.2) }]}>IPTV HUB</Text>
+            <Text style={[S.logoTitle, isMobile && { fontSize: ps(3.2) }]}>INFINITY</Text>
+            <Text style={[S.logoSubtitle, isMobile && { fontSize: ps(1.4) }]}>IPTV PLAYER</Text>
           </View>
           <View style={S.headerActions}>
             {isMobile && (
@@ -525,7 +526,7 @@ export default function DashboardScreen() {
                   style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
                 >
                   <View style={S.modalBtnSecondaryInner}>
-                    <Text style={S.modalBtnSecondaryText}>EXTERNAL PLAYER</Text>
+                    <Text style={[S.modalBtnSecondaryText, focused && { color: "#000000" }]}>EXTERNAL PLAYER</Text>
                   </View>
                 </LinearGradient>
               )}
@@ -546,7 +547,7 @@ export default function DashboardScreen() {
                   style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
                 >
                   <View style={S.modalBtnSecondaryInner}>
-                    <Text style={S.modalBtnSecondaryText}>CLOSE</Text>
+                    <Text style={[S.modalBtnSecondaryText, focused && { color: "#000000" }]}>CLOSE</Text>
                   </View>
                 </LinearGradient>
               )}
@@ -591,15 +592,21 @@ const S = StyleSheet.create({
     marginTop: ph(4),
   },
   logoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: pw(1.5),
+    flexDirection: "column",
+    alignItems: "flex-start",
   },
   logoTitle: {
     color: "#fff",
     fontSize: ps(2.8),
-    fontWeight: fw("500"),
+    fontWeight: fw("700"),
     letterSpacing: 5,
+  },
+  logoSubtitle: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: ps(1.1),
+    fontWeight: fw("700"),
+    letterSpacing: 3,
+    marginTop: 2,
   },
   headerActions: {
     flexDirection: "row",
@@ -837,6 +844,6 @@ const S = StyleSheet.create({
   },
   modalBtnPrimaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
   modalBtnSecondaryInner: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#0d0d12" },
-  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: fw("900"), letterSpacing: 1 },
+  modalBtnPrimaryText: { color: "#000000", fontSize: ps(0.95), fontWeight: fw("900"), letterSpacing: 1 },
   modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: fw("700"), letterSpacing: 0.5 },
 });

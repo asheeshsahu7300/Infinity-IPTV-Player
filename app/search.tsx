@@ -106,11 +106,21 @@ const ResultCard = ({ item, onPress, onFocus, cardWidth }: any) => (
         <View style={[S.card, { borderRadius: focused ? ps(1.2) - 1.5 : ps(1.2) }]}>
           <View style={S.cardImgContainer}>
             <Image source={{ uri: item.logo }} style={S.cardImg} contentFit="cover" />
-            {item.quality && <View style={S.badge}><Text style={S.badgeText}>{item.quality}</Text></View>}
-          </View>
-          <View style={S.cardInfo}>
-            <Text style={S.cardTitle} numberOfLines={1}>{item.name}</Text>
-            <Text style={S.cardSub}>{item.year ? `${item.year} • ` : ""}{item.type.toUpperCase()}</Text>
+            {item.rating ? (
+              <View style={S.ratingWrapper}>
+                <Ionicons name="star" size={ps(0.7)} color="#FFD700" style={{ marginRight: 2 }} />
+                <Text style={S.ratingText}>{item.rating}</Text>
+              </View>
+            ) : item.quality ? (
+              <View style={S.badge}><Text style={S.badgeText}>{item.quality}</Text></View>
+            ) : null}
+            <LinearGradient
+              colors={["transparent", "rgba(0,0,0,0.88)"]}
+              style={S.cardInfo}
+            >
+              <Text style={S.cardTitle} numberOfLines={1}>{item.name}</Text>
+              <Text style={S.cardSub}>{item.type.toUpperCase()}</Text>
+            </LinearGradient>
           </View>
         </View>
       </LinearGradient>
@@ -629,7 +639,7 @@ const S = StyleSheet.create({
     letterSpacing: 0.3,
   },
   filterTextActive: {
-    color: "#fff",
+    color: "#000000",
   },
 
   cardWrapper: {
@@ -647,13 +657,22 @@ const S = StyleSheet.create({
     aspectRatio: 3 / 4,
     backgroundColor: "#1c1c2b",
     overflow: "hidden",
+    position: "relative",
+    borderRadius: ps(1.2),
   },
   cardImg: {
     width: "100%",
     height: "100%",
   },
   cardInfo: {
-    padding: ps(0.7),
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: ps(0.8),
+    paddingBottom: ps(0.8),
+    paddingTop: ps(2),
+    justifyContent: "flex-end",
   },
   cardTitle: {
     color: "#fff",
@@ -665,6 +684,8 @@ const S = StyleSheet.create({
     fontSize: isTV ? ps(0.8) : ps(0.62),
     marginTop: 3,
   },
+  ratingWrapper: { position: "absolute", top: 8, right: 8, flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0, 0, 0, 0.65)", paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, zIndex: 2 },
+  ratingText: { color: "#FFD700", fontSize: ps(0.8), fontWeight: fw("700"), marginLeft: 2, fontFamily: THEME.fonts.bold },
   badge: {
     position: "absolute",
     top: isTV ? ps(0.4) : ps(0.8),

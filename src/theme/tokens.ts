@@ -35,12 +35,12 @@ export const THEME = {
     surface: "#171923",             // elevated card surface
     surfaceLight: "rgba(255,255,255,0.07)",
 
-    primary: "#ff002bff",               // brand pink/magenta
-    secondary: "#005effff",             // brand indigo/blue
-    accent: "#ff1b4cff",                // brand highlight accent
+    primary: "#ffffffff",               // brand pink/magenta
+    secondary: "#bbbcbdff",             // brand indigo/blue
+    accent: "#cac7c7ff",                // brand highlight accent
 
-    text: "#FFFFFF",
-    textMuted: "#C5C9D6",           // better readability at distance
+    text: "#000000ff",
+    textMuted: "#151515ff",           // better readability at distance
     textDim: "#8E93A8",
 
     border: "rgba(255,255,255,0.10)",

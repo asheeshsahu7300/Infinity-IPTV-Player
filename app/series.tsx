@@ -94,18 +94,18 @@ const S = StyleSheet.create({
     elevation: 8,
   },
   seriesItem: { backgroundColor: "#161622", borderRadius: ps(1.2), overflow: "hidden" },
-  posterContainer: { width: "100%", aspectRatio: 2 / 3, backgroundColor: "#1c1c2b", overflow: "hidden", borderTopLeftRadius: ps(1.2), borderTopRightRadius: ps(1.2) },
+  posterContainer: { width: "100%", aspectRatio: 2 / 3, backgroundColor: "#1c1c2b", overflow: "hidden", borderRadius: ps(1.2), position: "relative" },
   poster: { width: "100%", height: "100%" },
   posterPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#1c1c2b" },
   textOverlay: { display: "none" },
-  cardContent: { padding: ps(0.7), backgroundColor: "#161622", borderBottomLeftRadius: ps(1.2), borderBottomRightRadius: ps(1.2) },
+  cardContent: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: ps(0.8), paddingBottom: ps(0.8), paddingTop: ps(2), justifyContent: "flex-end" },
   seriesTitle: { color: "#fff", fontSize: ps(0.95), fontWeight: fw("700"), fontFamily: THEME.fonts.bold },
-  metaRow: { flexDirection: "row", alignItems: "center", marginTop: 6, height: ps(1.6) },
+  metaRow: { flexDirection: "row", alignItems: "center", marginTop: 4, height: ps(1.6) },
   seriesMetaText: { color: "rgba(255,255,255,0.6)", fontSize: ps(0.8), fontWeight: fw("600"), fontFamily: THEME.fonts.medium },
   metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.3)", marginHorizontal: 6 },
-  ratingWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 215, 0, 0.08)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  ratingText: { color: "#FFD700", fontSize: ps(0.8), fontWeight: fw("700"), marginLeft: 3, fontFamily: THEME.fonts.bold },
-  favoriteBtn: { position: "absolute", top: 10, right: 10, backgroundColor: "rgba(0,0,0,0.5)", borderRadius: 10, padding: 6 },
+  ratingWrapper: { position: "absolute", top: 8, right: 8, flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0, 0, 0, 0.65)", paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, zIndex: 2 },
+  ratingText: { color: "#FFD700", fontSize: ps(0.8), fontWeight: fw("700"), marginLeft: 2, fontFamily: THEME.fonts.bold },
+  favoriteBtn: { position: "absolute", top: 8, left: 8, backgroundColor: "rgba(0,0,0,0.65)", borderRadius: 6, padding: 5, zIndex: 2 },
   loadingCenter: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: { color: "rgba(255,255,255,0.4)", marginTop: 15, fontSize: ps(1), fontFamily: THEME.fonts.regular },
   emptyState: { flex: 1, justifyContent: "center", alignItems: "center", opacity: 0.5 },
@@ -192,20 +192,20 @@ const SeriesItem = React.memo(function SeriesItem({
                     <Ionicons name="heart" size={ps(1.1)} color="#ff2d55" />
                   </View>
                 )}
-              </View>
 
-              <View style={S.cardContent}>
-                <Text style={S.seriesTitle} numberOfLines={1}>{item.name}</Text>
-                <View style={S.metaRow}>
-                  {item.year ? <Text style={S.seriesMetaText}>{item.year}</Text> : null}
-                  {item.year && item.rating ? <View style={S.metaDot} /> : null}
-                  {item.rating ? (
-                    <View style={S.ratingWrapper}>
-                      <Ionicons name="star" size={ps(0.7)} color="#FFD700" style={{ marginRight: 2 }} />
-                      <Text style={S.ratingText}>{item.rating}</Text>
-                    </View>
-                  ) : null}
-                </View>
+                {item.rating ? (
+                  <View style={S.ratingWrapper}>
+                    <Ionicons name="star" size={ps(0.7)} color="#FFD700" style={{ marginRight: 2 }} />
+                    <Text style={S.ratingText}>{item.rating}</Text>
+                  </View>
+                ) : null}
+
+                <LinearGradient
+                  colors={["transparent", "rgba(0,0,0,0.88)"]}
+                  style={S.cardContent}
+                >
+                  <Text style={S.seriesTitle} numberOfLines={1}>{item.name}</Text>
+                </LinearGradient>
               </View>
             </View>
           </LinearGradient>

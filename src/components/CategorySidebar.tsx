@@ -130,7 +130,7 @@ const S = StyleSheet.create({
     fontSize: ps(1.0),
   },
   itemTextActive: {
-    color: "#fff",
+    color: "#000000",
     fontSize: ps(1.35),
     fontWeight: fw("800"),
     letterSpacing: 0.5,
@@ -243,7 +243,7 @@ const CategoryItem = React.memo(function CategoryItem({
                     <IconLib
                       name={iconData.name}
                       size={ps(1.3)}
-                      color={isActive || focused ? "#fff" : "rgba(255,255,255,0.3)"}
+                      color={isActive ? "#000000" : focused ? "#fff" : "rgba(255,255,255,0.3)"}
                     />
                   </View>
                 )}

@@ -297,7 +297,7 @@ export default function SettingsScreen() {
                         end={{ x: 1, y: 0 }}
                         style={[S.dangerBtn, focused && S.dangerBtnFocused]}
                       >
-                        <Ionicons name="warning-outline" size={ps(1.5)} color="#fff" />
+                        <Ionicons name="warning-outline" size={ps(1.5)} color="#000000" />
                         <Text style={S.dangerBtnText}>Disconnect</Text>
                       </LinearGradient>
                     )}
@@ -330,7 +330,7 @@ export default function SettingsScreen() {
           </View>
 
           <View style={S.footer}>
-            <Text style={S.footerText}>IPTV Hub</Text>
+            <Text style={S.footerText}>Infinity IPTV Player</Text>
             <Text style={S.footerSubtext}>
               {portals.length} {portals.length === 1 ? 'portal' : 'portals'} configured
             </Text>
@@ -516,7 +516,7 @@ const S = StyleSheet.create({
     transform: [{ scale: 1.03 }],
   },
   dangerBtnText: {
-    color: '#fff',
+    color: '#000000',
     fontSize: isTV ? ps(1.1) : ps(1.2),
     fontWeight: fw('800'),
   },

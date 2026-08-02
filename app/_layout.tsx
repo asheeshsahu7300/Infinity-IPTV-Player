@@ -25,7 +25,7 @@ import { usePortalStore } from "../src/store/portalStore";
 import { ThemeProvider } from "../src/context/ThemeContext";
 import { AppBootManager } from "../src/services/AppBootManager";
 import { isTV } from "../src/utils/tvUtils";
-import { THEME, ps, ph, pw , fw } from '../src/theme/tokens';
+import { THEME, ps, ph, pw, fw, isPhone } from '../src/theme/tokens';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Google TV Typography Monkey-Patch (Global Font Family Enforcer)
@@ -103,7 +103,7 @@ function SplashScreen() {
           ]}
         >
           <Image
-            source={require("../assets/images/icon.png")}
+            source={require("../assets/images/splash-icon.gif")}
             style={styles.logoImage}
             resizeMode="contain"
           />
@@ -217,8 +217,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000000" },
   splash: { flex: 1, backgroundColor: "#000000", justifyContent: "center", alignItems: "center" },
   splashContent: { alignItems: "center", justifyContent: "center" },
-  splashLogoWrapper: { width: pw(48), height: pw(48), justifyContent: "center", alignItems: "center" },
-  splashLogoTVWrapper: { width: pw(28), height: pw(28), justifyContent: "center", alignItems: "center" },
+  splashLogoWrapper: { width: isPhone ? pw(85) : pw(50), height: isPhone ? pw(85) : pw(50), maxWidth: 380, maxHeight: 380, justifyContent: "center", alignItems: "center" },
+  splashLogoTVWrapper: { width: pw(42), height: pw(42), maxWidth: 460, maxHeight: 460, justifyContent: "center", alignItems: "center" },
   logoImage: { width: "100%", height: "100%" },
   splashTextGroup: { alignItems: "center", marginBottom: ph(2), justifyContent: "flex-end" },
   splashTitle: { color: "#ffffff", fontSize: ps(1.6), fontWeight: fw("500"), letterSpacing: pw(0.2) },
