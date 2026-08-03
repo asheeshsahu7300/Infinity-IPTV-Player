@@ -1,5 +1,7 @@
-# Infinity IPTV Player App (Expo + React Native)
 
+<img width="512" height="96" alt="TV (1)" src="https://github.com/user-attachments/assets/ff801556-6c2c-4411-a9c4-d3a937182a78" />
+
+# Infinity IPTV Player App
 > **WARNING: This is a player application only. It does not provide, host, or include any IPTV content, streams, or subscriptions. Users must provide their own legal IPTV service credentials.**
 
 A modern, high-performance IPTV player built with **Expo**, **React Native**, and **TypeScript**, supporting **M3U**, **Xtream Codes**, and **MAG/Stalker** portals.
