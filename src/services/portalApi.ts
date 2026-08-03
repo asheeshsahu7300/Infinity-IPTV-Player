@@ -972,9 +972,15 @@ export const portalApi = {
         const seasonNum = Number(s.season_number ?? s.season ?? 1);
 
         let episodes: Episode[] = [];
+        let seriesRaw = s.series ?? s.episodes ?? s.data ?? s.list;
 
-        if (typeof s.series === "string") {
-          episodes = s.series.split(",").map((num: string) => {
+        // Convert object dictionary (e.g. {"1": ep1, "2": ep2} or {"1": "1", "2": "2"}) to array
+        if (seriesRaw && typeof seriesRaw === "object" && !Array.isArray(seriesRaw)) {
+          seriesRaw = Object.values(seriesRaw);
+        }
+
+        if (typeof seriesRaw === "string") {
+          episodes = seriesRaw.split(",").map((num: string) => {
             const epNum = Number(num.trim());
             return {
               id: `${seriesId}:${seasonNum}-${epNum}`,
@@ -985,8 +991,8 @@ export const portalApi = {
               description: pickDescription(s),
             };
           });
-        } else if (Array.isArray(s.series)) {
-          episodes = s.series.map((item: any, idx: number) => {
+        } else if (Array.isArray(seriesRaw)) {
+          episodes = seriesRaw.map((item: any, idx: number) => {
             if (typeof item === "number" || typeof item === "string") {
               const epNum = Number(item);
               return {
@@ -1011,6 +1017,18 @@ export const portalApi = {
               duration: item.time ?? item.duration ?? undefined,
             };
           });
+        } else if (s.cmd || s.id) {
+          // Individual episode item returned directly
+          const epNum = Number(s.episode_num ?? s.episode ?? s.num ?? 1);
+          episodes = [{
+            id: String(s.id ?? `${seriesId}:${seasonNum}-${epNum}`),
+            name: s.title ?? s.name ?? `Episode ${epNum}`,
+            episodeNum: epNum,
+            seasonNum,
+            cmd: s.cmd,
+            description: pickDescription(s),
+            duration: s.time ?? s.duration ?? undefined,
+          }];
         }
 
         episodes = episodes.filter((e) => !Number.isNaN(e.episodeNum));
@@ -1033,9 +1051,12 @@ export const portalApi = {
     portal: Portal,
     cmd: string,
     type: "itv" | "vod",
-    ep?: number
+    ep?: number,
+    retryCount: number = 0
   ): Promise<string> {
-    const refreshed = await refreshToken(portal);
+    const latestPortal = usePortalStore.getState().activePortal ?? portal;
+    const forceRefresh = retryCount > 0;
+    const refreshed = await refreshToken(latestPortal, forceRefresh);
     const base = safe(refreshed.config.url).replace(/\/$/, "");
     let url = `${base}/portal.php?type=${type}&action=create_link&cmd=${encodeURIComponent(
       cmd
@@ -1099,6 +1120,12 @@ export const portalApi = {
         }
       }
 
+      // If finalUrl is empty or invalid and we haven't retried yet, force token refresh and retry
+      if (!finalUrl && retryCount === 0) {
+        console.warn("[portalApi] getStreamUrl returned empty link. Forcing session token refresh & retrying...");
+        return this.getStreamUrl(latestPortal, cmd, type, ep, 1);
+      }
+
       // Fallback: If create_link returned empty/invalid URL, but original cmd is a direct HTTP stream URL, use original cmd
       if (!finalUrl && /^https?:\/\//i.test(cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim())) {
         finalUrl = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
@@ -1107,7 +1134,10 @@ export const portalApi = {
       return finalUrl || out || "";
     } catch (e) {
       console.warn("getStreamUrl failed:", e);
-      // Fallback to original cmd if it is a valid direct URL
+      if (retryCount === 0) {
+        console.warn("[portalApi] getStreamUrl error. Forcing session token refresh & retrying...");
+        return this.getStreamUrl(latestPortal, cmd, type, ep, 1);
+      }
       const cleanCmd = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
       if (/^https?:\/\//i.test(cleanCmd)) return cleanCmd;
       return "";

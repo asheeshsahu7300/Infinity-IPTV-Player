@@ -1,37 +1,41 @@
 /**
  * externalPlayer.ts
  *
- * Centralised utility for launching an external video player (VLC, MX Player,
- * etc.) on Android TV or mobile.
+ * Centralised utility for launching external video players (VLC, MX Player,
+ * Just Player, Vimu, MPV, etc.) on Android TV or mobile.
  *
- * Root causes fixed vs. the previous inline implementation:
+ * Key fixes implemented:
+ * 1. Intent flags: FLAG_ACTIVITY_NEW_TASK (0x10000000) | FLAG_ACTIVITY_SINGLE_TOP (0x20000000).
+ *    This keeps MainActivity alive in the background task stack so when the user
+ *    closes the external player, Android returns directly to IPTV-Hub instead of exiting the app.
  *
- * 1. Wrong intent flags
- *    The old code used `flags: 1` (FLAG_GRANT_READ_URI_PERMISSION) which is
- *    meaningless for http:// stream URLs and doesn't help with activity
- *    routing. We now use FLAG_ACTIVITY_NEW_TASK (0x10000000) so VLC launches
- *    as a top-level activity that can be independently closed.
+ * 2. Multi-Player & MIME type fallback chain:
+ *    Scans for popular installed players (VLC, MX Player, Just Player, Vimu, MPV, Nova).
+ *    Falls back to generic video intents (`video/*`, `application/x-mpegURL`, raw data URL).
+ *    If no player is installed, displays an in-app Alert instead of failing with a system error.
  *
- * 2. Hanging `await startActivityAsync`
- *    `startActivityAsync` resolves only when the launched Activity calls
- *    setResult() and finishes. VLC (and most media players) simply call
- *    finish() without setResult(), so the promise NEVER resolves — leaving the
- *    caller suspended and the UI blocked.
- *    Fix: fire the intent without awaiting it, then use an AppState listener
- *    so we can run optional cleanup / focus-restore logic when the user returns
- *    to the app.
- *
- * 3. Optional title extra
- *    VLC reads the "title" extra to display a user-friendly stream name in its
- *    Now Playing screen.
+ * 3. AppState restoration:
+ *    Ensures focus and UI state are cleanly restored when returning to the app.
  */
 
-import { Platform, AppState, AppStateStatus } from "react-native";
+import { Platform, AppState, AppStateStatus, Alert } from "react-native";
 import * as IntentLauncher from "expo-intent-launcher";
 import * as Linking from "expo-linking";
 
-// FLAG_ACTIVITY_NEW_TASK — launch VLC as a standalone top-level activity.
-const FLAG_ACTIVITY_NEW_TASK = 0x10000000;
+// FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_SINGLE_TOP
+// Preserves host app's task stack while opening external player as top activity.
+const INTENT_FLAGS = 0x10000000 | 0x20000000;
+
+// Popular external Android TV / Mobile video players (ordered by popularity)
+const KNOWN_PLAYER_PACKAGES = [
+  "org.videolan.vlc",                // VLC Media Player
+  "com.mxtech.videoplayer.ad",       // MX Player (Free)
+  "com.mxtech.videoplayer.pro",      // MX Player (Pro)
+  "com.brouken.player",              // Just Player
+  "net.wb.vimu",                     // Vimu Media Player (Android TV)
+  "is.xyz.mpv",                      // MPV Player
+  "com.archos.mediacenter.videofree", // Nova Video Player
+];
 
 export interface LaunchExternalPlayerOptions {
   url: string;
@@ -44,11 +48,10 @@ export interface LaunchExternalPlayerOptions {
 /**
  * Launch an external video player.
  *
- * On Android it fires an ACTION_VIEW intent (fire-and-forget).
+ * On Android it fires an ACTION_VIEW intent with multi-player fallback.
  * On iOS it falls back to Linking.openURL().
  *
- * Returns a cleanup function that unsubscribes the AppState listener;
- * call it if the component unmounts before the user returns.
+ * Returns a cleanup function that unsubscribes the AppState listener.
  */
 export function launchExternalPlayer({
   url,
@@ -63,7 +66,7 @@ export function launchExternalPlayer({
     subscription = null;
   };
 
-  // Watch for the app coming back to the foreground (user closes VLC).
+  // Watch for the app returning to foreground after user closes external player
   if (onReturn) {
     subscription = AppState.addEventListener(
       "change",
@@ -71,8 +74,6 @@ export function launchExternalPlayer({
         if (nextState === "active" && !hasReturned) {
           hasReturned = true;
           cleanup();
-          // Small delay so the app's own UI has time to re-render before the
-          // callback tries to change navigation state.
           setTimeout(onReturn, 300);
         }
       }
@@ -80,31 +81,92 @@ export function launchExternalPlayer({
   }
 
   if (Platform.OS === "android") {
-    // Fire-and-forget: do NOT await — VLC never resolves the promise.
-    // 1. First, attempt to launch VLC directly using its package name (faster, bypasses chooser)
-    IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
-      data: url,
-      type: "video/*",
-      flags: FLAG_ACTIVITY_NEW_TASK,
-      packageName: "org.videolan.vlc",
-      // VLC reads this extra as the stream title.
-      extra: title ? { title } : undefined,
-    } as any).catch((err) => {
-      console.log("[externalPlayer] VLC direct package launch failed, trying generic video chooser:", err);
-      // 2. Fallback: launch generic video view intent (shows chooser with MX Player, Just Play, etc.)
-      return IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
-        data: url,
-        type: "video/*",
-        flags: FLAG_ACTIVITY_NEW_TASK,
-        extra: title ? { title } : undefined,
-      } as any);
-    }).catch((err) => {
-      // 3. Fallback: use standard URL linking as a last resort
-      console.warn("[externalPlayer] Generic intent failed, falling back to Linking:", err);
-      Linking.openURL(url).catch(() => { });
-    });
+    const extraParams = title ? { title } : undefined;
+
+    // Helper: try launching with a specific package
+    const tryPackage = async (pkg: string): Promise<boolean> => {
+      try {
+        await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+          data: url,
+          type: "video/*",
+          flags: INTENT_FLAGS,
+          packageName: pkg,
+          extra: extraParams,
+        } as any);
+        return true;
+      } catch (err) {
+        return false;
+      }
+    };
+
+    // Execute launcher fallback pipeline
+    (async () => {
+      // 1. Try known external video players first
+      for (const pkg of KNOWN_PLAYER_PACKAGES) {
+        const success = await tryPackage(pkg);
+        if (success) return;
+      }
+
+      // 2. Fallback: Generic intent with video/* MIME type (shows system chooser if multiple players exist)
+      try {
+        await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+          data: url,
+          type: "video/*",
+          flags: INTENT_FLAGS,
+          extra: extraParams,
+        } as any);
+        return;
+      } catch (e) {
+        console.log("[externalPlayer] Generic video/* intent failed:", e);
+      }
+
+      // 3. Fallback: HLS / M3U8 MIME type
+      try {
+        await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+          data: url,
+          type: "application/x-mpegURL",
+          flags: INTENT_FLAGS,
+          extra: extraParams,
+        } as any);
+        return;
+      } catch (e) {
+        console.log("[externalPlayer] Generic HLS intent failed:", e);
+      }
+
+      // 4. Fallback: Raw Data URL without restricting MIME type
+      try {
+        await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+          data: url,
+          flags: INTENT_FLAGS,
+          extra: extraParams,
+        } as any);
+        return;
+      } catch (e) {
+        console.log("[externalPlayer] Generic data intent failed:", e);
+      }
+
+      // 5. Fallback: Linking openURL
+      try {
+        const canOpen = await Linking.canOpenURL(url);
+        if (canOpen) {
+          await Linking.openURL(url);
+          return;
+        }
+      } catch (e) {
+        console.log("[externalPlayer] Linking openURL failed:", e);
+      }
+
+      // 6. User-friendly Alert if no player is found
+      Alert.alert(
+        "External Player Not Found",
+        "No compatible video player app (such as VLC, MX Player, or Just Player) was found on your device.\n\nPlease install one from the app store or use the internal player.",
+        [{ text: "OK" }]
+      );
+    })();
   } else {
-    Linking.openURL(url).catch(() => { });
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Playback Error", "Could not open external player on this device.");
+    });
   }
 
   return cleanup;

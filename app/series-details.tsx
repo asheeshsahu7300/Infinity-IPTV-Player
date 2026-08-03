@@ -264,7 +264,8 @@ export default function SeriesDetailsScreen() {
   }, []);
 
   const handleModalAction = async (isExternal: boolean) => {
-    if (!selectedEpisode || !activePortal) return;
+    const latestPortal = usePortalStore.getState().activePortal ?? activePortal;
+    if (!selectedEpisode || !latestPortal) return;
 
     const episodeSnapshot = selectedEpisode;
     const seriesName = params.name;
@@ -272,8 +273,9 @@ export default function SeriesDetailsScreen() {
 
     try {
       const currentSeason = seasons.find(s => s.id === selectedSeasonId);
-      if (activePortal.type === "mag" && currentSeason?.cmd) {
-        const resolved = await portalApi.getStreamUrl(activePortal, currentSeason.cmd, "vod", episodeSnapshot.episodeNum);
+      const cmd = episodeSnapshot.cmd || currentSeason?.cmd;
+      if (latestPortal.type === "mag" && cmd) {
+        const resolved = await portalApi.getStreamUrl(latestPortal, cmd, "vod", episodeSnapshot.episodeNum);
         if (resolved) streamUrl = resolved;
       }
     } catch (e) {

@@ -760,15 +760,16 @@ export default function VODScreen() {
 
   const handleModalAction = async (isExternal: boolean) => {
     if (!selectedVod) return;
+    const latestPortal = usePortalStore.getState().activePortal ?? activePortal;
     const titleSnapshot = selectedVod.name;
     const contentIdSnapshot = `vod:${selectedVod.id}`;
     let streamUrl: string | undefined = selectedVod.streamUrl;
 
     try {
-      if (activePortal?.type === "mag") {
+      if (latestPortal?.type === "mag") {
         const cmd = streamUrl;
         if (cmd) {
-          const resolved = await portalApi.getStreamUrl(activePortal, cmd, "vod");
+          const resolved = await portalApi.getStreamUrl(latestPortal, cmd, "vod");
           if (resolved) streamUrl = resolved;
         }
       }

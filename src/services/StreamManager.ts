@@ -47,7 +47,8 @@ class StreamManagerClass {
                 return { url: "", success: false, error: "No stream command available" };
             }
 
-            const url = await portalApi.getStreamUrl(portal, cmd, type, episodeNum);
+            const latestPortal = usePortalStore.getState().activePortal ?? portal;
+            const url = await portalApi.getStreamUrl(latestPortal, cmd, type, episodeNum);
 
             if (!url) {
                 return { url: "", success: false, error: "Failed to generate stream URL" };

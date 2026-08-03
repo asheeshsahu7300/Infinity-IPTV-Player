@@ -297,21 +297,22 @@ export default function SearchScreen() {
 
     let streamUrl: string | undefined = selectedItem.streamUrl;
 
+    const latestPortal = usePortalStore.getState().activePortal ?? activePortal;
     try {
-      if (activePortal.type === "xtream") {
+      if (latestPortal.type === "xtream") {
         const xtream = new XtreamApi({
-          url: activePortal.config.url,
-          username: activePortal.config.username!,
-          password: activePortal.config.password!,
+          url: latestPortal.config.url,
+          username: latestPortal.config.username!,
+          password: latestPortal.config.password!,
         });
         streamUrl = xtream.buildMovieUrl(String(selectedItem.id), selectedItem.quality?.toLowerCase() || "mp4");
-      } else if (activePortal.type === "m3u") {
-        const m3uApi = new M3UApi({ url: activePortal.config.url });
+      } else if (latestPortal.type === "m3u") {
+        const m3uApi = new M3UApi({ url: latestPortal.config.url });
         streamUrl = await m3uApi.getStreamUrl(String(selectedItem.id));
-      } else if (activePortal.type === "mag") {
-        const cmd = streamUrl || selectedItem.streamUrl;
+      } else if (latestPortal.type === "mag") {
+        const cmd = selectedItem.streamUrl;
         if (cmd) {
-          const resolved = await portalApi.getStreamUrl(activePortal, cmd, "vod");
+          const resolved = await portalApi.getStreamUrl(latestPortal, cmd, "vod");
           if (resolved) streamUrl = resolved;
         }
       }
