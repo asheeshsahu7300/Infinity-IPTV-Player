@@ -535,6 +535,30 @@ export default function PlayerScreen() {
     return ResizeMode.STRETCH;
   };
 
+  // VLCPlayer source with HTTP headers and low latency network caching flags
+  const vlcSource = {
+    uri: streamUrl,
+    headers: {
+      "User-Agent": "okhttp/3.12.1",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+    },
+    initOptions: [
+      "--network-caching=150",
+      "--live-caching=150",
+      "--file-caching=150",
+      "--clock-jitter=0",
+      "--clock-synchro=0",
+      "--drop-late-frames",
+      "--skip-frames",
+      "--avcodec-fast",
+      "--avcodec-skiploopfilter=4",
+      "--http-reconnect",
+      "--http-user-agent=okhttp/3.12.1",
+      "--rtsp-tcp",
+    ],
+  };
+
   const progressPercent = isLive ? 0 : (vlcPosition > 0 ? vlcPosition * 100 : (duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0));
 
   return (
@@ -542,7 +566,7 @@ export default function PlayerScreen() {
       <StatusBar hidden />
       {isLive && isVLCSupported() ? (
         <VLCPlayer
-          ref={vlcPlayerRef} style={S.video} source={{ uri: streamUrl }} autoplay={autoPlay} paused={!isPlaying}
+          ref={vlcPlayerRef} style={S.video} source={vlcSource} autoplay={autoPlay} paused={!isPlaying}
           audioTrack={selectedAudioTrack} textTrack={selectedTextTrack} volume={currentVolume} rate={playbackSpeed}
           videoAspectRatio={ASPECT_RATIOS[aspectRatioIndex].resize}
           onLoad={onLoad} onProgress={onProgress} onError={handleSilentRetry}

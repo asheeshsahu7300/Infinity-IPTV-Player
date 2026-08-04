@@ -22,9 +22,10 @@ import { Platform, AppState, AppStateStatus, Alert } from "react-native";
 import * as IntentLauncher from "expo-intent-launcher";
 import * as Linking from "expo-linking";
 
-// FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_SINGLE_TOP
-// Preserves host app's task stack while opening external player as top activity.
-const INTENT_FLAGS = 0x10000000 | 0x20000000;
+// Do NOT use FLAG_ACTIVITY_NEW_TASK (0x10000000) as it opens VLC in a separate task,
+// causing the Back button on Android TV to exit to the TV Home Screen instead of our app.
+// Using FLAG_GRANT_READ_URI_PERMISSION (1) opens VLC on top of our app's existing task stack.
+const INTENT_FLAGS = 1;
 
 // Popular external Android TV / Mobile video players (ordered by popularity)
 const KNOWN_PLAYER_PACKAGES = [

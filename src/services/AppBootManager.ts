@@ -2,6 +2,7 @@
 // Centralized boot orchestration - hydration-before-render
 
 import { safeStorage } from "./safeStorage";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { usePortalStore, Portal, PortalState } from "../store/portalStore";
 
 export interface BootResult {
@@ -37,8 +38,8 @@ class AppBootManagerClass {
         try {
             // 1. Read core metadata in parallel (Fast: < 30ms)
             const [portalsData, activePortalId, favoritesData] = await Promise.all([
-                safeStorage.getItem("portals"),
-                safeStorage.getItem("activePortalId"),
+                AsyncStorage.getItem("portals"),
+                AsyncStorage.getItem("activePortalId"),
                 safeStorage.getItem("favorites"),
             ]);
 
@@ -53,7 +54,7 @@ class AppBootManagerClass {
             if (favoritesData) {
                 try {
                     favorites = JSON.parse(favoritesData);
-                } catch {}
+                } catch { }
             }
 
             // One commit for the whole hydration. Separate setState calls meant
@@ -134,7 +135,7 @@ class AppBootManagerClass {
         const run = (async () => {
             try {
                 if (!force) {
-                    const lastSyncStr = await safeStorage.getItem(lastSyncKey);
+                    const lastSyncStr = await AsyncStorage.getItem(lastSyncKey);
                     const lastSync = lastSyncStr ? parseInt(lastSyncStr, 10) : 0;
                     if (Date.now() - lastSync < SYNC_INTERVAL) return;
                 }
@@ -143,7 +144,7 @@ class AppBootManagerClass {
                 const { portalApi } = await import("./portalApi");
                 await portalApi.warmPortalData(portal);
 
-                await safeStorage.setItem(lastSyncKey, Date.now().toString());
+                await AsyncStorage.setItem(lastSyncKey, Date.now().toString());
             } catch (e) {
                 console.warn("Background sync failed (non-fatal):", e);
             } finally {
@@ -159,7 +160,7 @@ class AppBootManagerClass {
      * Force a full refresh of portal data
      */
     async forceRefresh(portal: Portal): Promise<void> {
-        await safeStorage.removeItem(`portal:${portal.id}:lastSync`);
+        await AsyncStorage.removeItem(`portal:${portal.id}:lastSync`);
         await this.triggerBackgroundSync(portal, true);
     }
 
