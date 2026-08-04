@@ -2,17 +2,13 @@
 //
 // Chunked, size-capped persistence for a portal's content lists.
 //
-// AsyncStorage on Android is one SQLite database with a fixed size budget and a
-// ~2MB ceiling per row, which is why a single `JSON.stringify(100_000 channels)`
-// write silently fails. Bound and split it instead: a capped prefix of each list
-// is stored across several rows, so a cold start paints real content immediately
-// and the background sync fills in the remainder.
+// MMKV storage is used for persistence. We still chunk large lists so
+// that reading/writing remains smooth and predictable.
 //
 // `loadSlot` returns `null` when nothing is stored. That is deliberately
 // distinct from `[]` — callers must never treat "no cache" as "no data", or a
 // first run wipes whatever the network just delivered.
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { safeStorage } from "./safeStorage";
 
 export type PortalSlot = "channels" | "vod" | "series" | "categories";
@@ -89,7 +85,7 @@ async function writeChunks<T>(
   ]);
 
   try {
-    await AsyncStorage.multiSet(pairs);
+    await safeStorage.multiSet(pairs);
   } catch (err: any) {
     console.warn(`[portalPersistence] multiSet failed for ${slot}:`, err?.message || err);
     await safeStorage.handleSqliteFull();
@@ -153,7 +149,7 @@ export async function loadSlot<T>(portalId: string, slot: PortalSlot): Promise<T
 
   let entries: readonly [string, string | null][];
   try {
-    entries = await AsyncStorage.multiGet(keys);
+    entries = await safeStorage.multiGet(keys);
   } catch (err: any) {
     console.warn(`[portalPersistence] multiGet failed for ${slot}:`, err?.message || err);
     return null;

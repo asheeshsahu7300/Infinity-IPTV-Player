@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { safeStorage } from '../src/services/safeStorage';
 import { usePortalStore } from '../src/store/portalStore';
 import { isTV } from '../src/utils/tvUtils';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -60,7 +60,7 @@ export default function SettingsScreen() {
 
   const loadSettings = async () => {
     try {
-      const settings = await AsyncStorage.getItem('app_settings');
+      const settings = await safeStorage.getItem('app_settings');
       if (settings) {
         const parsed = JSON.parse(settings);
         setAutoPlay(parsed.autoPlay ?? true);
@@ -78,7 +78,7 @@ export default function SettingsScreen() {
         hardwareAcceleration,
         ...newSettings,
       };
-      await AsyncStorage.setItem('app_settings', JSON.stringify(currentSettings));
+      await safeStorage.setItem('app_settings', JSON.stringify(currentSettings));
     } catch (error) {
       console.error('Failed to save settings:', error);
     }
@@ -128,7 +128,7 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await AsyncStorage.clear();
+              await safeStorage.clear();
               await setActivePortal(null);
               clearPortalData();
               router.replace('/');

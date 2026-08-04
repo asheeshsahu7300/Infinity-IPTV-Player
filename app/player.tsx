@@ -13,6 +13,7 @@ import {
   ScrollView,
   BackHandler,
   findNodeHandle,
+  UIManager,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -21,7 +22,7 @@ import { Video, ResizeMode, AVPlaybackStatus } from "expo-av";
 import * as ScreenOrientation from "expo-screen-orientation";
 import * as Brightness from "expo-brightness";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { safeStorage } from "../src/services/safeStorage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useKeepAwake } from "expo-keep-awake";
 import { StreamManager } from "../src/services/StreamManager";
@@ -31,6 +32,18 @@ import { THEME, ps, pw, ph } from "../src/theme/tokens";
 import { Focusable, FocusGroup, Overlay, useDPad } from "../src/tv";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+const isVLCSupported = () => {
+  if (Platform.OS === "web") return false;
+  try {
+    if (UIManager.getViewManagerConfig) {
+      return !!UIManager.getViewManagerConfig("RCTVLCPlayer");
+    }
+    return !!(UIManager as any).RCTVLCPlayer;
+  } catch {
+    return false;
+  }
+};
 
 type AspectRatioType = "16:9" | "4:3" | "fit" | "fill";
 
@@ -200,7 +213,7 @@ export default function PlayerScreen() {
   useEffect(() => {
     const loadSettingsAndResume = async () => {
       try {
-        const settings = await AsyncStorage.getItem("app_settings");
+        const settings = await safeStorage.getItem("app_settings");
         if (settings) {
           const parsed = JSON.parse(settings);
           if (typeof parsed.autoPlay === "boolean") setAutoPlay(parsed.autoPlay);
@@ -527,7 +540,7 @@ export default function PlayerScreen() {
   return (
     <View style={S.container} {...panResponder.panHandlers}>
       <StatusBar hidden />
-      {isLive ? (
+      {isLive && isVLCSupported() ? (
         <VLCPlayer
           ref={vlcPlayerRef} style={S.video} source={{ uri: streamUrl }} autoplay={autoPlay} paused={!isPlaying}
           audioTrack={selectedAudioTrack} textTrack={selectedTextTrack} volume={currentVolume} rate={playbackSpeed}

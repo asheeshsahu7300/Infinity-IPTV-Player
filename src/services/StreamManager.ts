@@ -4,7 +4,6 @@
 import { Portal, Channel, VODItem, Episode } from "../store/portalStore";
 import { usePortalStore } from "../store/portalStore";
 import { NetworkResilience } from "./NetworkResilience";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { safeStorage } from "./safeStorage";
 
 export type StreamableContent = Channel | VODItem | Episode;
@@ -192,7 +191,7 @@ class StreamManagerClass {
     async getPlaybackPosition(contentId: string): Promise<PlaybackPosition | null> {
         try {
             const key = `playback:${contentId}`;
-            const data = await AsyncStorage.getItem(key);
+            const data = await safeStorage.getItem(key);
 
             if (!data) return null;
 
@@ -201,7 +200,7 @@ class StreamManagerClass {
             // Expire after 30 days
             const EXPIRY = 30 * 24 * 60 * 60 * 1000;
             if (Date.now() - position.timestamp > EXPIRY) {
-                await AsyncStorage.removeItem(key);
+                await safeStorage.removeItem(key);
                 return null;
             }
 
@@ -215,7 +214,7 @@ class StreamManagerClass {
      * Clear saved position (e.g., after completing playback)
      */
     async clearPlaybackPosition(contentId: string): Promise<void> {
-        await AsyncStorage.removeItem(`playback:${contentId}`).catch(console.warn);
+        await safeStorage.removeItem(`playback:${contentId}`).catch(console.warn);
     }
 
     // =============================================

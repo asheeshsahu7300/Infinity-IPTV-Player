@@ -1,6 +1,6 @@
 // portalApi.ts
 import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { safeStorage } from "./safeStorage";
 import { cacheManager, CACHE_TTL } from "./cacheManager";
 import { requestManager } from "./requestManager";
 import { NetworkActivity } from "./networkActivity";
@@ -1613,7 +1613,7 @@ export const portalApi = {
       const validEpg = (epg || []).filter((p) => p.end >= nowCutoff);
 
       // Only UPGRADE — never downgrade store data that loadPortalData already
-      // populated from the full AsyncStorage dump. The cache-manager keys are
+      // populated from the full MMKV storage dump. The cache-manager keys are
       // capped at page 1, so they should never shrink a larger dataset.
       if (liveChannels && liveChannels.length > store.channels.length) {
         store.setChannels(liveChannels, key);
@@ -1641,8 +1641,8 @@ export const portalApi = {
     try {
       const key = portal.id;
 
-      // Clear raw AsyncStorage keys written directly by the store
-      await AsyncStorage.multiRemove([
+      // Clear raw storage keys written directly by the store
+      await safeStorage.multiRemove([
         `portal:${key}:channels`,
         `portal:${key}:vod`,
         `portal:${key}:series`,
@@ -1666,13 +1666,13 @@ export const portalApi = {
         }
       }
 
-      // Evict any leftover keys in AsyncStorage containing this portal ID
-      const allKeys = await AsyncStorage.getAllKeys();
+      // Evict any leftover keys in storage containing this portal ID
+      const allKeys = await safeStorage.getAllKeys();
       const portalKeys = allKeys.filter(
         (k) => k.includes(`portal:${key}`) || (k.startsWith("cache:") && k.includes(key))
       );
       if (portalKeys.length > 0) {
-        await AsyncStorage.multiRemove(portalKeys).catch(console.warn);
+        await safeStorage.multiRemove(portalKeys).catch(console.warn);
       }
 
       console.log(`🗑️ Deleted all cached data for portal ${portal.name} (${portal.type})`);

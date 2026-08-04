@@ -1,7 +1,6 @@
 // src/services/AppBootManager.ts
 // Centralized boot orchestration - hydration-before-render
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { safeStorage } from "./safeStorage";
 import { usePortalStore, Portal, PortalState } from "../store/portalStore";
 
@@ -21,7 +20,7 @@ class AppBootManagerClass {
     private syncPromises = new Map<string, Promise<void>>();
 
     /**
-     * Initialize the app - hydrate store from AsyncStorage before any UI renders.
+     * Initialize the app - hydrate store from MMKV storage before any UI renders.
      * This is idempotent - calling multiple times returns the same promise.
      */
     async initialize(): Promise<BootResult> {
@@ -135,7 +134,7 @@ class AppBootManagerClass {
         const run = (async () => {
             try {
                 if (!force) {
-                    const lastSyncStr = await AsyncStorage.getItem(lastSyncKey);
+                    const lastSyncStr = await safeStorage.getItem(lastSyncKey);
                     const lastSync = lastSyncStr ? parseInt(lastSyncStr, 10) : 0;
                     if (Date.now() - lastSync < SYNC_INTERVAL) return;
                 }
@@ -160,7 +159,7 @@ class AppBootManagerClass {
      * Force a full refresh of portal data
      */
     async forceRefresh(portal: Portal): Promise<void> {
-        await AsyncStorage.removeItem(`portal:${portal.id}:lastSync`);
+        await safeStorage.removeItem(`portal:${portal.id}:lastSync`);
         await this.triggerBackgroundSync(portal, true);
     }
 

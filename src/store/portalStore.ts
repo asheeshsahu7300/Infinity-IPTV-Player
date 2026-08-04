@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { safeStorage } from "../services/safeStorage";
 import {
   loadSlot,
@@ -252,7 +251,7 @@ export const usePortalStore = create<PortalState>((set, get) => ({
   // ---------------------------------------
   loadPortals: async () => {
     try {
-      const data = await AsyncStorage.getItem("portals");
+      const data = await safeStorage.getItem("portals");
       if (data) {
         const portals: Portal[] = JSON.parse(data);
         set({ portals });
@@ -300,7 +299,7 @@ export const usePortalStore = create<PortalState>((set, get) => ({
       // First, ensure portals are loaded
       await get().loadPortals();
 
-      const activeId = await AsyncStorage.getItem("activePortalId");
+      const activeId = await safeStorage.getItem("activePortalId");
       if (!activeId) {
         return null;
       }
@@ -308,7 +307,7 @@ export const usePortalStore = create<PortalState>((set, get) => ({
       const portal = get().portals.find((p) => p.id === activeId);
       if (!portal) {
         // Portal was deleted, clear active portal
-        await AsyncStorage.removeItem("activePortalId");
+        await safeStorage.removeItem("activePortalId");
         set({ activePortal: null });
         return null;
       }
@@ -317,7 +316,7 @@ export const usePortalStore = create<PortalState>((set, get) => ({
       const isValid = await get().validatePortalAuth(portal);
       if (!isValid) {
         // Invalid config, clear active portal
-        await AsyncStorage.removeItem("activePortalId");
+        await safeStorage.removeItem("activePortalId");
         set({ activePortal: null });
         return null;
       }
@@ -340,7 +339,7 @@ export const usePortalStore = create<PortalState>((set, get) => ({
     } catch (err) {
       console.error("Failed to restore active portal:", err);
       // On error, clear active portal to be safe
-      await AsyncStorage.removeItem("activePortalId");
+      await safeStorage.removeItem("activePortalId");
       set({ activePortal: null });
       return null;
     }
@@ -351,7 +350,7 @@ export const usePortalStore = create<PortalState>((set, get) => ({
   // ---------------------------------------
   addPortal: async (portal) => {
     const portals = [...get().portals, portal];
-    await AsyncStorage.setItem("portals", JSON.stringify(portals));
+    await safeStorage.setItem("portals", JSON.stringify(portals));
     set({ portals });
   },
 
@@ -363,7 +362,7 @@ export const usePortalStore = create<PortalState>((set, get) => ({
       p.id === id ? { ...p, ...updates } : p
     );
 
-    await AsyncStorage.setItem("portals", JSON.stringify(portals));
+    await safeStorage.setItem("portals", JSON.stringify(portals));
     set({ portals });
 
     if (get().activePortal?.id === id) {
@@ -387,12 +386,12 @@ export const usePortalStore = create<PortalState>((set, get) => ({
 
     const portals = get().portals.filter((p) => p.id !== id);
 
-    await AsyncStorage.setItem("portals", JSON.stringify(portals));
+    await safeStorage.setItem("portals", JSON.stringify(portals));
     set({ portals });
 
     if (get().activePortal?.id === id) {
       set({ activePortal: null });
-      await AsyncStorage.removeItem("activePortalId");
+      await safeStorage.removeItem("activePortalId");
       // Clear current store data
       get().clearPortalData();
     }
@@ -411,7 +410,7 @@ export const usePortalStore = create<PortalState>((set, get) => ({
         categories: [],
         epgData: [],
       });
-      await AsyncStorage.removeItem("activePortalId");
+      await safeStorage.removeItem("activePortalId");
       return;
     }
 
@@ -435,8 +434,8 @@ export const usePortalStore = create<PortalState>((set, get) => ({
     // Storage writes and the cache read are off the critical path; the UI is
     // already rendering the new portal.
     Promise.all([
-      AsyncStorage.setItem("activePortalId", portal.id),
-      AsyncStorage.setItem("portals", JSON.stringify(portals)),
+      safeStorage.setItem("activePortalId", portal.id),
+      safeStorage.setItem("portals", JSON.stringify(portals)),
     ]).catch(console.warn);
 
     await get().loadPortalData(portal.id);
@@ -566,7 +565,7 @@ export const usePortalStore = create<PortalState>((set, get) => ({
     }
   },
 
-  // Load portal data from AsyncStorage.
+  // Load portal data from MMKV storage.
   //
   // Strictly additive: a slot is only written when the cache actually held
   // something for it, and only when that beats what is already in memory.
@@ -617,13 +616,13 @@ export const usePortalStore = create<PortalState>((set, get) => ({
 
     fav[type] = exists ? fav[type].filter((x) => x !== id) : [...fav[type], id];
 
-    await AsyncStorage.setItem("favorites", JSON.stringify(fav));
+    await safeStorage.setItem("favorites", JSON.stringify(fav));
     set({ favorites: fav });
   },
 
   loadFavorites: async () => {
     try {
-      const data = await AsyncStorage.getItem("favorites");
+      const data = await safeStorage.getItem("favorites");
       if (data) {
         set({ favorites: JSON.parse(data) });
       }
