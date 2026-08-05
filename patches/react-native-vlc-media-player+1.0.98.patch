@@ -1,0 +1,96 @@
+diff --git a/node_modules/react-native-vlc-media-player/VLCPlayer.js b/node_modules/react-native-vlc-media-player/VLCPlayer.js
+index 9b91442..a4183e4 100644
+--- a/node_modules/react-native-vlc-media-player/VLCPlayer.js
++++ b/node_modules/react-native-vlc-media-player/VLCPlayer.js
+@@ -199,6 +199,10 @@ export default class VLCPlayer extends Component {
+       }
+     }
+ 
++    // Add network caching and user agent for zero-lag streaming
++    source.initOptions.push("--network-caching=150");
++    source.initOptions.push(":http-user-agent=okhttp/3.12.1");
++
+     const nativeProps = Object.assign({}, this.props);
+     Object.assign(nativeProps, {
+       style: [styles.base, nativeProps.style],
+@@ -291,4 +295,10 @@ const styles = StyleSheet.create({
+     overflow: "hidden",
+   },
+ });
+-const RCTVLCPlayer = requireNativeComponent("RCTVLCPlayer", VLCPlayer);
++let RCTVLCPlayer;
++try {
++  RCTVLCPlayer = requireNativeComponent("RCTVLCPlayer", VLCPlayer);
++} catch (e) {
++  console.warn("RCTVLCPlayer native component not found. VLCPlayer will not render. You must build a custom dev client to use VLC.");
++  RCTVLCPlayer = View;
++}
+diff --git a/node_modules/react-native-vlc-media-player/android/.classpath b/node_modules/react-native-vlc-media-player/android/.classpath
+new file mode 100644
+index 0000000..bbe97e5
+--- /dev/null
++++ b/node_modules/react-native-vlc-media-player/android/.classpath
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<classpath>
++	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-17/"/>
++	<classpathentry kind="con" path="org.eclipse.buildship.core.gradleclasspathcontainer"/>
++	<classpathentry kind="output" path="bin/default"/>
++</classpath>
+diff --git a/node_modules/react-native-vlc-media-player/android/.gradle/6.9/fileChanges/last-build.bin b/node_modules/react-native-vlc-media-player/android/.gradle/6.9/fileChanges/last-build.bin
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-vlc-media-player/android/.gradle/6.9/fileHashes/fileHashes.lock b/node_modules/react-native-vlc-media-player/android/.gradle/6.9/fileHashes/fileHashes.lock
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-vlc-media-player/android/.gradle/6.9/gc.properties b/node_modules/react-native-vlc-media-player/android/.gradle/6.9/gc.properties
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-vlc-media-player/android/.gradle/checksums/checksums.lock b/node_modules/react-native-vlc-media-player/android/.gradle/checksums/checksums.lock
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-vlc-media-player/android/.gradle/vcs-1/gc.properties b/node_modules/react-native-vlc-media-player/android/.gradle/vcs-1/gc.properties
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-vlc-media-player/android/.project b/node_modules/react-native-vlc-media-player/android/.project
+new file mode 100644
+index 0000000..b707063
+--- /dev/null
++++ b/node_modules/react-native-vlc-media-player/android/.project
+@@ -0,0 +1,28 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<projectDescription>
++	<name>react-native-vlc-media-player</name>
++	<comment>Project react-native-vlc-media-player created by Buildship.</comment>
++	<projects>
++	</projects>
++	<buildSpec>
++		<buildCommand>
++			<name>org.eclipse.buildship.core.gradleprojectbuilder</name>
++			<arguments>
++			</arguments>
++		</buildCommand>
++	</buildSpec>
++	<natures>
++		<nature>org.eclipse.buildship.core.gradleprojectnature</nature>
++	</natures>
++	<filteredResources>
++		<filter>
++			<id>1779979141917</id>
++			<name></name>
++			<type>30</type>
++			<matcher>
++				<id>org.eclipse.core.resources.regexFilterMatcher</id>
++				<arguments>node_modules|\.git|__CREATED_BY_JAVA_LANGUAGE_SERVER__</arguments>
++			</matcher>
++		</filter>
++	</filteredResources>
++</projectDescription>
+diff --git a/node_modules/react-native-vlc-media-player/android/.settings/org.eclipse.buildship.core.prefs b/node_modules/react-native-vlc-media-player/android/.settings/org.eclipse.buildship.core.prefs
+new file mode 100644
+index 0000000..1675490
+--- /dev/null
++++ b/node_modules/react-native-vlc-media-player/android/.settings/org.eclipse.buildship.core.prefs
+@@ -0,0 +1,2 @@
++connection.project.dir=../../../android
++eclipse.preferences.version=1

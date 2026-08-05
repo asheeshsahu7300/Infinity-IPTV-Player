@@ -2,6 +2,7 @@
 // Centralized boot orchestration - hydration-before-render
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { safeStorage } from "./safeStorage";
 import { usePortalStore, Portal } from "../store/portalStore";
 import { cacheManager } from "./cacheManager";
 
@@ -34,64 +35,43 @@ class AppBootManagerClass {
         try {
             console.log("🚀 AppBootManager: Starting initialization...");
 
-            // 1. Load all portals from AsyncStorage
-            const portalsData = await AsyncStorage.getItem("portals");
+            // 1. Read core metadata in parallel (Fast: < 30ms)
+            const [portalsData, activePortalId, favoritesData] = await Promise.all([
+                AsyncStorage.getItem("portals"),
+                AsyncStorage.getItem("activePortalId"),
+                safeStorage.getItem("favorites"),
+            ]);
+
             const portals: Portal[] = portalsData ? JSON.parse(portalsData) : [];
 
-            // 2. Load active portal ID
-            const activePortalId = await AsyncStorage.getItem("activePortalId");
-
-            // 3. Find active portal
             let activePortal: Portal | null = null;
             if (activePortalId) {
                 activePortal = portals.find((p) => p.id === activePortalId) || null;
             }
 
-            // 4. Hydrate the store synchronously
-            const store = usePortalStore.getState();
+            let favorites: any = null;
+            if (favoritesData) {
+                try {
+                    favorites = JSON.parse(favoritesData);
+                } catch { }
+            }
 
-            // Set portals list
-            usePortalStore.setState({ portals });
+            // One commit for the whole hydration
+            usePortalStore.setState({
+                portals,
+                ...(favorites ? { favorites } : {}),
+                ...(activePortal
+                    ? { activePortal, categories: activePortal.categories || [] }
+                    : {}),
+                isHydrated: true,
+            });
 
             if (activePortal) {
-                // Set active portal
-                usePortalStore.setState({ activePortal });
-
-                // 5. Load all cached content data for this portal
-                await this.loadPortalDataFromStorage(activePortal);
-
-                // Check if we effectively loaded data
-                const currentState = usePortalStore.getState();
-                const hasData =
-                    currentState.categories.length > 0 ||
-                    currentState.channels.length > 0 ||
-                    currentState.vodItems.length > 0 ||
-                    currentState.series.length > 0;
-
-                if (!hasData) {
-                    console.log("⚠️ No cached data found. Fetching from network (blocking)...");
-                    try {
-                        const { portalApi } = await import("./portalApi");
-                        await portalApi.warmPortalData(activePortal);
-                        console.log("✅ Network warming complete.");
-                    } catch (e) {
-                        console.warn("❌ Network warming failed during boot:", e);
-                    }
-                } else {
-                    // If we have data, we can trigger a background sync update without blocking
-                    this.triggerBackgroundSync(activePortal).catch(console.warn);
-                }
-
-                // 6. Load favorites
-                await store.loadFavorites();
-
-                // 7. Mark hydration complete
-                usePortalStore.setState({ isHydrated: true });
+                // Background sync
+                this.triggerBackgroundSync(activePortal).catch(console.warn);
 
                 console.log("✅ AppBootManager: Initialized with active portal:", activePortal.name);
             } else {
-                // No active portal - mark hydrated anyway
-                usePortalStore.setState({ isHydrated: true });
                 console.log("✅ AppBootManager: Initialized without active portal");
             }
 

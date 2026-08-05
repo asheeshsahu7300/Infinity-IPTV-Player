@@ -12,6 +12,8 @@ import {
   PanResponder,
   ScrollView,
   BackHandler,
+  findNodeHandle,
+  UIManager,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -20,16 +22,28 @@ import { Video, ResizeMode, AVPlaybackStatus } from "expo-av";
 import * as ScreenOrientation from "expo-screen-orientation";
 import * as Brightness from "expo-brightness";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { safeStorage } from "../src/services/safeStorage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useKeepAwake } from "expo-keep-awake";
 import { StreamManager } from "../src/services/StreamManager";
 import { usePortalStore } from "../src/store/portalStore";
 import { isTV } from "../src/utils/tvUtils";
-import { THEME, ps, pw, ph , fw, isPhone } from '../src/theme/tokens';
+import { THEME, ps, pw, ph, isPhone } from "../src/theme/tokens";
 import { Focusable, FocusGroup, Overlay, useDPad } from "../src/tv";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+const isVLCSupported = () => {
+  if (Platform.OS === "web") return false;
+  try {
+    if (UIManager.getViewManagerConfig) {
+      return !!UIManager.getViewManagerConfig("RCTVLCPlayer");
+    }
+    return !!(UIManager as any).RCTVLCPlayer;
+  } catch {
+    return false;
+  }
+};
 
 type AspectRatioType = "16:9" | "4:3" | "fit" | "fill";
 
@@ -64,6 +78,8 @@ export default function PlayerScreen() {
   }, [isLive]);
   // Core player state
   const [streamUrl, setStreamUrl] = useState(params.url || "");
+  const [seekBarNode, setSeekBarNode] = useState<number | undefined>(undefined);
+  const seekBarRef = useRef<any>(null);
   const [showControls, setShowControls] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -135,13 +151,14 @@ export default function PlayerScreen() {
   useEffect(() => { seekBarFocusedRef.current = seekBarFocused; }, [seekBarFocused]);
 
   useEffect(() => {
-    if (Platform.OS === "web") return;
-    // The player is a landscape-first experience — force landscape on open so
-    // the video fills the screen no matter the device's current orientation.
-    // (TV is already landscape and doesn't rotate, so skip it there.)
-    if (!isTV) {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+    if (showControls && seekBarRef.current) {
+      setSeekBarNode(findNodeHandle(seekBarRef.current) ?? undefined);
     }
+  }, [showControls]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    ScreenOrientation.unlockAsync();
     Brightness.getBrightnessAsync().then(b => {
       if (!isNaN(b)) brightnessRef.current = b;
     });
@@ -196,7 +213,7 @@ export default function PlayerScreen() {
   useEffect(() => {
     const loadSettingsAndResume = async () => {
       try {
-        const settings = await AsyncStorage.getItem("app_settings");
+        const settings = await safeStorage.getItem("app_settings");
         if (settings) {
           const parsed = JSON.parse(settings);
           if (typeof parsed.autoPlay === "boolean") setAutoPlay(parsed.autoPlay);
@@ -318,8 +335,10 @@ export default function PlayerScreen() {
         if (vlcPlayerRef.current) vlcPlayerRef.current.seek(newPos / duration);
         else if (expoVideoRef.current) await expoVideoRef.current.setPositionAsync(newPos);
         seekTimeout.current = setTimeout(() => { isSeeking.current = false; }, 1000);
-      } catch (e) {
-        console.error("Seek error:", e);
+      } catch (e: any) {
+        if (!e?.message?.includes("interrupted")) {
+          console.error("Seek error:", e);
+        }
         isSeeking.current = false;
       }
       resetControlsTimeout();
@@ -518,14 +537,33 @@ export default function PlayerScreen() {
     return ResizeMode.STRETCH;
   };
 
+  // VLCPlayer source with HTTP headers and hardware decoding for 4K support
+  const vlcSource = {
+    uri: streamUrl,
+    headers: {
+      "User-Agent": "okhttp/3.12.1",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+    },
+    initOptions: [
+      "--network-caching=1500",
+      "--live-caching=1500",
+      "--file-caching=1500",
+      "--avcodec-hw=any", // CRITICAL for 4K streams (hardware decoding)
+      "--http-reconnect",
+      "--http-user-agent=okhttp/3.12.1",
+      "--rtsp-tcp",
+    ],
+  };
+
   const progressPercent = isLive ? 0 : (vlcPosition > 0 ? vlcPosition * 100 : (duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0));
 
   return (
     <View style={S.container} {...panResponder.panHandlers}>
       <StatusBar hidden />
-      {isLive ? (
+      {isLive && isVLCSupported() ? (
         <VLCPlayer
-          ref={vlcPlayerRef} style={S.video} source={{ uri: streamUrl }} autoplay={autoPlay} paused={!isPlaying}
+          ref={vlcPlayerRef} style={S.video} source={vlcSource} autoplay={autoPlay} paused={!isPlaying}
           audioTrack={selectedAudioTrack} textTrack={selectedTextTrack} volume={currentVolume} rate={playbackSpeed}
           videoAspectRatio={ASPECT_RATIOS[aspectRatioIndex].resize}
           onLoad={onLoad} onProgress={onProgress} onError={handleSilentRetry}
@@ -599,20 +637,8 @@ export default function PlayerScreen() {
             pointerEvents="none"
           />
 
-          <View style={[S.header, { paddingTop: insets.top + (isTV ? ph(2) : ph(1)), paddingLeft: insets.left + pw(5), paddingRight: insets.right + pw(5) }]}>
+          <View style={[S.header, { paddingTop: insets.top + (isTV ? ph(2) : ph(1)) }]}>
             <View style={S.headerLeft}>
-              {/* Phones use the hardware/gesture back (handled in the back
-                  handler); hide the on-screen button there. */}
-              {!isPhone && (
-                <Focusable
-                  ringOnFocus={false}
-                  focusStyle={S.controlFocused}
-                  style={S.backBtn}
-                  onPress={handleBack}
-                >
-                  <Ionicons name="arrow-back" size={ps(1.8)} color="#fff" />
-                </Focusable>
-              )}
               <View style={S.headerInfo}>
                 <Text style={S.mainTitle} numberOfLines={1}>{params.title || "Unknown Content"}</Text>
                 <Text style={S.subTitle}>{isLive ? "LIVE STREAM" : ""}</Text>
@@ -632,8 +658,8 @@ export default function PlayerScreen() {
                 >
                   {(focused) => (
                     <View style={S.skipInner}>
-                      <Ionicons name="play-back" size={ps(2.2)} color="#fff" style={{ opacity: focused ? 1 : 0.7 }} />
-                      {focused && <Text style={S.skipLabel}>-10s</Text>}
+                      <Ionicons name="play-back" size={ps(1.4)} color="#fff" style={{ opacity: focused ? 1 : 0.7 }} />
+                      <Text style={[S.skipLabel, focused && { color: "#fff" }]}>-10s</Text>
                     </View>
                   )}
                 </Focusable>
@@ -646,7 +672,7 @@ export default function PlayerScreen() {
                   style={S.mainPlayBtn}
                   onPress={togglePlay}
                 >
-                  <LinearGradient colors={["#db0482", "#3305eb"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.mainPlayGradient}>
+                  <LinearGradient colors={["rgba(255,255,255,0.05)", "rgba(255,255,255,0.05)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.mainPlayGradient}>
                     <Ionicons name={isPlaying ? "pause" : "play"} size={ps(2)} color="#fff" />
                   </LinearGradient>
                 </Focusable>
@@ -660,8 +686,8 @@ export default function PlayerScreen() {
                 >
                   {(focused) => (
                     <View style={S.skipInner}>
-                      <Ionicons name="play-forward" size={ps(2.2)} color="#fff" style={{ opacity: focused ? 1 : 0.7 }} />
-                      {focused && <Text style={S.skipLabel}>+10s</Text>}
+                      <Ionicons name="play-forward" size={ps(1.4)} color="#fff" style={{ opacity: focused ? 1 : 0.7 }} />
+                      <Text style={[S.skipLabel, focused && { color: "#fff" }]}>+10s</Text>
                     </View>
                   )}
                 </Focusable>
@@ -677,7 +703,7 @@ export default function PlayerScreen() {
           />
 
           {(!isLocked || isTV) && (
-            <View style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2), paddingLeft: insets.left + pw(5), paddingRight: insets.right + pw(5) }]}>
+            <View style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2) }]}>
               <View style={S.glassControls}>
                 {!isLive && duration > 0 && (
                   <View style={S.progressSection}>
@@ -696,8 +722,8 @@ export default function PlayerScreen() {
                     </View>
                     {/* Seekable progress bar — focusable on TV for D-pad scrub */}
                     <Focusable
+                      ref={seekBarRef}
                       ringOnFocus={false}
-                      focusStyle={S.progressBarFocused}
                       style={S.progressBarWrapper}
                       onFocus={() => setSeekBarFocused(true)}
                       onBlur={() => setSeekBarFocused(false)}
@@ -705,7 +731,7 @@ export default function PlayerScreen() {
                     >
                       {(focused) => (
                         <View style={S.progressBarInner}>
-                          <View ref={progressViewRef} style={[S.progressRail, focused && S.progressRailFocused]} onTouchEnd={handleProgressPress}>
+                          <View ref={progressViewRef} style={S.progressRail} onTouchEnd={handleProgressPress}>
                             <View style={[S.bufferBar, { width: isBuffering ? '100%' : '0%' }]} />
                             <View style={[S.progressFill, { width: `${progressPercent}%` }]}>
                               <LinearGradient colors={["#db0482", "#3305eb"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
@@ -739,9 +765,9 @@ export default function PlayerScreen() {
                           ringOnFocus={false}
                           focusStyle={S.iconChipFocused}
                           style={S.iconChip}
-                          onPress={() => seek(30000)}
+                          onPress={() => seek(60000)}
                         >
-                          <MaterialCommunityIcons name="fast-forward-30" size={ps(1.6)} color="white" />
+                          <MaterialCommunityIcons name="fast-forward-60" size={ps(1.6)} color="white" />
                         </Focusable>
                       </>
                     )}
@@ -754,17 +780,19 @@ export default function PlayerScreen() {
                       onPress={cyclePlaybackSpeed}
                     >
                       <Ionicons name="speedometer-outline" size={ps(1.4)} color="white" />
-                      <Text style={[S.settingLabel, S.speedValue]} numberOfLines={1}>{playbackSpeed.toFixed(2)}x</Text>
+                      <Text style={S.settingLabel}>{playbackSpeed.toFixed(2)}x</Text>
                     </Focusable>
-                    <Focusable
-                      ringOnFocus={false}
-                      focusStyle={S.iconChipFocused}
-                      style={S.settingBtn}
-                      onPress={() => setShowSubtitleModal(true)}
-                    >
-                      <Ionicons name="text-outline" size={ps(1.4)} color="white" />
-                      <Text style={S.settingLabel}>SUBTITLES</Text>
-                    </Focusable>
+                    {!isPhone && (
+                      <Focusable
+                        ringOnFocus={false}
+                        focusStyle={S.iconChipFocused}
+                        style={S.settingBtn}
+                        onPress={() => setShowSubtitleModal(true)}
+                      >
+                        <Ionicons name="text-outline" size={ps(1.4)} color="white" />
+                        <Text style={S.settingLabel}>SUBTITLES</Text>
+                      </Focusable>
+                    )}
                     <Focusable
                       ringOnFocus={false}
                       focusStyle={S.iconChipFocused}
@@ -799,7 +827,7 @@ export default function PlayerScreen() {
 
 function TrackSelectionModal({ visible, title, icon, options, selected, onSelect, onClose, isSubtitle = false }: any) {
   return (
-    <Overlay visible={visible} onClose={onClose} position={isPhone ? "bottom" : "center"} contentStyle={[S.modalContent, isPhone && S.modalContentBottom]}>
+    <Overlay visible={visible} onClose={onClose} contentStyle={S.modalContent}>
       {/* Modal header */}
       <View style={S.modalHeader}>
         <LinearGradient
@@ -808,7 +836,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
           end={{ x: 1, y: 0 }}
           style={S.modalIconBg}
         >
-          <Ionicons name={icon || "settings"} size={isPhone ? ps(1.4) : ps(2)} color="#fff" />
+          <Ionicons name={icon || "settings"} size={ps(2)} color="#fff" />
         </LinearGradient>
         <Text style={S.modalTitle}>{title}</Text>
         <Text style={S.modalSubtitle}>
@@ -823,7 +851,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
       <ScrollView style={S.modalScroll} showsVerticalScrollIndicator={false}>
         {options.length === 0 ? (
           <View style={S.emptyState}>
-            <Ionicons name="alert-circle-outline" size={isPhone ? ps(2.2) : ps(3)} color="rgba(255,255,255,0.2)" />
+            <Ionicons name="alert-circle-outline" size={ps(3)} color="rgba(255,255,255,0.2)" />
             <Text style={S.emptyText}>No tracks found</Text>
           </View>
         ) :
@@ -861,7 +889,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
                     </View>
                     {isSelected && (
                       <View style={S.checkBadge}>
-                        <Ionicons name="checkmark" size={isPhone ? ps(1) : ps(1.4)} color="#000000" />
+                        <Ionicons name="checkmark" size={ps(1.4)} color="#fff" />
                       </View>
                     )}
                   </View>
@@ -880,7 +908,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
               <View style={S.modalOptionInner}>
                 <View style={S.modalOptionLeft}>
                   <View style={[S.trackIndexBadge, selected === -1 && S.trackIndexBadgeActive]}>
-                    <Ionicons name="close" size={ps(1)} color={selected === -1 ? "#000000" : "rgba(255,255,255,0.5)"} />
+                    <Ionicons name="close" size={ps(1)} color={selected === -1 ? "#fff" : "rgba(255,255,255,0.5)"} />
                   </View>
                   <Text
                     style={[
@@ -894,7 +922,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
                 </View>
                 {selected === -1 && (
                   <View style={S.checkBadge}>
-                    <Ionicons name="checkmark" size={isPhone ? ps(1) : ps(1.4)} color="#000000" />
+                    <Ionicons name="checkmark" size={ps(1.4)} color="#fff" />
                   </View>
                 )}
               </View>
@@ -923,9 +951,9 @@ const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
   video: { ...StyleSheet.absoluteFillObject },
   loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "center", alignItems: "center" },
-  loadingText: { color: "#fff", marginTop: 10, fontSize: ps(1.1), fontWeight: fw("600"), fontFamily: THEME.fonts.medium },
+  loadingText: { color: "#fff", marginTop: 10, fontSize: ps(1.1), fontWeight: "600", fontFamily: THEME.fonts.medium },
   centerIndicator: { position: "absolute", top: "50%", alignSelf: "center", backgroundColor: "rgba(0,0,0,0.7)", padding: 25, borderRadius: 20, alignItems: "center", marginTop: -60 },
-  indicatorText: { color: "#fff", fontSize: 18, fontWeight: fw("bold"), fontFamily: THEME.fonts.bold, marginTop: 10 },
+  indicatorText: { color: "#fff", fontSize: 18, fontWeight: "bold", fontFamily: THEME.fonts.bold, marginTop: 10 },
   barContainer: { height: 4, width: 100, backgroundColor: "rgba(255,255,255,0.2)", borderRadius: 2, marginTop: 15 },
   barFill: { height: "100%", backgroundColor: THEME.colors.primary, borderRadius: 2 },
 
@@ -948,7 +976,7 @@ const S = StyleSheet.create({
   seekIndicatorText: {
     color: "#fff",
     fontSize: ps(1.6),
-    fontWeight: fw("900"),
+    fontWeight: "900",
     fontFamily: THEME.fonts.bold,
     marginTop: 4,
     letterSpacing: 1,
@@ -961,27 +989,35 @@ const S = StyleSheet.create({
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 20, flex: 1 },
   backBtn: { width: ps(3.5), height: ps(3.5), borderRadius: 25, backgroundColor: "rgba(255,255,255,0.1)", alignItems: "center", justifyContent: "center" },
   headerInfo: { gap: 4, flex: 1 },
-  mainTitle: { color: "#fff", fontSize: isTV ? ps(1.8) : ps(1.1), fontWeight: fw("900"), fontFamily: THEME.fonts.bold, letterSpacing: -0.5 },
-  subTitle: { color: "rgba(255,255,255,0.6)", fontSize: isTV ? ps(0.9) : ps(0.7), fontWeight: fw("600"), fontFamily: THEME.fonts.medium },
+  mainTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", fontFamily: THEME.fonts.bold, letterSpacing: -0.5 },
+  subTitle: { color: "rgba(255,255,255,0.6)", fontSize: ps(0.9), fontWeight: "600", fontFamily: THEME.fonts.medium },
   headerRight: { paddingTop: 8 },
   qualityBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.1)", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
-  qualityBadgeText: { color: "#fff", fontSize: ps(0.7), fontWeight: fw("900"), fontFamily: THEME.fonts.bold, letterSpacing: 1 },
+  qualityBadgeText: { color: "#fff", fontSize: ps(0.7), fontWeight: "900", fontFamily: THEME.fonts.bold, letterSpacing: 1 },
   centerRow: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: pw(8) },
-  playBtnContainer: { width: ps(5.5), height: ps(5.5), alignItems: "center", justifyContent: "center" },
-  // Round the gradient itself (borderRadius = half its size) instead of relying
-  // on overflow:"hidden", which on Android clips a circle into an octagon.
-  mainPlayBtn: { width: ps(4.8), height: ps(4.8), borderRadius: ps(2.4), borderWidth: 3, borderColor: "transparent" },
-  mainPlayBtnFocused: { borderColor: "#fff", transform: [{ scale: 1.08 }] },
-  mainPlayGradient: { flex: 1, borderRadius: ps(2.4), alignItems: "center", justifyContent: "center" },
-  skipBtn: { padding: 16, borderRadius: ps(3), borderWidth: 2, borderColor: "transparent" },
-  skipInner: { alignItems: "center", gap: 4 },
-  skipLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.75), fontWeight: fw("700"), fontFamily: THEME.fonts.bold },
-  controlFocused: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.08)" },
+  playBtnContainer: { width: ps(6), height: ps(6), alignItems: "center", justifyContent: "center" },
+  mainPlayBtn: { width: ps(4.8), height: ps(4.8), borderRadius: ps(2.4), overflow: "hidden", borderWidth: 2, borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(0,0,0,0.5)" },
+  mainPlayBtnFocused: { borderColor: "#fff", transform: [{ scale: 1.08 }], backgroundColor: "rgba(255,255,255,0.1)" },
+  mainPlayGradient: { flex: 1, width: "100%", height: "100%", borderRadius: ps(2.4), alignItems: "center", justifyContent: "center" },
+  skipBtn: {
+    width: ps(4.2),
+    height: ps(4.2),
+    borderRadius: ps(2.1),
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    overflow: "hidden",
+  },
+  skipInner: { flex: 1, width: "100%", height: "100%", borderRadius: ps(2.1), alignItems: "center", justifyContent: "center", gap: 1 },
+  skipLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.65), fontWeight: "800", fontFamily: THEME.fonts.bold },
+  controlFocused: { borderColor: "#fff", transform: [{ scale: 1.08 }], backgroundColor: "rgba(255,255,255,0.1)" },
   bottomOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: pw(5), zIndex: 10 },
   glassControls: { backgroundColor: "rgba(25,25,30,0.85)", borderRadius: 16, paddingVertical: 8, paddingHorizontal: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)" },
   progressSection: { gap: 4, marginBottom: 4 },
   timeRow: { flexDirection: "row", justifyContent: "space-between" },
-  timeText: { color: "#fff", fontSize: ps(0.8), fontWeight: fw("700"), fontFamily: THEME.fonts.bold },
+  timeText: { color: "#fff", fontSize: ps(0.8), fontWeight: "700", fontFamily: THEME.fonts.bold },
 
   // Progress bar — focusable on TV
   progressBarWrapper: {
@@ -990,39 +1026,30 @@ const S = StyleSheet.create({
     borderWidth: 2,
     borderColor: "transparent",
   },
-  progressBarFocused: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
   progressBarInner: {
     gap: 4,
   },
   progressRail: { height: 4, width: "100%", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 2, overflow: "visible" },
-  progressRailFocused: { height: 6, borderRadius: 3 },
   bufferBar: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,255,255,0.1)" },
   progressFill: { height: "100%", borderRadius: 2, overflow: "hidden" },
-  scrubber: { position: "absolute", top: -6, width: 14, height: 14, borderRadius: 7, backgroundColor: "white", borderWidth: 3, borderColor: "rgba(255,27,138,0.8)", marginLeft: -7 },
-  scrubberFocused: { width: 20, height: 20, borderRadius: 10, top: -8, marginLeft: -10, borderWidth: 4, borderColor: "#fff", shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 10 },
+  scrubber: { position: "absolute", top: -6, width: 14, height: 14, borderRadius: 7, backgroundColor: "white", borderWidth: 3, borderColor: "rgba(255, 27, 35, 0.8)", marginLeft: -7 },
+  scrubberFocused: { width: 22, height: 22, borderRadius: 11, top: -9, marginLeft: -11, borderWidth: 4, borderColor: "#fff", shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 10 },
   seekHint: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
-  seekHintText: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.7), fontWeight: fw("600"), fontFamily: THEME.fonts.medium },
+  seekHintText: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.7), fontWeight: "600", fontFamily: THEME.fonts.medium },
 
   liveBadgeRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#ff2d55" },
-  liveText: { color: "#fff", fontSize: ps(0.85), fontWeight: fw("900"), fontFamily: THEME.fonts.bold, letterSpacing: 1 },
-  // On phone the 6 control buttons can't fit one row — let them wrap instead of
-  // overflowing off-screen, and keep both groups tappable.
-  actionsRow: { flexDirection: "row", flexWrap: "wrap", rowGap: 8, columnGap: 8, justifyContent: "space-between", alignItems: "center" },
+  liveText: { color: "#fff", fontSize: ps(0.85), fontWeight: "900", fontFamily: THEME.fonts.bold, letterSpacing: 1 },
+  actionsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   actionsLeft: { flexDirection: "row", alignItems: "center", gap: pw(1) },
-  iconChip: { padding: isPhone ? 10 : 6, minWidth: isPhone ? 44 : undefined, minHeight: isPhone ? 44 : undefined, alignItems: "center", justifyContent: "center", borderRadius: 6, borderWidth: 2, borderColor: "transparent" },
+  iconChip: { padding: 6, borderRadius: 6, borderWidth: 1, borderColor: "transparent" },
   iconChipFocused: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.1)" },
   vSeparator: { width: 1, height: 12, backgroundColor: "rgba(255,255,255,0.2)" },
   actionLabelBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
-  actionLabel: { color: "#fff", fontSize: ps(0.75), fontWeight: fw("900"), fontFamily: THEME.fonts.bold },
-  actionsRight: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: pw(1) },
-  settingBtn: { alignItems: "center", justifyContent: "center", gap: 4, paddingHorizontal: isPhone ? 10 : 12, paddingVertical: isPhone ? 8 : 4, minHeight: isPhone ? 44 : undefined, borderRadius: 8, borderWidth: 2, borderColor: "transparent" },
-  settingLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.9), fontWeight: fw("900"), fontFamily: THEME.fonts.bold },
-  // Fixed, centered width so cycling 1.00x→1.25x→0.75x etc. (variable-width
-  // digits in a proportional font) can't resize the button and re-flow the row.
-  speedValue: { minWidth: ps(3.4), textAlign: "center" },
+  actionLabel: { color: "#fff", fontSize: ps(0.75), fontWeight: "900", fontFamily: THEME.fonts.bold },
+  actionsRight: { flexDirection: "row", alignItems: "center", gap: pw(1) },
+  settingBtn: { alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, borderWidth: 2, borderColor: "transparent" },
+  settingLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.9), fontWeight: "900", fontFamily: THEME.fonts.bold },
 
   // ─── Premium Modal Styles ─────────────────────────────────────────────
   modalContent: {
@@ -1035,44 +1062,32 @@ const S = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.08)",
     overflow: "hidden",
   },
-  // Phone: dock flush to both side edges and the bottom as a sheet.
-  modalContentBottom: {
-    width: "100%",
-    maxWidth: "100%",
-    maxHeight: "88%",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    borderBottomWidth: 0,
-    paddingBottom: 14,
-  },
   modalHeader: {
     alignItems: "center",
-    paddingTop: isPhone ? ps(1.2) : ps(2),
-    paddingBottom: isPhone ? ps(0.8) : ps(1.2),
+    paddingTop: ps(2),
+    paddingBottom: ps(1.2),
     paddingHorizontal: 20,
   },
   modalIconBg: {
-    width: isPhone ? ps(2.6) : ps(4),
-    height: isPhone ? ps(2.6) : ps(4),
-    borderRadius: isPhone ? ps(1.3) : ps(2),
+    width: ps(4),
+    height: ps(4),
+    borderRadius: ps(2),
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: isPhone ? ps(0.5) : ps(0.8),
+    marginBottom: ps(0.8),
   },
   modalTitle: {
     color: "#fff",
-    fontSize: isPhone ? ps(1.4) : ps(2),
-    fontWeight: fw("900"),
+    fontSize: ps(2),
+    fontWeight: "900",
     fontFamily: THEME.fonts.bold,
     letterSpacing: -0.5,
     textAlign: "center",
   },
   modalSubtitle: {
     color: "rgba(255,255,255,0.4)",
-    fontSize: isPhone ? ps(0.8) : ps(1),
-    fontWeight: fw("600"),
+    fontSize: ps(1),
+    fontWeight: "600",
     fontFamily: THEME.fonts.medium,
     marginTop: 4,
     textAlign: "center",
@@ -1094,14 +1109,14 @@ const S = StyleSheet.create({
   emptyText: {
     color: "rgba(255,255,255,0.3)",
     fontSize: ps(1.2),
-    fontWeight: fw("600"),
+    fontWeight: "600",
     fontFamily: THEME.fonts.medium,
   },
   modalOption: {
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 16,
-    paddingVertical: isPhone ? ps(0.7) : ps(1),
+    paddingVertical: ps(1),
     paddingHorizontal: 16,
     marginBottom: 6,
     borderWidth: 2,
@@ -1110,7 +1125,7 @@ const S = StyleSheet.create({
   },
   modalOptionSelected: {
     backgroundColor: "rgba(255,27,138,0.12)",
-    borderColor: "rgba(255,27,138,0.3)",
+    borderColor: "rgba(255, 27, 27, 0.3)",
   },
   modalOptionFocused: {
     borderColor: "#fff",
@@ -1129,9 +1144,9 @@ const S = StyleSheet.create({
     flex: 1,
   },
   trackIndexBadge: {
-    width: isPhone ? ps(1.8) : ps(2.5),
-    height: isPhone ? ps(1.8) : ps(2.5),
-    borderRadius: isPhone ? ps(0.9) : ps(1.25),
+    width: ps(2.5),
+    height: ps(2.5),
+    borderRadius: ps(1.25),
     backgroundColor: "rgba(255,255,255,0.08)",
     alignItems: "center",
     justifyContent: "center",
@@ -1141,17 +1156,17 @@ const S = StyleSheet.create({
   },
   trackIndexText: {
     color: "rgba(255,255,255,0.5)",
-    fontSize: isPhone ? ps(0.85) : ps(1),
-    fontWeight: fw("900"),
+    fontSize: ps(1),
+    fontWeight: "900",
     fontFamily: THEME.fonts.bold,
   },
   trackIndexTextActive: {
-    color: "#000000",
+    color: "#fff",
   },
   modalOptionText: {
     color: "#fff",
-    fontSize: isPhone ? ps(1.05) : ps(1.6),
-    fontWeight: fw("700"),
+    fontSize: ps(1.6),
+    fontWeight: "700",
     fontFamily: THEME.fonts.bold,
     flex: 1,
   },
@@ -1164,18 +1179,18 @@ const S = StyleSheet.create({
     fontFamily: THEME.fonts.bold,
   },
   checkBadge: {
-    width: isPhone ? ps(1.6) : ps(2.2),
-    height: isPhone ? ps(1.6) : ps(2.2),
-    borderRadius: isPhone ? ps(0.8) : ps(1.1),
+    width: ps(2.2),
+    height: ps(2.2),
+    borderRadius: ps(1.1),
     backgroundColor: THEME.colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
   modalCloseBtn: {
     alignItems: "center",
-    paddingVertical: isPhone ? ps(0.9) : ps(1.2),
+    paddingVertical: ps(1.2),
     marginHorizontal: 16,
-    marginVertical: isPhone ? 8 : 12,
+    marginVertical: 12,
     borderRadius: 14,
     backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 2,
@@ -1187,8 +1202,8 @@ const S = StyleSheet.create({
   },
   modalCloseBtnText: {
     color: "rgba(255,255,255,0.6)",
-    fontSize: isPhone ? ps(0.95) : ps(1.2),
-    fontWeight: fw("900"),
+    fontSize: ps(1.2),
+    fontWeight: "900",
     fontFamily: THEME.fonts.bold,
     letterSpacing: 2,
   },

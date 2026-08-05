@@ -103,7 +103,7 @@ function SplashScreen() {
           ]}
         >
           <Image
-            source={require("../assets/images/splash-icon.gif")}
+            source={require("../assets/images/splash-icon.png")}
             style={styles.logoImage}
             resizeMode="contain"
           />

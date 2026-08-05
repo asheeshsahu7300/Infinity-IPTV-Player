@@ -30,8 +30,10 @@ import { Platform, AppState, AppStateStatus } from "react-native";
 import * as IntentLauncher from "expo-intent-launcher";
 import * as Linking from "expo-linking";
 
-// FLAG_ACTIVITY_NEW_TASK — launch VLC as a standalone top-level activity.
-const FLAG_ACTIVITY_NEW_TASK = 0x10000000;
+// Do NOT use FLAG_ACTIVITY_NEW_TASK (0x10000000) as it opens VLC in a separate task,
+// causing the Back button on Android to exit to the Home Screen instead of our app.
+// Using FLAG_GRANT_READ_URI_PERMISSION (1) opens VLC on top of our app's existing task stack.
+const INTENT_FLAGS = 1;
 
 export interface LaunchExternalPlayerOptions {
   url: string;
@@ -85,7 +87,7 @@ export function launchExternalPlayer({
     IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
       data: url,
       type: "video/*",
-      flags: FLAG_ACTIVITY_NEW_TASK,
+      flags: INTENT_FLAGS,
       packageName: "org.videolan.vlc",
       // VLC reads this extra as the stream title.
       extra: title ? { title } : undefined,
@@ -95,7 +97,7 @@ export function launchExternalPlayer({
       return IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
         data: url,
         type: "video/*",
-        flags: FLAG_ACTIVITY_NEW_TASK,
+        flags: INTENT_FLAGS,
         extra: title ? { title } : undefined,
       } as any);
     }).catch((err) => {

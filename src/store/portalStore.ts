@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { safeStorage } from "../services/safeStorage";
 
 // ---------------------------------------
 // PORTAL MODEL
@@ -357,27 +358,27 @@ export const usePortalStore = create<PortalState>((set, get) => ({
   },
 
   // ---------------------------------------
-  // TV DATA SETTERS (with AsyncStorage persistence)
+  // TV DATA SETTERS (with safeStorage persistence)
   // ---------------------------------------
   setChannels: async (channels) => {
     set({ channels });
     const activePortal = get().activePortal;
     if (activePortal) {
-      await AsyncStorage.setItem(`portal:${activePortal.id}:channels`, JSON.stringify(channels)).catch(console.warn);
+      await safeStorage.setItem(`portal:${activePortal.id}:channels`, JSON.stringify(channels));
     }
   },
   setVodItems: async (items) => {
     set({ vodItems: items });
     const activePortal = get().activePortal;
     if (activePortal) {
-      await AsyncStorage.setItem(`portal:${activePortal.id}:vod`, JSON.stringify(items)).catch(console.warn);
+      await safeStorage.setItem(`portal:${activePortal.id}:vod`, JSON.stringify(items));
     }
   },
   setSeries: async (series) => {
     set({ series });
     const activePortal = get().activePortal;
     if (activePortal) {
-      await AsyncStorage.setItem(`portal:${activePortal.id}:series`, JSON.stringify(series)).catch(console.warn);
+      await safeStorage.setItem(`portal:${activePortal.id}:series`, JSON.stringify(series));
     }
   },
   setCategories: async (categories) => {
@@ -394,26 +395,26 @@ export const usePortalStore = create<PortalState>((set, get) => ({
       await AsyncStorage.setItem("portals", JSON.stringify(portals));
 
       // 3. Also keep separate for legacy/direct loading if needed
-      await AsyncStorage.setItem(`portal:${activePortal.id}:categories`, JSON.stringify(categories)).catch(console.warn);
+      await safeStorage.setItem(`portal:${activePortal.id}:categories`, JSON.stringify(categories));
     }
   },
   setEpgData: async (data) => {
     set({ epgData: data });
     const activePortal = get().activePortal;
     if (activePortal) {
-      await AsyncStorage.setItem(`portal:${activePortal.id}:epg`, JSON.stringify(data)).catch(console.warn);
+      await safeStorage.setItem(`portal:${activePortal.id}:epg`, JSON.stringify(data));
     }
   },
 
-  // Load portal data from AsyncStorage
+  // Load portal data from safeStorage
   loadPortalData: async (portalId) => {
     try {
       const [channels, vodItems, series, categories, epgData] = await Promise.all([
-        AsyncStorage.getItem(`portal:${portalId}:channels`),
-        AsyncStorage.getItem(`portal:${portalId}:vod`),
-        AsyncStorage.getItem(`portal:${portalId}:series`),
-        AsyncStorage.getItem(`portal:${portalId}:categories`),
-        AsyncStorage.getItem(`portal:${portalId}:epg`),
+        safeStorage.getItem(`portal:${portalId}:channels`),
+        safeStorage.getItem(`portal:${portalId}:vod`),
+        safeStorage.getItem(`portal:${portalId}:series`),
+        safeStorage.getItem(`portal:${portalId}:categories`),
+        safeStorage.getItem(`portal:${portalId}:epg`),
       ]);
 
       if (channels) set({ channels: JSON.parse(channels) });
@@ -435,13 +436,13 @@ export const usePortalStore = create<PortalState>((set, get) => ({
 
     fav[type] = exists ? fav[type].filter((x) => x !== id) : [...fav[type], id];
 
-    await AsyncStorage.setItem("favorites", JSON.stringify(fav));
+    await safeStorage.setItem("favorites", JSON.stringify(fav));
     set({ favorites: fav });
   },
 
   loadFavorites: async () => {
     try {
-      const data = await AsyncStorage.getItem("favorites");
+      const data = await safeStorage.getItem("favorites");
       if (data) {
         set({ favorites: JSON.parse(data) });
       }

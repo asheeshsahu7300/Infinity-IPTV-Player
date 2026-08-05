@@ -1,5 +1,5 @@
 // cacheManager.ts (fully fixed)
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { safeStorage as AsyncStorage } from "./safeStorage";
 import pako from "pako";
 
 export const CACHE_TTL = {
