@@ -184,28 +184,30 @@ const isExpired = (p: Portal) =>
   !p?.config?.expiry ||
   Number(p.config.expiry) - Date.now() < 5 * 60 * 1000;
 
-async function refreshToken(portal: Portal): Promise<Portal> {
-  if (!isExpired(portal)) return portal;
+async function refreshToken(portal: Portal, forceRefresh = false): Promise<Portal> {
+  if (!isExpired(portal) && !forceRefresh) return portal;
 
   const mac = formatMac(portal.config.mac ?? "");
   const key = portal.id;
   const cacheKey = `portal:${key}:auth`;
 
   // Reuse in-flight refresh
-  if (tokenRefreshMap.has(key)) {
+  if (tokenRefreshMap.has(key) && !forceRefresh) {
     return tokenRefreshMap.get(key)!;
   }
 
   // Try cached token first
-  const cached = await cacheManager.get<any>(cacheKey);
-  if (cached && cached.expiry > Date.now() + 5 * 60 * 1000) {
+  if (!forceRefresh) {
+    const cached = await cacheManager.get<any>(cacheKey);
+    if (cached && cached.expiry > Date.now() + 5 * 60 * 1000) {
     const updated = {
       ...portal,
       config: { ...portal.config, ...cached },
     };
     // 🟢 Sync to global state
-    usePortalStore.getState().setActivePortal(updated);
-    return updated;
+      usePortalStore.getState().setActivePortal(updated);
+      return updated;
+    }
   }
 
   // Start new auth flow
@@ -256,6 +258,37 @@ async function refreshToken(portal: Portal): Promise<Portal> {
   return refreshPromise;
 }
 
+// Helper for fetching lists with zero-item retry logic
+async function fetchWithRetry(
+  portal: Portal,
+  urlBuilder: (refreshed: Portal) => string
+): Promise<any[]> {
+  let refreshed = await refreshToken(portal);
+  let url = urlBuilder(refreshed);
+
+  let res = await axios.get(url, {
+    ...rmAcceptHeader,
+    headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? ""),
+    timeout: 15000,
+  });
+
+  let rows = extract(res);
+
+  if (rows.length === 0) {
+    console.log(`[portalApi] 0 items returned for ${url}, forcing token refresh and retrying...`);
+    refreshed = await refreshToken(portal, true);
+    url = urlBuilder(refreshed);
+    res = await axios.get(url, {
+      ...rmAcceptHeader,
+      headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? ""),
+      timeout: 15000,
+    });
+    rows = extract(res);
+  }
+
+  return rows;
+}
+
 export const portalApi = {
   async authenticate(portal: Portal) {
     const base = safe(portal.config.url).replace(/\/$/, "");
@@ -292,21 +325,10 @@ export const portalApi = {
     const cacheKey = `portal:${key}:live:categories`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      console.log(refreshed);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      const url = `${base}/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml`;
-
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
-        ),
-        timeout: 15000,
+      const rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        return `${base}/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml`;
       });
-
-      const rows = extract(res);
       const result = rows.map((c: any) => ({
         id: String(c.id ?? c.gid ?? ""),
         name: c.title ?? c.name ?? c.genre_name ?? "Unknown",
@@ -328,22 +350,13 @@ export const portalApi = {
       }:${page}`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      let url = `${base}/portal.php?type=itv&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
-      if (categoryId && categoryId !== "all")
-        url += `&genre=${encodeURIComponent(categoryId)}`;
-
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
-        ),
-        timeout: 15000,
+      const rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        let url = `${base}/portal.php?type=itv&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
+        if (categoryId && categoryId !== "all")
+          url += `&genre=${encodeURIComponent(categoryId)}`;
+        return url;
       });
-
-      const rows = extract(res);
       const result = rows.map((c: any) => ({
         id: String(c.id ?? c.cmd ?? ""),
         name: c.name ?? c.title ?? "Unknown",
@@ -364,20 +377,10 @@ export const portalApi = {
     const cacheKey = `portal:${key}:vod:categories`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      const url = `${base}/portal.php?type=vod&action=get_categories&JsHttpRequest=1-xml`;
-
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
-        ),
-        timeout: 15000,
+      const rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        return `${base}/portal.php?type=vod&action=get_categories&JsHttpRequest=1-xml`;
       });
-
-      const rows = extract(res);
       const result = rows.map((c: any) => ({
         id: String(c.id ?? ""),
         name: c.title ?? c.name ?? "Unknown",
@@ -398,22 +401,13 @@ export const portalApi = {
     const cacheKey = `portal:${key}:vod:items:${categoryId ?? "all"}:${page}`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      let url = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
-      if (categoryId && categoryId !== "all")
-        url += `&category=${encodeURIComponent(categoryId)}`;
-
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
-        ),
-        timeout: 15000,
+      const rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        let url = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
+        if (categoryId && categoryId !== "all")
+          url += `&category=${encodeURIComponent(categoryId)}`;
+        return url;
       });
-
-      const rows = extract(res);
       const result = rows.map((v: any) => ({
         id: String(v.id ?? ""),
         name: v.name ?? v.title ?? "Unknown",
@@ -437,20 +431,10 @@ export const portalApi = {
     const cacheKey = `portal:${key}:series:categories`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      const url = `${base}/portal.php?type=series&action=get_categories&JsHttpRequest=1-xml`;
-
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
-        ),
-        timeout: 15000,
+      const rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        return `${base}/portal.php?type=series&action=get_categories&JsHttpRequest=1-xml`;
       });
-
-      const rows = extract(res);
       const result = rows.map((c: any) => ({
         id: String(c.id ?? ""),
         name: c.title ?? c.name ?? "Unknown",
@@ -471,22 +455,13 @@ export const portalApi = {
     const cacheKey = `portal:${key}:series:list:${categoryId ?? "all"}:${page}`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      let url = `${base}/portal.php?type=series&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
-      if (categoryId && categoryId !== "all")
-        url += `&category=${encodeURIComponent(categoryId)}`;
-
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
-        ),
-        timeout: 15000,
+      const rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        let url = `${base}/portal.php?type=series&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
+        if (categoryId && categoryId !== "all")
+          url += `&category=${encodeURIComponent(categoryId)}`;
+        return url;
       });
-
-      const rows = extract(res);
       const result = rows.map((v: any) => ({
         id: String(v.id ?? ""),
         name: v.name ?? v.title ?? "Unknown",
@@ -508,22 +483,12 @@ export const portalApi = {
     const cacheKey = `portal:${key}:series:info:${seriesId}`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      const url = `${base}/portal.php?type=series&action=get_ordered_list&movie_id=${encodeURIComponent(
-        seriesId
-      )}&JsHttpRequest=1-xml`;
-
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
-        ),
-        timeout: 15000,
+      const rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        return `${base}/portal.php?type=series&action=get_ordered_list&movie_id=${encodeURIComponent(
+          seriesId
+        )}&JsHttpRequest=1-xml`;
       });
-
-      const rows = extract(res);
       const seasons: Season[] = [];
 
       for (const s of rows) {
@@ -695,22 +660,14 @@ export const portalApi = {
   },
 
   async search(portal: Portal, q: string, type: string) {
-    const refreshed = await refreshToken(portal);
-    const base = safe(refreshed.config.url).replace(/\/$/, "");
-    const url = `${base}/portal.php?type=${type}&action=get_ordered_list&search=${encodeURIComponent(
-      q
-    )}&JsHttpRequest=1-xml`;
-
-    const res = await axios.get(url, {
-      ...rmAcceptHeader,
-      headers: headers(
-        refreshed.config.mac ?? "",
-        refreshed.config.token ?? ""
-      ),
-      timeout: 15000,
+    const rows = await fetchWithRetry(portal, (refreshed) => {
+      const base = safe(refreshed.config.url).replace(/\/$/, "");
+      return `${base}/portal.php?type=${type}&action=get_ordered_list&search=${encodeURIComponent(
+        q
+      )}&JsHttpRequest=1-xml`;
     });
 
-    return extract(res);
+    return rows;
   },
 
   async getLiveChannelsForSearch(portal: Portal): Promise<Channel[]> {
@@ -718,20 +675,10 @@ export const portalApi = {
     const cacheKey = `portal:${key}:live:channels:search:all`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      let url = `${base}/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml`;
-
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? ""
-        ),
-        timeout: 20000,
+      const rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        return `${base}/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml`;
       });
-
-      const rows = extract(res);
       const result: Channel[] = rows.map((c: any) => ({
         id: String(c.id ?? c.cmd ?? ""),
         name: c.name ?? c.title ?? "Unknown",

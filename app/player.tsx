@@ -158,7 +158,11 @@ export default function PlayerScreen() {
 
   useEffect(() => {
     if (Platform.OS === "web") return;
-    ScreenOrientation.unlockAsync();
+    if (!isTV) {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+    } else {
+      ScreenOrientation.unlockAsync();
+    }
     Brightness.getBrightnessAsync().then(b => {
       if (!isNaN(b)) brightnessRef.current = b;
     });
@@ -546,9 +550,9 @@ export default function PlayerScreen() {
       "Connection": "keep-alive",
     },
     initOptions: [
-      "--network-caching=1500",
-      "--live-caching=1500",
-      "--file-caching=1500",
+      `--network-caching=${isLive ? 30000 : 5000}`,
+      `--live-caching=${isLive ? 30000 : 5000}`,
+      `--file-caching=${isLive ? 30000 : 5000}`,
       "--avcodec-hw=any", // CRITICAL for 4K streams (hardware decoding)
       "--http-reconnect",
       "--http-user-agent=okhttp/3.12.1",
