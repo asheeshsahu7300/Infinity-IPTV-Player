@@ -102,7 +102,7 @@ export default function PlayerScreen() {
   useEffect(() => {
     setIsSeekable(!isLive);
   }, [isLive]);
-  
+
   // Handle AppState (backgrounding the app) and PlaybackState
   useEffect(() => {
     PlaybackState.setActive(true);
@@ -207,6 +207,11 @@ export default function PlayerScreen() {
 
   const dummyLeftFocusedRef = useRef(false);
   const dummyRightFocusedRef = useRef(false);
+  // True whenever focus sits on ANY button that owns its own Left/Right
+  // navigation (settings row, center play/skip row, or the rewind/ff chips)
+  // — excluded from the global seek fallback below so pressing Left/Right
+  // there navigates between sibling buttons instead of ALSO seeking.
+  const isNavRowFocusedRef = useRef(false);
   const accumulatedDelta = useRef(0);
 
   const isFullscreenRef = useRef(isFullscreen);
@@ -220,8 +225,19 @@ export default function PlayerScreen() {
   const accumulateSeekRef = useRef<(delta: number) => void>(() => { });
   const handleTapRef = useRef<(x: number) => void>(() => { });
 
+  // Reusable handlers to mark/unmark "this button owns Left/Right navigation".
+  // Spread onto every Focusable in a horizontally-arranged row.
+  const navRowFocusHandlers = {
+    onFocus: () => { isNavRowFocusedRef.current = true; },
+    onBlur: () => { isNavRowFocusedRef.current = false; },
+  };
+
   useEffect(() => {
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+      // If the user intentionally backs out of the player normally, clear any stale external resume marker
+      safeStorage.removeItem('resume_player_state').catch(() => { });
+    };
   }, []);
 
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
@@ -537,8 +553,12 @@ export default function PlayerScreen() {
         if (!showControlsRef.current) {
           if (!isLive) seek(-10000);
           setShowControls(true);
-        } else if (seekBarFocusedRef.current || dummyLeftFocusedRef.current || dummyRightFocusedRef.current) {
-          if (!isLive) accumulateSeek(-10000);
+        } else if (!isLive && !isNavRowFocusedRef.current) {
+          if (seekBarFocusedRef.current || dummyLeftFocusedRef.current || dummyRightFocusedRef.current) {
+            accumulateSeek(-10000);
+          } else {
+            seek(-10000);
+          }
         }
         resetControlsTimeout();
       },
@@ -547,8 +567,12 @@ export default function PlayerScreen() {
         if (!showControlsRef.current) {
           if (!isLive) seek(10000);
           setShowControls(true);
-        } else if (seekBarFocusedRef.current || dummyLeftFocusedRef.current || dummyRightFocusedRef.current) {
-          if (!isLive) accumulateSeek(10000);
+        } else if (!isLive && !isNavRowFocusedRef.current) {
+          if (seekBarFocusedRef.current || dummyLeftFocusedRef.current || dummyRightFocusedRef.current) {
+            accumulateSeek(10000);
+          } else {
+            seek(10000);
+          }
         }
         resetControlsTimeout();
       },
@@ -709,7 +733,6 @@ export default function PlayerScreen() {
       "--avcodec-hw=any",
       "--avcodec-fast",
       "--avcodec-skiploopfilter=1",
-      "--mediacodec-dr",
       "--http-reconnect",
       "--http-continuous",
       "--http-user-agent=okhttp/3.12.1",
@@ -816,6 +839,7 @@ export default function PlayerScreen() {
                   focusStyle={S.controlFocused}
                   style={S.skipBtn}
                   onPress={() => seek(-10000)}
+                  {...navRowFocusHandlers}
                 >
                   {(focused) => (
                     <View style={S.skipInner}>
@@ -832,6 +856,7 @@ export default function PlayerScreen() {
                   focusStyle={S.mainPlayBtnFocused}
                   style={S.mainPlayBtn}
                   onPress={togglePlay}
+                  {...navRowFocusHandlers}
                 >
                   <LinearGradient colors={["rgba(255,255,255,0.05)", "rgba(255,255,255,0.05)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.mainPlayGradient}>
                     <Ionicons name={isPlaying ? "pause" : "play"} size={ps(2)} color="#fff" />
@@ -844,6 +869,7 @@ export default function PlayerScreen() {
                   focusStyle={S.controlFocused}
                   style={S.skipBtn}
                   onPress={() => seek(10000)}
+                  {...navRowFocusHandlers}
                 >
                   {(focused) => (
                     <View style={S.skipInner}>
@@ -947,6 +973,7 @@ export default function PlayerScreen() {
                           focusStyle={S.iconChipFocused}
                           style={S.iconChip}
                           onPress={() => seek(-10000)}
+                          {...navRowFocusHandlers}
                         >
                           <MaterialCommunityIcons name="rewind-10" size={ps(1.6)} color="white" />
                         </Focusable>
@@ -955,6 +982,7 @@ export default function PlayerScreen() {
                           focusStyle={S.iconChipFocused}
                           style={S.iconChip}
                           onPress={() => seek(60000)}
+                          {...navRowFocusHandlers}
                         >
                           <MaterialCommunityIcons name="fast-forward-60" size={ps(1.6)} color="white" />
                         </Focusable>
@@ -971,6 +999,7 @@ export default function PlayerScreen() {
                         focusStyle={S.iconChipFocused}
                         style={S.settingBtn}
                         onPress={cyclePlaybackSpeed}
+                        {...navRowFocusHandlers}
                       >
                         <Ionicons name="speedometer-outline" size={ps(1.4)} color="white" />
                         <Text style={S.settingLabel}>{playbackSpeed.toFixed(2)}x</Text>
@@ -980,6 +1009,7 @@ export default function PlayerScreen() {
                         focusStyle={S.iconChipFocused}
                         style={S.settingBtn}
                         onPress={() => { if (isLockedRef.current) return; setShowSubtitleModal(true); }}
+                        {...navRowFocusHandlers}
                       >
                         <Ionicons name="text-outline" size={ps(1.4)} color="white" />
                         <Text style={S.settingLabel}>SUBTITLES</Text>
@@ -989,6 +1019,7 @@ export default function PlayerScreen() {
                         focusStyle={S.iconChipFocused}
                         style={S.settingBtn}
                         onPress={() => { if (isLockedRef.current) return; setShowAudioModal(true); }}
+                        {...navRowFocusHandlers}
                       >
                         <Ionicons name="musical-notes-outline" size={ps(1.4)} color="white" />
                         <Text style={S.settingLabel}>AUDIO</Text>
@@ -998,6 +1029,7 @@ export default function PlayerScreen() {
                         focusStyle={S.iconChipFocused}
                         style={S.settingBtn}
                         onPress={cycleAspectRatio}
+                        {...navRowFocusHandlers}
                       >
                         <Ionicons name="expand" size={ps(1.4)} color="white" />
                         <Text style={S.settingLabel}>ASPECT</Text>
@@ -1225,7 +1257,7 @@ const S = StyleSheet.create({
     justifyContent: "center",
   },
   progressRail: { height: 4, width: "100%", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 2, overflow: "visible" },
-  progressRailFocused: { height: 4, borderRadius: 4 },
+  progressRailFocused: { height: 8, borderRadius: 4 },
   bufferBar: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,255,255,0.1)" },
   progressFill: { height: "100%", borderRadius: 2, overflow: "hidden", backgroundColor: "#fff" },
   scrubber: { position: "absolute", top: "50%", marginTop: -10, width: 20, height: 20, borderRadius: 10, backgroundColor: "white", marginLeft: -10, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.4, shadowRadius: 3, elevation: 3 },

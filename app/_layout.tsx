@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -24,6 +24,7 @@ import { DeepLink } from "../src/services/DeepLink";
 import { PlaybackState } from "../src/services/PlaybackState";
 import { isTV } from "../src/utils/tvUtils";
 import { THEME, ps, ph, pw } from "../src/theme/tokens";
+import { safeStorage } from "../src/services/safeStorage";
 
 // Inject CSS for Web to guarantee the font loads exactly as requested
 if (Platform.OS === "web" && typeof document !== "undefined" && !document.getElementById("tenor-sans-font")) {
@@ -78,11 +79,31 @@ function SplashScreen() {
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
   const isHydrated = usePortalStore((s) => s.isHydrated);
+  const router = useRouter();
 
   // Load premium Google TV fonts
   const [fontsLoaded] = useFonts({
     "Tenor Sans": TenorSans_400Regular,
   });
+
+  // Check for external player resume state after process death
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await safeStorage.getItem('resume_player_state');
+        if (raw) {
+          const state = JSON.parse(raw);
+          // guard against resuming something stale from days ago
+          if (Date.now() - state.timestamp < 5 * 60 * 1000) {
+            router.replace({ pathname: '/player', params: state });
+          }
+          await safeStorage.removeItem('resume_player_state');
+        }
+      } catch (e) {
+        console.warn('Resume state check failed', e);
+      }
+    })();
+  }, [router]);
 
   // Boot the app via AppBootManager. Capture the launch URL first so
   // app/index.tsx can replay it once the store is hydrated.
