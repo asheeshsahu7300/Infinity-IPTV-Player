@@ -14,6 +14,7 @@ import {
   BackHandler,
   findNodeHandle,
   UIManager,
+  Animated,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -57,6 +58,28 @@ const ASPECT_RATIOS: {
     { key: "fit", label: "Fit", resize: "21:9" },
   ];
 
+const AnimatedScrubber = React.memo(({ focused, progressPercent }: { focused: boolean, progressPercent: number }) => {
+  const scale = useRef(new Animated.Value(focused ? 1 : 0.01)).current;
+
+  useEffect(() => {
+    Animated.spring(scale, {
+      toValue: focused ? 1 : 0.01,
+      useNativeDriver: true,
+      friction: 7,
+      tension: 60,
+    }).start();
+  }, [focused, scale]);
+
+  return (
+    <Animated.View
+      style={[
+        S.scrubber,
+        { left: `${progressPercent}%`, transform: [{ scale }] }
+      ]}
+    />
+  );
+});
+
 export default function PlayerScreen() {
   useKeepAwake();
   const router = useRouter();
@@ -79,7 +102,11 @@ export default function PlayerScreen() {
   // Core player state
   const [streamUrl, setStreamUrl] = useState(params.url || "");
   const [seekBarNode, setSeekBarNode] = useState<number | undefined>(undefined);
+  const [dummyLeftNode, setDummyLeftNode] = useState<number | undefined>(undefined);
+  const [dummyRightNode, setDummyRightNode] = useState<number | undefined>(undefined);
   const seekBarRef = useRef<any>(null);
+  const dummyLeftRef = useRef<View>(null);
+  const dummyRightRef = useRef<View>(null);
   const [showControls, setShowControls] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -99,6 +126,22 @@ export default function PlayerScreen() {
   const [showSubtitleModal, setShowSubtitleModal] = useState(false);
   const [focusedControl, setFocusedControl] = useState<string | null>(null);
   const [seekBarFocused, setSeekBarFocused] = useState(false);
+  const [visualFocus, setVisualFocus] = useState(false);
+  const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSeekFocus = useCallback(() => {
+    if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
+    setSeekBarFocused(true);
+    setVisualFocus(true);
+  }, []);
+
+  const handleSeekBlur = useCallback(() => {
+    if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
+    focusTimeoutRef.current = setTimeout(() => {
+      setSeekBarFocused(false);
+      setVisualFocus(false);
+    }, 150);
+  }, []);
 
   const [audioTracks, setAudioTracks] = useState<any[]>([]);
   const [selectedAudioTrack, setSelectedAudioTrack] = useState<number | undefined>(undefined);
@@ -109,10 +152,10 @@ export default function PlayerScreen() {
   const [seekIndicator, setSeekIndicator] = useState<string | null>(null);
   const [volumeIndicator, setVolumeIndicator] = useState<number | null>(null);
   const [brightnessIndicator, setBrightnessIndicator] = useState<number | null>(null);
-  const [showCastToast, setShowCastToast] = useState(false);
   const [vlcPosition, setVlcPosition] = useState(0);
 
   const hasSetInitialPosition = useRef(false);
+  const lockBtnRef = useRef<any>(null);
   const savedResumePosition = useRef(0);
   const retryCount = useRef(0);
   const maxRetries = 3;
@@ -143,17 +186,56 @@ export default function PlayerScreen() {
   const showSubtitleModalRef = useRef(showSubtitleModal);
   const seekBarFocusedRef = useRef(seekBarFocused);
 
+  const dummyLeftFocusedRef = useRef(false);
+  const dummyRightFocusedRef = useRef(false);
+  const accumulatedDelta = useRef(0);
+
+  const isFullscreenRef = useRef(isFullscreen);
+  const positionRef = useRef(position);
+  const durationRef = useRef(duration);
+  const isSeekableRef = useRef(isSeekable);
+  const isScrubbing = useRef(false);
+  const isAdjustingVolume = useRef(false);
+  const isAdjustingBrightness = useRef(false);
+  const mountedRef = useRef(true);
+  const accumulateSeekRef = useRef<(delta: number) => void>(() => { });
+  const handleTapRef = useRef<(x: number) => void>(() => { });
+
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
+
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
   useEffect(() => { showControlsRef.current = showControls; }, [showControls]);
   useEffect(() => { isLockedRef.current = isLocked; }, [isLocked]);
   useEffect(() => { showAudioModalRef.current = showAudioModal; }, [showAudioModal]);
   useEffect(() => { showSubtitleModalRef.current = showSubtitleModal; }, [showSubtitleModal]);
   useEffect(() => { seekBarFocusedRef.current = seekBarFocused; }, [seekBarFocused]);
+  useEffect(() => { isFullscreenRef.current = isFullscreen; }, [isFullscreen]);
+  useEffect(() => { positionRef.current = position; }, [position]);
+  useEffect(() => { durationRef.current = duration; }, [duration]);
+  useEffect(() => { isSeekableRef.current = isSeekable; }, [isSeekable]);
 
   useEffect(() => {
-    if (showControls && seekBarRef.current) {
-      setSeekBarNode(findNodeHandle(seekBarRef.current) ?? undefined);
+    let mounted = true;
+    if (showControls) {
+      const attachNodes = () => {
+        if (!mounted) return;
+        const seek = seekBarRef.current ? findNodeHandle(seekBarRef.current) : null;
+        const left = dummyLeftRef.current ? findNodeHandle(dummyLeftRef.current) : null;
+        const right = dummyRightRef.current ? findNodeHandle(dummyRightRef.current) : null;
+
+        if (seek && left && right) {
+          setSeekBarNode(seek);
+          setDummyLeftNode(left);
+          setDummyRightNode(right);
+        } else if (isTV) {
+          requestAnimationFrame(attachNodes);
+        }
+      };
+      attachNodes();
     }
+    return () => { mounted = false; };
   }, [showControls]);
 
   useEffect(() => {
@@ -187,28 +269,24 @@ export default function PlayerScreen() {
     };
   }, []);
 
-  // Handle hardware back button: hide controls first, then navigate back
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      // If a modal is open, close it (the Overlay handles this itself)
-      if (showAudioModalRef.current || showSubtitleModalRef.current) {
-        return false; // Let Overlay handle it
+      // Use refs to read current state without causing effect teardown
+      if (isFullscreenRef.current) {
+        setIsFullscreen(false);
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        return true;
       }
-      // If controls are showing, hide them
       if (showControlsRef.current) {
         setShowControls(false);
         if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
         return true;
       }
-      // Controls are hidden – navigate back
-      if (params.contentId && position > 0 && duration > 0) {
-        StreamManager.savePlaybackPosition(params.contentId, position, duration);
-      }
-      router.back();
-      return true;
+      StreamManager.savePlaybackPosition(params.contentId as string, positionRef.current, durationRef.current);
+      return false;
     });
     return () => sub.remove();
-  }, [position, duration, params.contentId]);
+  }, [params.contentId]);
 
   useEffect(() => {
     const loadSettingsAndResume = async () => {
@@ -247,7 +325,7 @@ export default function PlayerScreen() {
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 10 || Math.abs(gestureState.dy) > 10;
+        return !isLockedRef.current && (Math.abs(gestureState.dx) > 10 || Math.abs(gestureState.dy) > 10);
       },
       onPanResponderGrant: (evt, _) => {
         initialTouch.current = {
@@ -259,15 +337,21 @@ export default function PlayerScreen() {
         resetControlsTimeout();
       },
       onPanResponderMove: (_, gestureState) => {
-        if (isLocked) return;
+        if (isLockedRef.current) return;
         const { dx, dy } = gestureState;
-        const absDx = Math.abs(dx);
-        const absDy = Math.abs(dy);
 
-        if (absDy > absDx && absDy > 20) {
-          const isRight = initialTouch.current.x > SCREEN_WIDTH / 2;
+        if (!isScrubbing.current && !isAdjustingVolume.current && !isAdjustingBrightness.current) {
+          if (Math.abs(dx) > Math.abs(dy) && isSeekableRef.current && durationRef.current > 0) {
+            isScrubbing.current = true;
+          } else if (Math.abs(dy) > Math.abs(dx)) {
+            if (initialTouch.current.x > SCREEN_WIDTH / 2) isAdjustingVolume.current = true;
+            else isAdjustingBrightness.current = true;
+          }
+        }
+
+        if (isAdjustingVolume.current || isAdjustingBrightness.current) {
           const delta = -dy / 250;
-          if (isRight) {
+          if (isAdjustingVolume.current) {
             let newVol = Math.min(100, Math.max(0, initialTouch.current.val + (delta * 100)));
             volumeRef.current = newVol;
             setCurrentVolume(newVol);
@@ -278,55 +362,43 @@ export default function PlayerScreen() {
             setBrightnessIndicator(newBright);
             Brightness.setBrightnessAsync(newBright);
           }
-        } else if (absDx > absDy && absDx > 20 && isSeekable && params.type !== "live") {
+        } else if (isScrubbing.current) {
           const seekAmount = Math.round(dx / 10) * 1000;
           setSeekIndicator(`${seekAmount > 0 ? "+" : ""}${seekAmount / 1000}s`);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
-        // Clear indicators
         setVolumeIndicator(null);
         setBrightnessIndicator(null);
-        const { dx, dy } = gestureState;
-        if (Math.abs(dx) > 30 && isSeekable && params.type !== "live" && !isLocked && Math.abs(dx) > Math.abs(dy)) {
-          seek(Math.round(dx / 10) * 1000);
+        if (isScrubbing.current) {
+          const seekAmount = Math.round(gestureState.dx / 10) * 1000;
+          accumulateSeekRef.current(seekAmount);
         }
-        setSeekIndicator(null);
-        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) handleTap(gestureState.x0);
+        isScrubbing.current = false;
+        isAdjustingVolume.current = false;
+        isAdjustingBrightness.current = false;
+        if (Math.abs(gestureState.dx) < 10 && Math.abs(gestureState.dy) < 10) handleTapRef.current(gestureState.x0);
       },
     })
   ).current;
 
-  const handleTap = (x: number) => {
-    const now = Date.now();
-    if (now - lastTapTime.current < 300) {
-      if (tapTimeout.current) clearTimeout(tapTimeout.current);
-      if (isLocked) { setShowCastToast(true); return; }
-      const isRight = x > SCREEN_WIDTH / 2;
-      if (isSeekable && params.type !== "live") {
-        seek(isRight ? 10000 : -10000);
-        setSeekIndicator(isRight ? "+10s" : "-10s");
-        setTimeout(() => setSeekIndicator(null), 500);
-      }
-    } else {
-      tapTimeout.current = setTimeout(() => {
-        setShowControls(p => {
-          const next = !p;
-          if (next) resetControlsTimeout();
-          return next;
-        });
-      }, 300);
-    }
-    lastTapTime.current = now;
-  };
+
+
+  const cycleAspectRatio = useCallback(() => {
+    if (isLockedRef.current) return;
+    setAspectRatioIndex(p => (p + 1) % ASPECT_RATIOS.length);
+    resetControlsTimeout();
+  }, [resetControlsTimeout]);
 
   const togglePlay = useCallback(() => {
+    if (isLockedRef.current) return;
     setIsPlaying(prev => !prev);
     resetControlsTimeout();
   }, [resetControlsTimeout]);
 
   const seek = useCallback(async (delta: number) => {
-    if ((vlcPlayerRef.current || expoVideoRef.current) && duration > 0 && isSeekable) {
+    if (isLockedRef.current) return;
+    if (duration > 0 && isSeekable) {
       try {
         isSeeking.current = true;
         if (seekTimeout.current) clearTimeout(seekTimeout.current);
@@ -343,50 +415,128 @@ export default function PlayerScreen() {
     }
   }, [duration, isSeekable, position, resetControlsTimeout]);
 
+  const handleTap = useCallback((x: number) => {
+    const now = Date.now();
+    if (now - lastTapTime.current < 300) {
+      if (tapTimeout.current) clearTimeout(tapTimeout.current);
+      if (isLockedRef.current) { return; }
+      const isRight = x > SCREEN_WIDTH / 2;
+      if (isSeekableRef.current && params.type !== "live") {
+        seek(isRight ? 10000 : -10000);
+        setSeekIndicator(isRight ? "+10s" : "-10s");
+        setTimeout(() => setSeekIndicator(null), 500);
+      }
+    } else {
+      tapTimeout.current = setTimeout(() => {
+        setShowControls(p => {
+          const next = !p;
+          if (next) resetControlsTimeout();
+          return next;
+        });
+      }, 300);
+    }
+    lastTapTime.current = now;
+  }, [params.type, seek, resetControlsTimeout]);
+
+  useEffect(() => {
+    handleTapRef.current = handleTap;
+  }, [handleTap]);
+
+  const accumulateSeek = useCallback((delta: number) => {
+    if (isLockedRef.current) return;
+    if (duration <= 0 || !isSeekable || params.type === "live") return;
+
+    if (targetSeekPosition.current === null) {
+      targetSeekPosition.current = position;
+      accumulatedDelta.current = 0;
+    }
+
+    targetSeekPosition.current = Math.max(0, Math.min(targetSeekPosition.current + delta, duration));
+    accumulatedDelta.current += delta;
+
+    // UI Updates instantly
+    setPosition(targetSeekPosition.current);
+    const sign = accumulatedDelta.current > 0 ? "+" : "";
+    const sec = Math.abs(accumulatedDelta.current) / 1000;
+    setSeekIndicator(`${sign}${sec}s`);
+
+    if (seekTimeout.current) clearTimeout(seekTimeout.current);
+    isSeeking.current = true;
+
+    seekTimeout.current = setTimeout(async () => {
+      if (!mountedRef.current) return;
+      try {
+        const finalPos = targetSeekPosition.current;
+        if (finalPos !== null) {
+          if (vlcPlayerRef.current) vlcPlayerRef.current.seek(finalPos / duration);
+          else if (expoVideoRef.current) await expoVideoRef.current.setPositionAsync(finalPos);
+        }
+      } catch (e) {
+        console.error("Seek error:", e);
+      } finally {
+        isSeeking.current = false;
+        targetSeekPosition.current = null;
+        accumulatedDelta.current = 0;
+        setSeekIndicator(null);
+        if (dummyLeftFocusedRef.current || dummyRightFocusedRef.current) {
+          seekBarRef.current?.focus();
+        }
+      }
+    }, 800);
+
+    resetControlsTimeout();
+  }, [duration, isSeekable, position, resetControlsTimeout, params.type]);
+
+  useEffect(() => {
+    accumulateSeekRef.current = accumulateSeek;
+  }, [accumulateSeek]);
+
   // D-pad handler — only fires when NO modal is open.
   // When controls are hidden, any key press shows them.
-  // When controls are visible, native focus engine drives navigation.
   useDPad(
     {
       onPlayPause: () => {
+        if (isLockedRef.current) return;
         togglePlay();
         setShowControls(true);
         resetControlsTimeout();
       },
       onFastForward: () => {
+        if (isLockedRef.current) return;
         if (!isLive) seek(180000); // 3 minutes
         setShowControls(true);
         resetControlsTimeout();
       },
       onRewind: () => {
+        if (isLockedRef.current) return;
         if (!isLive) seek(-180000); // 3 minutes
         setShowControls(true);
         resetControlsTimeout();
       },
       onLeft: () => {
-        if (!showControlsRef.current && !isLive) {
-          seek(-60000); // 1 minute
-        } else if (showControlsRef.current && seekBarFocusedRef.current && !isLive) {
-          seek(-60000); // 1 minute
-          setSeekIndicator("-1 min");
-          setTimeout(() => setSeekIndicator(null), 600);
+        if (isLockedRef.current) return;
+        if (!showControlsRef.current) {
+          if (!isLive) seek(-10000);
+          setShowControls(true);
+        } else if (seekBarFocusedRef.current || dummyLeftFocusedRef.current || dummyRightFocusedRef.current) {
+          if (!isLive) accumulateSeek(-10000);
         }
-        if (!showControlsRef.current) setShowControls(true);
         resetControlsTimeout();
       },
       onRight: () => {
-        if (!showControlsRef.current && !isLive) {
-          seek(60000); // 1 minute
-        } else if (showControlsRef.current && seekBarFocusedRef.current && !isLive) {
-          seek(60000); // 1 minute
-          setSeekIndicator("+1 min");
-          setTimeout(() => setSeekIndicator(null), 600);
+        if (isLockedRef.current) return;
+        if (!showControlsRef.current) {
+          if (!isLive) seek(10000);
+          setShowControls(true);
+        } else if (seekBarFocusedRef.current || dummyLeftFocusedRef.current || dummyRightFocusedRef.current) {
+          if (!isLive) accumulateSeek(10000);
         }
-        if (!showControlsRef.current) setShowControls(true);
         resetControlsTimeout();
       },
       onSelect: () => {
+        if (isLockedRef.current) return;
         if (!showControlsRef.current) {
+          togglePlay();
           setShowControls(true);
           resetControlsTimeout();
         }
@@ -410,9 +560,8 @@ export default function PlayerScreen() {
     isTV && !showAudioModal && !showSubtitleModal
   );
 
-  const cycleAspectRatio = () => setAspectRatioIndex(p => (p + 1) % ASPECT_RATIOS.length);
-
   const cyclePlaybackSpeed = () => {
+    if (isLockedRef.current) return;
     const speeds = [1.0, 1.25, 1.5, 1.75, 2.0, 0.5, 0.75];
     const nextIndex = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
     const nextSpeed = speeds[nextIndex];
@@ -431,20 +580,8 @@ export default function PlayerScreen() {
     resetControlsTimeout();
   };
 
-  const handleBack = () => {
-    if (isLocked) return;
-    if (showControls) {
-      // First press hides controls
-      setShowControls(false);
-      if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
-      return;
-    }
-    if (params.contentId && position > 0 && duration > 0) StreamManager.savePlaybackPosition(params.contentId, position, duration);
-    router.back();
-  };
-
   const handleProgressPress = (e: GestureResponderEvent) => {
-    if (isLocked || isTV) return;
+    if (isLockedRef.current || isTV) return;
     progressViewRef.current?.measure((_x, _y, width, _height, pageX, _pageY) => {
       const touchX = e.nativeEvent.pageX - pageX;
       const targetFraction = Math.max(0, Math.min(1, touchX / width));
@@ -706,54 +843,83 @@ export default function PlayerScreen() {
             pointerEvents="none"
           />
 
-          {(!isLocked || isTV) && (
-            <View style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2) }]}>
-              <View style={S.glassControls}>
-                {!isLive && duration > 0 && (
-                  <View style={S.progressSection}>
-                    <View style={S.timeRow}>
-                      <Text style={S.timeText}>
-                        {formatTime(position)}
-                        {duration > 0 && (
-                          <Text style={{ color: 'rgba(255,255,255,0.4)' }}> / {formatTime(duration)}</Text>
-                        )}
-                      </Text>
-                      {duration > position && (
-                        <Text style={[S.timeText, { opacity: 0.5 }]}>
-                          -{formatTime(duration - position)}
-                        </Text>
+          <View style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2) }]}>
+            <View style={S.glassControls}>
+              {(!isLocked || isTV) && !isLive && duration > 0 && (
+                <View style={S.progressSection}>
+                  <View style={S.timeRow}>
+                    <Text style={S.timeText}>
+                      {formatTime(position)}
+                      {duration > 0 && (
+                        <Text style={{ color: 'rgba(255,255,255,0.4)' }}> / {formatTime(duration)}</Text>
                       )}
-                    </View>
-                    {/* Seekable progress bar — focusable on TV for D-pad scrub */}
+                    </Text>
+                    {duration > position && (
+                      <Text style={[S.timeText, { opacity: 0.5 }]}>
+                        -{formatTime(duration - position)}
+                      </Text>
+                    )}
+                  </View>
+                  {/* Seekable progress bar — focusable on TV for D-pad scrub */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {isTV && (
+                      <Focusable
+                        ref={dummyLeftRef}
+                        nextFocusRight={seekBarNode}
+                        style={{ width: 1, height: 1, backgroundColor: 'transparent', position: 'absolute', left: 0 }}
+                        onFocus={() => {
+                          dummyLeftFocusedRef.current = true;
+                          setVisualFocus(true);
+                        }}
+                        onBlur={() => { dummyLeftFocusedRef.current = false; handleSeekBlur(); }}
+                      />
+                    )}
                     <Focusable
                       ref={seekBarRef}
                       ringOnFocus={false}
-                      style={S.progressBarWrapper}
-                      onFocus={() => setSeekBarFocused(true)}
-                      onBlur={() => setSeekBarFocused(false)}
+                      style={[S.progressBarWrapper, { flex: 1 }]}
+                      nextFocusLeft={dummyLeftNode}
+                      nextFocusRight={dummyRightNode}
+                      onFocus={handleSeekFocus}
+                      onBlur={handleSeekBlur}
                       onPress={togglePlay}
                     >
-                      {(focused) => (
-                        <View style={S.progressBarInner}>
-                          <View ref={progressViewRef} style={S.progressRail} onTouchEnd={handleProgressPress}>
-                            <View style={[S.bufferBar, { width: isBuffering ? '100%' : '0%' }]} />
-                            <View style={[S.progressFill, { width: `${progressPercent}%` }]}>
-                              <LinearGradient colors={["#db0482", "#3305eb"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+                      {() => {
+                        const effFocused = isTV ? (visualFocus || dummyLeftFocusedRef.current || dummyRightFocusedRef.current) : true;
+                        return (
+                          <View style={S.progressBarInner}>
+                            <View ref={progressViewRef} style={[S.progressRail, effFocused && S.progressRailFocused]} onTouchEnd={handleProgressPress}>
+                              <View style={[S.bufferBar, { width: isBuffering ? '100%' : '0%' }]} />
+                              <View style={[S.progressFill, { width: `${progressPercent}%` }]} />
+                              <AnimatedScrubber focused={effFocused} progressPercent={progressPercent} />
                             </View>
-                            <View style={[S.scrubber, focused && S.scrubberFocused, { left: `${progressPercent}%` }]} />
                           </View>
-                        </View>
-                      )}
+                        )
+                      }}
                     </Focusable>
+                    {isTV && (
+                      <Focusable
+                        ref={dummyRightRef}
+                        nextFocusLeft={seekBarNode}
+                        style={{ width: 1, height: 1, backgroundColor: 'transparent', position: 'absolute', right: 0 }}
+                        onFocus={() => {
+                          dummyRightFocusedRef.current = true;
+                          setVisualFocus(true);
+                        }}
+                        onBlur={() => { dummyRightFocusedRef.current = false; handleSeekBlur(); }}
+                      />
+                    )}
                   </View>
-                )}
-                {isLive && (
-                  <View style={S.liveBadgeRow}>
-                    <View style={S.liveDot} />
-                    <Text style={S.liveText}>LIVE</Text>
-                  </View>
-                )}
-                <View style={S.actionsRow}>
+                </View>
+              )}
+              {(!isLocked || isTV) && isLive && (
+                <View style={S.liveBadgeRow}>
+                  <View style={S.liveDot} />
+                  <Text style={S.liveText}>LIVE</Text>
+                </View>
+              )}
+              <View style={S.actionsRow}>
+                {(!isLocked || isTV) && (
                   <View style={S.actionsLeft}>
                     {!isLive && (
                       <>
@@ -776,48 +942,53 @@ export default function PlayerScreen() {
                       </>
                     )}
                   </View>
-                  <View style={S.actionsRight}>
-                    <Focusable
-                      ringOnFocus={false}
-                      focusStyle={S.iconChipFocused}
-                      style={S.settingBtn}
-                      onPress={cyclePlaybackSpeed}
-                    >
-                      <Ionicons name="speedometer-outline" size={ps(1.4)} color="white" />
-                      <Text style={S.settingLabel}>{playbackSpeed.toFixed(2)}x</Text>
-                    </Focusable>
-                    <Focusable
-                      ringOnFocus={false}
-                      focusStyle={S.iconChipFocused}
-                      style={S.settingBtn}
-                      onPress={() => setShowSubtitleModal(true)}
-                    >
-                      <Ionicons name="text-outline" size={ps(1.4)} color="white" />
-                      <Text style={S.settingLabel}>SUBTITLES</Text>
-                    </Focusable>
-                    <Focusable
-                      ringOnFocus={false}
-                      focusStyle={S.iconChipFocused}
-                      style={S.settingBtn}
-                      onPress={() => setShowAudioModal(true)}
-                    >
-                      <Ionicons name="musical-notes-outline" size={ps(1.4)} color="white" />
-                      <Text style={S.settingLabel}>AUDIO</Text>
-                    </Focusable>
-                    <Focusable
-                      ringOnFocus={false}
-                      focusStyle={S.iconChipFocused}
-                      style={S.settingBtn}
-                      onPress={cycleAspectRatio}
-                    >
-                      <Ionicons name="expand" size={ps(1.4)} color="white" />
-                      <Text style={S.settingLabel}>ASPECT</Text>
-                    </Focusable>
-                  </View>
+                )}
+                <View style={S.actionsRight}>
+
+                  {(!isLocked || isTV) && (
+                    <>
+                      <Focusable
+                        ringOnFocus={false}
+                        focusStyle={S.iconChipFocused}
+                        style={S.settingBtn}
+                        onPress={cyclePlaybackSpeed}
+                      >
+                        <Ionicons name="speedometer-outline" size={ps(1.4)} color="white" />
+                        <Text style={S.settingLabel}>{playbackSpeed.toFixed(2)}x</Text>
+                      </Focusable>
+                      <Focusable
+                        ringOnFocus={false}
+                        focusStyle={S.iconChipFocused}
+                        style={S.settingBtn}
+                        onPress={() => { if (isLockedRef.current) return; setShowSubtitleModal(true); }}
+                      >
+                        <Ionicons name="text-outline" size={ps(1.4)} color="white" />
+                        <Text style={S.settingLabel}>SUBTITLES</Text>
+                      </Focusable>
+                      <Focusable
+                        ringOnFocus={false}
+                        focusStyle={S.iconChipFocused}
+                        style={S.settingBtn}
+                        onPress={() => { if (isLockedRef.current) return; setShowAudioModal(true); }}
+                      >
+                        <Ionicons name="musical-notes-outline" size={ps(1.4)} color="white" />
+                        <Text style={S.settingLabel}>AUDIO</Text>
+                      </Focusable>
+                      <Focusable
+                        ringOnFocus={false}
+                        focusStyle={S.iconChipFocused}
+                        style={S.settingBtn}
+                        onPress={cycleAspectRatio}
+                      >
+                        <Ionicons name="expand" size={ps(1.4)} color="white" />
+                        <Text style={S.settingLabel}>ASPECT</Text>
+                      </Focusable>
+                    </>
+                  )}
                 </View>
               </View>
             </View>
-          )}
+          </View>
         </FocusGroup>
       )}
 
@@ -902,6 +1073,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
         {isSubtitle && (
           <Focusable
             ringOnFocus={false}
+            hasTVPreferredFocus={isSubtitle && options.length === 0}
             style={[S.modalOption, selected === -1 && S.modalOptionSelected]}
             focusStyle={S.modalOptionFocused}
             onPress={() => onSelect(-1)}
@@ -938,6 +1110,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
       {/* Close button */}
       <Focusable
         ringOnFocus={false}
+        hasTVPreferredFocus={options.length === 0 && !isSubtitle}
         style={S.modalCloseBtn}
         focusStyle={S.modalCloseBtnFocused}
         onPress={onClose}
@@ -1029,13 +1202,14 @@ const S = StyleSheet.create({
     borderColor: "transparent",
   },
   progressBarInner: {
-    gap: 4,
+    height: 24,
+    justifyContent: "center",
   },
   progressRail: { height: 4, width: "100%", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 2, overflow: "visible" },
+  progressRailFocused: { height: 4, borderRadius: 4 },
   bufferBar: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,255,255,0.1)" },
-  progressFill: { height: "100%", borderRadius: 2, overflow: "hidden" },
-  scrubber: { position: "absolute", top: -6, width: 14, height: 14, borderRadius: 7, backgroundColor: "white", borderWidth: 3, borderColor: "rgba(255, 27, 35, 0.8)", marginLeft: -7 },
-  scrubberFocused: { width: 22, height: 22, borderRadius: 11, top: -9, marginLeft: -11, borderWidth: 4, borderColor: "#fff", shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 10 },
+  progressFill: { height: "100%", borderRadius: 2, overflow: "hidden", backgroundColor: "#fff" },
+  scrubber: { position: "absolute", top: "50%", marginTop: -10, width: 20, height: 20, borderRadius: 10, backgroundColor: "white", marginLeft: -10, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.4, shadowRadius: 3, elevation: 3 },
   seekHint: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   seekHintText: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.7), fontWeight: "600", fontFamily: THEME.fonts.medium },
 

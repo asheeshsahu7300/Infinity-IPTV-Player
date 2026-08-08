@@ -21,11 +21,11 @@
 import { Platform, AppState, AppStateStatus, Alert } from "react-native";
 import * as IntentLauncher from "expo-intent-launcher";
 import * as Linking from "expo-linking";
-
-// Do NOT use FLAG_ACTIVITY_NEW_TASK (0x10000000) as it opens VLC in a separate task,
-// causing the Back button on Android TV to exit to the TV Home Screen instead of our app.
-// Using FLAG_GRANT_READ_URI_PERMISSION (1) opens VLC on top of our app's existing task stack.
-const INTENT_FLAGS = 1;
+// On real Android TV devices, startActivity() must be called with FLAG_ACTIVITY_NEW_TASK (0x10000000).
+// However, to prevent the "Back" button from exiting to the TV Home Screen (a known Android TV bug
+// with singleTask activities), we also combine it with FLAG_ACTIVITY_SINGLE_TOP (0x20000000).
+// 0x10000000 | 0x20000000 = 805306368.
+const INTENT_FLAGS = 805306368; // FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_SINGLE_TOP
 
 // Popular external Android TV / Mobile video players (ordered by popularity)
 const KNOWN_PLAYER_PACKAGES = [
