@@ -48,10 +48,7 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="infinityiptv"/>
       </intent-filter>
-      <intent-filter data-generated="true">
-        <action android:name="android.intent.action.MAIN"/>
-        <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
-      </intent-filter>
+
     </activity>
   </application>
 </manifest>

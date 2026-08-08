@@ -695,7 +695,7 @@ export const portalApi = {
         ),
         timeout: 60000,
       });
-      console.log("VOD Categories:", res);
+
       const rows = extract(res);
       const mapped = rows.map((c: any) => {
         const rawId = String(c.id ?? "");
@@ -1374,7 +1374,7 @@ export const portalApi = {
         return [];
       };
 
-      console.log(`📡 Fetching MAG categories & content endpoints sequentially with ${SPACING_MS}ms spacing...`);
+
 
       // Categories are small and are what the sidebar needs first, so they are
       // pushed to the store before the heavy content endpoints are fetched
@@ -1428,7 +1428,7 @@ export const portalApi = {
         const retryToken = retryPortal.config.token ?? "";
 
         if (retryToken) {
-          console.log("🔄 Retrying MAG requests with fresh session token...");
+
           liveCategoriesRows = await fetchEndpoint("Retry Live Categories", liveCategoriesUrl, retryMac, retryToken, retryBase);
           await new Promise(r => setTimeout(r, SPACING_MS));
           liveChannelsRows = await fetchEndpoint("Retry Live Channels", liveChannelsUrl, retryMac, retryToken, retryBase);
@@ -1628,7 +1628,7 @@ export const portalApi = {
         store.setEpgData(validEpg, key);
       }
 
-      console.log("✅ Cached portal data restored");
+
     } catch (e) {
       console.warn("⚠️ restoreCachedPortalData failed:", e);
     }
@@ -1675,7 +1675,7 @@ export const portalApi = {
         await safeStorage.multiRemove(portalKeys).catch(console.warn);
       }
 
-      console.log(`🗑️ Deleted all cached data for portal ${portal.name} (${portal.type})`);
+
     } catch (e) {
       console.warn("deletePortalData failed:", e);
     }

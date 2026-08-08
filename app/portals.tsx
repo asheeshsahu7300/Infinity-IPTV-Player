@@ -219,7 +219,7 @@ export default function PortalsScreen() {
 
         <Focusable
            onPress={() => handleDeletePortal(item)}
-           style={{ marginTop: ph(1.5), borderRadius: ps(1), overflow: 'hidden' }}
+           style={{ marginTop: ph(1.5) }}
            ringOnFocus={false}
         >
            {(focusedBtn) => (

@@ -118,7 +118,7 @@ export function launchExternalPlayer({
         } as any);
         return;
       } catch (e) {
-        console.log("[externalPlayer] Generic video/* intent failed:", e);
+
       }
 
       // 3. Fallback: HLS / M3U8 MIME type
@@ -131,7 +131,7 @@ export function launchExternalPlayer({
         } as any);
         return;
       } catch (e) {
-        console.log("[externalPlayer] Generic HLS intent failed:", e);
+
       }
 
       // 4. Fallback: Raw Data URL without restricting MIME type
@@ -143,7 +143,7 @@ export function launchExternalPlayer({
         } as any);
         return;
       } catch (e) {
-        console.log("[externalPlayer] Generic data intent failed:", e);
+
       }
 
       // 5. Fallback: Linking openURL
@@ -154,7 +154,7 @@ export function launchExternalPlayer({
           return;
         }
       } catch (e) {
-        console.log("[externalPlayer] Linking openURL failed:", e);
+
       }
 
       // 6. User-friendly Alert if no player is found
