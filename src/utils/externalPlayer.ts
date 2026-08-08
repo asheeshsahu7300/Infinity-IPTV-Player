@@ -21,6 +21,8 @@
 import { Platform, AppState, AppStateStatus, Alert } from "react-native";
 import * as IntentLauncher from "expo-intent-launcher";
 import * as Linking from "expo-linking";
+import { PlaybackState } from "../services/PlaybackState";
+
 // On real Android TV devices, startActivity() must be called with FLAG_ACTIVITY_NEW_TASK (0x10000000).
 // However, to prevent the "Back" button from exiting to the TV Home Screen (a known Android TV bug
 // with singleTask activities), we also combine it with FLAG_ACTIVITY_SINGLE_TOP (0x20000000).
@@ -59,6 +61,8 @@ export function launchExternalPlayer({
   title,
   onReturn,
 }: LaunchExternalPlayerOptions): () => void {
+  PlaybackState.setActive(true);
+  
   let subscription: ReturnType<typeof AppState.addEventListener> | null = null;
   let hasReturned = false;
 
@@ -68,18 +72,19 @@ export function launchExternalPlayer({
   };
 
   // Watch for the app returning to foreground after user closes external player
-  if (onReturn) {
-    subscription = AppState.addEventListener(
-      "change",
-      (nextState: AppStateStatus) => {
-        if (nextState === "active" && !hasReturned) {
-          hasReturned = true;
-          cleanup();
+  subscription = AppState.addEventListener(
+    "change",
+    (nextState: AppStateStatus) => {
+      if (nextState === "active" && !hasReturned) {
+        hasReturned = true;
+        PlaybackState.setActive(false);
+        cleanup();
+        if (onReturn) {
           setTimeout(onReturn, 300);
         }
       }
-    );
-  }
+    }
+  );
 
   if (Platform.OS === "android") {
     const extraParams = title ? { title } : undefined;

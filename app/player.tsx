@@ -15,6 +15,8 @@ import {
   findNodeHandle,
   UIManager,
   Animated,
+  AppState,
+  AppStateStatus,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -27,6 +29,7 @@ import { safeStorage } from "../src/services/safeStorage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useKeepAwake } from "expo-keep-awake";
 import { StreamManager } from "../src/services/StreamManager";
+import { PlaybackState } from "../src/services/PlaybackState";
 import { usePortalStore } from "../src/store/portalStore";
 import { isTV } from "../src/utils/tvUtils";
 import { THEME, ps, pw, ph } from "../src/theme/tokens";
@@ -99,6 +102,22 @@ export default function PlayerScreen() {
   useEffect(() => {
     setIsSeekable(!isLive);
   }, [isLive]);
+  
+  // Handle AppState (backgrounding the app) and PlaybackState
+  useEffect(() => {
+    PlaybackState.setActive(true);
+    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state !== "active") {
+        // Must pause the player when the app goes into the background
+        // Otherwise Android destroys the SurfaceView and VLC crashes natively.
+        setIsPlaying(false);
+      }
+    });
+    return () => {
+      PlaybackState.setActive(false);
+      sub.remove();
+    };
+  }, []);
   // Core player state
   const [streamUrl, setStreamUrl] = useState(params.url || "");
   const [seekBarNode, setSeekBarNode] = useState<number | undefined>(undefined);
@@ -913,16 +932,15 @@ export default function PlayerScreen() {
                   </View>
                 </View>
               )}
-              {(!isLocked || isTV) && isLive && (
-                <View style={S.liveBadgeRow}>
-                  <View style={S.liveDot} />
-                  <Text style={S.liveText}>LIVE</Text>
-                </View>
-              )}
               <View style={S.actionsRow}>
                 {(!isLocked || isTV) && (
                   <View style={S.actionsLeft}>
-                    {!isLive && (
+                    {isLive ? (
+                      <View style={[S.liveBadgeRow, { marginBottom: 0, paddingLeft: 8 }]}>
+                        <View style={S.liveDot} />
+                        <Text style={S.liveText}>LIVE</Text>
+                      </View>
+                    ) : (
                       <>
                         <Focusable
                           ringOnFocus={false}
@@ -1225,7 +1243,7 @@ const S = StyleSheet.create({
   actionLabelBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
   actionLabel: { color: "#fff", fontSize: ps(0.75), fontWeight: "900", fontFamily: THEME.fonts.bold },
   actionsRight: { flexDirection: "row", alignItems: "center", gap: pw(1) },
-  settingBtn: { alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, borderWidth: 2, borderColor: "transparent" },
+  settingBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 2, borderColor: "transparent" },
   settingLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.9), fontWeight: "900", fontFamily: THEME.fonts.bold },
 
   // ─── Premium Modal Styles ─────────────────────────────────────────────
