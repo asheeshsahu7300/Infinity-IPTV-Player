@@ -327,29 +327,46 @@ export default function SettingsScreen() {
               )}
             </Focusable>
               
-              <Focusable ringOnFocus={false} onPress={cycleOverscan} style={S.pressable}>
-                {(focused) => (
+              <Focusable ringOnFocus={false} onPress={cycleOverscan} style={S.bentoPressable}>
+              {(focused) => (
+                focused ? (
                   <LinearGradient
-                    colors={focused ? [THEME.colors.primary, THEME.colors.secondary] : ['transparent', 'transparent']}
-                    style={S.gradientBorder}
+                    colors={[THEME.colors.primary, THEME.colors.secondary]}
+                    style={S.bentoGradientBorder}
                   >
-                    <View style={[S.settingItem, focused && S.settingItemFocused]}>
-                      <View style={[S.settingIcon, focused && S.settingIconActive]}>
-                        <Ionicons name="tv-outline" size={ps(2.5)} color={focused ? THEME.colors.primary : '#fff'} />
+                    <View style={[S.bentoCard, S.bentoCardFocused]}>
+                      <View style={S.bentoIconBox}>
+                        <Ionicons name="tv-outline" size={ps(2)} color={THEME.colors.primary} />
                       </View>
-                      <View style={S.settingInfo}>
-                        <Text style={S.settingTitle}>TV Safe Area</Text>
-                        <Text style={S.settingSubtitle}>Prevent edge cropping on older TVs (Overscan)</Text>
+                      <View style={{ flex: 1 }}>
+                        <GradientText text="TV Safe Area" style={S.bentoTitle} colors={["#fff", "rgba(255,255,255,0.7)"]} />
+                        <Text style={S.bentoSubtitle}>Prevent edge cropping</Text>
                       </View>
-                      <View style={S.customSwitch}>
+                      <View style={[S.customSwitch, { width: 'auto', paddingHorizontal: pw(1) }]}>
                         <Text style={{ color: '#fff', fontSize: ps(1.2), fontWeight: '700' }}>
                            {overscanPadding}px
                         </Text>
                       </View>
                     </View>
                   </LinearGradient>
-                )}
-              </Focusable>
+                ) : (
+                  <View style={S.bentoCard}>
+                    <View style={S.bentoIconBox}>
+                      <Ionicons name="tv-outline" size={ps(2)} color={THEME.colors.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <GradientText text="TV Safe Area" style={S.bentoTitle} colors={["#fff", "rgba(255,255,255,0.7)"]} />
+                      <Text style={S.bentoSubtitle}>Prevent edge cropping</Text>
+                    </View>
+                    <View style={[S.customSwitch, { width: 'auto', paddingHorizontal: pw(1) }]}>
+                      <Text style={{ color: '#fff', fontSize: ps(1.2), fontWeight: '700' }}>
+                         {overscanPadding}px
+                      </Text>
+                    </View>
+                  </View>
+                )
+              )}
+            </Focusable>
             </FocusGroup>
           </View>
 
