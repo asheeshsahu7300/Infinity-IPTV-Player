@@ -18,6 +18,7 @@ import {
   Animated,
 } from "react-native";
 import { Image } from "expo-image";
+import * as NavigationBar from "expo-navigation-bar";
 
 import ErrorBoundary from "../src/components/ErrorBoundary";
 import GradientLoader from "../src/components/GradientLoader";
@@ -126,6 +127,12 @@ export default function RootLayout() {
 
   // Boot the app via AppBootManager
   useEffect(() => {
+    if (Platform.OS === "android") {
+      NavigationBar.setBackgroundColorAsync("#000000");
+      NavigationBar.setVisibilityAsync("hidden");
+      NavigationBar.setBehaviorAsync("overlay-swipe");
+    }
+
     AppBootManager.initialize()
       .then(() => {
         setIsReady(true);
@@ -183,7 +190,7 @@ export default function RootLayout() {
       <ThemeProvider>
         <SafeAreaProvider>
           <GestureHandlerRootView style={styles.container}>
-            <StatusBar style="light" />
+            <StatusBar style="light" hidden={true} />
             <Stack
               screenOptions={{
                 headerShown: false,

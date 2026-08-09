@@ -379,7 +379,7 @@ export default function DashboardScreen() {
               [
                 { id: "cat-live", title: "Live TV", icon: "tv", img: "https://i.pinimg.com/1200x/c2/f5/f5/c2f5f508392fc27ab89483fe3037fd30.jpg", route: "/live-tv" },
                 { id: "cat-movies", title: "Movies", icon: "film", img: "https://i.pinimg.com/736x/eb/f1/4a/ebf14a5d3b21e60b907ae26b90205271.jpg", route: "/vod" },
-                { id: "cat-series", title: "Series", icon: "albums", img: "https://i.pinimg.com/1200x/8b/5b/e2/8b5be2acd7c6909b99a2b03b6f63999a.jpg", route: "/series" },
+                { id: "cat-series", title: "Series", icon: "albums", img: "https://images.ctfassets.net/7b9nfelvm7fe/2FdCQ5XGDbBZfsfqHrcNWn/c51a573dab4b0a21f7a0103859648649/sky_mobile_banner_1024x768.jpg?w=1024&fit=scale&q=80", route: "/series" },
               ]
             ).map((cat) => (
               <Focusable

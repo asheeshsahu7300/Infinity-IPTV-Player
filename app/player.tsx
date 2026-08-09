@@ -738,7 +738,7 @@ export default function PlayerScreen() {
                           <View ref={progressViewRef} style={S.progressRail} onTouchEnd={handleProgressPress}>
                             <View style={[S.bufferBar, { width: isBuffering ? '100%' : '0%' }]} />
                             <View style={[S.progressFill, { width: `${progressPercent}%` }]}>
-                              <LinearGradient colors={["#db0482", "#3305eb"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+                              <LinearGradient colors={["#A0A0A0", "#FFFFFF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
                             </View>
                             <View style={[S.scrubber, focused && S.scrubberFocused, { left: `${progressPercent}%` }]} />
                           </View>
@@ -1018,7 +1018,7 @@ const S = StyleSheet.create({
   skipLabel: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.65), fontWeight: "800", fontFamily: THEME.fonts.bold },
   controlFocused: { borderColor: "#fff", transform: [{ scale: 1.08 }], backgroundColor: "rgba(255,255,255,0.1)" },
   bottomOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: pw(5), zIndex: 10 },
-  glassControls: { backgroundColor: "rgba(25,25,30,0.85)", borderRadius: 16, paddingVertical: 8, paddingHorizontal: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)" },
+  glassControls: { backgroundColor: "rgba(0, 0, 0, 0.27)", borderRadius: 16, paddingVertical: 8, paddingHorizontal: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)" },
   progressSection: { gap: 4, marginBottom: 4 },
   timeRow: { flexDirection: "row", justifyContent: "space-between" },
   timeText: { color: "#fff", fontSize: ps(0.8), fontWeight: "700", fontFamily: THEME.fonts.bold },
@@ -1036,7 +1036,7 @@ const S = StyleSheet.create({
   progressRail: { height: 4, width: "100%", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 2, overflow: "visible" },
   bufferBar: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,255,255,0.1)" },
   progressFill: { height: "100%", borderRadius: 2, overflow: "hidden" },
-  scrubber: { position: "absolute", top: -6, width: 14, height: 14, borderRadius: 7, backgroundColor: "white", borderWidth: 3, borderColor: "rgba(255, 27, 35, 0.8)", marginLeft: -7 },
+  scrubber: { position: "absolute", top: -6, width: 14, height: 14, borderRadius: 7, backgroundColor: "white", borderWidth: 3, borderColor: "rgba(222, 222, 222, 0.8)", marginLeft: -7 },
   scrubberFocused: { width: 22, height: 22, borderRadius: 11, top: -9, marginLeft: -11, borderWidth: 4, borderColor: "#fff", shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 10 },
   seekHint: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   seekHintText: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.7), fontWeight: "600", fontFamily: THEME.fonts.medium },
