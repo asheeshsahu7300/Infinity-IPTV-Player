@@ -48,6 +48,9 @@ export default function SettingsScreen() {
   const setActivePortal = usePortalStore((s) => s.setActivePortal);
   const clearPortalData = usePortalStore((s) => s.clearPortalData);
   const clearPersistedPortalData = usePortalStore((s) => s.clearPersistedPortalData);
+  
+  const overscanPadding = usePortalStore((s) => s.overscanPadding);
+  const setOverscanPadding = usePortalStore((s) => s.setOverscanPadding);
 
   const [autoPlay, setAutoPlay] = useState(true);
   const [hardwareAcceleration, setHardwareAcceleration] = useState(true);
@@ -95,6 +98,12 @@ export default function SettingsScreen() {
     setHardwareAcceleration(newValue);
     saveSettings({ hardwareAcceleration: newValue });
   }, [hardwareAcceleration]);
+
+  const cycleOverscan = useCallback(() => {
+    // Cycle 0 -> 10 -> 20 -> 30 -> 40 -> 0
+    const nextVal = overscanPadding >= 40 ? 0 : overscanPadding + 10;
+    setOverscanPadding(nextVal);
+  }, [overscanPadding]);
 
   const handleClearCache = useCallback(() => {
     Alert.alert(
@@ -317,8 +326,32 @@ export default function SettingsScreen() {
                 )
               )}
             </Focusable>
-          </FocusGroup>
-        </View>
+              
+              <Focusable ringOnFocus={false} onPress={cycleOverscan} style={S.pressable}>
+                {(focused) => (
+                  <LinearGradient
+                    colors={focused ? [THEME.colors.primary, THEME.colors.secondary] : ['transparent', 'transparent']}
+                    style={S.gradientBorder}
+                  >
+                    <View style={[S.settingItem, focused && S.settingItemFocused]}>
+                      <View style={[S.settingIcon, focused && S.settingIconActive]}>
+                        <Ionicons name="tv-outline" size={ps(2.5)} color={focused ? THEME.colors.primary : '#fff'} />
+                      </View>
+                      <View style={S.settingInfo}>
+                        <Text style={S.settingTitle}>TV Safe Area</Text>
+                        <Text style={S.settingSubtitle}>Prevent edge cropping on older TVs (Overscan)</Text>
+                      </View>
+                      <View style={S.customSwitch}>
+                        <Text style={{ color: '#fff', fontSize: ps(1.2), fontWeight: '700' }}>
+                           {overscanPadding}px
+                        </Text>
+                      </View>
+                    </View>
+                  </LinearGradient>
+                )}
+              </Focusable>
+            </FocusGroup>
+          </View>
 
 
         {/* Stats */}

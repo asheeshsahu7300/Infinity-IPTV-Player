@@ -155,7 +155,7 @@ const S = StyleSheet.create({
   retryInnerFocused: { backgroundColor: "#fff" },
   retryText: { color: "#fff", fontSize: ps(1), fontWeight: "800", marginLeft: pw(0.6) },
   loadMoreFooter: { paddingVertical: ph(3), alignItems: "center", justifyContent: "center" },
-  loadMoreBtn: { flexDirection: "row", alignItems: "center", gap: pw(0.8), paddingHorizontal: pw(3), paddingVertical: ph(1.4), backgroundColor: "rgba(255,255,255,0.06)", borderRadius: ps(1), borderWidth: 2, borderColor: "transparent" },
+  loadMoreBtn: { flexDirection: "row", alignItems: "center", gap: pw(0.8), paddingHorizontal: pw(3), paddingVertical: ph(1.4), backgroundColor: "rgba(255,255,255,0.06)", borderRadius: ps(1), borderWidth: 1, borderColor: "transparent" },
   loadMoreBtnFocused: { borderColor: "#fff", backgroundColor: THEME.colors.primary, shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 12, elevation: 12 },
   loadMoreBtnText: { color: "#fff", fontSize: ps(1), fontWeight: "900", letterSpacing: 1.5, fontFamily: THEME.fonts.bold },
 });
@@ -514,7 +514,7 @@ export default function SeriesScreen() {
     setLoadingMore(false);
     if (resyncRequestedRef.current || !activePortal) return;
     resyncRequestedRef.current = true;
-    AppBootManager.triggerBackgroundSync(activePortal, true).catch(() => {});
+    AppBootManager.triggerBackgroundSync(activePortal, true).catch(() => { });
   }, [activePortal]);
 
   const applyAdopted = useCallback((slice: Series[], filteredTotal: number) => {
@@ -651,7 +651,7 @@ export default function SeriesScreen() {
   }, [router]);
 
   const totalCountRef = useRef(0);
-  const handleLoadMoreRef = useRef<() => void>(() => {});
+  const handleLoadMoreRef = useRef<() => void>(() => { });
 
   const handleSeriesFocus = useCallback((item: Series, index?: number) => {
     updateCinematicBackground(item.logo || null);

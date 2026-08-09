@@ -48,7 +48,6 @@
       ],
       "expo-video",
       "expo-audio",
-      "react-native-vlc-media-player",
       [
         "@react-native-tvos/config-tv",
         {

@@ -183,6 +183,9 @@ export interface PortalState {
   isHydrated: boolean;
   lastSyncTime: number;
 
+  // TV Overscan Setting
+  overscanPadding: number;
+
   loadPortals: () => Promise<void>;
   restoreActivePortal: () => Promise<Portal | null>;
   validatePortalAuth: (portal: Portal) => Promise<boolean>;
@@ -218,6 +221,8 @@ export interface PortalState {
 
   clearPortalData: () => void;
   clearPersistedPortalData: (portalId?: string) => Promise<void>;
+
+  setOverscanPadding: (pad: number) => Promise<void>;
 }
 
 // ---------------------------------------
@@ -242,6 +247,12 @@ export const usePortalStore = create<PortalState>((set, get) => ({
 
   isLoading: false,
   error: null,
+  
+  overscanPadding: 0,
+  setOverscanPadding: async (pad) => {
+    set({ overscanPadding: pad });
+    // In a real app we'd save to AsyncStorage here too
+  },
 
   // Hydration state
   isHydrated: false,
@@ -298,9 +309,19 @@ export const usePortalStore = create<PortalState>((set, get) => ({
   restoreActivePortal: async () => {
     try {
       // First, ensure portals are loaded
-      await get().loadPortals();
-
+      const portalsJson = await AsyncStorage.getItem("portals");
       const activeId = await AsyncStorage.getItem("activePortalId");
+      const overscanStr = await AsyncStorage.getItem("overscanPadding");
+      
+      if (overscanStr) {
+        set({ overscanPadding: parseInt(overscanStr, 10) });
+      }
+
+      if (portalsJson) {
+        const portals: Portal[] = JSON.parse(portalsJson);
+        set({ portals });
+      }
+
       if (!activeId) {
         return null;
       }

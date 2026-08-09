@@ -11,6 +11,7 @@ import {
   Platform,
   Animated,
   Image as RNImage,
+  View,
 } from "react-native";
 import * as Linking from "expo-linking";
 import { LinearGradient } from "expo-linear-gradient";
@@ -79,6 +80,7 @@ function SplashScreen() {
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
   const isHydrated = usePortalStore((s) => s.isHydrated);
+  const overscanPadding = usePortalStore((s) => s.overscanPadding);
   const router = useRouter();
 
   // Load premium Google TV fonts
@@ -178,31 +180,33 @@ export default function RootLayout() {
       <ThemeProvider>
         <SafeAreaProvider>
           <GestureHandlerRootView style={styles.container}>
-            <StatusBar style="light" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: "#08080a" },
-                animation: isTV ? "none" : "slide_from_right",
-                // Inactive screens keep their scroll/focus state but stop
-                // re-rendering, so backgrounded grids don't compete with the
-                // foreground screen (or the player) for the JS thread.
-                freezeOnBlur: true,
-              }}
-              initialRouteName="index"
-            >
-              <Stack.Screen name="index" />
-              <Stack.Screen name="portals" />
-              <Stack.Screen name="add-portal" />
-              <Stack.Screen name="dashboard" />
-              <Stack.Screen name="live-tv" />
-              <Stack.Screen name="vod" />
-              <Stack.Screen name="series" />
-              <Stack.Screen name="series-details" />
-              <Stack.Screen name="player" options={{ animation: "fade" }} />
-              <Stack.Screen name="search" />
-              <Stack.Screen name="settings" />
-            </Stack>
+            <View style={{ flex: 1, padding: overscanPadding }}>
+              <StatusBar style="light" />
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: "#08080a" },
+                  animation: isTV ? "none" : "slide_from_right",
+                  // Inactive screens keep their scroll/focus state but stop
+                  // re-rendering, so backgrounded grids don't compete with the
+                  // foreground screen (or the player) for the JS thread.
+                  freezeOnBlur: true,
+                }}
+                initialRouteName="index"
+              >
+                <Stack.Screen name="index" />
+                <Stack.Screen name="portals" />
+                <Stack.Screen name="add-portal" />
+                <Stack.Screen name="dashboard" />
+                <Stack.Screen name="live-tv" />
+                <Stack.Screen name="vod" />
+                <Stack.Screen name="series" />
+                <Stack.Screen name="series-details" />
+                <Stack.Screen name="player" options={{ animation: "fade" }} />
+                <Stack.Screen name="search" />
+                <Stack.Screen name="settings" />
+              </Stack>
+            </View>
           </GestureHandlerRootView>
         </SafeAreaProvider>
       </ThemeProvider>
