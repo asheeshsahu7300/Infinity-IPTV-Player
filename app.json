@@ -19,16 +19,11 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "leanbackIcon": "./assets/images/tv-banner.png"
+      "leanbackIcon": "./assets/images/splash-icon.png"
     },
     "androidTV": {
       "icon": "./assets/images/tv-icon.png",
-      "banner": "./assets/images/tv-banner.png"
-    },
-    "tvos": {
-      "icon": "./assets/images/tv-icon.png",
-      "topShelfImage": "./assets/images/tv-top-shelf.png",
-      "bundleIdentifier": "com.iptvhub.iptvplayer"
+      "banner": "./assets/images/splash-icon.png"
     },
     "web": {
       "bundler": "metro",
@@ -52,7 +47,7 @@
         "@react-native-tvos/config-tv",
         {
           "isTV": true,
-          "androidTVBanner": "./assets/images/tv-banner.png"
+          "androidTVBanner": "./assets/images/splash-icon.png"
         }
       ]
     ],

@@ -47,8 +47,8 @@
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="infinityiptv"/>
+        <data android:scheme="exp+infinity-iptv-player"/>
       </intent-filter>
-
     </activity>
   </application>
 </manifest>
