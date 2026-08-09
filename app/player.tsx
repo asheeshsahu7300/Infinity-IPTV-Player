@@ -21,6 +21,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Video, { ResizeMode, SelectedTrackType, TextTrackType, DRMType } from 'react-native-video';
+import { VLCPlayer } from 'react-native-vlc-media-player';
 import * as ScreenOrientation from "expo-screen-orientation";
 import * as Brightness from "expo-brightness";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -87,6 +88,7 @@ export default function PlayerScreen() {
   const activePortal = usePortalStore((s) => s.activePortal);
 
   const isLive = params.type === "live";
+  const is4K = typeof params.title === 'string' && (params.title.toUpperCase().includes('4K') || params.title.toUpperCase().includes('UHD'));
 
   // Update isSeekable based on content type
   useEffect(() => {
@@ -165,6 +167,7 @@ export default function PlayerScreen() {
   const progressViewRef = useRef<View>(null);
   const actionsRowRef = useRef<any>(null);
   const playerRef = useRef<any>(null);
+  const vlcPlayerRef = useRef<any>(null);
   const lastPositionSaveTime = useRef(0);
 
   const isSeeking = useRef(false);
@@ -467,7 +470,7 @@ export default function PlayerScreen() {
         if (seekTimeout.current) clearTimeout(seekTimeout.current);
         let newPos = Math.max(0, Math.min(position + delta, duration));
         setPosition(newPos);
-        if (playerRef.current) playerRef.current.seek(newPos / 1000);
+        if (is4K && vlcPlayerRef.current) vlcPlayerRef.current.seek(newPos / duration); else if (playerRef.current) playerRef.current.seek(newPos / 1000);
         seekTimeout.current = setTimeout(() => { isSeeking.current = false; }, 1000);
       } catch (e) {
         console.error("Seek error:", e);
@@ -534,7 +537,7 @@ export default function PlayerScreen() {
       try {
         const finalPos = targetSeekPosition.current;
         if (finalPos !== null) {
-          if (playerRef.current) playerRef.current.seek(finalPos / 1000);
+          if (is4K && vlcPlayerRef.current) vlcPlayerRef.current.seek(finalPos / duration); else if (playerRef.current) playerRef.current.seek(finalPos / 1000);
         }
       } catch (e) {
         console.error("Seek error:", e);
@@ -767,79 +770,138 @@ export default function PlayerScreen() {
   return (
     <View style={S.container} {...panResponder.panHandlers}>
       <StatusBar hidden />
-      <Video
-        ref={playerRef}
-        style={S.video}
-        source={{
-          uri: streamUrl,
-          // DRM support for ClearKey
-          ...(params.drmLicenseUrl && params.drmScheme ? {
-            drm: {
-              type: params.drmScheme as DRMType,
-              licenseServer: params.drmLicenseUrl,
+      {is4K ? (
+        <VLCPlayer
+          ref={vlcPlayerRef}
+          style={S.video}
+          source={{ uri: streamUrl, initType: 1 }}
+          paused={!isPlaying || !autoPlay}
+          rate={playbackSpeed}
+          volume={currentVolume}
+          autoAspectRatio={true}
+          resizeMode={ASPECT_RATIOS[aspectRatioIndex].resize === 'stretch' ? 'fill' : ASPECT_RATIOS[aspectRatioIndex].resize as any}
+          audioTrack={selectedAudioTrack}
+          textTrack={selectedTextTrack}
+          onLoad={(e: any) => {
+            if (e.duration) setDuration(e.duration);
+            if (e.audioTracks) setAudioTracks(e.audioTracks);
+            if (e.textTracks) setTextTracks(e.textTracks);
+            
+            const durMs = e.duration || 0;
+            if (!hasSetInitialPosition.current && savedResumePosition.current > 0 && params.type !== "live" && durMs > 0) {
+              hasSetInitialPosition.current = true;
+              setTimeout(() => {
+                if (vlcPlayerRef.current) vlcPlayerRef.current.seek(savedResumePosition.current / durMs);
+              }, 300);
             }
-          } : {}),
-          bufferConfig: {
-            minBufferMs: 60000,
-            maxBufferMs: 60000,
-            bufferForPlaybackMs: isLive ? 500 : 2500,
-            bufferForPlaybackAfterRebufferMs: isLive ? 1000 : 5000,
-          }
-        }}
-        paused={!isPlaying || !autoPlay}
-        rate={playbackSpeed}
-        volume={currentVolume / 100}
-        resizeMode={ASPECT_RATIOS[aspectRatioIndex].resize}
-        // @ts-ignore - pictureInPicture is supported on some platforms natively but missing in standard types
-        pictureInPicture={true}
-        selectedVideoTrack={selectedVideoTrack !== undefined ? { type: 'index' as any, value: selectedVideoTrack } : undefined}
-        selectedAudioTrack={selectedAudioTrack !== undefined ? { type: SelectedTrackType.INDEX, value: selectedAudioTrack } : undefined}
-        selectedTextTrack={selectedTextTrack !== undefined ? { type: 'index' as any, value: selectedTextTrack } : undefined}
-        onLoad={(data) => {
-          setIsLoading(false);
-          if (data.videoTracks) {
-            const formattedVideoTracks = data.videoTracks.map((t: any, i: number) => {
-              const res = t.height ? `${t.width}x${t.height}` : `Quality ${i + 1}`;
-              const bit = t.bitrate && t.bitrate > 0 ? ` (${(t.bitrate / 1000000).toFixed(1)} Mbps)` : '';
-              return { id: i, name: res + bit };
-            });
-            setVideoTracks(formattedVideoTracks);
-          }
-          if (data.audioTracks) setAudioTracks(data.audioTracks);
-          if (data.textTracks) setTextTracks(data.textTracks);
-          const durMs = (data.duration || 0) * 1000;
-          if (durMs > 0) setDuration(durMs);
+          }}
+          onPlaying={() => {
+            setIsLoading(false);
+            setIsBuffering(false);
+          }}
+          onProgress={(e: any) => {
+            setIsLoading(false); // Failsafe: if time is moving, we are not loading
+            setIsBuffering(false);
+            let curMs = e.currentTime || 0;
+            let durMs = e.duration || 0;
+            if (isSeeking.current) return;
+            setPosition(curMs);
+            if (durMs > duration || (duration === 0 && durMs > 0)) setDuration(durMs);
+            if (params.contentId && params.type !== "live" && Date.now() - lastPositionSaveTime.current > 10000) {
+              lastPositionSaveTime.current = Date.now();
+              StreamManager.savePlaybackPosition(params.contentId, curMs, durMs || duration);
+            }
+          }}
+          onBuffering={(e: any) => {
+            if (e.isBuffering) {
+              setIsBuffering(true);
+              setIsLoading(true);
+            }
+          }}
+          onEnd={() => {
+            setIsPlaying(false);
+            if (params.contentId) StreamManager.savePlaybackPosition(params.contentId, 0, duration);
+          }}
+          onError={handleSilentRetry}
+        />
+      ) : (
+        <Video
+          ref={playerRef}
+          style={S.video}
+          source={{
+            uri: streamUrl,
+            // DRM support for ClearKey
+            ...(params.drmLicenseUrl && params.drmScheme ? {
+              drm: {
+                type: params.drmScheme as DRMType,
+                licenseServer: params.drmLicenseUrl,
+              }
+            } : {}),
+            ...(!is4K ? {
+              bufferConfig: {
+                minBufferMs: 60000,
+                maxBufferMs: 60000,
+                bufferForPlaybackMs: isLive ? 500 : 2500,
+                bufferForPlaybackAfterRebufferMs: isLive ? 1000 : 5000,
+              }
+            } : {})
+          }}
+          controls={false}
+          paused={!isPlaying || !autoPlay}
+          rate={playbackSpeed}
+          volume={currentVolume / 100}
+          resizeMode={ASPECT_RATIOS[aspectRatioIndex].resize}
+          // @ts-ignore - pictureInPicture is supported on some platforms natively but missing in standard types
+          pictureInPicture={true}
+          selectedVideoTrack={selectedVideoTrack !== undefined ? { type: 'index' as any, value: selectedVideoTrack } : undefined}
+          selectedAudioTrack={selectedAudioTrack !== undefined ? { type: SelectedTrackType.INDEX, value: selectedAudioTrack } : undefined}
+          selectedTextTrack={selectedTextTrack !== undefined ? { type: 'index' as any, value: selectedTextTrack } : undefined}
+          onLoad={(data) => {
+            setIsLoading(false);
+            if (data.videoTracks) {
+              const formattedVideoTracks = data.videoTracks.map((t: any, i: number) => {
+                const res = t.height ? `${t.width}x${t.height}` : `Quality ${i + 1}`;
+                const bit = t.bitrate && t.bitrate > 0 ? ` (${(t.bitrate / 1000000).toFixed(1)} Mbps)` : '';
+                return { id: i, name: res + bit };
+              });
+              setVideoTracks(formattedVideoTracks);
+            }
+            if (data.audioTracks) setAudioTracks(data.audioTracks);
+            if (data.textTracks) setTextTracks(data.textTracks);
+            const durMs = (data.duration || 0) * 1000;
+            if (durMs > 0) setDuration(durMs);
 
-          if (!hasSetInitialPosition.current && savedResumePosition.current > 0 && params.type !== "live" && durMs > 0) {
-            hasSetInitialPosition.current = true;
-            setTimeout(() => {
-              if (playerRef.current) playerRef.current.seek(savedResumePosition.current / 1000);
-            }, 300);
-          }
-        }}
-        onReadyForDisplay={() => setIsLoading(false)}
-        onProgress={(data) => {
-          setIsLoading(false); // Failsafe: if we get progress, it's definitely loaded
-          let curMs = (data.currentTime || 0) * 1000;
-          let durMs = (data.seekableDuration || 0) * 1000;
-          if (isSeeking.current) return;
-          setPosition(curMs);
-          if (durMs > duration || (duration === 0 && durMs > 0)) setDuration(durMs);
-          if (params.contentId && params.type !== "live" && Date.now() - lastPositionSaveTime.current > 10000) {
-            lastPositionSaveTime.current = Date.now();
-            StreamManager.savePlaybackPosition(params.contentId, curMs, durMs || duration);
-          }
-        }}
-        onBuffer={({ isBuffering }) => {
-          setIsBuffering(isBuffering);
-          if (!isBuffering) setIsLoading(false);
-        }}
-        onEnd={() => {
-          setIsPlaying(false);
-          if (params.contentId) StreamManager.savePlaybackPosition(params.contentId, 0, duration);
-        }}
-        onError={handleSilentRetry}
-      />
+            if (!hasSetInitialPosition.current && savedResumePosition.current > 0 && params.type !== "live" && durMs > 0) {
+              hasSetInitialPosition.current = true;
+              setTimeout(() => {
+                if (playerRef.current) playerRef.current.seek(savedResumePosition.current / 1000);
+              }, 300);
+            }
+          }}
+          onReadyForDisplay={() => setIsLoading(false)}
+          onProgress={(data) => {
+            setIsLoading(false); // Failsafe: if we get progress, it's definitely loaded
+            let curMs = (data.currentTime || 0) * 1000;
+            let durMs = (data.seekableDuration || 0) * 1000;
+            if (isSeeking.current) return;
+            setPosition(curMs);
+            if (durMs > duration || (duration === 0 && durMs > 0)) setDuration(durMs);
+            if (params.contentId && params.type !== "live" && Date.now() - lastPositionSaveTime.current > 10000) {
+              lastPositionSaveTime.current = Date.now();
+              StreamManager.savePlaybackPosition(params.contentId, curMs, durMs || duration);
+            }
+          }}
+          onBuffer={({ isBuffering }) => {
+            setIsBuffering(isBuffering);
+            if (!isBuffering) setIsLoading(false);
+          }}
+          onEnd={() => {
+            setIsPlaying(false);
+            if (params.contentId) StreamManager.savePlaybackPosition(params.contentId, 0, duration);
+          }}
+          onError={handleSilentRetry}
+        />
+      )}
 
       {/* Invisible focusable overlay to catch remote OK press when controls are hidden.
           This ensures the focus engine always has a target to trigger Select. */}
@@ -1115,16 +1177,18 @@ export default function PlayerScreen() {
                         <Ionicons name="musical-notes-outline" size={ps(1.4)} color="white" />
                         <Text style={S.settingLabel}>AUDIO</Text>
                       </Focusable>
-                      <Focusable
-                        ringOnFocus={false}
-                        focusStyle={S.iconChipFocused}
-                        style={S.settingBtn}
-                        onPress={() => { if (isLockedRef.current) return; setShowVideoModal(true); }}
-                        {...navRowFocusHandlers}
-                      >
-                        <Ionicons name="aperture-outline" size={ps(1.4)} color="white" />
-                        <Text style={S.settingLabel}>QUALITY</Text>
-                      </Focusable>
+                      {!is4K && (
+                        <Focusable
+                          ringOnFocus={false}
+                          focusStyle={S.iconChipFocused}
+                          style={S.settingBtn}
+                          onPress={() => { if (isLockedRef.current) return; setShowVideoModal(true); }}
+                          {...navRowFocusHandlers}
+                        >
+                          <Ionicons name="aperture-outline" size={ps(1.4)} color="white" />
+                          <Text style={S.settingLabel}>QUALITY</Text>
+                        </Focusable>
+                      )}
                       <Focusable
                         ringOnFocus={false}
                         focusStyle={S.iconChipFocused}
