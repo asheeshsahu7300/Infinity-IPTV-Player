@@ -218,20 +218,20 @@ export default function PortalsScreen() {
         </Focusable>
 
         <Focusable
-           onPress={() => handleDeletePortal(item)}
-           style={{ marginTop: ph(1.5) }}
-           ringOnFocus={false}
+          onPress={() => handleDeletePortal(item)}
+          style={{ marginTop: ph(1.5) }}
+          ringOnFocus={false}
         >
-           {(focusedBtn) => (
-              <View style={[
-                  { height: ph(5.5), backgroundColor: "rgba(255,0,0,0.1)", borderRadius: ps(1), alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "rgba(255,0,0,0.2)" },
-                  focusedBtn && { borderColor: "#ff4444", backgroundColor: "rgba(255,0,0,0.2)", transform: [{ scale: 1.02 }] }
-              ]}>
-                 <Text style={{ color: "#ff4444", fontSize: ps(1.2), fontWeight: "bold", letterSpacing: 1 }}>
-                    DELETE PORTAL
-                 </Text>
-              </View>
-           )}
+          {(focusedBtn) => (
+            <View style={[
+              { height: ph(5.5), backgroundColor: "rgba(255,0,0,0.1)", borderRadius: ps(1), alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "rgba(255,0,0,0.2)" },
+              focusedBtn && { borderColor: "#ff4444", backgroundColor: "rgba(255,0,0,0.2)", transform: [{ scale: 1.02 }] }
+            ]}>
+              <Text style={{ color: "#ff4444", fontSize: ps(1.2), fontWeight: "bold", letterSpacing: 1 }}>
+                DELETE PORTAL
+              </Text>
+            </View>
+          )}
         </Focusable>
       </Animated.View>
     );
@@ -370,7 +370,7 @@ const S = StyleSheet.create({
   // ── Root ──────────────────────────────────────────────────────────────────
   container: {
     flex: 1,
-    backgroundColor: "#08080a",
+    backgroundColor: "rgba(15, 15, 15, 0.03)",
   },
 
   // ── Header ────────────────────────────────────────────────────────────────
@@ -387,8 +387,9 @@ const S = StyleSheet.create({
     marginBottom: ph(1),
   },
   headerLogoImage: {
-    width: pw(25),
-    aspectRatio: 5,
+    width: pw(50),
+    height: ph(8),
+    transform: [{ scale: 3 }],
     marginBottom: ph(1),
   },
   headerSubtitle: {
@@ -466,7 +467,7 @@ const S = StyleSheet.create({
   // ── Portal card ───────────────────────────────────────────────────────────
   portalCard: {
     flex: 1,
-    backgroundColor: "#1D1B20",
+    backgroundColor: "rgba(255,255,255,0.03)",
     borderRadius: ps(1.4),
     padding: ps(1.8),
     justifyContent: "space-between",
@@ -495,7 +496,7 @@ const S = StyleSheet.create({
   },
   portalCardActive: {
     borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: "rgba(255,255,255,0.04)",
   },
 
   cardHeader: {

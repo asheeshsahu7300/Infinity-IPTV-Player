@@ -411,7 +411,8 @@ const S = StyleSheet.create({
   },
   headerLogoImage: {
     width: pw(25),
-    aspectRatio: 5,
+    height: ph(8),
+    transform: [{ scale: 2.5 }],
     marginBottom: ph(1),
   },
   headerSubtitle: {

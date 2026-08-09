@@ -178,7 +178,7 @@ export default function AddPortalScreen() {
   const [url, setUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [mac, setMac] = useState("00:1A:79");
+  const [mac, setMac] = useState("00:1A:79:");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
 
@@ -449,25 +449,25 @@ export default function AddPortalScreen() {
           {type === "mag" && (
             <View style={S.premiumInputGroup}>
               <Text style={S.premiumLabel}>MAC ADDRESS</Text>
-                <GradientBorderInput isFocused={focusedField === "mac"}>
-                  <TextInput
-                    ref={macInputRef}
-                    style={S.premiumInput}
-                    placeholder="00:1A:79:XX:XX:XX"
-                    placeholderTextColor="#555"
-                    value={mac}
-                    onChangeText={setMac}
-                    onFocus={() => setFocusedField("mac")}
-                    onBlur={() => {
-                      setFocusedField(null);
-                      setMac((prev) => formatMac(prev));
-                    }}
-                    autoCorrect={false}
-                    autoCapitalize="characters"
-                    spellCheck={false}
-                    autoComplete="off"
-                  />
-                </GradientBorderInput>
+              <GradientBorderInput isFocused={focusedField === "mac"}>
+                <TextInput
+                  ref={macInputRef}
+                  style={S.premiumInput}
+                  placeholder="00:1A:79:XX:XX:XX"
+                  placeholderTextColor="#555"
+                  value={mac}
+                  onChangeText={setMac}
+                  onFocus={() => setFocusedField("mac")}
+                  onBlur={() => {
+                    setFocusedField(null);
+                    setMac((prev) => formatMac(prev));
+                  }}
+                  autoCorrect={false}
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+              </GradientBorderInput>
             </View>
           )}
 
@@ -559,7 +559,7 @@ const S = StyleSheet.create({
   // ── Root ──────────────────────────────────────────────────────────────────
   container: {
     flex: 1,
-    backgroundColor: "#08080a",
+    backgroundColor: "rgba(15, 15, 15, 0.03)",
   },
   content: {
     flex: 1,
@@ -607,12 +607,14 @@ const S = StyleSheet.create({
     letterSpacing: 2,
   },
   mainLogoImage: {
-    width: pw(55),
-    aspectRatio: 5,
+    width: pw(30),
+    height: ph(20),
+    transform: [{ scale: 1.5 }],
   },
   headerLogoImage: {
     width: pw(25),
-    aspectRatio: 5,
+    height: ph(8),
+    transform: [{ scale: 2.5 }],
   },
   step1Subtitle: {
     fontSize: ps(1.6),
@@ -710,7 +712,7 @@ const S = StyleSheet.create({
     width: "100%",
   },
   premiumFormCard: {
-    backgroundColor: "#1D1B20",
+    backgroundColor: "rgba(255,255,255,0.03)",
     borderRadius: pw(2),
     padding: pw(4.5),
     width: "100%",

@@ -69,7 +69,7 @@ function SplashScreen() {
           <RNImage
             source={isTV ? require("../assets/images/TV.png") : require("../assets/images/icon.png")}
             style={styles.logoImage}
-            resizeMode="contain"
+
           />
         </Animated.View>
       </Animated.View>
@@ -111,7 +111,7 @@ export default function RootLayout() {
   // app/index.tsx can replay it once the store is hydrated.
   useEffect(() => {
     DeepLink.capture()
-      .catch(() => {})
+      .catch(() => { })
       .then(() => AppBootManager.initialize())
       .then(() => {
         setIsReady(true);
@@ -139,7 +139,7 @@ export default function RootLayout() {
       if (PlaybackState.isActive) return;
       const portal = usePortalStore.getState().activePortal;
       if (!portal) return;
-      AppBootManager.triggerBackgroundSync(portal).catch(() => {});
+      AppBootManager.triggerBackgroundSync(portal).catch(() => { });
     }, SYNC_INTERVAL);
 
     return () => clearInterval(interval);
@@ -154,7 +154,7 @@ export default function RootLayout() {
       if (PlaybackState.isActive) return;
       const portal = usePortalStore.getState().activePortal;
       if (!portal) return;
-      AppBootManager.triggerBackgroundSync(portal).catch(() => {});
+      AppBootManager.triggerBackgroundSync(portal).catch(() => { });
     };
 
     const subscription = AppState.addEventListener("change", handleAppStateChange);
@@ -218,9 +218,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000000" },
   splash: { flex: 1, justifyContent: "center", alignItems: "center" },
   splashContent: { alignItems: "center", justifyContent: "center" },
-  splashLogoWrapper: { width: pw(25), height: pw(25), borderRadius: pw(5), overflow: "hidden", marginBottom: ph(3) },
-  splashLogoTVWrapper: { width: pw(35), height: pw(35), borderRadius: pw(4), overflow: "hidden", marginBottom: ph(2) },
-  logoImage: { width: "100%", height: "100%", borderRadius: pw(4) },
+  splashLogoWrapper: { width: pw(30), height: pw(30), marginBottom: ph(3) },
+  splashLogoTVWrapper: { width: pw(40), height: ph(20), marginBottom: ph(2) },
+  logoImage: { width: "100%", height: "100%" },
   splashTextGroup: { alignItems: "center", marginBottom: ph(2), justifyContent: "flex-end" },
   splashTitle: { color: "#ffffff", fontSize: ps(2.5), fontWeight: "400", letterSpacing: pw(0.8) },
   splashTitleTV: { fontSize: ps(3.5), letterSpacing: pw(1.2) },

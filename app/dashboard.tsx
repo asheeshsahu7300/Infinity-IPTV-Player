@@ -459,7 +459,9 @@ const S = StyleSheet.create({
   },
   headerLogoImage: {
     width: pw(25),
-    aspectRatio: 5,
+    height: ph(8),
+    transform: [{ scale: 2.5 }],
+    marginLeft: -pw(6),
   },
   headerActions: {
     flexDirection: "row",
@@ -499,7 +501,7 @@ const S = StyleSheet.create({
     fontSize: ps(3),
     color: "#fff",
     fontWeight: "500",
-    marginVertical: ph(1),
+    marginVertical: ph(2),
   },
   heroDesc: {
     fontSize: ps(1.4),
