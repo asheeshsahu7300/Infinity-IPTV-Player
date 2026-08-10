@@ -44,8 +44,6 @@ const ASPECT_RATIOS: {
   label: string;
   resize: ResizeMode;
 }[] = [
-    { key: "16:9", label: "16:9", resize: ResizeMode.NONE }, // Handled via style typically, or just STRETCH
-    { key: "4:3", label: "4:3", resize: ResizeMode.NONE },
     { key: "fit", label: "Fit", resize: ResizeMode.CONTAIN },
     { key: "fill", label: "Fill", resize: ResizeMode.COVER },
   ];
@@ -90,6 +88,12 @@ export default function PlayerScreen() {
   const isLive = params.type === "live";
   const is4K = typeof params.title === 'string' && (params.title.toUpperCase().includes('4K') || params.title.toUpperCase().includes('UHD'));
 
+  const shouldUseVlc = React.useMemo(() => {
+    if (!params.cmd) return is4K;
+    const url = params.cmd.toLowerCase();
+    return is4K || url.includes(".ts") || url.includes("mpegts") || url.startsWith("rtsp://");
+  }, [params.cmd, is4K]);
+
   // Update isSeekable based on content type
   useEffect(() => {
     setIsSeekable(!isLive);
@@ -131,6 +135,8 @@ export default function PlayerScreen() {
   const [isBuffering, setIsBuffering] = useState(false);
   const [isSeekable, setIsSeekable] = useState(true);
   const [isLocked, setIsLocked] = useState(false);
+  const [vlcSeekTarget, setVlcSeekTarget] = useState<number | undefined>(undefined);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   // Enhanced features state
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
@@ -173,7 +179,8 @@ export default function PlayerScreen() {
   const isSeeking = useRef(false);
   const seekTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const targetSeekPosition = useRef<number | null>(null);
-  let brightnessPermissionRequestInProgress = false;
+  const vlcSeekTargetRef = useRef<number | null>(null);
+  const brightnessPermissionRequestInProgress = useRef(false);
 
   const lastTapTime = useRef(0);
   const tapTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -211,6 +218,27 @@ export default function PlayerScreen() {
   const accumulateSeekRef = useRef<(delta: number) => void>(() => { });
   const handleTapRef = useRef<(x: number) => void>(() => { });
 
+  const normalizeVlcTime = (value: unknown) => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return n;
+  };
+
+  const handleNormalizedProgress = useCallback(
+    (positionMs: number, durationMs: number) => {
+      if (isSeeking.current) return;
+      positionRef.current = positionMs;
+      durationRef.current = durationMs;
+      setPosition(positionMs);
+      if (durationMs > 0) setDuration(durationMs);
+      if (params.contentId && params.type !== "live" && Date.now() - lastPositionSaveTime.current > 10000) {
+        lastPositionSaveTime.current = Date.now();
+        StreamManager.savePlaybackPosition(params.contentId, positionMs, durationMs);
+      }
+    },
+    [params.contentId, params.type]
+  );
+
   const resetControlsTimeout = useCallback(() => {
     if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
     controlsTimeout.current = setTimeout(() => {
@@ -219,6 +247,23 @@ export default function PlayerScreen() {
       }
     }, 5000);
   }, []);
+
+  const requestVlcSeek = useCallback((positionMs: number) => {
+    if (!durationRef.current || durationRef.current <= 0) return;
+    const clamped = Math.max(0, Math.min(positionMs, durationRef.current));
+    let fraction = clamped / durationRef.current;
+    
+    // Ensure the prop always changes so React Native bridges it
+    setVlcSeekTarget((prev) => {
+      const finalFraction = prev === fraction ? fraction + 1e-10 : fraction;
+      vlcSeekTargetRef.current = finalFraction;
+      return finalFraction;
+    });
+
+    isSeeking.current = true;
+    setPosition(clamped);
+    resetControlsTimeout();
+  }, [resetControlsTimeout]);
 
   // Reusable handlers to mark/unmark "this button owns Left/Right navigation".
   // Spread onto every Focusable in a horizontally-arranged row.
@@ -309,14 +354,14 @@ export default function PlayerScreen() {
     });
 
     const requestBrightnessPermission = async () => {
-      if (brightnessPermissionRequestInProgress) return;
+      if (brightnessPermissionRequestInProgress.current) return;
       try {
-        brightnessPermissionRequestInProgress = true;
+        brightnessPermissionRequestInProgress.current = true;
         await Brightness.requestPermissionsAsync();
       } catch (err) {
         console.warn("Brightness permission failed", err);
       } finally {
-        brightnessPermissionRequestInProgress = false;
+        brightnessPermissionRequestInProgress.current = false;
       }
     };
     requestBrightnessPermission();
@@ -357,7 +402,10 @@ export default function PlayerScreen() {
         const settings = await safeStorage.getItem("app_settings");
         if (settings) {
           const parsed = JSON.parse(settings);
-          if (typeof parsed.autoPlay === "boolean") setAutoPlay(parsed.autoPlay);
+          if (typeof parsed.autoPlay === "boolean") {
+            setAutoPlay(parsed.autoPlay);
+            setIsPlaying(parsed.autoPlay);
+          }
         }
 
         if (params.contentId && params.type !== "live") {
@@ -372,6 +420,8 @@ export default function PlayerScreen() {
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
+      } finally {
+        setSettingsLoaded(true);
       }
     };
     loadSettingsAndResume();
@@ -466,19 +516,23 @@ export default function PlayerScreen() {
     if (isLockedRef.current) return;
     if (duration > 0 && isSeekable) {
       try {
-        isSeeking.current = true;
-        if (seekTimeout.current) clearTimeout(seekTimeout.current);
         let newPos = Math.max(0, Math.min(position + delta, duration));
-        setPosition(newPos);
-        if (is4K && vlcPlayerRef.current) vlcPlayerRef.current.seek(newPos / duration); else if (playerRef.current) playerRef.current.seek(newPos / 1000);
-        seekTimeout.current = setTimeout(() => { isSeeking.current = false; }, 1000);
+        if (shouldUseVlc) {
+          requestVlcSeek(newPos);
+        } else {
+          isSeeking.current = true;
+          if (seekTimeout.current) clearTimeout(seekTimeout.current);
+          setPosition(newPos);
+          if (playerRef.current) playerRef.current.seek(newPos / 1000);
+          seekTimeout.current = setTimeout(() => { isSeeking.current = false; }, 1000);
+          resetControlsTimeout();
+        }
       } catch (e) {
         console.error("Seek error:", e);
         isSeeking.current = false;
       }
-      resetControlsTimeout();
     }
-  }, [duration, isSeekable, position, resetControlsTimeout]);
+  }, [duration, isSeekable, position, resetControlsTimeout, shouldUseVlc, requestVlcSeek]);
 
   const handleTap = useCallback((x: number) => {
     const now = Date.now();
@@ -537,17 +591,22 @@ export default function PlayerScreen() {
       try {
         const finalPos = targetSeekPosition.current;
         if (finalPos !== null) {
-          if (is4K && vlcPlayerRef.current) vlcPlayerRef.current.seek(finalPos / duration); else if (playerRef.current) playerRef.current.seek(finalPos / 1000);
+          if (shouldUseVlc) {
+             requestVlcSeek(finalPos);
+             setSeekIndicator(null);
+          } else {
+            if (playerRef.current) playerRef.current.seek(finalPos / 1000);
+            seekTimeout.current = setTimeout(() => {
+              if (mountedRef.current) {
+                isSeeking.current = false;
+                setSeekIndicator(null);
+              }
+            }, 1000);
+          }
         }
       } catch (e) {
         console.error("Seek error:", e);
       } finally {
-        seekTimeout.current = setTimeout(() => {
-          if (mountedRef.current) {
-            isSeeking.current = false;
-            setSeekIndicator(null);
-          }
-        }, 1000);
         targetSeekPosition.current = null;
         accumulatedDelta.current = 0;
         if (dummyLeftFocusedRef.current || dummyRightFocusedRef.current) {
@@ -683,6 +742,12 @@ export default function PlayerScreen() {
       const result = await StreamManager.retryStream({ id: params.contentId || "", name: params.title || "", streamUrl: params.cmd }, activePortal, params.type === "live" ? "itv" : "vod", retryCount.current - 1);
       if (result.success && result.url) { 
         setStreamUrl(result.url); 
+        hasSetInitialPosition.current = false;
+        savedResumePosition.current = positionRef.current;
+        setVlcSeekTarget(undefined);
+        vlcSeekTargetRef.current = null;
+        isSeeking.current = false;
+        targetSeekPosition.current = null;
         setIsLoading(true); 
       } else {
         setIsLoading(false);
@@ -739,6 +804,16 @@ export default function PlayerScreen() {
   };
   const progressPercent = isLive ? 0 : (duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0);
 
+  const normalizeVlcTracks = (tracks: any[]) => {
+    if (!tracks || !Array.isArray(tracks)) return [];
+    return tracks.map((track, index) => ({
+      id: track.id ?? track.index ?? index,
+      index,
+      name: track.name ?? track.title ?? track.language ?? `Track ${index + 1}`,
+      language: track.language,
+    }));
+  };
+
   // Ensure the native module is actually present
   const isRCTVideoAvailable = (() => {
     try {
@@ -751,7 +826,17 @@ export default function PlayerScreen() {
     }
   })();
 
-  if (!isRCTVideoAvailable) {
+  if (!settingsLoaded) {
+    return (
+      <View style={S.container}>
+        <View style={S.loadingOverlay} pointerEvents="none">
+          <ActivityIndicator size="large" color={THEME.colors.primary} />
+        </View>
+      </View>
+    );
+  }
+
+  if (!shouldUseVlc && !isRCTVideoAvailable) {
     return (
       <View style={{ flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
         <MaterialCommunityIcons name="alert-circle" size={48} color="white" style={{ marginBottom: 16 }} />
@@ -770,29 +855,36 @@ export default function PlayerScreen() {
   return (
     <View style={S.container} {...panResponder.panHandlers}>
       <StatusBar hidden />
-      {is4K ? (
+      {shouldUseVlc ? (
         <VLCPlayer
+          key={`vlc-${streamUrl}`}
           ref={vlcPlayerRef}
           style={S.video}
-          source={{ uri: streamUrl, initType: 1 }}
-          paused={!isPlaying || !autoPlay}
+          source={{ uri: streamUrl }}
+          seek={vlcSeekTarget}
+          paused={!isPlaying}
           rate={playbackSpeed}
           volume={currentVolume}
-          autoAspectRatio={true}
-          resizeMode={ASPECT_RATIOS[aspectRatioIndex].resize === 'stretch' ? 'fill' : ASPECT_RATIOS[aspectRatioIndex].resize as any}
+          resizeMode={ASPECT_RATIOS[aspectRatioIndex].resize as any}
           audioTrack={selectedAudioTrack}
           textTrack={selectedTextTrack}
           onLoad={(e: any) => {
-            if (e.duration) setDuration(e.duration);
-            if (e.audioTracks) setAudioTracks(e.audioTracks);
-            if (e.textTracks) setTextTracks(e.textTracks);
+            const durationMs = normalizeVlcTime(e.duration);
+            setIsLoading(false);
+            setIsBuffering(false);
+
+            if (durationMs > 0) {
+              durationRef.current = durationMs;
+              setDuration(durationMs);
+            }
+
+            if (e.videoTracks) setVideoTracks(normalizeVlcTracks(e.videoTracks));
+            if (e.audioTracks) setAudioTracks(normalizeVlcTracks(e.audioTracks));
+            if (e.textTracks) setTextTracks(normalizeVlcTracks(e.textTracks));
             
-            const durMs = e.duration || 0;
-            if (!hasSetInitialPosition.current && savedResumePosition.current > 0 && params.type !== "live" && durMs > 0) {
+            if (!hasSetInitialPosition.current && savedResumePosition.current > 0 && params.type !== "live" && durationMs > 0) {
               hasSetInitialPosition.current = true;
-              setTimeout(() => {
-                if (vlcPlayerRef.current) vlcPlayerRef.current.seek(savedResumePosition.current / durMs);
-              }, 300);
+              requestVlcSeek(savedResumePosition.current);
             }
           }}
           onPlaying={() => {
@@ -800,32 +892,46 @@ export default function PlayerScreen() {
             setIsBuffering(false);
           }}
           onProgress={(e: any) => {
-            setIsLoading(false); // Failsafe: if time is moving, we are not loading
-            setIsBuffering(false);
-            let curMs = e.currentTime || 0;
-            let durMs = e.duration || 0;
-            if (isSeeking.current) return;
-            setPosition(curMs);
-            if (durMs > duration || (duration === 0 && durMs > 0)) setDuration(durMs);
-            if (params.contentId && params.type !== "live" && Date.now() - lastPositionSaveTime.current > 10000) {
-              lastPositionSaveTime.current = Date.now();
-              StreamManager.savePlaybackPosition(params.contentId, curMs, durMs || duration);
+            const currentMs = normalizeVlcTime(e.currentTime);
+            const durationMs = normalizeVlcTime(e.duration);
+
+            if (durationMs > 0) {
+              durationRef.current = durationMs;
+              setDuration(durationMs);
             }
+
+            if (isSeeking.current) {
+              const target = vlcSeekTargetRef.current;
+              if (target !== null && durationMs > 0) {
+                const currentFraction = currentMs / durationMs;
+                if (Math.abs(currentFraction - target) < 0.02) {
+                  isSeeking.current = false;
+                  vlcSeekTargetRef.current = null;
+                  // We explicitly DO NOT clear vlcSeekTarget to undefined here.
+                  // React Native's @ReactProp bridges undefined as 0.0f for floats,
+                  // which would inadvertently trigger a seek back to the start.
+                }
+              }
+              return;
+            }
+
+            handleNormalizedProgress(currentMs, durationMs);
+            setIsLoading(false);
           }}
           onBuffering={(e: any) => {
-            if (e.isBuffering) {
-              setIsBuffering(true);
-              setIsLoading(true);
-            }
+            const buffering = typeof e?.isBuffering === "boolean" ? e.isBuffering : true;
+            setIsBuffering(buffering);
+            if (!buffering) setIsLoading(false);
           }}
           onEnd={() => {
             setIsPlaying(false);
-            if (params.contentId) StreamManager.savePlaybackPosition(params.contentId, 0, duration);
+            if (params.contentId) StreamManager.savePlaybackPosition(params.contentId, 0, durationRef.current);
           }}
           onError={handleSilentRetry}
         />
       ) : (
         <Video
+          key={`video-${streamUrl}`}
           ref={playerRef}
           style={S.video}
           source={{
@@ -837,7 +943,7 @@ export default function PlayerScreen() {
                 licenseServer: params.drmLicenseUrl,
               }
             } : {}),
-            ...(!is4K ? {
+            ...(!shouldUseVlc ? {
               bufferConfig: {
                 minBufferMs: 60000,
                 maxBufferMs: 60000,
@@ -847,7 +953,7 @@ export default function PlayerScreen() {
             } : {})
           }}
           controls={false}
-          paused={!isPlaying || !autoPlay}
+          paused={!isPlaying}
           rate={playbackSpeed}
           volume={currentVolume / 100}
           resizeMode={ASPECT_RATIOS[aspectRatioIndex].resize}
@@ -883,13 +989,7 @@ export default function PlayerScreen() {
             setIsLoading(false); // Failsafe: if we get progress, it's definitely loaded
             let curMs = (data.currentTime || 0) * 1000;
             let durMs = (data.seekableDuration || 0) * 1000;
-            if (isSeeking.current) return;
-            setPosition(curMs);
-            if (durMs > duration || (duration === 0 && durMs > 0)) setDuration(durMs);
-            if (params.contentId && params.type !== "live" && Date.now() - lastPositionSaveTime.current > 10000) {
-              lastPositionSaveTime.current = Date.now();
-              StreamManager.savePlaybackPosition(params.contentId, curMs, durMs || duration);
-            }
+            handleNormalizedProgress(curMs, durMs);
           }}
           onBuffer={({ isBuffering }) => {
             setIsBuffering(isBuffering);
@@ -897,7 +997,7 @@ export default function PlayerScreen() {
           }}
           onEnd={() => {
             setIsPlaying(false);
-            if (params.contentId) StreamManager.savePlaybackPosition(params.contentId, 0, duration);
+            if (params.contentId) StreamManager.savePlaybackPosition(params.contentId, 0, durationRef.current);
           }}
           onError={handleSilentRetry}
         />

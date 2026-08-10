@@ -477,6 +477,38 @@ function publishCategories(
   if (all.length > 0) store.setCategories(all, portalId).catch(() => {});
 }
 
+// Helper for fetching lists with zero-item retry logic
+async function fetchWithRetry(
+  portal: Portal,
+  urlBuilder: (refreshed: Portal) => string
+): Promise<any[]> {
+  let refreshed = await refreshToken(portal);
+  let base = safe(refreshed.config.url).replace(/\/$/, "");
+  let url = urlBuilder(refreshed);
+
+  let res = await axios.get(url, {
+    ...rmAcceptHeader,
+    headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+    timeout: 60000,
+  });
+
+  let rows = extract(res);
+
+  if (rows.length === 0) {
+    refreshed = await refreshToken(portal, true);
+    base = safe(refreshed.config.url).replace(/\/$/, "");
+    url = urlBuilder(refreshed);
+    res = await axios.get(url, {
+      ...rmAcceptHeader,
+      headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+      timeout: 60000,
+    });
+    rows = extract(res);
+  }
+
+  return rows;
+}
+
 export const portalApi = {
   async authenticate(portal: Portal) {
     const base = safe(portal.config.url).replace(/\/$/, "");
@@ -569,21 +601,11 @@ export const portalApi = {
     const cacheKey = `portal:${key}:live:categories`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      const url = `${base}/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml`;
-
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? "",
-          base
-        ),
-        timeout: 60000,
+      const rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        return `${base}/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml`;
       });
 
-      const rows = extract(res);
       const mapped = rows.map((c: any) => {
         const rawId = String(c.id ?? c.gid ?? "");
         const id = rawId === "*" || rawId === "0" ? "all" : rawId;
@@ -612,28 +634,22 @@ export const portalApi = {
       }:${page}`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
       const rawCategoryId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
-      let url = `${base}/portal.php?type=itv&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
       const isAllCat = !rawCategoryId || rawCategoryId === "all" || rawCategoryId === "*";
-      if (!isAllCat) {
-        url += `&genre=${encodeURIComponent(rawCategoryId!)}`;
-      } else {
-        url += `&genre=*`;
-      }
-
-      let res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? "",
-          base
-        ),
-        timeout: 60000,
+      
+      let rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        let url = `${base}/portal.php?type=itv&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
+        if (!isAllCat) {
+          url += `&genre=${encodeURIComponent(rawCategoryId!)}`;
+        } else {
+          url += `&genre=*`;
+        }
+        return url;
       });
 
-      let rows = extract(res);
+      const refreshed = await refreshToken(portal);
+      const base = safe(refreshed.config.url).replace(/\/$/, "");
 
       // Fallback 1: Try genre=0 if genre=* returned 0 items
       if ((!rows || rows.length === 0) && isAllCat) {
@@ -682,21 +698,11 @@ export const portalApi = {
     const cacheKey = `portal:${key}:vod:categories`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      const url = `${base}/portal.php?type=vod&action=get_categories&JsHttpRequest=1-xml`;
-
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? "",
-          base
-        ),
-        timeout: 60000,
+      const rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        return `${base}/portal.php?type=vod&action=get_categories&JsHttpRequest=1-xml`;
       });
 
-      const rows = extract(res);
       const mapped = rows.map((c: any) => {
         const rawId = String(c.id ?? "");
         const id = rawId === "*" || rawId === "0" ? "all" : `vod:${rawId}`;
@@ -725,28 +731,22 @@ export const portalApi = {
 
     return requestManager.request(cacheKey, async () => {
       try {
-        const refreshed = await refreshToken(portal);
-        const base = safe(refreshed.config.url).replace(/\/$/, "");
         const rawCategoryId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
-        let url = `${base}/portal.php?type=vod&action=get_ordered_list&max_page_items=100000&p=${page}&JsHttpRequest=1-xml`;
         const isAllCat = !rawCategoryId || rawCategoryId === "all" || rawCategoryId === "*";
-        if (!isAllCat) {
-          url += `&category=${encodeURIComponent(rawCategoryId!)}`;
-        } else {
-          url += `&category=*`;
-        }
-
-        let res = await axios.get(url, {
-          ...rmAcceptHeader,
-          headers: headers(
-            refreshed.config.mac ?? "",
-            refreshed.config.token ?? "",
-            base
-          ),
-          timeout: 60000,
+        
+        let rows = await fetchWithRetry(portal, (refreshed) => {
+          const base = safe(refreshed.config.url).replace(/\/$/, "");
+          let url = `${base}/portal.php?type=vod&action=get_ordered_list&max_page_items=100000&p=${page}&JsHttpRequest=1-xml`;
+          if (!isAllCat) {
+            url += `&category=${encodeURIComponent(rawCategoryId!)}`;
+          } else {
+            url += `&category=*`;
+          }
+          return url;
         });
 
-        let rows = extract(res);
+        const refreshed = await refreshToken(portal);
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
 
         // Fallback 1: Try category=0 if category=* returned 0 items
         if ((!rows || rows.length === 0) && isAllCat) {
@@ -817,21 +817,11 @@ export const portalApi = {
     const cacheKey = `portal:${key}:series:categories`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      const url = `${base}/portal.php?type=series&action=get_categories&JsHttpRequest=1-xml`;
-
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? "",
-          base
-        ),
-        timeout: 60000,
+      const rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        return `${base}/portal.php?type=series&action=get_categories&JsHttpRequest=1-xml`;
       });
 
-      const rows = extract(res);
       const mapped = rows.map((c: any) => {
         const rawId = String(c.id ?? "");
         const id = rawId === "*" || rawId === "0" ? "all" : `series:${rawId}`;
@@ -859,28 +849,22 @@ export const portalApi = {
 
     return requestManager.request(cacheKey, async () => {
       try {
-        const refreshed = await refreshToken(portal);
-        const base = safe(refreshed.config.url).replace(/\/$/, "");
         const rawCategoryId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
-        let url = `${base}/portal.php?type=series&action=get_ordered_list&max_page_items=100000&p=${page}&JsHttpRequest=1-xml`;
         const isAllCat = !rawCategoryId || rawCategoryId === "all" || rawCategoryId === "*";
-        if (!isAllCat) {
-          url += `&category=${encodeURIComponent(rawCategoryId!)}`;
-        } else {
-          url += `&category=*`;
-        }
-
-        let res = await axios.get(url, {
-          ...rmAcceptHeader,
-          headers: headers(
-            refreshed.config.mac ?? "",
-            refreshed.config.token ?? "",
-            base
-          ),
-          timeout: 60000,
+        
+        let rows = await fetchWithRetry(portal, (refreshed) => {
+          const base = safe(refreshed.config.url).replace(/\/$/, "");
+          let url = `${base}/portal.php?type=series&action=get_ordered_list&max_page_items=100000&p=${page}&JsHttpRequest=1-xml`;
+          if (!isAllCat) {
+            url += `&category=${encodeURIComponent(rawCategoryId!)}`;
+          } else {
+            url += `&category=*`;
+          }
+          return url;
         });
 
-        let rows = extract(res);
+        const refreshed = await refreshToken(portal);
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
 
         // Fallback 1: Try category=0 if category=* returned 0 items
         if ((!rows || rows.length === 0) && isAllCat) {
@@ -949,23 +933,13 @@ export const portalApi = {
     const cacheKey = `portal:${key}:series:info:${seriesId}`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      const url = `${base}/portal.php?type=series&action=get_ordered_list&movie_id=${encodeURIComponent(
-        seriesId
-      )}&JsHttpRequest=1-xml`;
-
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? "",
-          base
-        ),
-        timeout: 60000,
+      const rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        return `${base}/portal.php?type=series&action=get_ordered_list&movie_id=${encodeURIComponent(
+          seriesId
+        )}&JsHttpRequest=1-xml`;
       });
 
-      const rows = extract(res);
       const seasons: Season[] = [];
 
       for (const s of rows) {
@@ -1189,23 +1163,14 @@ export const portalApi = {
   },
 
   async search(portal: Portal, q: string, type: string) {
-    const refreshed = await refreshToken(portal);
-    const base = safe(refreshed.config.url).replace(/\/$/, "");
-    const url = `${base}/portal.php?type=${type}&action=get_ordered_list&search=${encodeURIComponent(
-      q
-    )}&JsHttpRequest=1-xml`;
-
-    const res = await axios.get(url, {
-      ...rmAcceptHeader,
-      headers: headers(
-        refreshed.config.mac ?? "",
-        refreshed.config.token ?? "",
-        base
-      ),
-      timeout: 60000,
+    const rows = await fetchWithRetry(portal, (refreshed) => {
+      const base = safe(refreshed.config.url).replace(/\/$/, "");
+      return `${base}/portal.php?type=${type}&action=get_ordered_list&search=${encodeURIComponent(
+        q
+      )}&JsHttpRequest=1-xml`;
     });
 
-    return extract(res);
+    return rows;
   },
 
   async getLiveChannelsForSearch(portal: Portal): Promise<Channel[]> {
@@ -1213,21 +1178,11 @@ export const portalApi = {
     const cacheKey = `portal:${key}:live:channels:search:all`;
 
     return requestManager.request(cacheKey, async () => {
-      const refreshed = await refreshToken(portal);
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      let url = `${base}/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml`;
-
-      const res = await axios.get(url, {
-        ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? "",
-          base
-        ),
-        timeout: 60000,
+      const rows = await fetchWithRetry(portal, (refreshed) => {
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        return `${base}/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml`;
       });
 
-      const rows = extract(res);
       const result: Channel[] = rows.map((c: any) => ({
         id: String(c.id ?? c.cmd ?? ""),
         name: c.name ?? c.title ?? "Unknown",

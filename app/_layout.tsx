@@ -16,6 +16,7 @@ import {
 import * as Linking from "expo-linking";
 import { LinearGradient } from "expo-linear-gradient";
 import { TenorSans_400Regular } from "@expo-google-fonts/tenor-sans";
+import { Audio } from "expo-av";
 
 import ErrorBoundary from "../src/components/ErrorBoundary";
 import { usePortalStore } from "../src/store/portalStore";
@@ -55,6 +56,9 @@ function SplashScreen() {
         Animated.timing(pulseAnim, { toValue: 1, duration: 2500, useNativeDriver: true }),
       ])
     ).start();
+
+    // Splash sound is now managed by RootLayout to ensure perfect sync
+    // between the audio duration and the splash screen lifecycle.
   }, []);
 
   return (
@@ -67,7 +71,7 @@ function SplashScreen() {
           ]}
         >
           <RNImage
-            source={isTV ? require("../assets/images/TV.png") : require("../assets/images/icon.png")}
+            source={isTV ? require("../assets/images/TV.png") : require("../assets/images/TV.png")}
             style={styles.logoImage}
 
           />
@@ -110,9 +114,50 @@ export default function RootLayout() {
   // Boot the app via AppBootManager. Capture the launch URL first so
   // app/index.tsx can replay it once the store is hydrated.
   useEffect(() => {
-    DeepLink.capture()
+    const soundDelay = new Promise<void>(async (resolve) => {
+      let sound: Audio.Sound | null = null;
+      
+      const finish = () => {
+        resolve();
+        if (sound) {
+          // Unload a little after it finishes to prevent audio cutoff glitches
+          setTimeout(() => {
+            try {
+              sound!.unloadAsync();
+            } catch (e) {}
+          }, 1000);
+        }
+      };
+      
+      // 5s max safety fallback in case audio fails to play or report completion
+      let fallbackTimer = setTimeout(finish, 5000); 
+
+      try {
+        const { sound: s } = await Audio.Sound.createAsync(
+          require("../assets/sounds/splash.wav")
+        );
+        sound = s;
+        
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            clearTimeout(fallbackTimer);
+            finish();
+          }
+        });
+        
+        await sound.playAsync();
+      } catch (e) {
+        console.warn("Failed to play splash sound:", e);
+        clearTimeout(fallbackTimer);
+        finish();
+      }
+    });
+
+    const bootProcess = DeepLink.capture()
       .catch(() => { })
-      .then(() => AppBootManager.initialize())
+      .then(() => AppBootManager.initialize());
+
+    Promise.all([bootProcess, soundDelay])
       .then(() => {
         setIsReady(true);
       })

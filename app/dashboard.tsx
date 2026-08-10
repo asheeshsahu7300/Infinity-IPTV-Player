@@ -200,17 +200,17 @@ export default function DashboardScreen() {
               the blocking LoadingOverlay — that is reserved for a refresh the
               user asked for — so in-flight traffic surfaces here instead. */}
           <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={handleFullRefresh} style={S.roundBtn}>
-            {syncing ? (
-              <ActivityIndicator size="small" color="#fff" />
+            {(focused) => syncing ? (
+              <ActivityIndicator size="small" color={focused ? "#000" : "#fff"} />
             ) : (
-              <Ionicons name="refresh" size={ps(2)} color="#fff" />
+              <Ionicons name="refresh" size={ps(2)} color={focused ? "#000" : "#fff"} />
             )}
           </Focusable>
           <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/portals")} style={S.roundBtn}>
-            <Ionicons name="apps" size={ps(2)} color="#fff" />
+            {(focused) => <Ionicons name="apps" size={ps(2)} color={focused ? "#000" : "#fff"} />}
           </Focusable>
           <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/settings")} style={S.roundBtn}>
-            <Ionicons name="settings" size={ps(2)} color="#fff" />
+            {(focused) => <Ionicons name="settings" size={ps(2)} color={focused ? "#000" : "#fff"} />}
           </Focusable>
         </View>
       </View>
@@ -476,7 +476,7 @@ const S = StyleSheet.create({
     alignItems: "center",
   },
   roundBtnFocused: {
-    backgroundColor: "#504e4fff",
+    backgroundColor: "#FFFFFF",
     transform: [{ scale: 1.1 }],
   },
 
