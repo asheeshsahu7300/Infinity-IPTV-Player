@@ -16,6 +16,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 import { usePortalStore } from "../src/store/portalStore";
 import { portalApi } from "@/src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
@@ -208,7 +209,7 @@ const GradientBorderInput = ({
         {
           flexDirection: "row",
           alignItems: "center",
-          backgroundColor: "rgba(255,255,255,0.05)",
+          backgroundColor: "rgba(0,0,0,0.45)",
           borderRadius: RADIUS,
           paddingHorizontal: pw(2),
           borderWidth: 1,
@@ -363,7 +364,7 @@ export default function AddPortalScreen() {
     return (
       <View style={S.step1Container}>
         <View style={S.logoRow}>
-          <Text style={S.logoTitle}>INFINITY IPTV PLAYER</Text>
+          <Image source={require("../assets/images/TV.png")} style={{ width: 140, height: 50, maxWidth: 140, maxHeight: 50 }} contentFit="cover" />
         </View>
 
         <Text style={S.step1Subtitle}>
@@ -636,7 +637,7 @@ export default function AddPortalScreen() {
 
       {step === 2 && (
         <View style={S.premiumHeader}>
-          <Text style={S.premiumHeaderTitle}>INFINITY IPTV PLAYER</Text>
+          <Image source={require("../assets/images/TV.png")} style={{ width: 140, height: 50, maxWidth: 140, maxHeight: 50 }} contentFit="cover" />
         </View>
       )}
 
@@ -718,7 +719,7 @@ const S = StyleSheet.create({
     textAlign: "center",
   },
   step1Subtitle: {
-    fontSize: ps(1),
+    fontSize: ps(1.2),
     color: "#9ca3af",
     textAlign: "center",
     marginBottom: isPhone ? ph(2.5) : ph(5),
@@ -751,14 +752,14 @@ const S = StyleSheet.create({
     marginBottom: isPhone ? ph(1.5) : ph(3),
   },
   darkCardTitle: {
-    fontSize: isTV ? ps(2.2) : ps(1.8),
+    fontSize: isTV ? ps(2.5) : ps(2.0),
     fontWeight: fw("700"),
     color: "#fff",
     marginBottom: ph(1.2),
     textAlign: "center",
   },
   darkCardDesc: {
-    fontSize: isTV ? ps(1.4) : ps(1.2),
+    fontSize: isTV ? ps(1.6) : ps(1.4),
     color: "#7e8299",
     textAlign: "center",
     lineHeight: isTV ? ph(3) : ph(2.4),
@@ -783,13 +784,13 @@ const S = StyleSheet.create({
     flex: 1,
   },
   cardRowTitle: {
-    fontSize: ps(1.7),
+    fontSize: ps(1.9),
     fontWeight: fw("700"),
     color: "#fff",
     marginBottom: ph(0.4),
   },
   cardRowDesc: {
-    fontSize: ps(1.15),
+    fontSize: ps(1.3),
     color: "#7e8299",
     lineHeight: ph(2.2),
   },
@@ -847,7 +848,7 @@ const S = StyleSheet.create({
     width: "100%",
   },
   premiumFormCard: {
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     borderRadius: 28,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
@@ -863,7 +864,7 @@ const S = StyleSheet.create({
     marginBottom: ph(0.4),
   },
   premiumFormSubtitle: {
-    fontSize: isTV ? ps(1.2) : ps(1.0),
+    fontSize: isTV ? ps(1.4) : ps(1.2),
     color: "#9ca3af",
     lineHeight: ph(2.0),
     marginBottom: ph(2.0),
@@ -872,7 +873,7 @@ const S = StyleSheet.create({
     marginBottom: ph(2.2),
   },
   premiumLabel: {
-    fontSize: ps(1.1),
+    fontSize: ps(1.4),
     fontWeight: fw("600"),
     color: "#9ca3af",
     letterSpacing: 0.3,
@@ -891,7 +892,7 @@ const S = StyleSheet.create({
     flex: 1,
     paddingVertical: isTV ? ph(2) : ph(1.9),
     color: "#fff",
-    fontSize: isTV ? ps(1.5) : ps(1.3),
+    fontSize: isTV ? ps(1.8) : ps(1.6),
   },
 
   // ── OR divider ───────────────────────────────────────────────────────────
@@ -907,7 +908,7 @@ const S = StyleSheet.create({
   },
   premiumDividerText: {
     color: "#555",
-    fontSize: ps(1.1),
+    fontSize: ps(1.3),
     fontWeight: fw("700"),
     paddingHorizontal: pw(2),
   },
@@ -925,7 +926,7 @@ const S = StyleSheet.create({
   },
   premiumBrowseBtnText: {
     color: "#e2e2e2",
-    fontSize: isTV ? ps(1.5) : ps(1.3),
+    fontSize: isTV ? ps(1.8) : ps(1.6),
     fontWeight: fw("600"),
   },
   premiumInputWrapperFocused: {
@@ -959,7 +960,7 @@ const S = StyleSheet.create({
   },
   saveOnlyBtnText: {
     color: "#cbd5e1",
-    fontSize: ps(1.3),
+    fontSize: ps(1.5),
     fontWeight: fw("700"),
   },
   connectBtnWrapper: {
@@ -975,7 +976,7 @@ const S = StyleSheet.create({
   },
   connectBtnText: {
     color: "#000",
-    fontSize: isTV ? ps(1.8) : ps(1.5),
+    fontSize: isTV ? ps(2.2) : ps(1.8),
     fontWeight: fw("700"),
     letterSpacing: 0.5,
   },
@@ -988,13 +989,13 @@ const S = StyleSheet.create({
   },
   disclaimerTitle: {
     color: "rgba(255,255,255,0.5)",
-    fontSize: ps(1.05),
+    fontSize: ps(1.2),
     fontWeight: fw("700"),
     marginBottom: ph(0.5),
   },
   disclaimerText: {
     color: "rgba(255,255,255,0.3)",
-    fontSize: ps(0.95),
+    fontSize: ps(1.1),
     textAlign: "center",
     lineHeight: ph(2),
   },

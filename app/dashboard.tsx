@@ -14,6 +14,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from "@react-native-masked-view/masked-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Image as ExpoImage } from "expo-image";
 import { usePortalStore } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
 import { XtreamApi } from "../src/services/xtreamApi";
@@ -338,46 +339,36 @@ export default function DashboardScreen() {
         {/* Cinematic Header Branding */}
         <View style={[S.headerBranding, isMobile && { marginTop: 0, marginBottom: 16 }]}>
           <View style={S.logoRow}>
-            <Text style={[S.logoTitle, isMobile && { fontSize: ps(3.2) }]}>INFINITY</Text>
-            <Text style={[S.logoSubtitle, isMobile && { fontSize: ps(1.4) }]}>IPTV PLAYER</Text>
+            <ExpoImage source={require("../assets/images/TV.png")} contentFit="cover" style={{ width: 130, height: 50, maxWidth: 130, maxHeight: 50 }} />
           </View>
           <View style={S.headerActions}>
             {isMobile && (
               <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/search")} style={[S.roundBtn, { width: 48, height: 48, borderRadius: 24 }]}>
-                <Ionicons name="search" size={20} color="#fff" />
+                <Ionicons name="search" size={18} color="#fff" />
               </Focusable>
             )}
             <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={handleFullRefresh} style={[S.roundBtn, isMobile && { width: 48, height: 48, borderRadius: 24 }]}>
-              <Ionicons name="refresh" size={isMobile ? 20 : ps(2)} color="#fff" />
+              <Ionicons name="refresh" size={18} color="#fff" />
             </Focusable>
             <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/portals")} style={[S.roundBtn, isMobile && { width: 48, height: 48, borderRadius: 24 }]}>
-              <Ionicons name="apps" size={isMobile ? 20 : ps(2)} color="#fff" />
+              <Ionicons name="apps" size={18} color="#fff" />
             </Focusable>
             <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/settings")} style={[S.roundBtn, isMobile && { width: 48, height: 48, borderRadius: 24 }]}>
-              <Ionicons name="settings" size={isMobile ? 20 : ps(2)} color="#fff" />
+              <Ionicons name="settings" size={18} color="#fff" />
             </Focusable>
           </View>
         </View>
 
         {/* On phone, search lives in the header as a round button (above);
             the hero pitch + search CTA is kept for tablet/TV only. */}
-        {!isMobile && (
-          <View style={S.heroSection}>
-            <GradientText text="PREMIUM STREAMING" style={S.heroTagline} />
-            <Text style={S.heroTitle}>Unlimited Entertainment</Text>
-            <Text style={S.heroDesc}>Access thousands of Indian channels, global movies and exclusive series directly on your screen.</Text>
-            <View style={S.heroButtons}>
-              <HeroPill icon="search" text="Search Content" autoFocus onPress={() => router.push("/search")} />
-            </View>
-          </View>
-        )}
 
         {/* Browse Category Cards */}
-        <View style={[S.browseSection, isMobile && { flex: 1, marginBottom: 0 }, isMobile && isLandscape && { flex: 0, marginBottom: ph(4) }]}>
+        <View style={[S.browseSection, isMobile && { flex: 1, marginBottom: 0, marginTop: 20 }, isMobile && isLandscape && { flex: 0, marginBottom: ph(4) }]}>
           <View style={[S.browseContainer, isMobile && { gap: 14, flex: 1 }, isMobile && isLandscape && { flexDirection: "row", flex: 0, gap: 12 }]}>
             {(
               [
                 { id: "cat-live", title: "Live TV", icon: "tv", img: "https://i.pinimg.com/1200x/c2/f5/f5/c2f5f508392fc27ab89483fe3037fd30.jpg", route: "/live-tv" },
+
                 { id: "cat-movies", title: "Movies", icon: "film", img: "https://i.pinimg.com/736x/eb/f1/4a/ebf14a5d3b21e60b907ae26b90205271.jpg", route: "/vod" },
                 { id: "cat-series", title: "Series", icon: "albums", img: "https://images.ctfassets.net/7b9nfelvm7fe/2FdCQ5XGDbBZfsfqHrcNWn/c51a573dab4b0a21f7a0103859648649/sky_mobile_banner_1024x768.jpg?w=1024&fit=scale&q=80", route: "/series" },
               ]
@@ -392,7 +383,7 @@ export default function DashboardScreen() {
                 {(focused) => (
                   <View style={[S.browseCard, focused && {
                     transform: [{ scale: 1.05 }],
-                    shadowColor: "#ff1b8a",
+                    shadowColor: "#FFFFFF",
                     shadowOffset: { width: 0, height: 6 },
                     shadowOpacity: 0.6,
                     shadowRadius: 10,
@@ -407,7 +398,13 @@ export default function DashboardScreen() {
                       <View style={[S.browseCardInner, isMobile && { borderRadius: 16 }]}>
                         <Image source={{ uri: cat.img }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
                         <LinearGradient
-                          colors={focused ? ["rgba(0,0,0,0.2)", "rgba(0,0,0,0.4)"] : ["rgba(0,0,0,0.4)", "rgba(0,0,0,0.95)"]}
+                          colors={[
+                            "rgba(255, 255, 255, 0.05)",
+                            "rgba(255,255,255,0.02)",
+                            "rgba(0,0,0,0.20)",
+                            "rgba(0,0,0,0.65)",
+                          ]}
+                          locations={[0, 0.25, 0.55, 1]}
                           style={StyleSheet.absoluteFillObject}
                         />
                         <View style={[S.browseCardContent, { backgroundColor: "transparent" }, isMobile && { padding: 16, borderBottomLeftRadius: 16, borderBottomRightRadius: 16 }]}>
@@ -614,9 +611,9 @@ const S = StyleSheet.create({
   },
   roundBtn: {
     // Clamp to the 48dp touch minimum on phone/tablet; pw(5) stays large on TV.
-    width: Math.max(pw(5), isTV ? 0 : 48),
-    height: Math.max(pw(5), isTV ? 0 : 48),
-    borderRadius: Math.max(pw(5), isTV ? 0 : 48) / 2,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: "rgba(255,255,255,0.08)",
     justifyContent: "center",
     alignItems: "center",

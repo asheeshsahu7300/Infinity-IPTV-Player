@@ -12,6 +12,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 import { usePortalStore, Portal } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
@@ -218,7 +219,7 @@ export default function PortalsScreen() {
       {/* Header */}
       <View style={[S.header, { paddingTop: insets.top + (isPhone ? 10 : ph(1.5)) }]}>
         <View style={S.headerText}>
-          <Text style={S.title}>INFINITY IPTV PLAYER</Text>
+          <Image source={require("../assets/images/TV.png")} style={{ width: 140, height: 50, maxWidth: 140, maxHeight: 50 }} contentFit="cover" />
           <Text style={S.subtitle}>Choose a portal to continue</Text>
         </View>
         {!isEmpty && (

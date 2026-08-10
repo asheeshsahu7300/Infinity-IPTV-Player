@@ -12,6 +12,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -330,7 +331,7 @@ export default function SettingsScreen() {
           </View>
 
           <View style={S.footer}>
-            <Text style={S.footerText}>Infinity IPTV Player</Text>
+            <Image source={require("../assets/images/TV.png")} style={{ width: pw(40), height: ph(4), maxWidth: 200, maxHeight: 40, opacity: 0.5 }} contentFit="contain" />
             <Text style={S.footerSubtext}>
               {portals.length} {portals.length === 1 ? 'portal' : 'portals'} configured
             </Text>

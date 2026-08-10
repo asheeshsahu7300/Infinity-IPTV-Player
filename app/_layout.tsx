@@ -106,7 +106,7 @@ function SplashScreen() {
           <Image
             source={require("../assets/images/splash-icon.png")}
             style={styles.logoImage}
-            resizeMode="contain"
+
           />
         </Animated.View>
       </Animated.View>
@@ -133,7 +133,10 @@ export default function RootLayout() {
       NavigationBar.setBehaviorAsync("overlay-swipe");
     }
 
-    AppBootManager.initialize()
+    Promise.all([
+      AppBootManager.initialize(),
+      new Promise(resolve => setTimeout(resolve, 3000))
+    ])
       .then(() => {
         setIsReady(true);
       })

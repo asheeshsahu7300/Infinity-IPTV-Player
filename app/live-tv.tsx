@@ -21,7 +21,7 @@ import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { StreamManager } from "../src/services/StreamManager";
-import { THEME, pw, ph, ps , fw } from '../src/theme/tokens';
+import { THEME, pw, ph, ps, fw } from '../src/theme/tokens';
 import { isTV } from "../src/utils/tvUtils";
 import { useResponsive } from "../src/theme/responsive";
 import { CinematicBackground } from "../src/components/CinematicBackground";
@@ -547,7 +547,7 @@ export default function LiveTVScreen() {
               maxToRenderPerBatch={numColumns * 6}
               windowSize={11}
               ref={flatListRef}
-              onScrollToIndexFailed={() => {}}
+              onScrollToIndexFailed={() => { }}
               renderItem={({ item, index }) => (
                 <ChannelCard
                   item={item}
@@ -692,8 +692,8 @@ const S = StyleSheet.create({
     justifyContent: "center",
   },
   cardLogoWrapper: {
-    width: "65%",
-    height: "55%",
+    width: "85%",
+    height: "65%",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: ph(0.6),
