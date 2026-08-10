@@ -19,7 +19,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "leanbackIcon": "./assets/images/tv-banner.png",
+      "leanbackIcon": "../assets/images/TV.png",
       "intentFilters": [
         {
           "action": "MAIN",
@@ -28,15 +28,6 @@
           ]
         }
       ]
-    },
-    "androidTV": {
-      "icon": "./assets/images/tv-icon.png",
-      "banner": "./assets/images/tv-banner.png"
-    },
-    "tvos": {
-      "icon": "./assets/images/tv-icon.png",
-      "topShelfImage": "./assets/images/tv-top-shelf.png",
-      "bundleIdentifier": "com.inifinity.iptvplayer"
     },
     "web": {
       "bundler": "metro",
@@ -56,14 +47,7 @@
       ],
       "expo-video",
       "expo-audio",
-      "react-native-vlc-media-player",
-      [
-        "@react-native-tvos/config-tv",
-        {
-          "isTV": true,
-          "androidTVBanner": "./assets/images/tv-banner.png"
-        }
-      ]
+      "react-native-vlc-media-player"
     ],
     "experiments": {
       "typedRoutes": true
