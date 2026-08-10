@@ -21,6 +21,7 @@ import { THEME, pw, ph, psRaw as ps } from '../src/theme/tokens';
 import { BlurView } from 'expo-blur';
 import MaskedView from "@react-native-masked-view/masked-view";
 import { Focusable, FocusGroup } from "../src/tv";
+import { CinematicBackground } from "../src/components/CinematicBackground";
 
 
 
@@ -48,7 +49,7 @@ export default function SettingsScreen() {
   const setActivePortal = usePortalStore((s) => s.setActivePortal);
   const clearPortalData = usePortalStore((s) => s.clearPortalData);
   const clearPersistedPortalData = usePortalStore((s) => s.clearPersistedPortalData);
-  
+
   const overscanPadding = usePortalStore((s) => s.overscanPadding);
   const setOverscanPadding = usePortalStore((s) => s.setOverscanPadding);
 
@@ -176,22 +177,9 @@ export default function SettingsScreen() {
   );
 
   return (
-    <View style={S.container}>
-      {/* Background gradients */}
-      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-        <LinearGradient
-          colors={["#2a0845", "transparent"]}
-          start={{ x: 1, y: 0 }}
-          end={{ x: 0.5, y: 0.5 }}
-          style={{ position: "absolute", top: 0, right: 0, width: "100%", height: "100%", opacity: 0.3 }}
-        />
-        <LinearGradient
-          colors={["#6441a5", "transparent"]}
-          start={{ x: 0, y: 1 }}
-          end={{ x: 0.3, y: 0.7 }}
-          style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: "100%", opacity: 0.15 }}
-        />
-      </View>
+    <View style={[S.container, { paddingTop: insets.top }]}>
+      <CinematicBackground />
+      {/* Old background gradients removed in favor of CinematicBackground */}
 
       {/* Modern Centered Header */}
       <View style={S.headerBranding}>
@@ -326,8 +314,8 @@ export default function SettingsScreen() {
                 )
               )}
             </Focusable>
-              
-              <Focusable ringOnFocus={false} onPress={cycleOverscan} style={S.bentoPressable}>
+
+            <Focusable ringOnFocus={false} onPress={cycleOverscan} style={S.bentoPressable}>
               {(focused) => (
                 focused ? (
                   <LinearGradient
@@ -344,7 +332,7 @@ export default function SettingsScreen() {
                       </View>
                       <View style={[S.customSwitch, { width: 'auto', paddingHorizontal: pw(1) }]}>
                         <Text style={{ color: '#fff', fontSize: ps(1.2), fontWeight: '700' }}>
-                           {overscanPadding}px
+                          {overscanPadding}px
                         </Text>
                       </View>
                     </View>
@@ -360,15 +348,15 @@ export default function SettingsScreen() {
                     </View>
                     <View style={[S.customSwitch, { width: 'auto', paddingHorizontal: pw(1) }]}>
                       <Text style={{ color: '#fff', fontSize: ps(1.2), fontWeight: '700' }}>
-                         {overscanPadding}px
+                        {overscanPadding}px
                       </Text>
                     </View>
                   </View>
                 )
               )}
             </Focusable>
-            </FocusGroup>
-          </View>
+          </FocusGroup>
+        </View>
 
 
         {/* Stats */}
@@ -392,7 +380,7 @@ export default function SettingsScreen() {
 const S = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#08080a',
+    backgroundColor: 'transparent',
   },
   headerBranding: {
     alignItems: 'center',

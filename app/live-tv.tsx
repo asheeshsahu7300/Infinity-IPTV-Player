@@ -89,14 +89,14 @@ const ChannelCard = React.memo(function ChannelCard({
               focused && { transform: [{ scale: 1.06 }], backgroundColor: "#fff", borderColor: "#fff", borderWidth: 1 }
             ]}
           >
-            <LinearGradient 
+            <LinearGradient
               colors={
                 focused
                   ? ["transparent", "transparent"] // Background is handled by wrapper when focused
                   : ["rgba(255,255,255,0.05)", "rgba(255,255,255,0.01)"]
               }
               style={[
-                S.card, 
+                S.card,
                 focused && { backgroundColor: "transparent" },
                 { overflow: "hidden" }
               ]}
@@ -312,7 +312,7 @@ export default function LiveTVScreen() {
     setHasMore(false);
     if (resyncRequestedRef.current || !activePortal) return;
     resyncRequestedRef.current = true;
-    AppBootManager.triggerBackgroundSync(activePortal, true).catch(() => {});
+    AppBootManager.triggerBackgroundSync(activePortal, true).catch(() => { });
   }, [activePortal]);
 
   const applyAdopted = useCallback((slice: Channel[], filteredTotal: number) => {
@@ -484,7 +484,7 @@ export default function LiveTVScreen() {
   }, [activePortal, router]);
 
   const totalCountRef = useRef(0);
-  const onEndReachedRef = useRef<() => void>(() => {});
+  const onEndReachedRef = useRef<() => void>(() => { });
 
   const handleChannelFocus = useCallback((channel: Channel, index?: number) => {
     updateCinematicBackground(channel.logo || null);
@@ -678,40 +678,40 @@ export default function LiveTVScreen() {
           >
             {(focused) => (
               <View style={[S.searchGradient, (focused || searchFocused) && S.searchFocused]}>
-            <LinearGradient
-              colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
-            />
-            {(focused || searchFocused) && (
-              <LinearGradient
-                colors={[THEME.colors.primary, THEME.colors.secondary]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
-              />
-            )}
-            <View style={[
-              S.searchInner,
-              { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
-              (focused || searchFocused) && { backgroundColor: "#0b0b10" }
-            ]}>
-              <Ionicons name="search" size={ps(1.1)} color={(focused || searchFocused) ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
-              <TextInput
-                ref={searchInputRef}
-                style={S.searchInput}
-                placeholder="Search channels..."
-                placeholderTextColor="rgba(255,255,255,0.2)"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                autoCapitalize="none"
-                autoCorrect={false}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
-              />
-            </View>
-          </View>
+                <LinearGradient
+                  colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
+                />
+                {(focused || searchFocused) && (
+                  <LinearGradient
+                    colors={[THEME.colors.primary, THEME.colors.secondary]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
+                  />
+                )}
+                <View style={[
+                  S.searchInner,
+                  { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
+                  (focused || searchFocused) && { backgroundColor: "#0b0b10" }
+                ]}>
+                  <Ionicons name="search" size={ps(1.1)} color={(focused || searchFocused) ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
+                  <TextInput
+                    ref={searchInputRef}
+                    style={S.searchInput}
+                    placeholder="Search channels..."
+                    placeholderTextColor="rgba(255,255,255,0.2)"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
+                  />
+                </View>
+              </View>
             )}
           </Focusable>
         </FocusGroup>
@@ -928,8 +928,8 @@ const S = StyleSheet.create({
     overflow: "hidden",
   },
   cardLogoWrapper: {
-    width: "65%",
-    height: "55%",
+    width: "85%",
+    height: "65%",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: ph(0.6),

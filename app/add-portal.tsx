@@ -18,6 +18,7 @@ import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePortalStore } from "../src/store/portalStore";
@@ -42,7 +43,7 @@ const GradientText = ({
   style: any;
 }) => {
   if (!isActive) return <Text style={style}>{text}</Text>;
-  return <Text style={[style, { color: "#000" }]}>{text}</Text>;
+  return <Text style={[style, { color: "#fff", textShadowColor: "rgba(255,255,255,0.5)", textShadowRadius: 8 }]}>{text}</Text>;
 };
 
 // ─── Card with gradient border on focus ──────────────────────────────────────
@@ -65,7 +66,7 @@ const GradientBorderCard = ({
 }) => {
   const focused = focusedField === id;
   const RADIUS = pw(2);
-  const BORDER = pw(0.2); // ~2 px on a 1080p TV
+  const BORDER = 1.5; // ~2 px on a 1080p TV
 
   return (
     <Focusable
@@ -97,20 +98,20 @@ const GradientBorderCard = ({
       ]}
     >
       <BlurView
-        intensity={focused ? 70 : 30}
-        tint={focused ? "light" : "dark"}
+        intensity={focused ? 40 : 20}
+        tint="dark"
         style={{
           flex: 1,
           borderRadius: RADIUS,
-          borderWidth: focused ? BORDER : 0,
-          borderColor: focused ? "rgba(255,255,255,0.8)" : "transparent",
+          borderWidth: focused ? BORDER : 1,
+          borderColor: focused ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.05)",
           overflow: "hidden",
         }}
       >
         <View
           style={{
             flex: 1,
-            backgroundColor: focused ? "rgba(255,255,255,0.3)" : THEME.colors.surface,
+            backgroundColor: focused ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.02)",
             borderRadius: RADIUS,
             alignItems: "center",
             justifyContent: "center",
@@ -151,7 +152,7 @@ const GradientBorderInput = ({
         style={{
           flexDirection: "row",
           alignItems: "center",
-          backgroundColor: "#141318",
+          backgroundColor: "rgba(20, 19, 24, 0.6)",
           borderRadius: isFocused ? RADIUS - BORDER : RADIUS,
           paddingHorizontal: pw(2),
           width: "100%",
@@ -343,14 +344,14 @@ export default function AddPortalScreen() {
             onBlur={() => setFocusedField(null)}
           >
             <View style={S.darkCardIconWrapper}>
-              <MaterialCommunityIcons name={icon} size={ps(2.4)} color={focusedField === id ? "#000" : "rgba(255,255,255,0.7)"} />
+              <MaterialCommunityIcons name={icon} size={isTV ? ps(2.4) : 28} color={focusedField === id ? "#fff" : "rgba(255,255,255,0.7)"} />
             </View>
             <GradientText
               text={title}
               isActive={focusedField === id}
               style={S.darkCardTitle}
             />
-            <Text style={[S.darkCardDesc, focusedField === id && { color: "rgba(0,0,0,0.6)" }]}>{desc}</Text>
+            <Text style={[S.darkCardDesc, focusedField === id && { color: "#fff" }]}>{desc}</Text>
           </GradientBorderCard>
         ))}
       </View>
@@ -526,15 +527,16 @@ export default function AddPortalScreen() {
         </View>
       )}
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={S.content}
         contentContainerStyle={S.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        removeClippedSubviews={false}
+        enableOnAndroid={true}
+        extraScrollHeight={80} // Enough height to clear labels
       >
         {step === 1 ? renderStep1() : renderStep2()}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </>
   );
 
@@ -559,7 +561,7 @@ const S = StyleSheet.create({
   // ── Root ──────────────────────────────────────────────────────────────────
   container: {
     flex: 1,
-    backgroundColor: "rgba(15, 15, 15, 0.03)",
+    backgroundColor: "transparent",
   },
   content: {
     flex: 1,
@@ -647,18 +649,18 @@ const S = StyleSheet.create({
     marginBottom: ph(3),
   },
   darkCardTitle: {
-    fontSize: isTV ? ps(2.2) : ps(1.8),
-    fontWeight: "500",
+    fontSize: isTV ? ps(1.8) : 20,
+    fontWeight: "700",
     color: "#fff",
-    marginBottom: ph(1.2),
+    marginBottom: 8,
     textAlign: "center",
   },
   darkCardDesc: {
-    fontSize: isTV ? ps(1.4) : ps(1.2),
+    fontSize: isTV ? ps(1.2) : 13,
     color: "#7e8299",
     textAlign: "center",
-    lineHeight: isTV ? ph(3) : ph(2.4),
-    paddingHorizontal: pw(1),
+    lineHeight: isTV ? ph(3) : 20,
+    paddingHorizontal: 8,
   },
 
   // ── Premium header (step 2) ──────────────────────────────────────────────
@@ -689,7 +691,7 @@ const S = StyleSheet.create({
     justifyContent: "center",
   },
   premiumTopActionBtnFocused: {
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: THEME.colors.primary,
   },
   premiumSupportBtn: {
@@ -714,38 +716,38 @@ const S = StyleSheet.create({
   premiumFormCard: {
     backgroundColor: "rgba(255,255,255,0.03)",
     borderRadius: pw(2),
-    padding: pw(4.5),
+    padding: 24,
     width: "100%",
-    maxWidth: isTV ? pw(45) : pw(90),
+    maxWidth: isTV ? pw(45) : 380,
   },
   premiumFormTitle: {
-    fontSize: isTV ? ps(2.0) : ps(1.8),
+    fontSize: isTV ? ps(1.8) : 20,
     fontWeight: "700",
     color: "#e2e2e2",
-    marginBottom: ph(0.4),
+    marginBottom: ph(0.2),
   },
   premiumFormSubtitle: {
-    fontSize: isTV ? ps(1.3) : ps(1.0),
+    fontSize: isTV ? ps(1.2) : 12,
     color: "#9ca3af",
-    lineHeight: ph(3.0),
-    marginTop: ph(2.0),
-    marginBottom: ph(2.0),
+    lineHeight: 18,
+    marginTop: 4,
+    marginBottom: 16,
   },
   premiumInputGroup: {
-    marginBottom: ph(1.5),
+    marginBottom: 12,
   },
   premiumLabel: {
-    fontSize: ps(1.1),
+    fontSize: 10,
     fontWeight: "700",
     color: "#b0b0b0",
     letterSpacing: 1.2,
-    marginBottom: ph(1),
+    marginBottom: 6,
   },
   premiumInput: {
     flex: 1,
-    paddingVertical: isTV ? ph(1.6) : ph(1.4),
+    paddingVertical: isTV ? ph(1.6) : 10,
     color: "#fff",
-    fontSize: isTV ? ps(1.5) : ps(1.3),
+    fontSize: isTV ? ps(1.5) : 12,
   },
 
   // ── OR divider ───────────────────────────────────────────────────────────
@@ -817,11 +819,11 @@ const S = StyleSheet.create({
   connectBtnGradient: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: isTV ? ph(2.0) : ph(1.6),
+    paddingVertical: isTV ? ph(2.0) : 12,
   },
   connectBtnText: {
     color: "#fff",
-    fontSize: isTV ? ps(1.8) : ps(1.5),
+    fontSize: isTV ? ps(1.6) : 14,
     fontWeight: "700",
     letterSpacing: 0.5,
   },

@@ -32,19 +32,17 @@ export const CinematicBackground = React.memo(function CinematicBackground({ uri
 
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-      {/* Base Dark background */}
-      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#08080a' }]} />
+      {/* Base Dark background - removed to show global cinematic background */}
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'transparent' }]} />
       
       {/* Dynamic blurred image layer */}
-      {uri ? (
-        <Image
-          source={{ uri }}
-          style={StyleSheet.absoluteFillObject}
-          contentFit="cover"
-          blurRadius={12}
-          transition={200}
-        />
-      ) : null}
+      <Image
+        source={{ uri: uri || "https://freerangestock.com/sample/137550/video-streaming--streaming-media--live-streaming.jpg" }}
+        style={StyleSheet.absoluteFillObject}
+        contentFit="cover"
+        blurRadius={uri ? 12 : 60}
+        transition={200}
+      />
       
       {/* Dark tint for text readability.
           One layer, and it never reaches full opacity. This used to be two

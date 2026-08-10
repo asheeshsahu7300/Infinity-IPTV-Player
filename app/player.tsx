@@ -1326,7 +1326,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
           end={{ x: 1, y: 0 }}
           style={S.modalIconBg}
         >
-          <Ionicons name={icon || "settings"} size={ps(2)} color="#000000" />
+          <Ionicons name={(icon as any) || "settings"} size={20} color="#000000" />
         </LinearGradient>
         <Text style={S.modalTitle}>{title}</Text>
         <Text style={S.modalSubtitle}>
@@ -1351,7 +1351,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
               <View style={S.modalOptionInner}>
                 <View style={S.modalOptionLeft}>
                   <View style={[S.trackIndexBadge, selected === undefined && S.trackIndexBadgeActive]}>
-                    <Ionicons name="aperture" size={ps(1)} color={selected === undefined ? "#fff" : "rgba(255,255,255,0.5)"} />
+                    <Ionicons name="aperture" size={14} color={selected === undefined ? "#000" : "rgba(255,255,255,0.5)"} />
                   </View>
                   <Text
                     style={[
@@ -1365,7 +1365,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
                 </View>
                 {selected === undefined && (
                   <View style={S.checkBadge}>
-                    <Ionicons name="checkmark" size={ps(1.4)} color="#fff" />
+                    <Ionicons name="checkmark" size={14} color="#000" />
                   </View>
                 )}
               </View>
@@ -1374,7 +1374,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
         )}
         {options.length === 0 ? (
           <View style={S.emptyState}>
-            <Ionicons name="alert-circle-outline" size={ps(3)} color="rgba(255,255,255,0.2)" />
+            <Ionicons name="alert-circle-outline" size={32} color="rgba(255,255,255,0.2)" />
             <Text style={S.emptyText}>No tracks found</Text>
           </View>
         ) :
@@ -1412,7 +1412,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
                     </View>
                     {isSelected && (
                       <View style={S.checkBadge}>
-                        <Ionicons name="checkmark" size={ps(1.4)} color="#fff" />
+                        <Ionicons name="checkmark" size={14} color="#000" />
                       </View>
                     )}
                   </View>
@@ -1432,7 +1432,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
               <View style={S.modalOptionInner}>
                 <View style={S.modalOptionLeft}>
                   <View style={[S.trackIndexBadge, selected === -1 && S.trackIndexBadgeActive]}>
-                    <Ionicons name="close" size={ps(1)} color={selected === -1 ? "#fff" : "rgba(255,255,255,0.5)"} />
+                    <Ionicons name="close" size={14} color={selected === -1 ? "#000" : "rgba(255,255,255,0.5)"} />
                   </View>
                   <Text
                     style={[
@@ -1446,7 +1446,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
                 </View>
                 {selected === -1 && (
                   <View style={S.checkBadge}>
-                    <Ionicons name="checkmark" size={ps(1.4)} color="#fff" />
+                    <Ionicons name="checkmark" size={14} color="#000" />
                   </View>
                 )}
               </View>
@@ -1579,32 +1579,32 @@ const S = StyleSheet.create({
 
   // ─── Premium Modal Styles ─────────────────────────────────────────────
   modalContent: {
-    backgroundColor: "rgba(15, 15, 15, 0.1)",
-    width: isTV ? "50%" : "85%",
-    maxWidth: 600,
+    backgroundColor: "rgba(15, 15, 15, 0.95)",
+    width: isTV ? "40%" : "75%",
+    maxWidth: 380,
     maxHeight: "80%",
-    borderRadius: 28,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
     overflow: "hidden",
   },
   modalHeader: {
     alignItems: "center",
-    paddingTop: ps(2),
-    paddingBottom: ps(1.2),
+    paddingTop: 20,
+    paddingBottom: 12,
     paddingHorizontal: 20,
   },
   modalIconBg: {
-    width: ps(4),
-    height: ps(4),
-    borderRadius: ps(2),
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: ps(0.8),
+    marginBottom: 12,
   },
   modalTitle: {
     color: "#fff",
-    fontSize: ps(2),
+    fontSize: 16,
     fontWeight: "700",
     fontFamily: THEME.fonts.bold,
     letterSpacing: -0.5,
@@ -1612,7 +1612,7 @@ const S = StyleSheet.create({
   },
   modalSubtitle: {
     color: "rgba(255,255,255,0.4)",
-    fontSize: ps(1.3),
+    fontSize: 11,
     fontWeight: "600",
     fontFamily: THEME.fonts.medium,
     marginTop: 4,
@@ -1629,29 +1629,29 @@ const S = StyleSheet.create({
   },
   emptyState: {
     alignItems: "center",
-    paddingVertical: ps(3),
+    paddingVertical: 20,
     gap: 12,
   },
   emptyText: {
     color: "rgba(255,255,255,0.3)",
-    fontSize: ps(1.2),
+    fontSize: 13,
     fontWeight: "600",
     fontFamily: THEME.fonts.medium,
   },
   modalOption: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 16,
-    paddingVertical: ps(1),
-    paddingHorizontal: 16,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     marginBottom: 6,
     borderWidth: 1,
     borderColor: "transparent",
     backgroundColor: "rgba(255,255,255,0.05)",
   },
   modalOptionSelected: {
-    backgroundColor: "rgba(255,27,138,0.12)",
-    borderColor: "rgba(255, 27, 27, 0.3)",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.3)",
   },
   modalOptionFocused: {
     borderColor: "#fff",
@@ -1670,28 +1670,28 @@ const S = StyleSheet.create({
     flex: 1,
   },
   trackIndexBadge: {
-    width: ps(2.5),
-    height: ps(2.5),
-    borderRadius: ps(1.25),
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: "rgba(255,255,255,0.08)",
     alignItems: "center",
     justifyContent: "center",
   },
   trackIndexBadgeActive: {
-    backgroundColor: "#ff2d55",
+    backgroundColor: "#fff",
   },
   trackIndexText: {
     color: "rgba(255,255,255,0.5)",
-    fontSize: ps(1),
+    fontSize: 10,
     fontWeight: "900",
     fontFamily: THEME.fonts.bold,
   },
   trackIndexTextActive: {
-    color: "#fff",
+    color: "#000",
   },
   modalOptionText: {
     color: "#fff",
-    fontSize: ps(1.6),
+    fontSize: 12,
     fontWeight: "600",
     fontFamily: THEME.fonts.bold,
     flex: 1,
@@ -1705,19 +1705,19 @@ const S = StyleSheet.create({
     fontFamily: THEME.fonts.bold,
   },
   checkBadge: {
-    width: ps(2.2),
-    height: ps(2.2),
-    borderRadius: ps(1.1),
-    backgroundColor: "#ff2d55",
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
   },
   modalCloseBtn: {
     alignItems: "center",
-    paddingVertical: ps(1.2),
+    paddingVertical: 10,
     marginHorizontal: 16,
-    marginVertical: 12,
-    borderRadius: 14,
+    marginVertical: 6,
+    borderRadius: 10,
     backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
     borderColor: "transparent",
@@ -1728,7 +1728,7 @@ const S = StyleSheet.create({
   },
   modalCloseBtnText: {
     color: "rgba(255,255,255,0.6)",
-    fontSize: ps(1.2),
+    fontSize: 11,
     fontWeight: "700",
     fontFamily: THEME.fonts.bold,
     letterSpacing: 2,

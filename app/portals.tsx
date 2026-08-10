@@ -224,8 +224,8 @@ export default function PortalsScreen() {
         >
           {(focusedBtn) => (
             <View style={[
-              { height: ph(5.5), backgroundColor: "rgba(255,0,0,0.1)", borderRadius: ps(1), alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "rgba(255,0,0,0.2)" },
-              focusedBtn && { borderColor: "#ff4444", backgroundColor: "rgba(255,0,0,0.2)", transform: [{ scale: 1.02 }] }
+              { height: ph(5.5), backgroundColor: "rgba(255,0,0,0.1)", borderRadius: ps(1), alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,0,0,0.2)" },
+              focusedBtn && { borderColor: "#591111", backgroundColor: "rgba(255,0,0,0.2)", transform: [{ scale: 1.02 }] }
             ]}>
               <Text style={{ color: "#ff4444", fontSize: ps(1.2), fontWeight: "bold", letterSpacing: 1 }}>
                 DELETE PORTAL
@@ -281,21 +281,7 @@ export default function PortalsScreen() {
   // ── Root ───────────────────────────────────────────────────────────────────
   return (
     <View style={S.container}>
-      {/* Background gradients */}
-      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-        <LinearGradient
-          colors={["#2a0845", "transparent"]}
-          start={{ x: 1, y: 0 }}
-          end={{ x: 0.5, y: 0.5 }}
-          style={{ position: "absolute", top: 0, right: 0, width: "100%", height: "100%", opacity: 0.3 }}
-        />
-        <LinearGradient
-          colors={["#6441a5", "transparent"]}
-          start={{ x: 0, y: 1 }}
-          end={{ x: 0.3, y: 0.7 }}
-          style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: "100%", opacity: 0.15 }}
-        />
-      </View>
+      {/* Background gradients removed in favor of global cinematic background */}
 
       {isLoading && <LoadingOverlay message={loadingMessage} />}
 
@@ -468,18 +454,12 @@ const S = StyleSheet.create({
   portalCard: {
     flex: 1,
     backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: ps(1.4),
+    borderRadius: ps(2),
     padding: ps(1.8),
     justifyContent: "space-between",
-    // Base shadow
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 15,
-    elevation: 8,
   },
   portalCardFocused: {
-    backgroundColor: "#222026",
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1.5,
     borderColor: "#fff",
     ...Platform.select({

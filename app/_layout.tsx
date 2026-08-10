@@ -116,7 +116,7 @@ export default function RootLayout() {
   useEffect(() => {
     const soundDelay = new Promise<void>(async (resolve) => {
       let sound: Audio.Sound | null = null;
-      
+
       const finish = () => {
         resolve();
         if (sound) {
@@ -124,27 +124,27 @@ export default function RootLayout() {
           setTimeout(() => {
             try {
               sound!.unloadAsync();
-            } catch (e) {}
+            } catch (e) { }
           }, 1000);
         }
       };
-      
+
       // 5s max safety fallback in case audio fails to play or report completion
-      let fallbackTimer = setTimeout(finish, 5000); 
+      let fallbackTimer = setTimeout(finish, 5000);
 
       try {
         const { sound: s } = await Audio.Sound.createAsync(
           require("../assets/sounds/splash.wav")
         );
         sound = s;
-        
+
         sound.setOnPlaybackStatusUpdate((status) => {
           if (status.isLoaded && status.didJustFinish) {
             clearTimeout(fallbackTimer);
             finish();
           }
         });
-        
+
         await sound.playAsync();
       } catch (e) {
         console.warn("Failed to play splash sound:", e);
@@ -225,12 +225,20 @@ export default function RootLayout() {
       <ThemeProvider>
         <SafeAreaProvider>
           <GestureHandlerRootView style={styles.container}>
+            <RNImage
+              source={{ uri: "https://freerangestock.com/sample/137550/video-streaming--streaming-media--live-streaming.jpg" }}
+              style={StyleSheet.absoluteFillObject}
+              resizeMode="cover"
+              blurRadius={12}
+
+            />
+            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(8, 8, 10, 0.85)" }]} />
             <View style={{ flex: 1, padding: overscanPadding }}>
               <StatusBar style="light" />
               <Stack
                 screenOptions={{
                   headerShown: false,
-                  contentStyle: { backgroundColor: "#08080a" },
+                  contentStyle: { backgroundColor: "transparent" },
                   animation: isTV ? "none" : "slide_from_right",
                   // Inactive screens keep their scroll/focus state but stop
                   // re-rendering, so backgrounded grids don't compete with the
@@ -260,7 +268,7 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000000" },
+  container: { flex: 1, backgroundColor: "#08080a" },
   splash: { flex: 1, justifyContent: "center", alignItems: "center" },
   splashContent: { alignItems: "center", justifyContent: "center" },
   splashLogoWrapper: { width: pw(30), height: pw(30), marginBottom: ph(3) },
