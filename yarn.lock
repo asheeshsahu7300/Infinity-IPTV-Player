@@ -3665,14 +3665,12 @@ expo-modules-core@3.0.30:
   dependencies:
     invariant "^2.2.4"
 
-expo-navigation-bar@~5.0.10:
-  version "5.0.10"
-  resolved "https://registry.yarnpkg.com/expo-navigation-bar/-/expo-navigation-bar-5.0.10.tgz#64e4fdb91ff3872110373b56c8e65d196b40979c"
-  integrity sha512-r9rdLw8mY6GPMQmVVOY/r1NBBw74DZefXHF60HxhRsdNI2kjc1wLdfWfR2rk4JVdOvdMDujnGrc9HQmqM3n8Jg==
+expo-navigation-bar@^57.0.2:
+  version "57.0.2"
+  resolved "https://registry.yarnpkg.com/expo-navigation-bar/-/expo-navigation-bar-57.0.2.tgz#d22ede0b1c9ddb9291417994dbefbd6f21bcf423"
+  integrity sha512-Ufe49dsTZjarA7gMMwwwnNJWpXo+oTyl5Ud0g3lsGVrj2HXjyw9cb9098N8+CoWpjfIa5PghuRYYXrcCrGQIHg==
   dependencies:
-    "@react-native/normalize-colors" "0.81.5"
     debug "^4.3.2"
-    react-native-is-edge-to-edge "^1.2.1"
 
 expo-router@~6.0.23:
   version "6.0.23"

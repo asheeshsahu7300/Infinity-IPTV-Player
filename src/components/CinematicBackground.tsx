@@ -12,7 +12,7 @@ export const CinematicBackground = React.memo(function CinematicBackground({ uri
     <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
       {/* Base Dark background */}
       <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#08080a' }]} />
-      
+
       {/* Dynamic blurred image layer */}
       {uri ? (
         <Image
@@ -23,29 +23,29 @@ export const CinematicBackground = React.memo(function CinematicBackground({ uri
           transition={300}
         />
       ) : null}
-      
+
       {/* Dark tint gradient overlay for text readability */}
       <LinearGradient
-        colors={["rgba(8,8,10,0.55)", "#08080a"]}
+        colors={["rgba(3, 3, 3, 0.55)", "#09090A"]}
         style={StyleSheet.absoluteFillObject}
       />
-      
+
       <LinearGradient
         colors={["transparent", "#08080a"]}
         style={StyleSheet.absoluteFillObject}
       />
-      
+
       {/* Top-Right Glow */}
       <LinearGradient
-        colors={["#2a0845", "transparent"]}
+        colors={["#000000", "transparent"]}
         start={{ x: 1, y: 0 }}
         end={{ x: 0.5, y: 0.5 }}
         style={{ position: "absolute", top: 0, right: 0, width: "100%", height: "100%", opacity: 0.3 }}
       />
-      
+
       {/* Bottom-Left Glow */}
       <LinearGradient
-        colors={["#6441a5", "transparent"]}
+        colors={["#000000", "transparent"]}
         start={{ x: 0, y: 1 }}
         end={{ x: 0.3, y: 0.7 }}
         style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: "100%", opacity: 0.15 }}

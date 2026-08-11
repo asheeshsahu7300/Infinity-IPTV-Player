@@ -396,10 +396,10 @@ export default function DashboardScreen() {
                       style={[{ flex: 1, borderRadius: pw(1.2), padding: focused ? 1.5 : 0 }, isMobile && { borderRadius: 16 }]}
                     >
                       <View style={[S.browseCardInner, isMobile && { borderRadius: 16 }]}>
-                        <Image source={{ uri: cat.img }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+                        <Image source={{ uri: cat.img }} style={StyleSheet.absoluteFillObject} resizeMode="cover" blurRadius={1} />
                         <LinearGradient
                           colors={[
-                            "rgba(255, 255, 255, 0.05)",
+                            "rgba(0, 0, 0, 0.1)",
                             "rgba(255,255,255,0.02)",
                             "rgba(0,0,0,0.20)",
                             "rgba(0,0,0,0.65)",
