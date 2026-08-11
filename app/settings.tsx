@@ -330,6 +330,15 @@ export default function SettingsScreen() {
             </FocusGroup>
           </View>
 
+          {/* Legal */}
+          <View style={S.section}>
+            <Text style={S.sectionTitle}>Legal</Text>
+            <Text style={S.sectionSubtitle}>Policies and terms</Text>
+            <FocusGroup style={S.card}>
+              {actionRow('document-text-outline', 'Privacy Policy', 'Read our privacy policy', () => router.push('/privacy-policy'))}
+            </FocusGroup>
+          </View>
+
           <View style={S.footer}>
             <Image source={require("../assets/images/TV.png")} style={{ width: pw(40), height: ph(4), maxWidth: 200, maxHeight: 40, opacity: 0.5 }} contentFit="contain" />
             <Text style={S.footerSubtext}>

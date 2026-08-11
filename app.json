@@ -10,24 +10,15 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.inifinity.iptvplayer"
+      "bundleIdentifier": "com.infinity.iptvplayer"
     },
     "android": {
-      "package": "com.inifinity.iptvplayer",
+      "package": "com.infinity.iptvplayer",
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
-      },
-      "leanbackIcon": "../assets/images/TV.png",
-      "intentFilters": [
-        {
-          "action": "MAIN",
-          "category": [
-            "LEANBACK_LAUNCHER"
-          ]
-        }
-      ]
+      }
     },
     "web": {
       "bundler": "metro",

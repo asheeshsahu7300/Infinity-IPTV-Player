@@ -27,17 +27,10 @@ export const BREAKPOINTS = {
   TV_MIN: 1000,
 } as const;
 
-export const isTV =
-  Platform.isTV ||
-  (Platform.OS === 'android' && SHORTEST_SIDE > BREAKPOINTS.TV_MIN) ||
-  (Platform.OS === 'web' && SHORTEST_SIDE > 800);
-
-/** Tablet: any non-TV device with a smallest width ≥ 600dp (Android `sw600dp`). */
-export const isTablet = !isTV && SHORTEST_SIDE >= BREAKPOINTS.TABLET_MIN;
-
-/** Phone: any non-TV device with a smallest width < 600dp. */
-export const isPhone = !isTV && !isTablet;
+// Hardcoded for phone-only support
+export const isTV = false;
+export const isTablet = false;
+export const isPhone = true;
 
 export type DeviceClass = 'phone' | 'tablet' | 'tv';
-
-export const deviceClass: DeviceClass = isTV ? 'tv' : isTablet ? 'tablet' : 'phone';
+export const deviceClass: DeviceClass = 'phone';
