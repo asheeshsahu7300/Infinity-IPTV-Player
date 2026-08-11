@@ -133,20 +133,25 @@ class RequestManager {
           error.message.includes("timeout") ||
           error.message.includes("network");
 
-        // 🚫 Client errors (4xx) – never retry
+        // 🚫 Client errors (4xx) – never retry, EXCEPT for 419 (Page Expired) and 429 (Too Many Requests)
         if (
           error.response?.status &&
           error.response.status >= 400 &&
-          error.response.status < 500
+          error.response.status < 500 &&
+          error.response.status !== 419 &&
+          error.response.status !== 429
         ) {
           throw error;
         }
 
-        // ✅ Retry only on 5xx or network issues
+        // ✅ Retry only on 5xx, network issues, or specific 4xx (419, 429)
         const shouldRetry =
           attempt < retries &&
           (isNetworkError ||
-            (error.response?.status && error.response.status >= 500));
+            (error.response?.status &&
+              (error.response.status >= 500 ||
+                error.response.status === 419 ||
+                error.response.status === 429)));
 
         if (!shouldRetry) break;
 
