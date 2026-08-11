@@ -358,6 +358,26 @@ export default function SettingsScreen() {
           </FocusGroup>
         </View>
 
+        {/* Legal Section */}
+        <View style={S.rootSection}>
+          <Text style={S.sectionLabel}>LEGAL</Text>
+          <View style={S.groupedCard}>
+            <Focusable ringOnFocus={false} onPress={() => router.push('/privacy-policy')} style={S.innerListItem}>
+              {(focused) => (
+                <>
+                  <View style={[S.innerIconBox, focused && S.innerIconBoxFocused]}>
+                    <Ionicons name="document-text-outline" size={ps(2.2)} color="#fff" />
+                  </View>
+                  <View style={S.innerTextContent}>
+                    <Text style={S.innerTitle}>Privacy Policy</Text>
+                    <Text style={S.innerSubtitle}>Read our policies and terms</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={ps(2)} color="rgba(255,255,255,0.3)" />
+                </>
+              )}
+            </Focusable>
+          </View>
+        </View>
 
         {/* Stats */}
         <View style={S.stats}>

@@ -1,11 +1,11 @@
 
-# Infinity IPTV Player
+# Infinity IPTV Player TV
 
 <p align="center">
   <img
     width="1280"
     height="720"
-    alt="Infinity IPTV Player"
+    alt="Infinity IPTV Player TV"
     src="https://github.com/user-attachments/assets/c77437a3-b17c-43f4-8daf-b8e73fe1f1fb"
   />
 </p>
@@ -22,7 +22,7 @@
 
 ## Disclaimer
 
-> **Infinity IPTV Player is a player application only.**
+> **Infinity IPTV Player TV is a player application only.**
 >
 > It does not provide, host, distribute, or include IPTV channels, streams, subscriptions, or credentials.
 >
@@ -32,7 +32,7 @@
 
 ## Overview
 
-**Infinity IPTV Player** is a modern IPTV/media player built with **Expo, React Native, and TypeScript**.
+**Infinity IPTV Player TV** is a modern IPTV/media player built with **Expo, React Native, and TypeScript**.
 
 It supports multiple IPTV playlist and portal formats while providing a consistent experience across:
 
@@ -152,7 +152,7 @@ The interface is designed around a premium streaming experience.
 
 | Splash Screen | Dashboard | Portal Options |
 |:---:|:---:|:---:|
-| <img width="300" alt="Infinity IPTV Player Splash Screen" src="https://github.com/user-attachments/assets/b5b7d547-138c-4d8d-9704-9612c7d132d1"> | <img width="300" alt="Infinity IPTV Player Dashboard" src="https://github.com/user-attachments/assets/8ad857b5-70b4-413c-b127-c2cb0b579fde"> | <img width="300" alt="Infinity IPTV Player Add Portal" src="https://github.com/user-attachments/assets/fab05763-b7ad-44fd-a1f0-5ddd4ffb2c5f"> |
+| <img width="300" alt="Infinity IPTV Player TV Splash Screen" src="https://github.com/user-attachments/assets/b5b7d547-138c-4d8d-9704-9612c7d132d1"> | <img width="300" alt="Infinity IPTV Player TV Dashboard" src="https://github.com/user-attachments/assets/8ad857b5-70b4-413c-b127-c2cb0b579fde"> | <img width="300" alt="Infinity IPTV Player TV Add Portal" src="https://github.com/user-attachments/assets/fab05763-b7ad-44fd-a1f0-5ddd4ffb2c5f"> |
 
 ---
 
@@ -162,7 +162,7 @@ The interface is designed around a premium streaming experience.
 
 <img
   width="1280"
-  alt="Infinity IPTV Player Android TV Splash Screen"
+  alt="Infinity IPTV Player TV Android TV Splash Screen"
   src="https://github.com/user-attachments/assets/e858646d-c480-490e-9be2-5a5fd3a528bb"
 />
 
@@ -170,7 +170,7 @@ The interface is designed around a premium streaming experience.
 
 <img
   width="1280"
-  alt="Infinity IPTV Player Android TV Dashboard"
+  alt="Infinity IPTV Player TV Android TV Dashboard"
   src="https://github.com/user-attachments/assets/3db99589-24b0-4b8c-a545-60f2ee780c99"
 />
 
@@ -178,7 +178,7 @@ The interface is designed around a premium streaming experience.
 
 <img
   width="1280"
-  alt="Infinity IPTV Player Android TV Add Portal"
+  alt="Infinity IPTV Player TV Android TV Add Portal"
   src="https://github.com/user-attachments/assets/d2c844f8-bad9-4d3e-a1be-c717917e2e5d"
 />
 
@@ -357,7 +357,7 @@ npx eas build --platform android --profile production
 
 # Portal Configuration
 
-Infinity IPTV Player supports three main connection methods.
+Infinity IPTV Player TV supports three main connection methods.
 
 ## M3U / M3U8
 
@@ -410,7 +410,7 @@ MAC: 00:1A:79:XX:XX:XX
 
 # Android TV Experience
 
-Infinity IPTV Player is designed around the Android TV 10-foot UI experience.
+Infinity IPTV Player TV is designed around the Android TV 10-foot UI experience.
 
 ## D-Pad Navigation
 
@@ -465,7 +465,7 @@ This makes the interface easy to use from a distance with a standard TV remote.
 The application separates the IPTV providers from the UI layer.
 
 ```text
-                    Infinity IPTV Player
+                    Infinity IPTV Player TV
                             │
              ┌──────────────┼──────────────┐
              │              │              │
@@ -608,7 +608,7 @@ Describe:
 
 # Privacy & Content Responsibility
 
-Infinity IPTV Player does not provide IPTV content.
+Infinity IPTV Player TV does not provide IPTV content.
 
 The application does not:
 
@@ -634,7 +634,7 @@ Please ensure that your use of third-party IPTV services complies with applicabl
 
 # Disclaimer
 
-**Infinity IPTV Player is a media player, not an IPTV content provider.**
+**Infinity IPTV Player TV is a media player, not an IPTV content provider.**
 
 The developers do not provide, host, control, or distribute third-party IPTV content.
 
@@ -649,7 +649,7 @@ The developers are not responsible for content accessed through third-party serv
 </p>
 
 <p align="center">
-  <strong>Infinity IPTV Player</strong>
+  <strong>Infinity IPTV Player TV</strong>
   <br />
   Your Player. Your Content. Your Choice.
 </p>

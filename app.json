@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Infinity IPTV Player",
-    "slug": "infinity-iptv-player",
+    "name": "Infinity IPTV Player TV TV",
+    "slug": "infinity-iptv-player-tv",
     "version": "1.0.0",
     "orientation": "landscape",
     "icon": "./assets/images/icon.png",
@@ -10,10 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.infinity.iptvplayer"
+      "bundleIdentifier": "com.infinity.iptvplayertv"
     },
     "android": {
-      "package": "com.infinity.iptvplayer",
+      "package": "com.infinity.iptvplayertv",
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",

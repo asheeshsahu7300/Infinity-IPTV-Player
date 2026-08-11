@@ -501,7 +501,7 @@ export default function AddPortalScreen() {
           </View>
 
           <Text style={S.premiumFooterWarning}>
-            INFINITY IPTV PLAYER DOES NOT HOST ANY CONTENT. ENSURE YOU HAVE THE LEGAL RIGHT TO USE YOUR PLAYLIST.
+            Infinity IPTV Player TV DOES NOT HOST ANY CONTENT. ENSURE YOU HAVE THE LEGAL RIGHT TO USE YOUR PLAYLIST.
           </Text>
         </View>
       </View>

@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.infinity.iptvplayer'
+    namespace 'com.infinity.iptvplayertv'
     defaultConfig {
-        applicationId 'com.infinity.iptvplayer'
+        applicationId 'com.infinity.iptvplayertv'
         minSdkVersion 26
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
