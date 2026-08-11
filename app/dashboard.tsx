@@ -14,6 +14,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePortalStore } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
@@ -229,9 +230,9 @@ export default function DashboardScreen() {
         <View style={S.browseContainer}>
           {(
             [
-              { id: "cat-live", title: "Live TV", icon: "tv", img: "https://freerangestock.com/sample/137550/video-streaming--streaming-media--live-streaming.jpg", route: "/live-tv" },
-              { id: "cat-movies", title: "Movies", icon: "film", img: "https://i.pinimg.com/736x/eb/f1/4a/ebf14a5d3b21e60b907ae26b90205271.jpg", route: "/vod" },
-              { id: "cat-series", title: "Series", icon: "albums", img: "https://images.ctfassets.net/7b9nfelvm7fe/2FdCQ5XGDbBZfsfqHrcNWn/c51a573dab4b0a21f7a0103859648649/sky_mobile_banner_1024x768.jpg?w=1024&fit=scale&q=80", route: "/series" },
+              { id: "cat-live", title: "Live TV", icon: "tv", img: "https://i.ibb.co/Y7jdGZ8s/Chat-GPT-Image-Aug-11-2026-04-26-18-PM.png", route: "/live-tv" },
+              { id: "cat-movies", title: "Movies", icon: "film", img: "https://i.ibb.co/0RNqzN4h/Chat-GPT-Image-Aug-11-2026-04-32-05-PM.png", route: "/vod" },
+              { id: "cat-series", title: "Series", icon: "albums", img: "https://i.ibb.co/whyDFxKp/sky-mobile-banner-1024x768.jpg", route: "/series" },
             ]
           ).map((cat) => (
             <Focusable
@@ -239,7 +240,7 @@ export default function DashboardScreen() {
               // Live TV is where most sessions start, so it owns the
               // dashboard's initial focus.
               hasTVPreferredFocus={focusLiveTile && cat.id === "cat-live"}
-              onFocus={() => updateCinematicBackground(cat.img)}
+              onFocus={() => updateCinematicBackground(cat.img, 1)}
               onPress={() => router.push(cat.route as any)}
               ringOnFocus={false}
               // TV: no fixed height — `flex: 1` shares the row's width and
@@ -257,17 +258,19 @@ export default function DashboardScreen() {
                 >
                   <View style={S.browseCardInner}>
                     <Image source={{ uri: cat.img }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-                    <LinearGradient
-                      colors={
-                        focused
-                          ? ["transparent", "rgba(0,0,0,0.7)"]
-                          : ["transparent", "rgba(0,0,0,0.5)"]
-                      }
-                      style={S.browseCardContent}
-                    >
+
+                    {/* Dark glass overlay covering the ENTIRE image */}
+                    <BlurView
+                      intensity={5}
+                      tint="dark"
+                      style={[StyleSheet.absoluteFillObject, { backgroundColor: focused ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0.3)" }]}
+                    />
+
+                    {/* Text container sitting on top at the bottom */}
+                    <View style={S.browseCardContent}>
                       <Ionicons name={cat.icon as any} size={ps(2.2)} color="#fff" />
                       <Text style={S.browseCardTitle}>{cat.title}</Text>
-                    </LinearGradient>
+                    </View>
                   </View>
                 </View>
               )}
@@ -611,6 +614,8 @@ const S = StyleSheet.create({
     position: "absolute",
     bottom: 0,
     width: "100%",
+    left: 0,
+    right: 0,
     padding: ps(1.5),
     borderBottomLeftRadius: ps(1.1),
     borderBottomRightRadius: ps(1.1),
