@@ -2,7 +2,7 @@
   "expo": {
     "name": "Infinity IPTV Player",
     "slug": "frontend",
-    "version": "1.0.6",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "iptv",
