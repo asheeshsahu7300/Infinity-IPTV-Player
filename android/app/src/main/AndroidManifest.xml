@@ -9,7 +9,13 @@
   <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
   <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
   <uses-feature android:name="android.hardware.faketouch" android:required="false"/>
-  <uses-feature android:name="android.software.leanback" android:required="false"/>
+  <uses-feature android:name="android.software.leanback" android:required="true"/>
+  <!-- RECORD_AUDIO (merged in by expo-audio) implicitly requires a microphone. Combined with
+       required leanback, that filters Play down to the few TV models that ship one. -->
+  <uses-feature android:name="android.hardware.microphone" android:required="false"/>
+  <!-- A merged activity declaring android:screenOrientation implies a required screen-orientation
+       feature. TVs report landscape only, so an implied portrait requirement excludes every TV. -->
+  <uses-feature android:name="android.hardware.screen.portrait" android:required="false"/>
   <queries>
     <intent>
       <action android:name="android.intent.action.VIEW"/>

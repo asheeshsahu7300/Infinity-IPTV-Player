@@ -22,6 +22,31 @@ plugins {
   id("expo-autolinking-settings")
 }
 
+// The React Native settings plugin caches autolinking results (including absolute
+// paths into node_modules) and only refreshes them when the lockfiles change. A cache
+// produced on another machine — e.g. Windows paths restored onto a Linux CI builder —
+// makes Gradle register every library project against a directory that doesn't exist,
+// which surfaces later as "No matching variant ... No variants exist".
+// Drop the cache when its paths don't resolve here so it gets regenerated.
+def autolinkingCacheDir = new File(rootDir, "build/generated/autolinking")
+def autolinkingCacheFile = new File(autolinkingCacheDir, "autolinking.json")
+if (autolinkingCacheFile.isFile() && autolinkingCacheFile.length() > 0) {
+  def cacheIsStale
+  try {
+    def cachedConfig = new groovy.json.JsonSlurper().parse(autolinkingCacheFile)
+    cacheIsStale = cachedConfig.dependencies?.values()?.any { dependency ->
+      def sourceDir = dependency.platforms?.android?.sourceDir
+      sourceDir != null && !new File(sourceDir).isDirectory()
+    }
+  } catch (Exception ignored) {
+    cacheIsStale = true
+  }
+  if (cacheIsStale) {
+    logger.lifecycle("Discarding stale autolinking cache at ${autolinkingCacheDir}")
+    autolinkingCacheDir.deleteDir()
+  }
+}
+
 extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
   if (System.getenv('EXPO_USE_COMMUNITY_AUTOLINKING') == '1') {
     ex.autolinkLibrariesFromCommand()
