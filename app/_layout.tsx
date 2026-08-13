@@ -258,6 +258,7 @@ export default function RootLayout() {
                 <Stack.Screen name="player" options={{ animation: "fade" }} />
                 <Stack.Screen name="search" />
                 <Stack.Screen name="settings" />
+                <Stack.Screen name="privacy-policy" />
               </Stack>
             </View>
           </GestureHandlerRootView>

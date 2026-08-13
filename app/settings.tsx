@@ -1,44 +1,163 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Alert,
-  Pressable,
   Platform,
-  Dimensions,
   Image,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
+
 import { safeStorage } from '../src/services/safeStorage';
 import { usePortalStore } from '../src/store/portalStore';
 import { isTV } from '../src/utils/tvUtils';
-import { LinearGradient } from 'expo-linear-gradient';
 import { THEME, pw, ph, psRaw as ps } from '../src/theme/tokens';
-import { BlurView } from 'expo-blur';
-import MaskedView from "@react-native-masked-view/masked-view";
-import { Focusable, FocusGroup } from "../src/tv";
-import { CinematicBackground } from "../src/components/CinematicBackground";
+import { Focusable, FocusGroup, FocusMemory, useFocusRestore } from '../src/tv';
+import { CinematicBackground } from '../src/components/CinematicBackground';
+import { useDialog } from '../src/components/ConfirmDialog';
 
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
+const SCREEN_KEY = 'settings';
 
-const GradientText = ({ text, style, colors }: { text: string; style?: any; colors?: string[] }) => {
-  const gradientColors = (colors as [string, string, ...string[]]) || (["#fff", "rgba(255,255,255,0.4)"] as [string, string, ...string[]]);
+// ── Row primitives ───────────────────────────────────────────────────────────
+
+/** What sits at the trailing edge of a row. Declarative rather than a render
+ *  prop so the row itself owns the focused styling of its control. */
+type RowControl = { kind: 'switch'; on: boolean } | { kind: 'chevron' };
+
+function RowControlView({ control, focused }: { control: RowControl; focused: boolean }) {
+  if (control.kind === 'switch') {
+    return (
+      <View style={[S.switchTrack, focused && S.switchTrackFocused, control.on && S.switchTrackOn]}>
+        <View style={[S.switchKnob, control.on && S.switchKnobOn]} />
+      </View>
+    );
+  }
+  return <Ionicons name="chevron-forward" size={ps(2)} color={focused ? '#fff' : 'rgba(255,255,255,0.3)'} />;
+}
+
+interface SettingRowProps {
+  icon: IconName;
+  title: string;
+  subtitle: string;
+  focusKey: string;
+  onPress: () => void;
+  control: RowControl;
+  preferred?: boolean;
+  accessibilityRole?: 'button' | 'switch';
+  selected?: boolean;
+}
+
+function SettingRow({
+  icon,
+  title,
+  subtitle,
+  focusKey,
+  onPress,
+  control,
+  preferred,
+  accessibilityRole = 'button',
+  selected,
+}: SettingRowProps) {
   return (
-    <MaskedView maskElement={<Text style={style}>{text}</Text>}>
-      <LinearGradient
-        colors={gradientColors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-      >
-        <Text style={[style, { opacity: 0 }]}>{text}</Text>
-      </LinearGradient>
-    </MaskedView>
+    <Focusable
+      ringOnFocus={false}
+      onPress={onPress}
+      style={S.row}
+      focusStyle={S.rowFocused}
+      screenKey={SCREEN_KEY}
+      focusKey={focusKey}
+      hasTVPreferredFocus={preferred}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={title}
+      accessibilityHint={subtitle}
+      selected={selected}
+    >
+      {(focused) => (
+        <>
+          <View style={[S.rowIconBox, focused && S.rowIconBoxFocused]}>
+            <Ionicons name={icon} size={ps(2.2)} color={focused ? '#000' : '#fff'} />
+          </View>
+          <View style={S.rowText}>
+            <Text style={S.rowTitle}>{title}</Text>
+            <Text style={[S.rowSubtitle, focused && S.rowSubtitleFocused]} numberOfLines={2}>
+              {subtitle}
+            </Text>
+          </View>
+          <RowControlView control={control} focused={focused} />
+        </>
+      )}
+    </Focusable>
   );
-};
+}
+
+interface DataTileProps {
+  icon: IconName;
+  title: string;
+  subtitle: string;
+  focusKey: string;
+  onPress: () => void;
+  tone?: 'neutral' | 'danger';
+  /** Optional value badge on the trailing edge (e.g. the overscan amount). */
+  value?: string;
+}
+
+function DataTile({ icon, title, subtitle, focusKey, onPress, tone = 'neutral', value }: DataTileProps) {
+  const danger = tone === 'danger';
+  return (
+    <Focusable
+      ringOnFocus={false}
+      onPress={onPress}
+      style={S.tileWrapper}
+      screenKey={SCREEN_KEY}
+      focusKey={focusKey}
+      accessibilityLabel={title}
+      accessibilityHint={subtitle}
+    >
+      {(focused) => (
+        <View
+          style={[
+            S.tile,
+            focused && S.tileFocused,
+            focused && danger && S.tileFocusedDanger,
+          ]}
+        >
+          <View style={[S.tileIconBox, focused && (danger ? S.tileIconBoxDanger : S.tileIconBoxFocused)]}>
+            <Ionicons
+              name={icon}
+              size={ps(2)}
+              color={focused ? (danger ? '#ff453a' : '#000') : 'rgba(255,255,255,0.75)'}
+            />
+          </View>
+          <View style={S.tileText}>
+            <Text style={[S.tileTitle, focused && danger && S.tileTitleDanger]} numberOfLines={1}>
+              {title}
+            </Text>
+            <Text style={S.tileSubtitle} numberOfLines={2}>
+              {subtitle}
+            </Text>
+          </View>
+          {value ? (
+            <View style={S.valuePill}>
+              <Text style={S.valuePillText}>{value}</Text>
+            </View>
+          ) : null}
+        </View>
+      )}
+    </Focusable>
+  );
+}
+
+function SectionLabel({ children }: { children: string }) {
+  return <Text style={S.sectionLabel}>{children}</Text>;
+}
+
+// ── Screen ───────────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -53,137 +172,164 @@ export default function SettingsScreen() {
   const overscanPadding = usePortalStore((s) => s.overscanPadding);
   const setOverscanPadding = usePortalStore((s) => s.setOverscanPadding);
 
-  const [autoPlay, setAutoPlay] = useState(true);
   const [hardwareAcceleration, setHardwareAcceleration] = useState(true);
-  const [focusedId, setFocusedId] = useState<string | null>(null);
+
+  // Confirmations run through an in-tree overlay rather than `Alert.alert`,
+  // which never reliably surfaces on an Android TV release build.
+  const { open: openDialog, close: closeDialog, node: dialogNode } = useDialog();
+
+  // Initial focus goes to the first non-destructive control; on re-entry the
+  // last-focused row wins instead.
+  const autoFocusFirst = useFocusRestore(SCREEN_KEY, true);
+
+  const isFirstFocusRef = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      // Coming back from a pushed screen (the privacy policy) leaves native
+      // focus nowhere in particular, so put it back where the user left it.
+      if (isFirstFocusRef.current) {
+        isFirstFocusRef.current = false;
+        return;
+      }
+      FocusMemory.restoreWithRetry(SCREEN_KEY);
+    }, [])
+  );
 
   // Load settings on mount
   useEffect(() => {
-    loadSettings();
+    (async () => {
+      try {
+        const settings = await safeStorage.getItem('app_settings');
+        if (settings) {
+          const parsed = JSON.parse(settings);
+          setHardwareAcceleration(parsed.hardwareAcceleration ?? true);
+        }
+      } catch (error) {
+        console.error('Failed to load settings:', error);
+      }
+    })();
   }, []);
 
-  const loadSettings = async () => {
+  /**
+   * Merged into whatever is already stored rather than overwriting the record.
+   * `app_settings` is shared — player.tsx also reads it — so a blind write would
+   * drop keys this screen no longer knows about.
+   */
+  const persistSettings = useCallback(async (next: { hardwareAcceleration: boolean }) => {
     try {
-      const settings = await safeStorage.getItem('app_settings');
-      if (settings) {
-        const parsed = JSON.parse(settings);
-        setAutoPlay(parsed.autoPlay ?? true);
-        setHardwareAcceleration(parsed.hardwareAcceleration ?? true);
-      }
-    } catch (error) {
-      console.error('Failed to load settings:', error);
-    }
-  };
-
-  const saveSettings = async (newSettings: { autoPlay?: boolean; hardwareAcceleration?: boolean }) => {
-    try {
-      const currentSettings = {
-        autoPlay,
-        hardwareAcceleration,
-        ...newSettings,
-      };
-      await safeStorage.setItem('app_settings', JSON.stringify(currentSettings));
+      const raw = await safeStorage.getItem('app_settings');
+      const current = raw ? JSON.parse(raw) : {};
+      await safeStorage.setItem('app_settings', JSON.stringify({ ...current, ...next }));
     } catch (error) {
       console.error('Failed to save settings:', error);
     }
-  };
-
-  const toggleAutoPlay = useCallback(() => {
-    const newValue = !autoPlay;
-    setAutoPlay(newValue);
-    saveSettings({ autoPlay: newValue });
-  }, [autoPlay]);
+  }, []);
 
   const toggleHardwareAcceleration = useCallback(() => {
-    const newValue = !hardwareAcceleration;
-    setHardwareAcceleration(newValue);
-    saveSettings({ hardwareAcceleration: newValue });
-  }, [hardwareAcceleration]);
+    const next = !hardwareAcceleration;
+    setHardwareAcceleration(next);
+    persistSettings({ hardwareAcceleration: next });
+  }, [hardwareAcceleration, persistSettings]);
 
   const cycleOverscan = useCallback(() => {
     // Cycle 0 -> 10 -> 20 -> 30 -> 40 -> 0
     const nextVal = overscanPadding >= 40 ? 0 : overscanPadding + 10;
     setOverscanPadding(nextVal);
-  }, [overscanPadding]);
+  }, [overscanPadding, setOverscanPadding]);
+
+  // ── Destructive actions ────────────────────────────────────────────────────
 
   const handleClearCache = useCallback(() => {
-    Alert.alert(
-      'Clear Cache',
-      'This will clear all cached data. Your portals and favorites will be kept.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear',
-          onPress: async () => {
-            try {
-              await clearPersistedPortalData();
-              Alert.alert('Success', 'Cache cleared successfully');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to clear cache');
-            }
-          },
-        },
-      ]
-    );
-  }, []);
+    openDialog({
+      id: 'clear-cache',
+      icon: 'brush-outline',
+      title: 'Clear Cache',
+      message:
+        'Cached channels, movies and series will be removed and downloaded again on next open. Your portals and favourites are kept.',
+      confirmLabel: 'Clear Cache',
+      onConfirm: async () => {
+        try {
+          await clearPersistedPortalData();
+          openDialog({
+            id: 'clear-cache-done',
+            tone: 'success',
+            icon: 'checkmark-circle-outline',
+            title: 'Cache Cleared',
+            message: 'Fresh content will be fetched the next time you open your library.',
+            confirmLabel: 'Done',
+            acknowledgeOnly: true,
+          });
+        } catch {
+          openDialog({
+            id: 'clear-cache-failed',
+            tone: 'danger',
+            icon: 'alert-circle-outline',
+            title: 'Could Not Clear Cache',
+            message: 'Something went wrong while removing the cached data. Please try again.',
+            confirmLabel: 'Close',
+            acknowledgeOnly: true,
+          });
+        }
+      },
+    });
+  }, [openDialog, clearPersistedPortalData]);
 
   const handleClearAllData = useCallback(() => {
-    Alert.alert(
-      'Clear All Data',
-      'This will delete all portals, favorites, and settings. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete All',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await safeStorage.clear();
-              await setActivePortal(null);
-              clearPortalData();
-              router.replace('/');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to clear data');
-            }
-          },
-        },
-      ]
-    );
-  }, []);
+    openDialog({
+      id: 'clear-all',
+      tone: 'danger',
+      icon: 'trash-outline',
+      title: 'Clear All Data',
+      message: 'This deletes every portal, favourite and preference on this device. It cannot be undone.',
+      confirmLabel: 'Delete All',
+      onConfirm: async () => {
+        try {
+          await safeStorage.clear();
+          await setActivePortal(null);
+          clearPortalData();
+          FocusMemory.clear(SCREEN_KEY);
+          closeDialog();
+          router.replace('/');
+        } catch {
+          openDialog({
+            id: 'clear-all-failed',
+            tone: 'danger',
+            icon: 'alert-circle-outline',
+            title: 'Could Not Clear Data',
+            message: 'Some data could not be removed. Please try again.',
+            confirmLabel: 'Close',
+            acknowledgeOnly: true,
+          });
+        }
+      },
+    });
+  }, [openDialog, closeDialog, setActivePortal, clearPortalData, router]);
 
-  const handleDisconnect = useCallback(async () => {
-    await setActivePortal(null);
-    clearPortalData();
-    router.replace('/');
-  }, []);
+  const handleDisconnect = useCallback(() => {
+    openDialog({
+      id: 'disconnect',
+      tone: 'danger',
+      icon: 'warning-outline',
+      title: 'Disconnect Portal',
+      message: `"${activePortal?.name ?? 'This portal'}" will be disconnected. It stays saved, so you can reconnect at any time.`,
+      confirmLabel: 'Disconnect',
+      onConfirm: async () => {
+        await setActivePortal(null);
+        clearPortalData();
+        closeDialog();
+        router.replace('/');
+      },
+    });
+  }, [openDialog, closeDialog, activePortal?.name, setActivePortal, clearPortalData, router]);
 
-  const focusId = (id: string) => () => setFocusedId(id);
-  const blurId = () => setFocusedId(null);
-
-  const renderBentoContent = (icon: any, title: string, subtitle: string) => (
-    <>
-      <View style={S.bentoIconBox}>
-        <Ionicons name={icon} size={ps(2)} color={THEME.colors.primary} />
-      </View>
-      <View>
-        <GradientText
-          text={title}
-          style={S.bentoTitle}
-          colors={["#fff", "rgba(255,255,255,0.7)"]}
-        />
-        <Text style={S.bentoSubtitle}>{subtitle}</Text>
-      </View>
-    </>
-  );
+  const appVersion = Constants.expoConfig?.version ?? '1.0.0';
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
-      {/* Old background gradients removed in favor of CinematicBackground */}
 
-      {/* Modern Centered Header */}
       <View style={S.headerBranding}>
-        <Image source={require("../assets/images/TV.png")} style={S.headerLogoImage} resizeMode="contain" />
+        <Image source={require('../assets/images/TV.png')} style={S.headerLogoImage} resizeMode="contain" />
       </View>
 
       <ScrollView
@@ -196,8 +342,8 @@ export default function SettingsScreen() {
         {/* Portal Section */}
         {activePortal && (
           <View style={S.rootSection}>
-            <Text style={S.sectionLabel}>PORTAL INFORMATION</Text>
-            <View style={S.portalCardImageStyle}>
+            <SectionLabel>PORTAL INFORMATION</SectionLabel>
+            <View style={S.portalCard}>
               <View style={S.portalInfoCols}>
                 <View style={S.infoCol}>
                   <Text style={S.tinyLabel}>Portal URL</Text>
@@ -205,7 +351,7 @@ export default function SettingsScreen() {
                 </View>
                 <View style={S.infoCol}>
                   <Text style={S.tinyLabel}>Device MAC Address</Text>
-                  <Text style={S.largeValue}>{activePortal.config.mac || "00:1A:79:XX:XX:XX"}</Text>
+                  <Text style={S.largeValue}>{activePortal.config.mac || '00:1A:79:XX:XX:XX'}</Text>
                 </View>
               </View>
 
@@ -213,13 +359,14 @@ export default function SettingsScreen() {
                 ringOnFocus={false}
                 onPress={handleDisconnect}
                 style={S.disconnectBtnWrapper}
+                screenKey={SCREEN_KEY}
+                focusKey="disconnect"
+                accessibilityLabel="Disconnect portal"
               >
                 {(focused) => (
-                  <View
-                    style={[S.disconnectBtnGradient, focused && S.disconnectBtnFocused]}
-                  >
-                    <Ionicons name="warning" size={ps(1.8)} color={focused ? "#ff1b1bff" : "rgba(255,255,255,0.7)"} />
-                    <Text style={[S.disconnectBtnText, focused ? { color: "#ff1b1bff" } : { color: "rgba(255,255,255,0.7)" }]}>
+                  <View style={[S.disconnectBtn, focused && S.disconnectBtnFocused]}>
+                    <Ionicons name="warning" size={ps(1.8)} color={focused ? '#ff453a' : 'rgba(255,255,255,0.7)'} />
+                    <Text style={[S.disconnectBtnText, { color: focused ? '#ff453a' : 'rgba(255,255,255,0.7)' }]}>
                       Disconnect Portal
                     </Text>
                   </View>
@@ -231,168 +378,84 @@ export default function SettingsScreen() {
 
         {/* Playback Section */}
         <View style={S.rootSection}>
-          <Text style={S.sectionLabel}>PLAYBACK SETTINGS</Text>
+          <SectionLabel>PLAYBACK SETTINGS</SectionLabel>
           <View style={S.groupedCard}>
-            {/* Item 1 */}
-            <Focusable ringOnFocus={false} onPress={toggleAutoPlay} style={S.innerListItem}>
-              {(focused) => (
-                <>
-                  <View style={[S.innerIconBox, focused && S.innerIconBoxFocused]}>
-                    <Ionicons name="repeat-outline" size={ps(2.2)} color="#fff" />
-                  </View>
-                  <View style={S.innerTextContent}>
-                    <Text style={S.innerTitle}>Autoplay Next Episode</Text>
-                    <Text style={S.innerSubtitle}>Automatically play the next item in a series</Text>
-                  </View>
-                  <View style={[S.customSwitch, autoPlay && S.customSwitchActive]}>
-                    <View style={[S.switchKnob, autoPlay && S.switchKnobActive]} />
-                  </View>
-                </>
-              )}
-            </Focusable>
-
-            <View style={S.innerDivider} />
-
-            {/* Item 2 */}
-            <Focusable ringOnFocus={false} onPress={toggleHardwareAcceleration} style={S.innerListItem}>
-              {(focused) => (
-                <>
-                  <View style={[S.innerIconBox, focused && S.innerIconBoxFocused]}>
-                    <Ionicons name="flash-outline" size={ps(2.2)} color="#fff" />
-                  </View>
-                  <View style={S.innerTextContent}>
-                    <Text style={S.innerTitle}>Hardware Acceleration</Text>
-                    <Text style={S.innerSubtitle}>Use GPU for smoother video decoding</Text>
-                  </View>
-                  <View style={[S.customSwitch, hardwareAcceleration && S.customSwitchActive]}>
-                    <View style={[S.switchKnob, hardwareAcceleration && S.switchKnobActive]} />
-                  </View>
-                </>
-              )}
-            </Focusable>
+            <SettingRow
+              icon="flash-outline"
+              title="Hardware Acceleration"
+              subtitle="Use the GPU for smoother video decoding"
+              focusKey="hwaccel"
+              // Inherited the screen's initial focus when the autoplay row above
+              // it was removed.
+              preferred={autoFocusFirst}
+              onPress={toggleHardwareAcceleration}
+              accessibilityRole="switch"
+              selected={hardwareAcceleration}
+              control={{ kind: 'switch', on: hardwareAcceleration }}
+            />
           </View>
         </View>
 
         {/* Data Section */}
         <View style={S.rootSection}>
-          <Text style={S.sectionLabel}>APP MANAGEMENT / DATA</Text>
-          <FocusGroup style={S.bentoRow}>
-            <Focusable ringOnFocus={false} onPress={handleClearCache} style={S.bentoPressable}>
-              {(focused) => (
-                focused ? (
-                  <LinearGradient
-                    colors={[THEME.colors.primary, THEME.colors.secondary]}
-                    style={S.bentoGradientBorder}
-                  >
-                    <View style={[S.bentoCard, S.bentoCardFocused]}>
-                      {renderBentoContent('brush', 'Clear Cache', 'Remove temporary files')}
-                    </View>
-                  </LinearGradient>
-                ) : (
-                  <View style={S.bentoCard}>
-                    {renderBentoContent('brush', 'Clear Cache', 'Remove temporary files')}
-                  </View>
-                )
-              )}
-            </Focusable>
-
-            <Focusable ringOnFocus={false} onPress={handleClearAllData} style={S.bentoPressable}>
-              {(focused) => (
-                focused ? (
-                  <LinearGradient
-                    colors={[THEME.colors.primary, THEME.colors.secondary]}
-                    style={S.bentoGradientBorder}
-                  >
-                    <View style={[S.bentoCard, S.bentoCardFocused]}>
-                      {renderBentoContent('trash', 'Clear Data', 'Reset all settings')}
-                    </View>
-                  </LinearGradient>
-                ) : (
-                  <View style={S.bentoCard}>
-                    {renderBentoContent('trash', 'Clear Data', 'Reset all settings')}
-                  </View>
-                )
-              )}
-            </Focusable>
-
-            <Focusable ringOnFocus={false} onPress={cycleOverscan} style={S.bentoPressable}>
-              {(focused) => (
-                focused ? (
-                  <LinearGradient
-                    colors={[THEME.colors.primary, THEME.colors.secondary]}
-                    style={S.bentoGradientBorder}
-                  >
-                    <View style={[S.bentoCard, S.bentoCardFocused]}>
-                      <View style={S.bentoIconBox}>
-                        <Ionicons name="tv-outline" size={ps(2)} color={THEME.colors.primary} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <GradientText text="TV Safe Area" style={S.bentoTitle} colors={["#fff", "rgba(255,255,255,0.7)"]} />
-                        <Text style={S.bentoSubtitle}>Prevent edge cropping</Text>
-                      </View>
-                      <View style={[S.customSwitch, { width: 'auto', paddingHorizontal: pw(1) }]}>
-                        <Text style={{ color: '#fff', fontSize: ps(1.2), fontWeight: '700' }}>
-                          {overscanPadding}px
-                        </Text>
-                      </View>
-                    </View>
-                  </LinearGradient>
-                ) : (
-                  <View style={S.bentoCard}>
-                    <View style={S.bentoIconBox}>
-                      <Ionicons name="tv-outline" size={ps(2)} color={THEME.colors.primary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <GradientText text="TV Safe Area" style={S.bentoTitle} colors={["#fff", "rgba(255,255,255,0.7)"]} />
-                      <Text style={S.bentoSubtitle}>Prevent edge cropping</Text>
-                    </View>
-                    <View style={[S.customSwitch, { width: 'auto', paddingHorizontal: pw(1) }]}>
-                      <Text style={{ color: '#fff', fontSize: ps(1.2), fontWeight: '700' }}>
-                        {overscanPadding}px
-                      </Text>
-                    </View>
-                  </View>
-                )
-              )}
-            </Focusable>
+          <SectionLabel>APP MANAGEMENT / DATA</SectionLabel>
+          <FocusGroup style={S.tileRow}>
+            <DataTile
+              icon="brush-outline"
+              title="Clear Cache"
+              subtitle="Remove temporary files"
+              focusKey="clear-cache"
+              onPress={handleClearCache}
+            />
+            <DataTile
+              icon="trash-outline"
+              title="Clear Data"
+              subtitle="Reset all settings"
+              focusKey="clear-data"
+              tone="danger"
+              onPress={handleClearAllData}
+            />
+            <DataTile
+              icon="tv-outline"
+              title="TV Safe Area"
+              subtitle="Prevent edge cropping"
+              focusKey="overscan"
+              onPress={cycleOverscan}
+              value={`${overscanPadding}px`}
+            />
           </FocusGroup>
         </View>
 
         {/* Legal Section */}
         <View style={S.rootSection}>
-          <Text style={S.sectionLabel}>LEGAL</Text>
+          <SectionLabel>LEGAL</SectionLabel>
           <View style={S.groupedCard}>
-            <Focusable ringOnFocus={false} onPress={() => router.push('/privacy-policy')} style={S.innerListItem}>
-              {(focused) => (
-                <>
-                  <View style={[S.innerIconBox, focused && S.innerIconBoxFocused]}>
-                    <Ionicons name="document-text-outline" size={ps(2.2)} color="#fff" />
-                  </View>
-                  <View style={S.innerTextContent}>
-                    <Text style={S.innerTitle}>Privacy Policy</Text>
-                    <Text style={S.innerSubtitle}>Read our policies and terms</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={ps(2)} color="rgba(255,255,255,0.3)" />
-                </>
-              )}
-            </Focusable>
+            <SettingRow
+              icon="document-text-outline"
+              title="Privacy Policy"
+              subtitle="How your data is handled inside the app"
+              focusKey="privacy"
+              onPress={() => router.push('/privacy-policy')}
+              control={{ kind: 'chevron' }}
+            />
           </View>
         </View>
 
         {/* Stats */}
         <View style={S.stats}>
           <View style={S.statItem}>
-            <Text style={S.statValue}>
-              {portals.length}
-            </Text>
-            <Text style={S.statLabel}>
-              Configured Portals
-            </Text>
+            <Text style={S.statValue}>{portals.length}</Text>
+            <Text style={S.statLabel}>Configured Portals</Text>
           </View>
         </View>
 
-
+        <View style={S.footer}>
+          <Text style={S.footerText}>INFINITY IPTV PLAYER</Text>
+          <Text style={S.footerSubtext}>Version {appVersion}</Text>
+        </View>
       </ScrollView>
+
+      {dialogNode}
     </View>
   );
 }
@@ -402,37 +465,12 @@ const S = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
   },
+
+  // ── Header ────────────────────────────────────────────────────────────────
   headerBranding: {
     alignItems: 'center',
     paddingTop: ph(4),
     marginBottom: ph(2),
-  },
-  headerTopRow: {
-    width: '100%',
-    flexDirection: 'row',
-    paddingHorizontal: pw(4),
-    position: 'absolute',
-    top: ph(3),
-    zIndex: 10,
-  },
-  backBtn: {
-    width: ps(5),
-    height: ps(5),
-    borderRadius: ps(2.5),
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backBtnFocused: {
-    backgroundColor: THEME.colors.primary,
-    transform: [{ scale: 1.1 }],
-  },
-  brandingText: {
-    color: '#fff',
-    fontSize: ps(2.2),
-    fontWeight: '600',
-    letterSpacing: 2,
-    marginBottom: ph(1),
   },
   headerLogoImage: {
     width: pw(25),
@@ -440,21 +478,7 @@ const S = StyleSheet.create({
     transform: [{ scale: 2.5 }],
     marginBottom: ph(1),
   },
-  headerSubtitle: {
-    fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: "rgba(255,255,255,0.4)",
-    fontWeight: "400",
-    letterSpacing: 1.5,
-    textAlign: "center",
-    marginBottom: ph(0.5),
-  },
-  headerSubtitleAccent: {
-    fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: THEME.colors.primary,
-    fontWeight: "600",
-    letterSpacing: 2,
-    textAlign: "center",
-  },
+
   content: {
     flex: 1,
   },
@@ -462,80 +486,21 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(8),
     paddingBottom: ph(10),
   },
-  itemWrapper: {
-    marginBottom: ph(1.5),
-  },
-  pressable: {
-    borderRadius: ps(1.5),
-    overflow: 'hidden',
-  },
-  gradientBorder: {
-    padding: 1,
-    borderRadius: ps(1.5),
-  },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: ps(2),
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: ps(1.4),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  settingItemFocused: {
-    backgroundColor: '#1D1B20',
-    borderWidth: 0,
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
-    elevation: 10,
-  },
-  settingIcon: {
-    width: ps(6),
-    height: ps(6),
-    borderRadius: ps(1.5),
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: pw(2),
-  },
-  settingIconActive: {
-    backgroundColor: 'transparent',
-  },
-  settingIconDanger: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-  },
-  settingInfo: {
-    flex: 1,
-  },
-  settingTitle: {
-    fontSize: ps(1.8),
-    fontWeight: '300',
-    color: '#fff',
-    letterSpacing: 1,
-  },
-  settingTitleDanger: {
-    color: '#ef4444',
-  },
-  settingSubtitle: {
-    fontSize: ps(1.1),
-    color: 'rgba(255,255,255,0.3)',
-    fontWeight: '300',
-    marginTop: 4,
-    letterSpacing: 0.5,
-  },
+
+  // ── Sections ──────────────────────────────────────────────────────────────
   rootSection: {
     marginBottom: ph(4),
   },
   sectionLabel: {
     fontSize: isTV ? ps(1.2) : ps(1),
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.2)',
+    color: 'rgba(255,255,255,0.4)',
     letterSpacing: 1.5,
     marginBottom: ph(2),
   },
-  portalCardImageStyle: {
+
+  // ── Portal card ───────────────────────────────────────────────────────────
+  portalCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: ps(2),
     padding: ps(3.5),
@@ -543,55 +508,55 @@ const S = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.05)',
   },
   portalInfoCols: {
-    flexDirection: 'row',
-    marginBottom: ph(4),
-    gap: pw(4),
+    flexDirection: isTV ? 'row' : 'column',
+    marginBottom: ph(3),
+    gap: isTV ? pw(4) : ph(2),
   },
   infoCol: {
-    flex: 1,
+    flex: isTV ? 1 : undefined,
   },
   tinyLabel: {
-    fontSize: isTV ? ps(1.1) : ps(0.9),
-    color: 'rgba(255,255,255,0.3)',
+    fontSize: isTV ? ps(1.2) : ps(0.9),
+    color: 'rgba(255,255,255,0.35)',
     fontWeight: '600',
+    letterSpacing: 0.5,
     marginBottom: ph(0.5),
   },
   largeValue: {
-    fontSize: ps(1.8),
+    fontSize: isTV ? ps(1.8) : ps(1.5),
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: '600',
   },
   disconnectBtnWrapper: {
     alignSelf: 'flex-start',
-    overflow: 'visible',
     marginTop: ph(1),
   },
-  disconnectBtnGradient: {
+  disconnectBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: pw(2),
     paddingVertical: ph(1.2),
     gap: pw(0.8),
     borderRadius: ps(1),
-    borderWidth: 1.5,
+    borderWidth: .8,
     borderColor: 'rgba(255,255,255,0.1)',
     backgroundColor: '#111015',
   },
   disconnectBtnFocused: {
-    borderColor: '#ff0130ff',
-    backgroundColor: 'transparent',
+    borderColor: '#ff453a',
+    backgroundColor: 'rgba(255,69,58,0.12)',
     transform: [{ scale: 1.05 }],
     ...Platform.select({
       ios: {
-        shadowColor: "#fe0921ff",
+        shadowColor: '#ff453a',
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.6,
         shadowRadius: 12,
       },
       android: {
         elevation: 0,
-      }
-    })
+      },
+    }),
   },
   disconnectBtnText: {
     fontSize: ps(1.3),
@@ -599,115 +564,147 @@ const S = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Grouped Card
+  // ── Grouped list ──────────────────────────────────────────────────────────
   groupedCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: ps(2),
     padding: ps(1),
-    borderWidth: 1,
+    borderWidth: .8,
     borderColor: 'rgba(255,255,255,0.05)',
   },
-  innerListItem: {
+  /** The transparent border is reserved up front so gaining focus recolours it
+   *  instead of resizing the row and nudging the whole list. */
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: ps(2),
-    borderRadius: ps(1),
+    borderRadius: ps(1.8),
+    borderWidth: .8,
+    borderColor: 'transparent',
   },
-  innerIconBox: {
+  rowFocused: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.85)',
+  },
+  rowIconBox: {
     width: ps(5),
     height: ps(5),
-    borderRadius: ps(2.5),
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: .8,
+    borderRadius: ps(2),
+    backgroundColor: 'rgba(255,255,255,0.05)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: pw(2),
   },
-  innerIconBoxFocused: {
-    backgroundColor: THEME.colors.primary + '20',
+  rowIconBoxFocused: {
+    backgroundColor: '#fff',
   },
-  innerTextContent: {
+  rowText: {
     flex: 1,
+    paddingRight: pw(1),
   },
-  innerTitle: {
-    fontSize: ps(1.6),
+  rowTitle: {
+    fontSize: isTV ? ps(1.6) : ps(1.4),
     color: '#fff',
     fontWeight: '700',
   },
-  innerSubtitle: {
-    fontSize: isTV ? ps(1.2) : ps(1.1),
-    color: 'rgba(255,255,255,0.3)',
+  rowSubtitle: {
+    fontSize: isTV ? ps(1.2) : ps(1),
+    color: 'rgba(255,255,255,0.35)',
     marginTop: 2,
   },
-  innerDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    marginHorizontal: ps(2),
+  rowSubtitleFocused: {
+    color: 'rgba(255,255,255,0.6)',
   },
 
-  // Bento Row
-  bentoRow: {
-    flexDirection: 'row',
-    gap: pw(2),
+  // ── Data tiles ────────────────────────────────────────────────────────────
+  tileRow: {
+    flexDirection: isTV ? 'row' : 'column',
+    gap: isTV ? pw(2) : ph(1.5),
   },
-  bentoPressable: {
-    flex: 1,
-    borderRadius: ps(2),
-    overflow: 'hidden',
-  },
-  bentoGradientBorder: {
-    padding: 1,
+  tileWrapper: {
+    ...(isTV ? { flex: 1 } : { alignSelf: 'stretch' }),
     borderRadius: ps(2),
   },
-  bentoCard: {
+  tile: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: ps(2),
-    padding: ps(3),
+    padding: ps(2.5),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: pw(1.5),
   },
-  bentoCardFocused: {
-    backgroundColor: '#1D1B20',
-    borderWidth: 0,
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
-    elevation: 10,
+  tileFocused: {
+    backgroundColor: '#17161b',
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 1,
+    transform: [{ scale: 1.03 }],
   },
-  bentoIconBox: {
-    width: ps(6),
-    height: ps(6),
-    borderRadius: ps(1.2),
-    backgroundColor: 'rgba(255,255,255,0.02)',
+  tileFocusedDanger: {
+    borderColor: '#8a1a1483',
+    backgroundColor: 'rgba(255,69,58,0.08)',
+  },
+  tileIconBox: {
+    width: ps(5.5),
+    height: ps(5.5),
+    borderRadius: ps(2),
+    backgroundColor: 'rgba(255,255,255,0.04)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bentoTitle: {
-    fontSize: ps(1.6),
+  tileIconBoxFocused: {
+    backgroundColor: '#fff',
+  },
+  tileIconBoxDanger: {
+    backgroundColor: 'rgba(199, 70, 63, 0.16)',
+  },
+  tileText: {
+    flex: 1,
+  },
+  tileTitle: {
+    fontSize: isTV ? ps(1.5) : ps(1.35),
     color: '#fff',
     fontWeight: '700',
   },
-  bentoSubtitle: {
-    fontSize: isTV ? ps(1.1) : ps(1),
-    color: 'rgba(255,255,255,0.3)',
-    width: pw(25),
+  tileTitleDanger: {
+    color: '#a52b24be',
+  },
+  tileSubtitle: {
+    fontSize: isTV ? ps(1.1) : ps(0.95),
+    color: 'rgba(255,255,255,0.35)',
     marginTop: 2,
   },
-
-  // Switch
-  customSwitch: {
-    width: pw(4.5),
-    height: ph(3.5),
+  valuePill: {
+    paddingHorizontal: pw(1),
+    paddingVertical: ph(0.6),
     borderRadius: ps(2),
     backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  valuePillText: {
+    color: '#fff',
+    fontSize: ps(1.2),
+    fontWeight: '700',
+  },
+
+  // ── Switch ────────────────────────────────────────────────────────────────
+  switchTrack: {
+    width: pw(4.5),
+    height: ph(3.5),
+    minWidth: ps(4),
+    borderRadius: ps(2),
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'transparent',
     justifyContent: 'center',
     padding: 2,
   },
-  customSwitchActive: {
+  switchTrackFocused: {
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  switchTrackOn: {
     backgroundColor: THEME.colors.primary,
   },
   switchKnob: {
@@ -716,18 +713,19 @@ const S = StyleSheet.create({
     borderRadius: ps(0.9),
     backgroundColor: '#fff',
   },
-  switchKnobActive: {
+  switchKnobOn: {
     alignSelf: 'flex-end',
     backgroundColor: '#000',
   },
 
+  // ── Footer ────────────────────────────────────────────────────────────────
   stats: {
-    marginTop: ph(6),
+    marginTop: ph(4),
     alignItems: 'center',
   },
   statItem: {
     alignItems: 'center',
-    paddingVertical: ph(3),
+    paddingVertical: ph(2),
   },
   statValue: {
     fontSize: ps(4),
@@ -743,17 +741,17 @@ const S = StyleSheet.create({
   },
   footer: {
     alignItems: 'center',
-    marginTop: ph(4),
+    marginTop: ph(2),
   },
   footerText: {
     fontSize: ps(1.2),
-    color: 'rgba(255,255,255,0.2)',
+    color: 'rgba(255,255,255,0.25)',
     fontWeight: '700',
     letterSpacing: 2,
   },
   footerSubtext: {
     fontSize: ps(1),
-    color: 'rgba(255,255,255,0.1)',
+    color: 'rgba(255,255,255,0.15)',
     marginTop: 4,
     letterSpacing: 1,
   },

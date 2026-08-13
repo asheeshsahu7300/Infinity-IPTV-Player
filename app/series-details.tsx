@@ -3,9 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  Alert,
-  Linking,
+  ScrollView,  Linking,
   Platform,
   TouchableOpacity,
   Dimensions,
@@ -29,6 +27,7 @@ import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
+import { useDialog } from "../src/components/ConfirmDialog";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -187,6 +186,9 @@ const SeasonPill = React.memo(function SeasonPill({
 export default function SeriesDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // Errors surface through an in-tree overlay — Alert.alert does not
+  // reliably appear on an Android TV release build.
+  const { notify, node: dialogNode } = useDialog();
   const params = useLocalSearchParams<{
     id: string;
     name: string;
@@ -252,7 +254,7 @@ export default function SeriesDetailsScreen() {
       if (seasonsData.length > 0) setSelectedSeasonId(seasonsData[0].id);
     } catch (error) {
       console.error(error);
-      Alert.alert("Error", "Failed to load series library");
+      notify("Could Not Load Series", "The series library failed to load. Please try again.", "danger");
     } finally {
       setIsLoading(false);
     }
@@ -283,7 +285,7 @@ export default function SeriesDetailsScreen() {
     }
 
     if (!streamUrl) {
-      Alert.alert("Error", "Could not resolve a playable stream URL for this episode.");
+      notify("Playback Unavailable", "Could not resolve a playable stream URL for this episode.", "danger");
       return;
     }
 
@@ -309,7 +311,7 @@ export default function SeriesDetailsScreen() {
       }
     } catch (err) {
       console.error("Episode playback launch error:", err);
-      Alert.alert("Error", "Failed to start streaming. Make sure a video player app is installed.");
+      notify("Playback Failed", "Failed to start streaming. Make sure a video player app is installed.", "danger");
     }
   };
 
@@ -550,6 +552,8 @@ export default function SeriesDetailsScreen() {
           </View>
         </BlurView>
       </Overlay>
+
+      {dialogNode}
     </View>
   );
 }

@@ -7,7 +7,6 @@ import {
   RefreshControl,
   Image,
   Dimensions,
-  Alert,
   Platform,
   ActivityIndicator,
 } from "react-native";
@@ -24,10 +23,11 @@ import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import LoadingOverlay from "../src/components/LoadingOverlay";
 import { isTV } from "../src/utils/tvUtils";
 import { Focusable, Overlay, useInitialFocusPulse } from "../src/tv";
+import { useDialog } from "../src/components/ConfirmDialog";
 import { useNetworkActivity } from "../src/services/networkActivity";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 // This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
-import { THEME, pw, ph, psRaw as ps } from "../src/theme/tokens";
+import { THEME, pw, ph, psRaw as ps, CARD_FRAME, CARD_FRAME_INNER_RADIUS } from "../src/theme/tokens";
 
 const RAIL_H_PAD = pw(isTV ? 5 : 4);
 
@@ -92,6 +92,9 @@ const HeroPill = ({
 export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // Errors surface through an in-tree overlay — Alert.alert does not
+  // reliably appear on an Android TV release build.
+  const { notify, node: dialogNode } = useDialog();
   // Selectors, not whole-store destructuring — the dashboard stays mounted
   // behind pushed screens and was re-rendering on every content write.
   const activePortal = usePortalStore((s) => s.activePortal);
@@ -126,11 +129,11 @@ export default function DashboardScreen() {
       await portalApi.refreshPortalData(activePortal, true);
     } catch (e: any) {
       console.warn("Refresh failed:", e);
-      Alert.alert("Refresh Failed", e?.message || "Unable to refresh portal data.");
+      notify("Refresh Failed", e?.message || "Unable to refresh portal data.", "danger");
     } finally {
       setIsLoading(false);
     }
-  }, [activePortal]);
+  }, [activePortal, notify]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -167,7 +170,7 @@ export default function DashboardScreen() {
     }
 
     if (!streamUrl) {
-      Alert.alert("Error", "No stream URL found for this content.");
+      notify("Playback Unavailable", "No stream URL was found for this content.", "danger");
       return;
     }
 
@@ -185,7 +188,7 @@ export default function DashboardScreen() {
         },
       });
     }
-  }, [selectedItem, activePortal, router]);
+  }, [selectedItem, activePortal, router, notify]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -230,9 +233,12 @@ export default function DashboardScreen() {
         <View style={S.browseContainer}>
           {(
             [
-              { id: "cat-live", title: "Live TV", icon: "tv", img: "https://i.ibb.co/Y7jdGZ8s/Chat-GPT-Image-Aug-11-2026-04-26-18-PM.png", route: "/live-tv" },
-              { id: "cat-movies", title: "Movies", icon: "film", img: "https://i.ibb.co/0RNqzN4h/Chat-GPT-Image-Aug-11-2026-04-32-05-PM.png", route: "/vod" },
-              { id: "cat-series", title: "Series", icon: "albums", img: "https://i.ibb.co/whyDFxKp/sky-mobile-banner-1024x768.jpg", route: "/series" },
+              // Bundled rather than fetched: these three are the first thing on
+              // screen, and a cold TV start used to show empty cards until the
+              // remote images arrived.
+              { id: "cat-live", title: "Live TV", icon: "tv", img: require("../assets/images/livetv.png"), route: "/live-tv" },
+              { id: "cat-movies", title: "Movies", icon: "film", img: require("../assets/images/movies.png"), route: "/vod" },
+              { id: "cat-series", title: "Series", icon: "albums", img: require("../assets/images/series.png"), route: "/series" },
             ]
           ).map((cat) => (
             <Focusable
@@ -257,14 +263,13 @@ export default function DashboardScreen() {
                   ]}
                 >
                   <View style={S.browseCardInner}>
-                    <Image source={{ uri: cat.img }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+                    {/* `contain`, not `cover`: these are composed pieces of
+                        artwork, so the whole frame has to stay visible. `cover`
+                        filled the card by cropping the sides away. */}
+                   <Image source={cat.img } resizeMode="cover" style={{ width: undefined, height: undefined, flex: 1, backgroundColor: '#0000', }} />
 
                     {/* Dark glass overlay covering the ENTIRE image */}
-                    <BlurView
-                      intensity={5}
-                      tint="dark"
-                      style={[StyleSheet.absoluteFillObject, { backgroundColor: focused ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0.3)" }]}
-                    />
+                  
 
                     {/* Text container sitting on top at the bottom */}
                     <View style={S.browseCardContent}>
@@ -407,6 +412,8 @@ export default function DashboardScreen() {
           </View>
         </View>
       </Overlay>
+
+      {dialogNode}
     </View>
   );
 }
@@ -570,28 +577,36 @@ const S = StyleSheet.create({
   },
   browseContainer: {
     flexDirection: isTV ? "row" : "column",
-    gap: pw(2),
+    // Tightened from pw(2): the gap is dead space between the cards, and
+    // narrowing it goes straight into their width.
+    gap: isTV ? pw(1.8) : pw(2),
     ...(isTV ? { flex: 1 } : null),
   },
   browseCard: {
     flex: 1,
-    padding: pw(1),
+    // Horizontal inset almost removed — it only existed to give the old
+    // scale-on-focus room to grow without clipping, and that scale is gone, so
+    // it was costing each card 2% of the screen for nothing. Vertical inset is
+    // left alone so the cards keep the height set below.
+    paddingHorizontal: pw(0.3),
+    paddingVertical: pw(1),
     overflow: "visible",
     // Touch layouts stack these vertically inside a ScrollView, so they still
     // need an explicit height; on TV the row stretches them.
-    height: ph(40), minHeight: ph(40)
+    height: ph(42), minHeight: ph(42),
+  
   },
   cardBorder: {
     flex: 1,
     padding: 1,
-    borderRadius: ps(1.4),
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    ...CARD_FRAME,
   },
   cardBorderFocused: {
-    borderColor: "#fff",
+    borderColor: "#ffffff",
+    borderWidth: 1,
     backgroundColor: "transparent",
+    // No width/height/scale here on purpose: anything that changes the box
+    // makes the focused card a different size from its two neighbours.
     ...Platform.select({
       ios: {
         shadowColor: "#fff",
@@ -606,8 +621,11 @@ const S = StyleSheet.create({
   },
   browseCardInner: {
     flex: 1,
-    backgroundColor: "transparent",
-    borderRadius: ps(1.1),
+    // Solid, not transparent: `contain` letterboxes the artwork, and the bands
+    // it leaves have to read as the card's own body rather than a hole through
+    // to the cinematic background.
+    backgroundColor: THEME.colors.background,
+    borderRadius: CARD_FRAME_INNER_RADIUS,
     overflow: "hidden",
   },
   browseCardContent: {
@@ -622,10 +640,10 @@ const S = StyleSheet.create({
     overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
-    gap: pw(1.2),
+    gap: pw(1),
   },
   browseCardTitle: {
-    color: "#fff",
+    color: "#e8e8e8",
     fontSize: ps(1.8),
     fontWeight: "700",
   },

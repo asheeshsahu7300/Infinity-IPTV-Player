@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
@@ -7,9 +8,14 @@
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
   <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
-  <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
-  <uses-feature android:name="android.hardware.faketouch" android:required="false"/>
-  <uses-feature android:name="android.software.leanback" android:required="false"/>
+  
+  <!-- Explicitly mark hardware features as not required and force override any merged manifests -->
+  <uses-feature android:name="android.hardware.touchscreen" android:required="false" tools:replace="android:required" />
+  <uses-feature android:name="android.hardware.faketouch" android:required="false" tools:replace="android:required" />
+  <uses-feature android:name="android.software.leanback" android:required="true" tools:replace="android:required" />
+  <uses-feature android:name="android.hardware.microphone" android:required="false" tools:replace="android:required" />
+  <uses-feature android:name="android.hardware.screen.portrait" android:required="false" tools:replace="android:required" />
+
   <queries>
     <intent>
       <action android:name="android.intent.action.VIEW"/>

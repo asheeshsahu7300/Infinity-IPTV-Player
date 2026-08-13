@@ -10,9 +10,7 @@ import {
   TouchableOpacity,
   StatusBar,
   TextInput,
-  Linking,
-  Alert,
-  FlatList,
+  Linking,  FlatList,
   InteractionManager,
 } from "react-native";
 import { Image } from "expo-image";
@@ -37,6 +35,7 @@ import { AppBootManager } from "../src/services/AppBootManager";
 import { filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
 import { useNetworkActivity } from "../src/services/networkActivity";
 import { Focusable, FocusGroup, Overlay, FocusMemory, useInitialFocusPulse } from "../src/tv";
+import { useDialog } from "../src/components/ConfirmDialog";
 
 const { width: SCREEN_WIDTH_VAL } = Dimensions.get("window");
 
@@ -369,6 +368,9 @@ const pickDescription = (v: any) => {
 export default function VODScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // Errors surface through an in-tree overlay — Alert.alert does not
+  // reliably appear on an Android TV release build.
+  const { notify, node: dialogNode } = useDialog();
 
   const safeGoBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -734,7 +736,7 @@ export default function VODScreen() {
     title?: string,
     contentId?: string
   ) => {
-    if (!url) { Alert.alert("Error", "No stream URL found"); return; }
+    if (!url) { notify("Playback Unavailable", "No stream URL was found for this title.", "danger"); return; }
     setPlayModalVisible(false);
     try {
       if (isExternal) {
@@ -754,7 +756,7 @@ export default function VODScreen() {
       }
     } catch (err) {
       console.error("Playback launch error:", err);
-      Alert.alert("Error", "Failed to start playback. Make sure a video player app is installed.");
+      notify("Playback Failed", "Failed to start playback. Make sure a video player app is installed.", "danger");
     }
   };
 
@@ -778,7 +780,7 @@ export default function VODScreen() {
     }
 
     if (!streamUrl) {
-      Alert.alert("Error", "Could not resolve a playable stream URL for this title.");
+      notify("Playback Unavailable", "Could not resolve a playable stream URL for this title.", "danger");
       return;
     }
 
@@ -1160,6 +1162,8 @@ export default function VODScreen() {
           </View>
         </BlurView>
       </Overlay>
+
+      {dialogNode}
     </View>
   );
 }

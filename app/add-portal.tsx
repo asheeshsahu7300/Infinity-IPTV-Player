@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TextInput,
-  Alert,
   ScrollView,
   Dimensions,
   TouchableOpacity,
@@ -18,7 +17,6 @@ import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePortalStore } from "../src/store/portalStore";
@@ -27,10 +25,32 @@ import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import LoadingOverlay from "../src/components/LoadingOverlay";
 import { CinematicBackground } from "../src/components/CinematicBackground";
+import { useDialog } from "../src/components/ConfirmDialog";
 import { isTV } from "../src/utils/tvUtils";
 import { Focusable } from "../src/tv";
 
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
+
+/** Breathing room left between a focused field and the top of the keyboard. */
+const KEYBOARD_GAP = ph(3);
+
+const { height: WINDOW_H } = Dimensions.get("window");
+
+/**
+ * Share of the screen the IME is assumed to cover when the platform reports no
+ * keyboard metrics.
+ *
+ * Android derives `keyboardDidShow` from the root view's height changing, and
+ * under Android 15 edge-to-edge the window is never resized — so on this app
+ * the event does not fire at all and `endCoordinates` is never available. The
+ * fields still have to get out from under the IME, so when there are no real
+ * metrics we assume a generously tall keyboard instead. A too-large assumption
+ * only over-scrolls slightly; a too-small one leaves the field hidden.
+ */
+const ASSUMED_KEYBOARD_FRACTION = 0.55;
+
+/** Focus targets that raise the IME. Buttons in the same form must not. */
+const TEXT_FIELDS = new Set(["name", "url", "username", "password", "mac"]);
 
 // ─── Gradient text ────────────────────────────────────────────────────────────
 const GradientText = ({
@@ -52,6 +72,7 @@ type CardType = "m3u" | "xtream" | "mag";
 const GradientBorderCard = ({
   id,
   focusedField,
+  preferred,
   onPress,
   onFocus,
   onBlur,
@@ -59,6 +80,8 @@ const GradientBorderCard = ({
 }: {
   id: string;
   focusedField: string | null;
+  /** Claims the screen's initial focus. Pulsed, never latched — see the caller. */
+  preferred?: boolean;
   onPress: () => void;
   onFocus: () => void;
   onBlur: () => void;
@@ -73,6 +96,7 @@ const GradientBorderCard = ({
       onPress={onPress}
       onFocus={onFocus}
       onBlur={onBlur}
+      hasTVPreferredFocus={preferred}
       ringOnFocus={false}
       style={[
         {
@@ -186,32 +210,63 @@ export default function AddPortalScreen() {
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const focusedFieldRef = useRef<string | null>(null);
 
+  // Hands step 1's initial focus to the M3U card. Seeded from `step` rather than
+  // raised in the effect, because the native focus engine reads the tree as the
+  // screen appears — a flag arriving one render later is already too late.
+  //
+  // A pulse, not a latch: `hasTVPreferredFocus` left permanently true re-claims
+  // focus every time the card remounts, which would drag the user back here from
+  // wherever they had navigated. Re-pulsing on `step` also restores focus to the
+  // card when they come back from step 2.
+  const [focusFirstCard, setFocusFirstCard] = useState(step === 1);
+  useEffect(() => {
+    if (step !== 1) return;
+    setFocusFirstCard(true);
+    const timer = setTimeout(() => setFocusFirstCard(false), 400);
+    return () => clearTimeout(timer);
+  }, [step]);
+
   const nameInputRef = useRef<TextInput>(null);
   const urlInputRef = useRef<TextInput>(null);
   const userInputRef = useRef<TextInput>(null);
   const passInputRef = useRef<TextInput>(null);
   const macInputRef = useRef<TextInput>(null);
 
+  // `Alert.alert` is unusable here: on an Android TV release build it does not
+  // reliably surface, and the D-pad cannot reach its buttons — so a failed
+  // validation looked like the Connect button was simply dead.
+  const { notify, node: dialogNode } = useDialog();
+
   useEffect(() => {
     focusedFieldRef.current = focusedField;
   }, [focusedField]);
 
+  /** Surfaces a blocking message. The keyboard is dismissed first so the
+   *  dialog is not hidden behind it on phones. */
+  const showError = useCallback(
+    (message: string, title = "Check Your Details") => {
+      Keyboard.dismiss();
+      notify(title, message, "danger");
+    },
+    [notify]
+  );
+
   const validateInputs = useCallback(() => {
-    if (!name.trim()) { Alert.alert("Error", "Enter portal name"); return false; }
-    if (!url.trim()) { Alert.alert("Error", "Enter portal URL"); return false; }
+    if (!name.trim()) { showError("Enter a name for this portal."); return false; }
+    if (!url.trim()) { showError("Enter the portal URL."); return false; }
     if (type === "xtream" && (!username.trim() || !password.trim())) {
-      Alert.alert("Error", "Xtream requires username & password");
+      showError("Xtream Codes requires both a username and a password.");
       return false;
     }
     if (type === "mag") {
       const formatted = formatMac(mac);
       if (!formatted.trim() || formatted.replace(/:/g, "").length !== 12) {
-        Alert.alert("Error", "Enter valid MAC address");
+        showError("Enter a valid 12-digit MAC address.");
         return false;
       }
     }
     return true;
-  }, [name, url, type, username, password, mac]);
+  }, [name, url, type, username, password, mac, showError]);
 
   const handleSaveAndConnect = useCallback(async () => {
     if (!validateInputs()) return;
@@ -258,9 +313,9 @@ export default function AddPortalScreen() {
       router.replace("/dashboard");
     } catch (e: any) {
       setIsLoading(false);
-      Alert.alert("Error", e.message || "Failed to connect");
+      showError(e?.message || "Failed to connect. Check the details and try again.", "Connection Failed");
     }
-  }, [validateInputs, type, url, username, password, name, mac, addPortal, setActivePortal, deletePortal, router]);
+  }, [validateInputs, type, url, username, password, name, mac, addPortal, setActivePortal, deletePortal, router, showError]);
 
   const handleBack = useCallback(() => {
     if (step === 2) {
@@ -275,15 +330,103 @@ export default function AddPortalScreen() {
     return true;
   }, [step, router]);
 
+  // ── Keyboard ───────────────────────────────────────────────────────────────
+  // The IME is handled entirely off *focus*, not off keyboard events, because
+  // on this app there are none to work with (see ASSUMED_KEYBOARD_FRACTION).
+  // Two things are needed and neither happens by itself:
+  //   1. scroll range — the form is vertically centred, so the content exactly
+  //      fills the viewport and nothing can be scrolled anywhere;
+  //   2. the scroll itself — `adjustResize` no longer resizes the window, so
+  //      the system never lifts the focused input above the keyboard.
+  // So while a text field holds focus the form is top-aligned with the
+  // keyboard's height reserved beneath it, and the field is scrolled up by its
+  // measured overlap with the keyboard. Real keyboard metrics are still used
+  // when the platform provides them; they just aren't required.
+
   // Track whether the software keyboard is currently visible so that
   // hardware-back while the keyboard is open is NOT intercepted — Android
   // will dismiss the keyboard first (its default behaviour).  Only once the
   // keyboard is gone do we intercept the next back press for step/nav logic.
   const keyboardVisibleRef = useRef(false);
+  /** Top edge of the keyboard in screen coordinates, when the platform says. */
+  const keyboardTopRef = useRef<number | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollOffsetRef = useRef(0);
+  /** The TextInput holding focus, so the effect below can still reach it. */
+  const activeInputRef = useRef<TextInput | null>(null);
+
+  const textFieldFocused = focusedField !== null && TEXT_FIELDS.has(focusedField);
+  // iOS is exempt: the root KeyboardAvoidingView already shrinks the layout.
+  const liftForKeyboard = Platform.OS !== "ios" && textFieldFocused;
+  const keyboardReserve = keyboardHeight > 0 ? keyboardHeight : WINDOW_H * ASSUMED_KEYBOARD_FRACTION;
+
+  const ensureInputVisible = useCallback(() => {
+    const input = activeInputRef.current;
+    if (!input) return;
+    const keyboardTop = keyboardTopRef.current ?? WINDOW_H * (1 - ASSUMED_KEYBOARD_FRACTION);
+
+    // A frame's grace so native layout has picked up the reserved bottom
+    // padding — until it has, `scrollTo` is clamped to the old content size.
+    requestAnimationFrame(() => {
+      input.measureInWindow?.((_x, y, _w, height) => {
+        const overlap = y + height + KEYBOARD_GAP - keyboardTop;
+        if (overlap <= 0) return;
+        scrollRef.current?.scrollTo({ y: scrollOffsetRef.current + overlap, animated: true });
+      });
+    });
+  }, []);
+
   useEffect(() => {
-    const show = Keyboard.addListener("keyboardDidShow", () => { keyboardVisibleRef.current = true; });
-    const hide = Keyboard.addListener("keyboardDidHide", () => { keyboardVisibleRef.current = false; });
+    const show = Keyboard.addListener("keyboardDidShow", (e) => {
+      keyboardVisibleRef.current = true;
+      const height = e.endCoordinates?.height ?? 0;
+      keyboardTopRef.current = e.endCoordinates?.screenY ?? WINDOW_H - height;
+      setKeyboardHeight(height);
+    });
+    const hide = Keyboard.addListener("keyboardDidHide", () => {
+      keyboardVisibleRef.current = false;
+      keyboardTopRef.current = null;
+      setKeyboardHeight(0);
+      // The IME can be dismissed while its field keeps focus (its own ✓ or Back
+      // key). Dropping focus as well routes that through the same un-lift path
+      // below, so the layout never disagrees with what is on screen.
+      activeInputRef.current?.blur?.();
+    });
     return () => { show.remove(); hide.remove(); };
+  }, []);
+
+  // Post-commit, so the reserved padding — and the scroll range it creates —
+  // already exists. Keyed on the focused field so moving between fields
+  // re-scrolls, and on keyboardHeight so real metrics refine the result on
+  // platforms that report them.
+  useEffect(() => {
+    if (focusedField === null || !TEXT_FIELDS.has(focusedField)) return;
+    ensureInputVisible();
+  }, [focusedField, keyboardHeight, ensureInputVisible]);
+
+  // Keyboard gone: undo the lift. Without this the form stays parked wherever
+  // the last field scrolled it to, and re-centring alone would not bring it
+  // back — the reserved padding disappears, but the scroll offset does not.
+  // Guarded on the lifted→not-lifted transition so it never fights the user on
+  // mount or when stepping between screens.
+  const wasLiftedRef = useRef(false);
+  useEffect(() => {
+    if (textFieldFocused) {
+      wasLiftedRef.current = true;
+      return;
+    }
+    if (!wasLiftedRef.current) return;
+    wasLiftedRef.current = false;
+    scrollOffsetRef.current = 0;
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, [textFieldFocused]);
+
+  /** Records which input holds focus; the effect above does the scrolling. */
+  const handleInputFocus = useCallback((field: string, input: TextInput | null) => {
+    setFocusedField(field);
+    activeInputRef.current = input;
   }, []);
 
   // Register hardware back handler for Android TV / Android
@@ -339,6 +482,9 @@ export default function AddPortalScreen() {
             key={id}
             id={id}
             focusedField={focusedField}
+            // M3U is the most common connection method, so it owns step 1's
+            // initial focus.
+            preferred={focusFirstCard && t === "m3u"}
             onPress={() => { setType(t); setStep(2); }}
             onFocus={() => setFocusedField(id)}
             onBlur={() => setFocusedField(null)}
@@ -362,7 +508,7 @@ export default function AddPortalScreen() {
   const renderStep2 = () => {
     const titleMap = { m3u: "M3U Playlist", xtream: "Xtream Codes API", mag: "MAC Portal" };
     return (
-      <View style={S.premiumStep2Container}>
+      <View style={[S.premiumStep2Container, liftForKeyboard && S.premiumStep2ContainerLifted]}>
         <View style={S.premiumFormCard}>
           <Text style={S.premiumFormTitle}>Connect via {titleMap[type]}</Text>
           <Text style={S.premiumFormSubtitle}>
@@ -381,7 +527,7 @@ export default function AddPortalScreen() {
                 placeholderTextColor="#555"
                 value={name}
                 onChangeText={setName}
-                onFocus={() => setFocusedField("name")}
+                onFocus={() => handleInputFocus("name", nameInputRef.current)}
                 onBlur={() => setFocusedField(null)}
               />
             </GradientBorderInput>
@@ -402,7 +548,7 @@ export default function AddPortalScreen() {
                 placeholderTextColor="#555"
                 value={url}
                 onChangeText={setUrl}
-                onFocus={() => setFocusedField("url")}
+                onFocus={() => handleInputFocus("url", urlInputRef.current)}
                 onBlur={() => setFocusedField(null)}
                 autoCorrect={false}
                 autoCapitalize="none"
@@ -434,7 +580,7 @@ export default function AddPortalScreen() {
                       secureTextEntry={field === "password"}
                       value={field === "username" ? username : password}
                       onChangeText={field === "username" ? setUsername : setPassword}
-                      onFocus={() => setFocusedField(field)}
+                      onFocus={() => handleInputFocus(field, ref.current)}
                       onBlur={() => setFocusedField(null)}
                       autoCorrect={false}
                       autoCapitalize="none"
@@ -458,7 +604,7 @@ export default function AddPortalScreen() {
                   placeholderTextColor="#555"
                   value={mac}
                   onChangeText={setMac}
-                  onFocus={() => setFocusedField("mac")}
+                  onFocus={() => handleInputFocus("mac", macInputRef.current)}
                   onBlur={() => {
                     setFocusedField(null);
                     setMac((prev) => formatMac(prev));
@@ -511,9 +657,9 @@ export default function AddPortalScreen() {
   // ── Root ─────────────────────────────────────────────────────────────────────
   // On Android, KeyboardAvoidingView with behavior="height" physically shrinks
   // the container when the keyboard opens, and does NOT reliably restore its
-  // height when the keyboard dismisses — causing a blank-screen layout.
-  // The ScrollView with keyboardShouldPersistTaps already scrolls focused
-  // inputs into view on Android, so we don't need KeyboardAvoidingView there.
+  // height when the keyboard dismisses — causing a blank-screen layout. Android
+  // instead reserves the keyboard's height inside the ScrollView (see the
+  // keyboard section above), which leaves the root layout untouched.
   const rootStyle = [S.container, { paddingTop: insets.top }];
   const inner = (
     <>
@@ -527,16 +673,26 @@ export default function AddPortalScreen() {
         </View>
       )}
 
-      <KeyboardAwareScrollView
+      <ScrollView
+        ref={scrollRef}
         style={S.content}
-        contentContainerStyle={S.scrollContent}
+        contentContainerStyle={[
+          S.scrollContent,
+          // Centred content gives the ScrollView zero scroll range, so while the
+          // keyboard is up the form is top-aligned and the keyboard's height is
+          // reserved below it.
+          liftForKeyboard && { justifyContent: "flex-start", paddingBottom: keyboardReserve + ph(4) },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        enableOnAndroid={true}
-        extraScrollHeight={80} // Enough height to clear labels
+        onScroll={(e) => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
+        scrollEventThrottle={16}
       >
         {step === 1 ? renderStep1() : renderStep2()}
-      </KeyboardAwareScrollView>
+      </ScrollView>
+
+      {/* Last in the tree so the overlay layers above the form. */}
+      {dialogNode}
     </>
   );
 
@@ -649,8 +805,8 @@ const S = StyleSheet.create({
     marginBottom: ph(3),
   },
   darkCardTitle: {
-    fontSize: isTV ? ps(1.8) : 20,
-    fontWeight: "700",
+    fontSize: isTV ? ps(1.6) : 20,
+    fontWeight: "500",
     color: "#fff",
     marginBottom: 8,
     textAlign: "center",
@@ -712,6 +868,13 @@ const S = StyleSheet.create({
     alignItems: "center",
     paddingVertical: ph(4),
     width: "100%",
+  },
+  /** Keyboard open: drop the vertical centring so the form starts at the top
+   *  and the fields sit as high as possible above the IME. */
+  premiumStep2ContainerLifted: {
+    flex: 0,
+    justifyContent: "flex-start",
+    paddingVertical: ph(2),
   },
   premiumFormCard: {
     backgroundColor: "rgba(255,255,255,0.03)",

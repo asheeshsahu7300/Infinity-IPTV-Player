@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Alert,
   Pressable,
   Dimensions,
   Animated,
@@ -18,13 +17,15 @@ import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import LoadingOverlay from "../src/components/LoadingOverlay";
+import { CinematicBackground } from "../src/components/CinematicBackground";
 import { isTV } from "../src/utils/tvUtils";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { Focusable } from "../src/tv";
+import { useDialog } from "../src/components/ConfirmDialog";
 // This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
-import { THEME, pw, ph, psRaw as ps } from "../src/theme/tokens";
+import { THEME, pw, ph, psRaw as ps, CARD_FRAME } from "../src/theme/tokens";
 
 const { width: W } = Dimensions.get("window");
 
@@ -52,6 +53,10 @@ export default function PortalsScreen() {
   const [loadingMessage, setLoadingMessage] = useState("");
   const [focusedPortalId, setFocusedPortalId] = useState<string | null>(null);
   const [focusedHeader, setFocusedHeader] = useState<"back" | "add" | null>(null);
+
+  // `Alert.alert` is not usable on Android TV release builds — the delete
+  // confirmation never surfaced, so the D-pad could not reach its buttons.
+  const { open: openDialog, notify, close: closeDialog, node: dialogNode } = useDialog();
 
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef<any>(null);
@@ -101,7 +106,7 @@ export default function PortalsScreen() {
       await setActivePortal({ ...portal, config: { ...portal.config, token, serverInfo } });
       router.replace("/dashboard");
     } catch (e: any) {
-      Alert.alert("Connection Failed", e.message || "Unable to connect");
+      notify("Connection Failed", e?.message || "Unable to connect to this portal.", "danger");
     } finally {
       setIsLoading(false);
     }
@@ -113,12 +118,20 @@ export default function PortalsScreen() {
   // ── Helpers ────────────────────────────────────────────────────────────────
   const handleDeletePortal = useCallback(
     (portal: Portal) => {
-      Alert.alert("Delete Portal", `Delete "${portal.name}"?`, [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => deletePortal(portal.id) },
-      ]);
+      openDialog({
+        id: `delete-portal:${portal.id}`,
+        tone: "danger",
+        icon: "trash-outline",
+        title: "Delete Portal",
+        message: `"${portal.name}" will be removed from this device. This cannot be undone.`,
+        confirmLabel: "Delete",
+        onConfirm: async () => {
+          await deletePortal(portal.id);
+          closeDialog();
+        },
+      });
     },
-    [deletePortal]
+    [deletePortal, openDialog, closeDialog]
   );
 
   const getPortalTypeInfo = (type: string) => {
@@ -278,41 +291,91 @@ export default function PortalsScreen() {
     </View>
   );
 
+  // ── Empty state ────────────────────────────────────────────────────────────
+  // Two columns: branding and the call to action on the left, artwork on the
+  // right. It owns its own logo, so the shared header is not rendered alongside
+  // it — that would put the lockup on screen twice. Phones stack the columns.
+  const renderEmptyState = () => (
+    <View style={S.introRow}>
+      <View style={S.introCopy}>
+        {/* favicon.png, not TV.png: the latter is 62% transparent padding, which
+            is why the header has to scale it 3x. This one is tightly cropped
+            with a near-black background that disappears against the screen. */}
+        <Image source={require("../assets/images/TV.png")} style={S.introLogo} resizeMode="cover" />
+
+        <Text style={S.introTitle}>Unlimited Entertainment</Text>
+        <Text style={S.introBody}>
+          Connect your first streaming source to reach thousands of channels, global movies and exclusive series —
+          all on this screen.
+        </Text>
+
+        <Focusable
+          hasTVPreferredFocus
+          ringOnFocus={false}
+          onPress={() => router.push("/add-portal")}
+          style={S.getStartedWrapper}
+        >
+          {(focused) => (
+            <View
+              style={[
+                S.addButtonLarge,
+                { overflow: "hidden", borderWidth: focused ? 1.5 : 1, borderColor: focused ? "#fff" : "rgba(255,255,255,0.1)" },
+                !focused && { backgroundColor: "rgba(255,255,255,0.05)" },
+                focused && { backgroundColor: "#fff", transform: [{ scale: 1.06 }], shadowColor: "#fff", shadowOpacity: 0, shadowRadius: 2, elevation: 0 },
+              ]}
+            >
+              <Text style={[S.addButtonText, focused && { color: "#000" }]}>GET STARTED</Text>
+            </View>
+          )}
+        </Focusable>
+      </View>
+
+      {/* A fanned stack of the three library artworks, back to front. Order in
+          the tree is the paint order, so Live TV is last and sits on top. */}
+      <View style={S.introArt}>
+        <Image
+          source={require("../assets/images/series.png")}
+          style={[S.introArtLayer, S.introArtBack]}
+          resizeMode="cover"
+        />
+        <Image
+          source={require("../assets/images/movies.png")}
+          style={[S.introArtLayer, S.introArtMid]}
+          resizeMode="cover"
+        />
+        <Image
+          source={require("../assets/images/livetv.png")}
+          style={[S.introArtLayer, S.introArtFront]}
+          resizeMode="cover"
+        />
+      </View>
+    </View>
+  );
+
   // ── Root ───────────────────────────────────────────────────────────────────
+  if (portals.length === 0) {
+    return (
+      <View style={S.container}>
+        {/* First child, so it layers behind the rest of the screen. */}
+        <CinematicBackground />
+        {isLoading && <LoadingOverlay message={loadingMessage} />}
+        {renderEmptyState()}
+        {dialogNode}
+      </View>
+    );
+  }
+
   return (
     <View style={S.container}>
-      {/* Background gradients removed in favor of global cinematic background */}
+      {/* First child, so it layers behind the rest of the screen. */}
+      <CinematicBackground />
 
       {isLoading && <LoadingOverlay message={loadingMessage} />}
 
       {renderHeader()}
 
       <View style={S.carouselContainer}>
-        {portals.length === 0 ? (
-          <View style={S.emptyState}>
-            <Ionicons name="tv-outline" size={ps(8)} color="rgba(255,255,255,0.1)" />
-            <Text style={S.emptyTitle}>Securely connect your first streaming source</Text>
-            <Focusable
-              hasTVPreferredFocus
-              ringOnFocus={false}
-              onPress={() => router.push("/add-portal")}
-              style={{ borderRadius: ps(1), overflow: "visible", marginTop: ph(3) }}
-            >
-              {(focused) => (
-                <View
-                  style={[
-                    S.addButtonLarge,
-                    { overflow: "hidden", borderWidth: focused ? 1.5 : 1, borderColor: focused ? "#fff" : "rgba(255,255,255,0.1)" },
-                    !focused && { backgroundColor: "rgba(255,255,255,0.05)" },
-                    focused && { backgroundColor: "#fff", transform: [{ scale: 1.06 }], shadowColor: "#fff", shadowOpacity: 0.6, shadowRadius: 14, elevation: 14 },
-                  ]}
-                >
-                  <Text style={[S.addButtonText, focused && { color: "#000" }]}>GET STARTED</Text>
-                </View>
-              )}
-            </Focusable>
-          </View>
-        ) : portals.length <= 3 ? (
+        {portals.length <= 3 ? (
           <View style={S.centeredGrid}>
             {portals.map((item, index) => renderPortal({ item, index }))}
           </View>
@@ -340,6 +403,8 @@ export default function PortalsScreen() {
       </View>
       {portals.length > 0 && renderAddButton()}
 
+      {/* Last in the tree so the overlay layers above the carousel. */}
+      {dialogNode}
     </View>
   );
 }
@@ -476,7 +541,8 @@ const S = StyleSheet.create({
   },
   portalCardActive: {
     borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255, 255, 255, 0.39)",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
   },
 
   cardHeader: {
@@ -579,34 +645,93 @@ const S = StyleSheet.create({
   },
 
   // ── Empty state ───────────────────────────────────────────────────────────
-  emptyState: {
+  // ── Empty state (two-column intro) ────────────────────────────────────────
+  introRow: {
+    flex: 1,
+    flexDirection: isTV ? "row" : "column",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: pw(6),
+    paddingVertical: ph(4),
+    gap: isTV ? pw(5) : ph(4),
   },
-  emptyTitle: {
-    fontSize: ps(2),
-    color: "rgba(255,255,255,0.4)",
-    textAlign: "center",
-    width: pw(40),
-    marginVertical: ph(4),
+  /** Left column. `flex-start` keeps every line ragged-right against the edge
+   *  the artwork does not occupy. */
+  introCopy: {
+    flex: isTV ? 1 : undefined,
+    alignItems: "flex-start",
   },
-  addButtonWrapper: {
-    borderRadius: ps(4),
-    overflow: "hidden",
-    marginTop: ph(4),
+  /** favicon.png is a tight 3.31:1 crop, so the box is sized to that ratio and
+   *  `contain` leaves no dead space around it. */
+  introLogo: {
+    width: pw(20),
+    height: pw(20) / 3.31,
+    marginBottom: ph(3),
+  },
+  introTitle: {
+    fontSize: isTV ? ps(3) : ps(2.4),
+    color: "#fff",
+    fontWeight: "600",
+    letterSpacing: 0.5,
+  },
+  introBody: {
+    fontSize: isTV ? ps(1.4) : ps(1.15),
+    lineHeight: isTV ? ps(2.2) : ps(1.8),
+    color: "rgba(255,255,255,0.5)",
+    marginTop: ph(2),
+    maxWidth: pw(38),
+  },
+  getStartedWrapper: {
+    borderRadius: ps(1),
+    overflow: "visible",
+    alignSelf: "flex-start",
+    marginTop: ph(5),
+  },
+  /** Right column: the stage the three artworks are stacked on. No border or
+   *  clipping of its own — each layer carries its own frame, and clipping here
+   *  would cut the offsets off. */
+  introArt: {
+    flex: isTV ? 1.1 : undefined,
+    width: isTV ? undefined : "100%",
+    aspectRatio: 16 / 10,
+  },
+  /** Every layer is the same size; only the offset and depth differ. 88% × 80%
+   *  of a 16:10 stage works out to roughly 16:9, which matches the artwork. */
+  introArtLayer: {
+    position: "absolute",
+    width: "88%",
+    height: "80%",
+    ...CARD_FRAME,
+  },
+  /** Depth comes from fading the layers behind rather than from shadows, which
+   *  Android will not draw outside a rounded, clipped view anyway. The three
+   *  offsets add up to exactly the stage, so nothing spills out of it. */
+  introArtBack: {
+    top: 0,
+    left: "12%",
+    opacity: 0.45,
+  },
+  introArtMid: {
+    top: "10%",
+    left: "6%",
+    opacity: 0.75,
+  },
+  introArtFront: {
+    top: "20%",
+    left: 0,
   },
   addButtonLarge: {
-    paddingHorizontal: pw(4),
-    paddingVertical: ph(2),
+    paddingHorizontal: pw(2),
+    paddingVertical: ph(1.5),
     alignItems: "center",
     justifyContent: "center",
     borderRadius: ps(1),
   },
   addButtonText: {
     color: "#fff",
-    fontSize: ps(1.5),
+    fontSize: ps(1.4),
     fontWeight: "700",
-    letterSpacing: 2,
+    letterSpacing: 1.5,
   },
 
 

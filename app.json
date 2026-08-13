@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Infinity IPTV Player TV TV",
+    "name": "Infinity IPTV Player TV",
     "slug": "infinity-iptv-player-tv",
     "version": "1.0.0",
     "orientation": "landscape",
@@ -19,7 +19,11 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "leanbackIcon": "./assets/images/splash-icon.png"
+      "leanbackIcon": "./assets/images/splash-icon.png",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "androidTV": {
       "icon": "./assets/images/tv-icon.png",
@@ -47,7 +51,8 @@
         "@react-native-tvos/config-tv",
         {
           "isTV": true,
-          "androidTVBanner": "./assets/images/splash-icon.png"
+          "androidTVBanner": "./assets/images/splash-icon.png",
+          "androidTVRequired": true
         }
       ]
     ],
@@ -57,7 +62,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "95cee806-ccd1-4e5f-9b75-6e5b57fff067"
+        "projectId": "49fdc846-27f9-4fee-98af-e9e9753d6a3c"
       }
     }
   }

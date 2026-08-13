@@ -22,6 +22,28 @@ export const ps = (pct: number) => ((pw(pct) + ph(pct)) / 2) * TV_SCALE;
  */
 export const psRaw = (pct: number) => (pw(pct) + ph(pct)) / 2;
 
+/**
+ * The shared artwork-card frame: radius, hairline and wash.
+ *
+ * Used by the dashboard's browse cards and the stacked artwork on the portals
+ * intro screen. It lives here because those two were duplicated literals that
+ * had already drifted apart once — a card has to read the same in both places.
+ *
+ * Sized against `psRaw`, not `ps`: both screens predate the TV_SCALE tier, so
+ * the bumped `ps` would render the radius a third larger on TV than the rest of
+ * their metrics.
+ */
+export const CARD_FRAME = {
+  borderRadius: psRaw(1.6),
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.12)",
+  backgroundColor: "rgba(255,255,255,0.03)",
+};
+
+/** Radius for content clipped one pixel inside `CARD_FRAME`, so the corners nest
+ *  instead of leaving a sliver of the frame showing through. */
+export const CARD_FRAME_INNER_RADIUS = psRaw(1.5);
+
 export const THEME = {
   colors: {
     background: "#0E0F14",          // softer than pure black

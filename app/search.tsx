@@ -9,9 +9,7 @@ import {
   Dimensions,
   FlatList,
   Platform,
-  Linking,
-  Alert,
-} from "react-native";
+  Linking,} from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -27,6 +25,7 @@ import { XtreamApi } from "../src/services/xtreamApi";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
+import { useDialog } from "../src/components/ConfirmDialog";
 // This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
 import { THEME, pw, ph, psRaw as ps } from "../src/theme/tokens";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
@@ -141,6 +140,9 @@ const ResultCard = ({ item, onPress, onFocus, itemWidth }: any) => {
 export default function SearchScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // Errors surface through an in-tree overlay — Alert.alert does not
+  // reliably appear on an Android TV release build.
+  const { notify, node: dialogNode } = useDialog();
   // Selectors — see the note in live-tv.tsx.
   const activePortal = usePortalStore((s) => s.activePortal);
   const channels = usePortalStore((s) => s.channels);
@@ -321,7 +323,7 @@ export default function SearchScreen() {
     }
 
     if (!streamUrl) {
-      Alert.alert("Error", "No stream URL found for this content.");
+      notify("Playback Unavailable", "No stream URL was found for this content.", "danger");
       return;
     }
 
@@ -598,6 +600,8 @@ export default function SearchScreen() {
           </View>
         </BlurView>
       </Overlay>
+
+      {dialogNode}
     </View>
   );
 }

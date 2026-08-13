@@ -3,14 +3,26 @@ import { View, StyleSheet, DeviceEventEmitter } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 
+// This file sits two levels down, so the project-root assets folder is `../../`
+// from here — not the `../` that screens in app/ use.
+import fallbackBackground from '../../assets/images/cinematic-fallback.jpeg';
+
+/**
+ * A remote URL, or the module id `require()` returns for a bundled asset —
+ * expo-image accepts both forms directly.
+ */
+export type CinematicSource = string | number | null;
+
 export interface CinematicBackgroundProps {
-  uri?: string | null;
+  /** Remote URL or a `require()`d local image. */
+  uri?: CinematicSource;
 }
 
 export const CINEMATIC_EVENT = "UPDATE_CINEMATIC_BACKGROUND";
 
+
 export const CinematicBackground = React.memo(function CinematicBackground({ uri: initialUri }: CinematicBackgroundProps) {
-  const [uri, setUri] = useState(initialUri);
+  const [uri, setUri] = useState<CinematicSource | undefined>(initialUri);
   const [customBlur, setCustomBlur] = useState<number | undefined>(undefined);
 
   useEffect(() => {
@@ -42,12 +54,15 @@ export const CinematicBackground = React.memo(function CinematicBackground({ uri
       {/* Base Dark background - removed to show global cinematic background */}
       <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'transparent' }]} />
 
-      {/* Dynamic blurred image layer */}
+      {/* Dynamic blurred image layer. A local asset arrives as a module id, so
+          the source is passed straight through rather than wrapped in { uri }. */}
       <Image
-        source={{ uri: uri || "https://freerangestock.com/sample/137550/video-streaming--streaming-media--live-streaming.jpg" }}
+        source={uri || fallbackBackground}
         style={StyleSheet.absoluteFillObject}
         contentFit="cover"
-        blurRadius={uri ? (customBlur !== undefined ? customBlur : 0.5) : 60}
+        // The fallback is decorative, so it is blurred hard; real artwork keeps
+        // whatever blur the caller asked for.
+        blurRadius={uri ? (customBlur !== undefined ? customBlur :0) : 20}
         transition={200}
       />
 
@@ -78,6 +93,6 @@ export const CinematicBackground = React.memo(function CinematicBackground({ uri
 });
 
 // Helper function to update background without re-rendering parent
-export const updateCinematicBackground = (uri: string | null, blurRadius?: number) => {
+export const updateCinematicBackground = (uri: CinematicSource, blurRadius?: number) => {
   DeviceEventEmitter.emit(CINEMATIC_EVENT, { uri, blurRadius });
 };
