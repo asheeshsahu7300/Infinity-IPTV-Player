@@ -8,6 +8,7 @@
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
   <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
+<<<<<<< HEAD
   
   <!-- Explicitly mark hardware features as not required and force override any merged manifests -->
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" tools:replace="android:required" />
@@ -16,6 +17,17 @@
   <uses-feature android:name="android.hardware.microphone" android:required="false" tools:replace="android:required" />
   <uses-feature android:name="android.hardware.screen.portrait" android:required="false" tools:replace="android:required" />
 
+=======
+  <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+  <uses-feature android:name="android.hardware.faketouch" android:required="false"/>
+  <uses-feature android:name="android.software.leanback" android:required="true"/>
+  <!-- RECORD_AUDIO (merged in by expo-audio) implicitly requires a microphone. Combined with
+       required leanback, that filters Play down to the few TV models that ship one. -->
+  <uses-feature android:name="android.hardware.microphone" android:required="false"/>
+  <!-- A merged activity declaring android:screenOrientation implies a required screen-orientation
+       feature. TVs report landscape only, so an implied portrait requirement excludes every TV. -->
+  <uses-feature android:name="android.hardware.screen.portrait" android:required="false"/>
+>>>>>>> a1ca6520b0de4acd3ce0b7bf1de2ba8800794429
   <queries>
     <intent>
       <action android:name="android.intent.action.VIEW"/>
