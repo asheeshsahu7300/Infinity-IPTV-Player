@@ -1,16 +1,16 @@
-import { MMKV } from "react-native-mmkv";
+import { createMMKV } from "react-native-mmkv";
 
 let mmkvInstance: {
   set: (key: string, value: string | number | boolean) => void;
   getString: (key: string) => string | undefined;
-  delete: (key: string) => void;
+  remove: (key: string) => void;
   getAllKeys: () => string[];
   clearAll: () => void;
   contains: (key: string) => boolean;
 };
 
 try {
-  mmkvInstance = new MMKV();
+  mmkvInstance = createMMKV();
 } catch (err) {
   console.warn(
     "[SafeStorage] MMKV native module not available, falling back to in-memory store for web/testing:",
@@ -22,7 +22,7 @@ try {
       memoryStore.set(key, String(value));
     },
     getString: (key: string) => memoryStore.get(key),
-    delete: (key: string) => {
+    remove: (key: string) => {
       memoryStore.delete(key);
     },
     getAllKeys: () => Array.from(memoryStore.keys()),
@@ -59,7 +59,7 @@ export const safeStorage = {
 
   async removeItem(key: string): Promise<void> {
     try {
-      mmkv.delete(key);
+      mmkv.remove(key);
     } catch (err: any) {
       console.warn(`[SafeStorage] Failed to remove ${key}:`, err?.message || err);
     }
@@ -68,7 +68,7 @@ export const safeStorage = {
   async multiRemove(keys: string[]): Promise<void> {
     try {
       for (const key of keys) {
-        mmkv.delete(key);
+        mmkv.remove(key);
       }
     } catch (err: any) {
       console.warn(`[SafeStorage] Failed multiRemove:`, err?.message || err);
@@ -132,7 +132,7 @@ export const safeStorage = {
       const keysToRemove = [...cacheKeys, ...epgKeys];
       if (keysToRemove.length > 0) {
         for (const k of keysToRemove) {
-          mmkv.delete(k);
+          mmkv.remove(k);
         }
         console.warn(`🧹 [SafeStorage] Evicted ${keysToRemove.length} cache/EPG keys.`);
       }

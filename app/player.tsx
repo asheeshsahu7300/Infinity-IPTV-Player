@@ -89,10 +89,11 @@ export default function PlayerScreen() {
   const is4K = typeof params.title === 'string' && (params.title.toUpperCase().includes('4K') || params.title.toUpperCase().includes('UHD'));
 
   const shouldUseVlc = React.useMemo(() => {
+    if (isLive) return true;
     if (!params.cmd) return is4K;
     const url = params.cmd.toLowerCase();
     return is4K || url.includes(".ts") || url.includes("mpegts") || url.startsWith("rtsp://");
-  }, [params.cmd, is4K]);
+  }, [params.cmd, is4K, isLive]);
 
   // Update isSeekable based on content type
   useEffect(() => {
@@ -252,7 +253,7 @@ export default function PlayerScreen() {
     if (!durationRef.current || durationRef.current <= 0) return;
     const clamped = Math.max(0, Math.min(positionMs, durationRef.current));
     let fraction = clamped / durationRef.current;
-    
+
     // Ensure the prop always changes so React Native bridges it
     setVlcSeekTarget((prev) => {
       const finalFraction = prev === fraction ? fraction + 1e-10 : fraction;
@@ -592,8 +593,8 @@ export default function PlayerScreen() {
         const finalPos = targetSeekPosition.current;
         if (finalPos !== null) {
           if (shouldUseVlc) {
-             requestVlcSeek(finalPos);
-             setSeekIndicator(null);
+            requestVlcSeek(finalPos);
+            setSeekIndicator(null);
           } else {
             if (playerRef.current) playerRef.current.seek(finalPos / 1000);
             seekTimeout.current = setTimeout(() => {
@@ -740,20 +741,20 @@ export default function PlayerScreen() {
     setIsRetrying(true);
     try {
       const result = await StreamManager.retryStream({ id: params.contentId || "", name: params.title || "", streamUrl: params.cmd }, activePortal, params.type === "live" ? "itv" : "vod", retryCount.current - 1);
-      if (result.success && result.url) { 
-        setStreamUrl(result.url); 
+      if (result.success && result.url) {
+        setStreamUrl(result.url);
         hasSetInitialPosition.current = false;
         savedResumePosition.current = positionRef.current;
         setVlcSeekTarget(undefined);
         vlcSeekTargetRef.current = null;
         isSeeking.current = false;
         targetSeekPosition.current = null;
-        setIsLoading(true); 
+        setIsLoading(true);
       } else {
         setIsLoading(false);
       }
-    } catch (e) { 
-      console.error("Retry failed", e); 
+    } catch (e) {
+      console.error("Retry failed", e);
       setIsLoading(false);
     }
     finally { setIsRetrying(false); }
@@ -856,6 +857,7 @@ export default function PlayerScreen() {
     <View style={S.container} {...panResponder.panHandlers}>
       <StatusBar hidden />
       {shouldUseVlc ? (
+
         <VLCPlayer
           key={`vlc-${streamUrl}`}
           ref={vlcPlayerRef}
@@ -868,7 +870,9 @@ export default function PlayerScreen() {
           resizeMode={ASPECT_RATIOS[aspectRatioIndex].resize as any}
           audioTrack={selectedAudioTrack}
           textTrack={selectedTextTrack}
+          videoTrack={selectedVideoTrack}
           onLoad={(e: any) => {
+            console.log("VLC ONLOAD EVENT", JSON.stringify(e, null, 2));
             const durationMs = normalizeVlcTime(e.duration);
             setIsLoading(false);
             setIsBuffering(false);
@@ -881,7 +885,7 @@ export default function PlayerScreen() {
             if (e.videoTracks) setVideoTracks(normalizeVlcTracks(e.videoTracks));
             if (e.audioTracks) setAudioTracks(normalizeVlcTracks(e.audioTracks));
             if (e.textTracks) setTextTracks(normalizeVlcTracks(e.textTracks));
-            
+
             if (!hasSetInitialPosition.current && savedResumePosition.current > 0 && params.type !== "live" && durationMs > 0) {
               hasSetInitialPosition.current = true;
               requestVlcSeek(savedResumePosition.current);
@@ -959,10 +963,10 @@ export default function PlayerScreen() {
           resizeMode={ASPECT_RATIOS[aspectRatioIndex].resize}
           // @ts-ignore - pictureInPicture is supported on some platforms natively but missing in standard types
           pictureInPicture={true}
-          selectedVideoTrack={selectedVideoTrack !== undefined ? { type: 'index' as any, value: selectedVideoTrack } : undefined}
-          selectedAudioTrack={selectedAudioTrack !== undefined ? { type: SelectedTrackType.INDEX, value: selectedAudioTrack } : undefined}
-          selectedTextTrack={selectedTextTrack !== undefined ? { type: 'index' as any, value: selectedTextTrack } : undefined}
-          onLoad={(data) => {
+          selectedVideoTrack={selectedVideoTrack !== undefined ? { type: 'index' as any, value: selectedVideoTrack.toString() } : undefined}
+          selectedAudioTrack={selectedAudioTrack !== undefined ? { type: SelectedTrackType.INDEX, value: selectedAudioTrack.toString() } : undefined}
+          selectedTextTrack={selectedTextTrack !== undefined ? { type: 'index' as any, value: selectedTextTrack.toString() } : undefined}
+          onLoad={(data: any) => {
             setIsLoading(false);
             if (data.videoTracks) {
               const formattedVideoTracks = data.videoTracks.map((t: any, i: number) => {
@@ -985,7 +989,7 @@ export default function PlayerScreen() {
             }
           }}
           onReadyForDisplay={() => setIsLoading(false)}
-          onProgress={(data) => {
+          onProgress={(data: any) => {
             setIsLoading(false); // Failsafe: if we get progress, it's definitely loaded
             let curMs = (data.currentTime || 0) * 1000;
             let durMs = (data.seekableDuration || 0) * 1000;
@@ -1257,16 +1261,18 @@ export default function PlayerScreen() {
                         <Ionicons name="speedometer-outline" size={ps(1.4)} color="white" />
                         <Text style={S.settingLabel}>{playbackSpeed.toFixed(2)}x</Text>
                       </Focusable>
-                      <Focusable
-                        ringOnFocus={false}
-                        focusStyle={S.iconChipFocused}
-                        style={S.settingBtn}
-                        onPress={() => { if (isLockedRef.current) return; setShowSubtitleModal(true); }}
-                        {...navRowFocusHandlers}
-                      >
-                        <Ionicons name="text-outline" size={ps(1.4)} color="white" />
-                        <Text style={S.settingLabel}>SUBTITLES</Text>
-                      </Focusable>
+                      {!isLive && (
+                        <Focusable
+                          ringOnFocus={false}
+                          focusStyle={S.iconChipFocused}
+                          style={S.settingBtn}
+                          onPress={() => { if (isLockedRef.current) return; setShowSubtitleModal(true); }}
+                          {...navRowFocusHandlers}
+                        >
+                          <Ionicons name="text-outline" size={ps(1.4)} color="white" />
+                          <Text style={S.settingLabel}>SUBTITLES</Text>
+                        </Focusable>
+                      )}
                       <Focusable
                         ringOnFocus={false}
                         focusStyle={S.iconChipFocused}
@@ -1277,7 +1283,7 @@ export default function PlayerScreen() {
                         <Ionicons name="musical-notes-outline" size={ps(1.4)} color="white" />
                         <Text style={S.settingLabel}>AUDIO</Text>
                       </Focusable>
-                      {!is4K && (
+                      {!is4K && !shouldUseVlc && (
                         <Focusable
                           ringOnFocus={false}
                           focusStyle={S.iconChipFocused}
@@ -1308,9 +1314,9 @@ export default function PlayerScreen() {
         </FocusGroup>
       )}
 
-      <TrackSelectionModal visible={showVideoModal} title="Video Quality" icon="aperture" isVideo options={videoTracks} selected={selectedVideoTrack} onSelect={(id: number | undefined) => { setSelectedVideoTrack(id); setShowVideoModal(false); }} onClose={() => setShowVideoModal(false)} />
-      <TrackSelectionModal visible={showAudioModal} title="Audio Track" icon="musical-notes" options={audioTracks} selected={selectedAudioTrack} onSelect={(id: number) => { setSelectedAudioTrack(id); setShowAudioModal(false); }} onClose={() => setShowAudioModal(false)} />
-      <TrackSelectionModal visible={showSubtitleModal} title="Subtitles" icon="text" isSubtitle options={textTracks} selected={selectedTextTrack} onSelect={(id: number) => { setSelectedTextTrack(id); setShowSubtitleModal(false); }} onClose={() => setShowSubtitleModal(false)} />
+      <TrackSelectionModal visible={showVideoModal} title="Video Quality" icon="aperture" isVideo options={videoTracks} selected={selectedVideoTrack} onSelect={(id: number | undefined, index: number) => { setSelectedVideoTrack(id === undefined ? undefined : (shouldUseVlc ? id : index)); setShowVideoModal(false); }} onClose={() => setShowVideoModal(false)} />
+      <TrackSelectionModal visible={showAudioModal} title="Audio Track" icon="musical-notes" options={audioTracks} selected={selectedAudioTrack} onSelect={(id: number, index: number) => { setSelectedAudioTrack(shouldUseVlc ? id : index); setShowAudioModal(false); }} onClose={() => setShowAudioModal(false)} />
+      <TrackSelectionModal visible={showSubtitleModal} title="Subtitles" icon="text" isSubtitle options={textTracks} selected={selectedTextTrack} onSelect={(id: number, index: number) => { setSelectedTextTrack(shouldUseVlc ? id : index); setShowSubtitleModal(false); }} onClose={() => setShowSubtitleModal(false)} />
     </View>
   );
 }
@@ -1379,7 +1385,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
           </View>
         ) :
           options.map((track: any, index: number) => {
-            const id = typeof track === 'object' ? (track.index ?? track.id ?? index) : index;
+            const id = typeof track === 'object' ? (track.id ?? track.index ?? index) : index;
             const isSelected = selected !== undefined && selected === id;
             const trackName = typeof track === 'object' ? (track.title || track.language || track.name || `Track ${index + 1}`) : track;
             return (
@@ -1389,7 +1395,7 @@ function TrackSelectionModal({ visible, title, icon, options, selected, onSelect
                 ringOnFocus={false}
                 style={[S.modalOption, isSelected && S.modalOptionSelected]}
                 focusStyle={S.modalOptionFocused}
-                onPress={() => onSelect(id)}
+                onPress={() => onSelect(id, index)}
               >
                 {(focused: boolean) => (
                   <View style={S.modalOptionInner}>
