@@ -225,14 +225,6 @@ export default function RootLayout() {
       <ThemeProvider>
         <SafeAreaProvider>
           <GestureHandlerRootView style={styles.container}>
-            <RNImage
-              source={{ uri: "https://freerangestock.com/sample/137550/video-streaming--streaming-media--live-streaming.jpg" }}
-              style={StyleSheet.absoluteFillObject}
-              resizeMode="cover"
-              blurRadius={12}
-
-            />
-            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(8, 8, 10, 0.85)" }]} />
             <View style={{ flex: 1, padding: overscanPadding }}>
               <StatusBar style="light" />
               <Stack

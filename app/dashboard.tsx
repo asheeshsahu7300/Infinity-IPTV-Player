@@ -246,7 +246,7 @@ export default function DashboardScreen() {
               // Live TV is where most sessions start, so it owns the
               // dashboard's initial focus.
               hasTVPreferredFocus={focusLiveTile && cat.id === "cat-live"}
-              onFocus={() => updateCinematicBackground(cat.img, 1)}
+              onFocus={() => updateCinematicBackground(cat.img, .5)}
               onPress={() => router.push(cat.route as any)}
               ringOnFocus={false}
               // TV: no fixed height — `flex: 1` shares the row's width and
@@ -266,10 +266,10 @@ export default function DashboardScreen() {
                     {/* `contain`, not `cover`: these are composed pieces of
                         artwork, so the whole frame has to stay visible. `cover`
                         filled the card by cropping the sides away. */}
-                   <Image source={cat.img } resizeMode="cover" style={{ width: undefined, height: undefined, flex: 1, backgroundColor: '#0000', }} />
+                    <Image source={cat.img} resizeMode="cover" style={{ width: undefined, height: undefined, flex: 1, backgroundColor: '#0000', }} />
 
                     {/* Dark glass overlay covering the ENTIRE image */}
-                  
+
 
                     {/* Text container sitting on top at the bottom */}
                     <View style={S.browseCardContent}>
@@ -594,7 +594,7 @@ const S = StyleSheet.create({
     // Touch layouts stack these vertically inside a ScrollView, so they still
     // need an explicit height; on TV the row stretches them.
     height: ph(42), minHeight: ph(42),
-  
+
   },
   cardBorder: {
     flex: 1,

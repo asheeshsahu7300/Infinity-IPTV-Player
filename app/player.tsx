@@ -218,6 +218,7 @@ export default function PlayerScreen() {
   const mountedRef = useRef(true);
   const accumulateSeekRef = useRef<(delta: number) => void>(() => { });
   const handleTapRef = useRef<(x: number) => void>(() => { });
+  const lastProgressStateUpdateTime = useRef(0);
 
   const normalizeVlcTime = (value: unknown) => {
     const n = Number(value);
@@ -230,10 +231,16 @@ export default function PlayerScreen() {
       if (isSeeking.current) return;
       positionRef.current = positionMs;
       durationRef.current = durationMs;
-      setPosition(positionMs);
-      if (durationMs > 0) setDuration(durationMs);
-      if (params.contentId && params.type !== "live" && Date.now() - lastPositionSaveTime.current > 10000) {
-        lastPositionSaveTime.current = Date.now();
+
+      const now = Date.now();
+      if (now - lastProgressStateUpdateTime.current >= 1000) {
+        setPosition(positionMs);
+        if (durationMs > 0) setDuration(durationMs);
+        lastProgressStateUpdateTime.current = now;
+      }
+
+      if (params.contentId && params.type !== "live" && now - lastPositionSaveTime.current > 10000) {
+        lastPositionSaveTime.current = now;
         StreamManager.savePlaybackPosition(params.contentId, positionMs, durationMs);
       }
     },
@@ -563,7 +570,7 @@ export default function PlayerScreen() {
   }, [handleTap]);
 
   const lastAccumulateTime = useRef(0);
-  const accumulateSeek = useCallback((delta: number) => {
+  const accumulateSeek = useCallback((delta: number, isProgressive = false) => {
     if (isLockedRef.current) return;
     if (duration <= 0 || !isSeekable || params.type === "live") return;
     const now = Date.now();
@@ -575,14 +582,46 @@ export default function PlayerScreen() {
       accumulatedDelta.current = 0;
     }
 
-    targetSeekPosition.current = Math.max(0, Math.min(targetSeekPosition.current + delta, duration));
-    accumulatedDelta.current += delta;
+    if (isProgressive) {
+      const steps = [0, 60000, 120000, 300000, 600000]; // 0, 1m, 2m, 5m, 10m
+      if (delta > 0) {
+        if (accumulatedDelta.current >= 0) {
+          const nextStep = steps.find(s => s > accumulatedDelta.current);
+          accumulatedDelta.current = nextStep !== undefined ? nextStep : accumulatedDelta.current + 600000;
+        } else {
+          const currentAbs = Math.abs(accumulatedDelta.current);
+          const prevStep = [...steps].reverse().find(s => s < currentAbs) || 0;
+          accumulatedDelta.current = -prevStep;
+        }
+      } else {
+        if (accumulatedDelta.current <= 0) {
+          const currentAbs = Math.abs(accumulatedDelta.current);
+          const nextStep = steps.find(s => s > currentAbs);
+          accumulatedDelta.current = -(nextStep !== undefined ? nextStep : currentAbs + 600000);
+        } else {
+          const prevStep = [...steps].reverse().find(s => s < accumulatedDelta.current) || 0;
+          accumulatedDelta.current = prevStep;
+        }
+      }
+    } else {
+      accumulatedDelta.current += delta;
+    }
+
+    targetSeekPosition.current = Math.max(0, Math.min(position + accumulatedDelta.current, duration));
 
     // UI Updates instantly
     setPosition(targetSeekPosition.current);
     const sign = accumulatedDelta.current > 0 ? "+" : "";
-    const sec = Math.abs(accumulatedDelta.current) / 1000;
-    setSeekIndicator(`${sign}${sec}s`);
+    const absMs = Math.abs(accumulatedDelta.current);
+    let displayStr = "";
+    if (absMs >= 60000) {
+      const m = Math.floor(absMs / 60000);
+      const s = (absMs % 60000) / 1000;
+      displayStr = s > 0 ? `${m}m ${s}s` : `${m}min`;
+    } else {
+      displayStr = `${absMs / 1000}s`;
+    }
+    setSeekIndicator(`${sign}${displayStr}`);
 
     if (seekTimeout.current) clearTimeout(seekTimeout.current);
     isSeeking.current = true;
@@ -629,54 +668,55 @@ export default function PlayerScreen() {
     {
       onPlayPause: () => {
         if (isLockedRef.current) return;
-        togglePlay();
-        setShowControls(true);
-        resetControlsTimeout();
+        if (!showControlsRef.current) {
+          setShowControls(true);
+          resetControlsTimeout();
+        } else {
+          togglePlay();
+          resetControlsTimeout();
+        }
       },
       onFastForward: () => {
         if (isLockedRef.current) return;
-        if (!isLive) seek(180000); // 3 minutes
-        setShowControls(true);
+        if (!showControlsRef.current) {
+          setShowControls(true);
+        } else if (!isLive) {
+          seek(180000); // 3 minutes
+          setShowControls(true);
+        }
         resetControlsTimeout();
       },
       onRewind: () => {
         if (isLockedRef.current) return;
-        if (!isLive) seek(-180000); // 3 minutes
-        setShowControls(true);
+        if (!showControlsRef.current) {
+          setShowControls(true);
+        } else if (!isLive) {
+          seek(-180000); // 3 minutes
+          setShowControls(true);
+        }
         resetControlsTimeout();
       },
       onLeft: () => {
         if (isLockedRef.current) return;
         if (!showControlsRef.current) {
-          if (!isLive) seek(-10000);
           setShowControls(true);
         } else if (!isLive && !isNavRowFocusedRef.current) {
-          if (seekBarFocusedRef.current || dummyLeftFocusedRef.current || dummyRightFocusedRef.current) {
-            accumulateSeek(-10000);
-          } else {
-            seek(-10000);
-          }
+          accumulateSeek(-10000, true);
         }
         resetControlsTimeout();
       },
       onRight: () => {
         if (isLockedRef.current) return;
         if (!showControlsRef.current) {
-          if (!isLive) seek(10000);
           setShowControls(true);
         } else if (!isLive && !isNavRowFocusedRef.current) {
-          if (seekBarFocusedRef.current || dummyLeftFocusedRef.current || dummyRightFocusedRef.current) {
-            accumulateSeek(10000);
-          } else {
-            seek(10000);
-          }
+          accumulateSeek(10000, true);
         }
         resetControlsTimeout();
       },
       onSelect: () => {
         if (isLockedRef.current) return;
         if (!showControlsRef.current) {
-          togglePlay();
           setShowControls(true);
           resetControlsTimeout();
         }
@@ -862,7 +902,17 @@ export default function PlayerScreen() {
           key={`vlc-${streamUrl}`}
           ref={vlcPlayerRef}
           style={S.video}
-          source={{ uri: streamUrl }}
+          source={{
+            uri: streamUrl,
+            initOptions: [
+              '--network-caching=2500',
+              '--live-caching=2500',
+              '--file-caching=2500',
+              '--drop-late-frames',
+              '--skip-frames',
+              '--avcodec-hw=any'
+            ]
+          }}
           seek={vlcSeekTarget}
           paused={!isPlaying}
           rate={playbackSpeed}
@@ -949,10 +999,11 @@ export default function PlayerScreen() {
             } : {}),
             ...(!shouldUseVlc ? {
               bufferConfig: {
-                minBufferMs: 60000,
-                maxBufferMs: 60000,
-                bufferForPlaybackMs: isLive ? 500 : 2500,
-                bufferForPlaybackAfterRebufferMs: isLive ? 1000 : 5000,
+                minBufferMs: 60000, // Try to aggressively buffer at least 60 seconds
+                maxBufferMs: 300000, // Allow up to 5 minutes of future video in memory
+                bufferForPlaybackMs: isLive ? 500 : 1000, // Extremely fast initial playback start
+                bufferForPlaybackAfterRebufferMs: isLive ? 1000 : 2500, // Quick recovery from stalls
+                backBufferDurationMs: 120000, // Keep 2 minutes of played video in memory for instant rewinding
               }
             } : {})
           }}
@@ -1086,7 +1137,7 @@ export default function PlayerScreen() {
                   onPress={() => seek(-10000)}
                   {...navRowFocusHandlers}
                 >
-                  {(focused) => (
+                  {(focused: any) => (
                     <View style={S.skipInner}>
                       <Ionicons name="play-back" size={ps(1.4)} color="#fff" style={{ opacity: focused ? 1 : 0.7 }} />
                       <Text style={[S.skipLabel, focused && { color: "#fff" }]}>-10s</Text>
@@ -1116,7 +1167,7 @@ export default function PlayerScreen() {
                   onPress={() => seek(10000)}
                   {...navRowFocusHandlers}
                 >
-                  {(focused) => (
+                  {(focused: any) => (
                     <View style={S.skipInner}>
                       <Ionicons name="play-forward" size={ps(1.4)} color="#fff" style={{ opacity: focused ? 1 : 0.7 }} />
                       <Text style={[S.skipLabel, focused && { color: "#fff" }]}>+10s</Text>
@@ -1167,7 +1218,7 @@ export default function PlayerScreen() {
                           if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
                           dummyLeftFocusedRef.current = true;
                           setVisualFocus(true);
-                          accumulateSeek(-10000);
+                          accumulateSeek(-10000, true);
                           seekBarRef.current?.focus();
                         }}
                         onBlur={() => { dummyLeftFocusedRef.current = false; handleSeekBlur(); }}
@@ -1211,7 +1262,7 @@ export default function PlayerScreen() {
                           if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
                           dummyRightFocusedRef.current = true;
                           setVisualFocus(true);
-                          accumulateSeek(10000);
+                          accumulateSeek(10000, true);
                           seekBarRef.current?.focus();
                         }}
                         onBlur={() => { dummyRightFocusedRef.current = false; handleSeekBlur(); }}
