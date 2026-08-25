@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { CinematicBackground } from '../src/components/CinematicBackground';
 import { ph, psRaw as ps, pw, THEME } from '../src/theme/tokens';
@@ -20,14 +21,9 @@ interface Section {
   bullets?: string[];
 }
 
-/**
- * The policy text itself, kept as data so the layout stays consistent and the
- * wording is edited in one place. Copy is intentionally unchanged from the
- * published policy — only its presentation is.
- */
 const SECTIONS: Section[] = [
   {
-    icon: 'create-outline',
+    icon: 'create',
     title: 'Information You Provide',
     body: ['Depending on the connection method you choose, the App may process information that you enter, including:'],
     bullets: [
@@ -42,7 +38,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    icon: 'save-outline',
+    icon: 'save',
     title: 'Local Storage',
     body: [
       'The App may store portal information, playlist information, favorites, preferences, and related configuration data locally on your device.',
@@ -50,7 +46,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    icon: 'globe-outline',
+    icon: 'globe',
     title: 'Third-Party IPTV Services',
     body: [
       'When you connect the App to an IPTV service, the App communicates with the server or service that you provide.',
@@ -60,7 +56,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    icon: 'wifi-outline',
+    icon: 'wifi',
     title: 'Network Requests',
     body: [
       'The App uses network connections to retrieve playlists, channel information, metadata, media information, and other content requested by the user.',
@@ -68,14 +64,14 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    icon: 'heart-outline',
+    icon: 'heart',
     title: 'Favorites and Application Settings',
     body: [
       'Favorites and application preferences may be stored locally on your device to provide quick access and preserve your settings.',
     ],
   },
   {
-    icon: 'megaphone-outline',
+    icon: 'megaphone',
     title: 'Analytics and Advertising',
     body: [
       'The App does not currently display advertisements or use third-party advertising SDKs.',
@@ -83,7 +79,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    icon: 'share-social-outline',
+    icon: 'share-social',
     title: 'Data Sharing',
     body: [
       'Infinity IPTV Player does not sell user information.',
@@ -91,7 +87,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    icon: 'lock-closed-outline',
+    icon: 'lock-closed',
     title: 'Data Security',
     body: [
       'We take reasonable measures to protect information handled by the App.',
@@ -100,7 +96,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    icon: 'trash-outline',
+    icon: 'trash',
     title: 'Data Retention and Deletion',
     body: [
       "Information stored locally by the App remains on the user's device until it is removed by the user, the application data is cleared, or the App is uninstalled.",
@@ -108,7 +104,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    icon: 'happy-outline',
+    icon: 'happy',
     title: "Children's Privacy",
     body: [
       'Infinity IPTV Player is not specifically designed for children.',
@@ -116,7 +112,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    icon: 'link-outline',
+    icon: 'link',
     title: 'Third-Party Services',
     body: [
       'The App may communicate with third-party services configured by the user.',
@@ -125,7 +121,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    icon: 'refresh-outline',
+    icon: 'refresh',
     title: 'Changes to This Privacy Policy',
     body: [
       'We may update this Privacy Policy from time to time.',
@@ -135,27 +131,23 @@ const SECTIONS: Section[] = [
 ];
 
 const CONTACT_ROWS: { label: string; value: string; icon: IconName }[] = [
-  { label: 'Email', value: SUPPORT_EMAIL, icon: 'mail-outline' },
-  { label: 'Developer / Company', value: 'Infinity_Apps', icon: 'business-outline' },
-  { label: 'App', value: 'Infinity IPTV Player', icon: 'tv-outline' },
+  { label: 'Email', value: SUPPORT_EMAIL, icon: 'mail' },
+  { label: 'Developer / Company', value: 'Infinity_Apps', icon: 'business' },
+  { label: 'App', value: 'Infinity IPTV Player', icon: 'tv' },
 ];
 
-/**
- * One section of the policy, as a run of a continuous document rather than a
- * standalone card.
- *
- * An earlier pass laid these out as a two-column grid of cards. That fragments
- * ~200 words of legal copy into a dozen boxes of wildly differing height, and no
- * split of a card grid can come out level — the leftover is up to half a card
- * tall wherever it is cut. A single column has no such failure mode, and reads
- * the way a policy is meant to.
- */
 function PolicySection({ section, first }: { section: Section; first: boolean }) {
   return (
     <View style={[S.section, first && S.sectionFirst]}>
       <View style={S.sectionHeader}>
         <View style={S.sectionIcon}>
-          <Ionicons name={section.icon} size={ps(1.6)} color="rgba(255,255,255,0.85)" />
+          <LinearGradient
+            colors={["rgba(219, 4, 130, 0.2)", "rgba(51, 5, 235, 0.2)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <Ionicons name={section.icon} size={ps(1.8)} color="#db0482" />
         </View>
         <Text style={S.sectionTitle}>{section.title}</Text>
       </View>
@@ -185,9 +177,15 @@ function ContactSection() {
     <View style={S.section}>
       <View style={S.sectionHeader}>
         <View style={S.sectionIcon}>
-          <Ionicons name="chatbubble-ellipses-outline" size={ps(1.6)} color="rgba(255,255,255,0.85)" />
+          <LinearGradient
+            colors={["rgba(219, 4, 130, 0.2)", "rgba(51, 5, 235, 0.2)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <Ionicons name="chatbubble-ellipses" size={ps(1.8)} color="#db0482" />
         </View>
-        <Text style={S.sectionTitle}>Contact</Text>
+        <Text style={S.sectionTitle}>Contact & Support</Text>
       </View>
       <Text style={S.paragraph}>
         If you have questions about this Privacy Policy or Infinity IPTV Player, please contact:
@@ -195,7 +193,9 @@ function ContactSection() {
       <View style={S.contactRows}>
         {CONTACT_ROWS.map((row) => (
           <View key={row.label} style={S.contactRow}>
-            <Ionicons name={row.icon} size={ps(1.5)} color="rgba(255,255,255,0.4)" />
+            <View style={S.contactIconBg}>
+              <Ionicons name={row.icon} size={ps(1.6)} color="#fff" />
+            </View>
             <View style={S.contactRowText}>
               <Text style={S.contactLabel}>{row.label}</Text>
               <Text style={S.contactValue} numberOfLines={1}>
@@ -242,9 +242,6 @@ export default function PrivacyPolicyScreen() {
     [maxOffset]
   );
 
-  // The page holds no focusable content, so on TV the D-pad drives the document
-  // directly instead of walking a list of fake focus targets. The back button
-  // keeps its own OK handler — `useDPad` dispatches per key, not per subscriber.
   useDPad(
     {
       onUp: () => scrollBy(-viewportH * 0.6),
@@ -272,15 +269,12 @@ export default function PrivacyPolicyScreen() {
         </View>
 
         <View style={S.updatedPill}>
-          <Ionicons name="time-outline" size={ps(1.2)} color="rgba(255,255,255,0.6)" />
+          <Ionicons name="time" size={ps(1.4)} color="rgba(255,255,255,0.7)" />
           <Text style={S.updatedText}>Updated {LAST_UPDATED}</Text>
         </View>
       </View>
 
       <View style={S.scrollArea} onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}>
-        {/* Animated.ScrollView, not ScrollView: a native-driver `Animated.event`
-            is an object the component attaches natively, and a plain ScrollView
-            would try to call it as a function. */}
         <Animated.ScrollView
           ref={scrollRef}
           style={S.scroll}
@@ -292,8 +286,20 @@ export default function PrivacyPolicyScreen() {
         >
           {/* Summary hero */}
           <View style={S.hero}>
+            <LinearGradient
+              colors={["rgba(219, 4, 130, 0.3)", "rgba(51, 5, 235, 0.1)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
             <View style={S.heroBadge}>
-              <Ionicons name="shield-checkmark" size={ps(3)} color="#fff" />
+              <LinearGradient
+                colors={["#db0482", "#3305eb"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <Ionicons name="shield-checkmark" size={ps(3.5)} color="#fff" />
             </View>
             <View style={S.heroText}>
               <Text style={S.heroTitle}>Your data stays on your device</Text>
@@ -314,8 +320,6 @@ export default function PrivacyPolicyScreen() {
           </View>
         </Animated.ScrollView>
 
-        {/* Custom rail — the native indicator is hidden and gives no useful
-            feedback on TV, where scrolling is driven by the D-pad. */}
         {canScroll && viewportH > 0 ? (
           <View style={S.scrollTrack} pointerEvents="none">
             <Animated.View style={[S.scrollThumb, { height: thumbH, transform: [{ translateY: thumbTranslate }] }]} />
@@ -337,8 +341,8 @@ const S = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: pw(6),
-    paddingTop: ph(2),
-    paddingBottom: ph(2),
+    paddingTop: ph(3),
+    paddingBottom: ph(3),
     gap: pw(2),
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
@@ -347,32 +351,36 @@ const S = StyleSheet.create({
     flex: 1,
   },
   headerTitle: {
-    fontSize: isTV ? ps(1.8) : ps(1.5),
+    fontSize: isTV ? ps(2.2) : ps(1.8),
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: '800',
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.5,
   },
   headerSubtitle: {
-    fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 1,
-    marginTop: 2,
+    fontSize: isTV ? ps(1.3) : ps(1.1),
+    color: 'rgba(255,255,255,0.5)',
+    fontFamily: THEME.fonts.medium,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 6,
   },
   updatedPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: pw(0.6),
-    paddingHorizontal: pw(1.4),
-    paddingVertical: ph(0.8),
+    gap: pw(1),
+    paddingHorizontal: pw(2),
+    paddingVertical: ph(1.2),
     borderRadius: ps(2),
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   updatedText: {
-    fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: 'rgba(255,255,255,0.6)',
-    fontWeight: '600',
+    fontSize: isTV ? ps(1.2) : ps(1),
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '700',
+    fontFamily: THEME.fonts.bold,
   },
 
   // ── Scroll area ───────────────────────────────────────────────────────────
@@ -384,72 +392,84 @@ const S = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: pw(6),
-    paddingTop: ph(3),
-    paddingBottom: ph(8),
+    paddingTop: ph(4),
+    paddingBottom: ph(10),
   },
   scrollTrack: {
     position: 'absolute',
-    top: 0,
-    bottom: 0,
+    top: ph(4),
+    bottom: ph(10),
     right: pw(1.5),
-    width: 3,
+    width: 4,
     borderRadius: 2,
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
   scrollThumb: {
-    width: 3,
+    width: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.45)',
+    backgroundColor: '#db0482',
+    shadowColor: '#db0482',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 5,
+    elevation: 2,
   },
 
   // ── Hero ──────────────────────────────────────────────────────────────────
   hero: {
     flexDirection: isTV ? 'row' : 'column',
-    alignItems: isTV ? 'flex-start' : 'stretch',
-    gap: isTV ? pw(2.5) : ph(2),
-    padding: ps(3),
-    borderRadius: ps(2.5),
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    alignItems: isTV ? 'center' : 'stretch',
+    gap: isTV ? pw(3) : ph(2.5),
+    padding: ps(4),
+    borderRadius: ps(3),
+    backgroundColor: 'rgba(25, 25, 30, 0.7)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.09)',
-    marginBottom: ph(3),
+    borderColor: 'rgba(219, 4, 130, 0.4)',
+    marginBottom: ph(4),
+    overflow: 'hidden',
+    shadowColor: '#db0482',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 5,
   },
   heroBadge: {
-    width: ps(7),
-    height: ps(7),
-    borderRadius: ps(3.5),
+    width: ps(7.5),
+    height: ps(7.5),
+    borderRadius: ps(2.5),
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    overflow: 'hidden',
   },
   heroText: {
     flex: 1,
   },
   heroTitle: {
-    fontSize: isTV ? ps(1.6) : ps(1.4),
+    fontSize: isTV ? ps(1.8) : ps(1.6),
     color: '#fff',
-    fontWeight: '700',
-    marginBottom: ph(1),
+    fontWeight: '800',
+    fontFamily: THEME.fonts.bold,
+    marginBottom: ph(1.5),
+    letterSpacing: 0.5,
   },
   heroBody: {
-    fontSize: isTV ? ps(1.4) : ps(1.15),
-    lineHeight: isTV ? ps(2.2) : ps(1.8),
-    color: 'rgba(255,255,255,0.65)',
+    fontSize: isTV ? ps(1.3) : ps(1.2),
+    lineHeight: isTV ? ps(2.1) : ps(1.8),
+    color: 'rgba(255,255,255,0.7)',
+    fontFamily: THEME.fonts.medium,
   },
+
   // ── Document ──────────────────────────────────────────────────────────────
-  /** One surface holding every section, with hairlines between them instead of
-   *  a box around each. Sections are separated, not boxed. */
   document: {
-    borderRadius: ps(2),
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: ps(3),
+    backgroundColor: 'rgba(25, 25, 30, 0.6)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    paddingHorizontal: ps(3),
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: ps(4),
   },
   section: {
-    paddingVertical: ps(2.5),
+    paddingVertical: ps(3.5),
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.06)',
   },
@@ -459,85 +479,100 @@ const S = StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: pw(1.2),
-    marginBottom: ph(1.5),
+    gap: pw(1.5),
+    marginBottom: ph(2),
   },
   sectionIcon: {
-    width: ps(3.6),
-    height: ps(3.6),
-    borderRadius: ps(0.9),
+    width: ps(4.2),
+    height: ps(4.2),
+    borderRadius: ps(1.5),
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    overflow: 'hidden',
   },
   sectionTitle: {
     flex: 1,
-    fontSize: isTV ? ps(1.6) : ps(1.4),
-    color: THEME.colors.primary,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    fontSize: isTV ? ps(1.7) : ps(1.5),
+    color: '#fff',
+    fontWeight: '800',
+    fontFamily: THEME.fonts.bold,
+    letterSpacing: 0.5,
   },
   paragraph: {
-    fontSize: isTV ? ps(1.2) : ps(1),
-    lineHeight: isTV ? ps(1.9) : ps(1.6),
+    fontSize: isTV ? ps(1.3) : ps(1.15),
+    lineHeight: isTV ? ps(2) : ps(1.7),
     color: 'rgba(255,255,255,0.6)',
-    marginBottom: ph(1),
+    fontFamily: THEME.fonts.regular,
+    marginBottom: ph(1.5),
   },
-  /** Two abreast on TV. Safe to wrap where the cards were not: every bullet is
-   *  a single line, so each wrapped row is the same height and none can leave a
-   *  gap beneath it. */
   bulletList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: ph(0.5),
-    rowGap: ph(0.9),
+    marginTop: ph(1),
+    rowGap: ph(1.2),
   },
   bulletRow: {
     width: isTV ? '50%' : '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: pw(1),
-    paddingRight: pw(1),
+    gap: pw(1.2),
+    paddingRight: pw(1.5),
   },
   bulletDot: {
-    width: ps(0.5),
-    height: ps(0.5),
-    borderRadius: ps(0.25),
-    backgroundColor: 'rgba(255,255,255,0.45)',
+    width: ps(0.8),
+    height: ps(0.8),
+    borderRadius: ps(0.4),
+    backgroundColor: '#db0482',
   },
   bulletText: {
     flex: 1,
-    fontSize: isTV ? ps(1.2) : ps(1),
-    color: 'rgba(255,255,255,0.75)',
+    fontSize: isTV ? ps(1.3) : ps(1.15),
+    color: 'rgba(255,255,255,0.7)',
+    fontFamily: THEME.fonts.medium,
   },
 
   // ── Contact ───────────────────────────────────────────────────────────────
-  /** Three abreast on TV — the document is full width, so there is room. */
   contactRows: {
     flexDirection: isTV ? 'row' : 'column',
-    gap: isTV ? pw(3) : ph(1.5),
-    marginTop: ph(1),
+    gap: isTV ? pw(3) : ph(2),
+    marginTop: ph(2),
   },
   contactRow: {
     flex: isTV ? 1 : undefined,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: pw(1),
+    gap: pw(1.5),
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    padding: ps(1.5),
+    borderRadius: ps(1.5),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  contactIconBg: {
+    width: ps(4),
+    height: ps(4),
+    borderRadius: ps(1.2),
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   contactRowText: {
     flex: 1,
   },
   contactLabel: {
-    fontSize: isTV ? ps(1.1) : ps(0.95),
-    color: 'rgba(255,255,255,0.35)',
-    fontWeight: '600',
-    letterSpacing: 0.5,
+    fontSize: isTV ? ps(1) : ps(0.9),
+    color: 'rgba(255,255,255,0.4)',
+    fontWeight: '700',
+    fontFamily: THEME.fonts.bold,
+    letterSpacing: 1,
     textTransform: 'uppercase',
   },
   contactValue: {
-    fontSize: isTV ? ps(1.5) : ps(1.35),
+    fontSize: isTV ? ps(1.4) : ps(1.2),
     color: '#fff',
-    fontWeight: '700',
-    marginTop: 2,
+    fontWeight: '800',
+    fontFamily: THEME.fonts.bold,
+    marginTop: 4,
   },
 });

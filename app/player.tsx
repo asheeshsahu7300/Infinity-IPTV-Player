@@ -904,13 +904,19 @@ export default function PlayerScreen() {
           style={S.video}
           source={{
             uri: streamUrl,
+            headers: {
+              "User-Agent": "okhttp/3.12.1",
+              "Accept": "*/*",
+              "Connection": "keep-alive",
+            },
             initOptions: [
-              '--network-caching=2500',
-              '--live-caching=2500',
-              '--file-caching=2500',
-              '--drop-late-frames',
-              '--skip-frames',
-              '--avcodec-hw=any'
+              `--network-caching=${isLive ? 30000 : 5000}`,
+              `--live-caching=${isLive ? 30000 : 5000}`,
+              `--file-caching=${isLive ? 30000 : 5000}`,
+              "--avcodec-hw=any",
+              "--http-reconnect",
+              "--http-user-agent=okhttp/3.12.1",
+              "--rtsp-tcp",
             ]
           }}
           seek={vlcSeekTarget}
@@ -926,6 +932,7 @@ export default function PlayerScreen() {
             const durationMs = normalizeVlcTime(e.duration);
             setIsLoading(false);
             setIsBuffering(false);
+            retryCount.current = 0;
 
             if (durationMs > 0) {
               durationRef.current = durationMs;
@@ -990,6 +997,11 @@ export default function PlayerScreen() {
           style={S.video}
           source={{
             uri: streamUrl,
+            headers: {
+              "User-Agent": "okhttp/3.12.1",
+              "Accept": "*/*",
+              "Connection": "keep-alive",
+            },
             // DRM support for ClearKey
             ...(params.drmLicenseUrl && params.drmScheme ? {
               drm: {
@@ -999,10 +1011,10 @@ export default function PlayerScreen() {
             } : {}),
             ...(!shouldUseVlc ? {
               bufferConfig: {
-                minBufferMs: 60000, // Try to aggressively buffer at least 60 seconds
-                maxBufferMs: 300000, // Allow up to 5 minutes of future video in memory
-                bufferForPlaybackMs: isLive ? 500 : 1000, // Extremely fast initial playback start
-                bufferForPlaybackAfterRebufferMs: isLive ? 1000 : 2500, // Quick recovery from stalls
+                minBufferMs: 50000, // Keep healthy buffer
+                maxBufferMs: 250000, // Avoid out-of-memory
+                bufferForPlaybackMs: isLive ? 2500 : 3000, // Allow sufficient time for initial start
+                bufferForPlaybackAfterRebufferMs: isLive ? 5000 : 5000, // Important: force a 5s buffer after stall before resuming to avoid stutter loop
                 backBufferDurationMs: 120000, // Keep 2 minutes of played video in memory for instant rewinding
               }
             } : {})
@@ -1019,6 +1031,7 @@ export default function PlayerScreen() {
           selectedTextTrack={selectedTextTrack !== undefined ? { type: 'index' as any, value: selectedTextTrack.toString() } : undefined}
           onLoad={(data: any) => {
             setIsLoading(false);
+            retryCount.current = 0;
             if (data.videoTracks) {
               const formattedVideoTracks = data.videoTracks.map((t: any, i: number) => {
                 const res = t.height ? `${t.width}x${t.height}` : `Quality ${i + 1}`;
