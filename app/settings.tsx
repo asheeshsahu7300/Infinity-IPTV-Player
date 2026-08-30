@@ -102,13 +102,11 @@ interface DataTileProps {
   subtitle: string;
   focusKey: string;
   onPress: () => void;
-  tone?: 'neutral' | 'danger';
   /** Optional value badge on the trailing edge (e.g. the overscan amount). */
   value?: string;
 }
 
-function DataTile({ icon, title, subtitle, focusKey, onPress, tone = 'neutral', value }: DataTileProps) {
-  const danger = tone === 'danger';
+function DataTile({ icon, title, subtitle, focusKey, onPress, value }: DataTileProps) {
   return (
     <Focusable
       ringOnFocus={false}
@@ -120,22 +118,16 @@ function DataTile({ icon, title, subtitle, focusKey, onPress, tone = 'neutral', 
       accessibilityHint={subtitle}
     >
       {(focused) => (
-        <View
-          style={[
-            S.tile,
-            focused && S.tileFocused,
-            focused && danger && S.tileFocusedDanger,
-          ]}
-        >
-          <View style={[S.tileIconBox, focused && (danger ? S.tileIconBoxDanger : S.tileIconBoxFocused)]}>
+        <View style={[S.tile, focused && S.tileFocused]}>
+          <View style={[S.tileIconBox, focused && S.tileIconBoxFocused]}>
             <Ionicons
               name={icon}
               size={ps(2)}
-              color={focused ? (danger ? '#ff453a' : '#000') : 'rgba(255,255,255,0.75)'}
+              color={focused ? '#000' : 'rgba(255,255,255,0.75)'}
             />
           </View>
           <View style={S.tileText}>
-            <Text style={[S.tileTitle, focused && danger && S.tileTitleDanger]} numberOfLines={1}>
+            <Text style={S.tileTitle} numberOfLines={1}>
               {title}
             </Text>
             <Text style={S.tileSubtitle} numberOfLines={2}>
@@ -163,7 +155,6 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // Selectors — see the note in live-tv.tsx.
-  const portals = usePortalStore((s) => s.portals);
   const activePortal = usePortalStore((s) => s.activePortal);
   const setActivePortal = usePortalStore((s) => s.setActivePortal);
   const clearPortalData = usePortalStore((s) => s.clearPortalData);
@@ -365,8 +356,8 @@ export default function SettingsScreen() {
               >
                 {(focused) => (
                   <View style={[S.disconnectBtn, focused && S.disconnectBtnFocused]}>
-                    <Ionicons name="warning" size={ps(1.8)} color={focused ? '#ff453a' : 'rgba(255,255,255,0.7)'} />
-                    <Text style={[S.disconnectBtnText, { color: focused ? '#ff453a' : 'rgba(255,255,255,0.7)' }]}>
+                    <Ionicons name="warning" size={ps(1.8)} color={focused ? '#000' : 'rgba(255,255,255,0.7)'} />
+                    <Text style={[S.disconnectBtnText, focused && S.disconnectBtnTextFocused]}>
                       Disconnect Portal
                     </Text>
                   </View>
@@ -412,7 +403,6 @@ export default function SettingsScreen() {
               title="Clear Data"
               subtitle="Reset all settings"
               focusKey="clear-data"
-              tone="danger"
               onPress={handleClearAllData}
             />
             <DataTile
@@ -438,14 +428,6 @@ export default function SettingsScreen() {
               onPress={() => router.push('/privacy-policy')}
               control={{ kind: 'chevron' }}
             />
-          </View>
-        </View>
-
-        {/* Stats */}
-        <View style={S.stats}>
-          <View style={S.statItem}>
-            <Text style={S.statValue}>{portals.length}</Text>
-            <Text style={S.statLabel}>Configured Portals</Text>
           </View>
         </View>
 
@@ -502,10 +484,10 @@ const S = StyleSheet.create({
   // ── Portal card ───────────────────────────────────────────────────────────
   portalCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: ps(2),
+    borderRadius: ps(2.5),
     padding: ps(3.5),
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.07)',
   },
   portalInfoCols: {
     flexDirection: isTV ? 'row' : 'column',
@@ -517,7 +499,7 @@ const S = StyleSheet.create({
   },
   tinyLabel: {
     fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: 'rgba(255,255,255,0.35)',
+    color: 'rgba(255,255,255,0.4)',
     fontWeight: '600',
     letterSpacing: 0.5,
     marginBottom: ph(0.5),
@@ -530,6 +512,7 @@ const S = StyleSheet.create({
   disconnectBtnWrapper: {
     alignSelf: 'flex-start',
     marginTop: ph(1),
+    borderRadius: ps(1.2),
   },
   disconnectBtn: {
     flexDirection: 'row',
@@ -537,40 +520,33 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(2),
     paddingVertical: ph(1.2),
     gap: pw(0.8),
-    borderRadius: ps(1),
-    borderWidth: .8,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: '#111015',
+    borderRadius: ps(1.2),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   disconnectBtnFocused: {
-    borderColor: '#ff453a',
-    backgroundColor: 'rgba(255,69,58,0.12)',
-    transform: [{ scale: 1.05 }],
-    ...Platform.select({
-      ios: {
-        shadowColor: '#ff453a',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 0,
-      },
-    }),
+    borderColor: '#fff',
+    backgroundColor: '#fff',
+    transform: [{ scale: 1.04 }],
   },
   disconnectBtnText: {
     fontSize: ps(1.3),
     fontWeight: '700',
     letterSpacing: 0.5,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  disconnectBtnTextFocused: {
+    color: '#000',
   },
 
   // ── Grouped list ──────────────────────────────────────────────────────────
   groupedCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: ps(2),
+    borderRadius: ps(2.5),
     padding: ps(1),
-    borderWidth: .8,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
   },
   /** The transparent border is reserved up front so gaining focus recolours it
    *  instead of resizing the row and nudging the whole list. */
@@ -578,19 +554,20 @@ const S = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: ps(2),
-    borderRadius: ps(1.8),
-    borderWidth: .8,
+    borderRadius: ps(2),
+    borderWidth: 1.5,
     borderColor: 'transparent',
   },
   rowFocused: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
     borderColor: 'rgba(255,255,255,0.85)',
   },
   rowIconBox: {
-    width: ps(5),
-    height: ps(5),
-    borderWidth: .8,
-    borderRadius: ps(2),
+    width: ps(5.5),
+    height: ps(5.5),
+    borderWidth: 1,
+    borderRadius: ps(2.75),
+    borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: 'rgba(255,255,255,0.05)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -598,6 +575,7 @@ const S = StyleSheet.create({
   },
   rowIconBoxFocused: {
     backgroundColor: '#fff',
+    borderColor: '#fff',
   },
   rowText: {
     flex: 1,
@@ -610,56 +588,52 @@ const S = StyleSheet.create({
   },
   rowSubtitle: {
     fontSize: isTV ? ps(1.2) : ps(1),
-    color: 'rgba(255,255,255,0.35)',
+    color: 'rgba(255,255,255,0.4)',
     marginTop: 2,
   },
   rowSubtitleFocused: {
-    color: 'rgba(255,255,255,0.6)',
+    color: 'rgba(255,255,255,0.85)',
   },
 
-  // ── Data tiles ────────────────────────────────────────────────────────────
+  // ── Data tiles ────────────────────────────────────────────────────
   tileRow: {
     flexDirection: isTV ? 'row' : 'column',
     gap: isTV ? pw(2) : ph(1.5),
   },
   tileWrapper: {
     ...(isTV ? { flex: 1 } : { alignSelf: 'stretch' }),
-    borderRadius: ps(2),
+    borderRadius: ps(2.5),
   },
   tile: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: ps(2),
+    borderRadius: ps(2.5),
     padding: ps(2.5),
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.07)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: pw(1.5),
   },
   tileFocused: {
-    backgroundColor: '#17161b',
-    borderColor: 'rgba(255,255,255,0.9)',
-    borderWidth: 1,
-    transform: [{ scale: 1.03 }],
-  },
-  tileFocusedDanger: {
-    borderColor: '#8a1a1483',
-    backgroundColor: 'rgba(255,69,58,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1.5,
+    transform: [{ scale: 1.04 }],
   },
   tileIconBox: {
     width: ps(5.5),
     height: ps(5.5),
-    borderRadius: ps(2),
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: ps(2.75),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   tileIconBoxFocused: {
     backgroundColor: '#fff',
-  },
-  tileIconBoxDanger: {
-    backgroundColor: 'rgba(199, 70, 63, 0.16)',
+    borderColor: '#fff',
   },
   tileText: {
     flex: 1,
@@ -669,19 +643,18 @@ const S = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
   },
-  tileTitleDanger: {
-    color: '#a52b24be',
-  },
   tileSubtitle: {
     fontSize: isTV ? ps(1.1) : ps(0.95),
-    color: 'rgba(255,255,255,0.35)',
+    color: 'rgba(255,255,255,0.4)',
     marginTop: 2,
   },
   valuePill: {
-    paddingHorizontal: pw(1),
+    paddingHorizontal: pw(1.2),
     paddingVertical: ph(0.6),
-    borderRadius: ps(2),
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: ps(1.2),
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   valuePillText: {
     color: '#fff',
@@ -695,23 +668,24 @@ const S = StyleSheet.create({
     height: ph(3.5),
     minWidth: ps(4),
     borderRadius: ps(2),
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: 'rgba(255,255,255,0.15)',
     justifyContent: 'center',
     padding: 2,
   },
   switchTrackFocused: {
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: 'rgba(255,255,255,0.85)',
   },
   switchTrackOn: {
-    backgroundColor: THEME.colors.primary,
+    backgroundColor: '#fff',
+    borderColor: '#fff',
   },
   switchKnob: {
     width: ps(1.8),
     height: ps(1.8),
     borderRadius: ps(0.9),
-    backgroundColor: '#fff',
+    backgroundColor: 'rgba(255,255,255,0.5)',
   },
   switchKnobOn: {
     alignSelf: 'flex-end',
@@ -719,29 +693,9 @@ const S = StyleSheet.create({
   },
 
   // ── Footer ────────────────────────────────────────────────────────────────
-  stats: {
-    marginTop: ph(4),
-    alignItems: 'center',
-  },
-  statItem: {
-    alignItems: 'center',
-    paddingVertical: ph(2),
-  },
-  statValue: {
-    fontSize: ps(4),
-    fontWeight: '300',
-    color: THEME.colors.primary,
-  },
-  statLabel: {
-    fontSize: ps(1.1),
-    color: 'rgba(255,255,255,0.3)',
-    marginTop: 4,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-  },
   footer: {
     alignItems: 'center',
-    marginTop: ph(2),
+    marginTop: ph(4),
   },
   footerText: {
     fontSize: ps(1.2),

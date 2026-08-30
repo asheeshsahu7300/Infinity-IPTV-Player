@@ -98,14 +98,37 @@ const SELECT_TYPES = new Set([
   "button_select",
   "KEYCODE_DPAD_CENTER",
   "KEYCODE_ENTER",
+  "space",
+  "Space",
 ]);
+
+const UP_TYPES = new Set(["up", "dpad_up", "arrow_up", "KEYCODE_DPAD_UP", "upArrow", "ArrowUp"]);
+const DOWN_TYPES = new Set(["down", "dpad_down", "arrow_down", "KEYCODE_DPAD_DOWN", "downArrow", "ArrowDown"]);
+const LEFT_TYPES = new Set(["left", "dpad_left", "arrow_left", "KEYCODE_DPAD_LEFT", "leftArrow", "ArrowLeft"]);
+const RIGHT_TYPES = new Set(["right", "dpad_right", "arrow_right", "KEYCODE_DPAD_RIGHT", "rightArrow", "ArrowRight"]);
+const PLAY_TYPES = new Set([
+  "playPause",
+  "play",
+  "pause",
+  "media_play_pause",
+  "media_play",
+  "media_pause",
+  "KEYCODE_MEDIA_PLAY_PAUSE",
+  "KEYCODE_MEDIA_PLAY",
+  "KEYCODE_MEDIA_PAUSE",
+]);
+const FF_TYPES = new Set(["fastForward", "fast_forward", "media_fast_forward", "media_step_forward", "KEYCODE_MEDIA_FAST_FORWARD"]);
+const REW_TYPES = new Set(["rewind", "media_rewind", "media_step_backward", "KEYCODE_MEDIA_REWIND"]);
+const MENU_TYPES = new Set(["menu", "KEYCODE_MENU"]);
+const PAGE_UP_TYPES = new Set(["pageUp", "KEYCODE_PAGE_UP"]);
+const PAGE_DOWN_TYPES = new Set(["pageDown", "KEYCODE_PAGE_DOWN"]);
 
 let tvEventHandlerInstance: any = null;
 let lastSelectTime = 0;
 
 function dispatch(evt: any) {
   const type = evt?.eventType;
-  if (!type) return;
+  if (!type || type === "focus" || type === "blur") return;
 
   const isSelect = SELECT_TYPES.has(type);
 
@@ -123,37 +146,26 @@ function dispatch(evt: any) {
 
   let handlerKey: keyof DPadHandlers | null = null;
   if (isSelect) handlerKey = "onSelect";
-  else if (type === "up") handlerKey = "onUp";
-  else if (type === "down") handlerKey = "onDown";
-  else if (type === "left") handlerKey = "onLeft";
-  else if (type === "right") handlerKey = "onRight";
+  else if (UP_TYPES.has(type)) handlerKey = "onUp";
+  else if (DOWN_TYPES.has(type)) handlerKey = "onDown";
+  else if (LEFT_TYPES.has(type)) handlerKey = "onLeft";
+  else if (RIGHT_TYPES.has(type)) handlerKey = "onRight";
   else if (type === "longSelect") handlerKey = "onLongSelect";
-  else if (type === "playPause") handlerKey = "onPlayPause";
-  else if (type === "fastForward") handlerKey = "onFastForward";
-  else if (type === "rewind") handlerKey = "onRewind";
-  else if (type === "menu") handlerKey = "onMenu";
-  else if (type === "pageUp") handlerKey = "onPageUp";
-  else if (type === "pageDown") handlerKey = "onPageDown";
+  else if (PLAY_TYPES.has(type)) handlerKey = "onPlayPause";
+  else if (FF_TYPES.has(type)) handlerKey = "onFastForward";
+  else if (REW_TYPES.has(type)) handlerKey = "onRewind";
+  else if (MENU_TYPES.has(type)) handlerKey = "onMenu";
+  else if (PAGE_UP_TYPES.has(type)) handlerKey = "onPageUp";
+  else if (PAGE_DOWN_TYPES.has(type)) handlerKey = "onPageDown";
 
-  if (!handlerKey) return;
-
-  const target = activeSubscriberForEvent(handlerKey);
+  const target = activeSubscriberForEvent(handlerKey || "onAny");
   if (!target) return;
 
   const h = target.handlers.current;
 
-  if (handlerKey === "onSelect") h.onSelect?.();
-  else if (handlerKey === "onUp") h.onUp?.();
-  else if (handlerKey === "onDown") h.onDown?.();
-  else if (handlerKey === "onLeft") h.onLeft?.();
-  else if (handlerKey === "onRight") h.onRight?.();
-  else if (handlerKey === "onLongSelect") h.onLongSelect?.();
-  else if (handlerKey === "onPlayPause") h.onPlayPause?.();
-  else if (handlerKey === "onFastForward") h.onFastForward?.();
-  else if (handlerKey === "onRewind") h.onRewind?.();
-  else if (handlerKey === "onMenu") h.onMenu?.();
-  else if (handlerKey === "onPageUp") h.onPageUp?.();
-  else if (handlerKey === "onPageDown") h.onPageDown?.();
+  if (handlerKey && h[handlerKey]) {
+    h[handlerKey]?.();
+  }
 
   h.onAny?.(type as DPadEventType);
 }
@@ -163,13 +175,15 @@ function attachNative() {
   if (Platform.OS !== "android" && Platform.OS !== "ios") return;
 
   try {
-    if (typeof TVEventHandler === "function") {
+    if (TVEventHandler && typeof (TVEventHandler as any).addListener === "function") {
+      nativeSubscription = (TVEventHandler as any).addListener((evt: any) => {
+        dispatch(evt);
+      });
+    } else if (typeof TVEventHandler === "function") {
       tvEventHandlerInstance = new (TVEventHandler as any)();
       tvEventHandlerInstance.enable(null, (_cmp: any, evt: any) => {
         dispatch(evt);
       });
-    } else if (TVEventHandler && typeof (TVEventHandler as any).addListener === "function") {
-      nativeSubscription = (TVEventHandler as any).addListener(dispatch);
     }
   } catch (err) {
     console.warn("Failed to attach TVEventHandler in useDPad:", err);

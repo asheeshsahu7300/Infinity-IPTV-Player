@@ -27,6 +27,7 @@ import {
   AppState,
   AppStateStatus,
   UIManager,
+  useTVEventHandler,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -43,7 +44,7 @@ import { PlaybackState } from "../src/services/PlaybackState";
 import { usePortalStore } from "../src/store/portalStore";
 import { isTV } from "../src/utils/tvUtils";
 import { THEME, ps, pw, ph } from "../src/theme/tokens";
-import { Focusable, FocusGroup, Overlay, useDPad } from "../src/tv";
+import { Focusable, FocusGroup, Overlay, useDPad, DPAD_PRIORITY } from "../src/tv";
 import NetInfo from "@react-native-community/netinfo";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -815,50 +816,109 @@ export default function PlayerScreen() {
   );
   useEffect(() => { accumulateSeekRef.current = accumulateSeek; }, [accumulateSeek]);
 
-  // ── D-pad (TV remote) ─────────────────────────────────────────────────────
+  // ── D-pad (TV remote / navigation buttons) ──────────────────────────────
   useDPad(
     {
       onPlayPause: () => {
         if (isLockedRef.current) return;
-        if (!showControlsRef.current) { setShowControls(true); resetControlsTimeout(); }
-        else { togglePlay(); resetControlsTimeout(); }
+        if (!showControlsRef.current) {
+          setShowControls(true);
+          resetControlsTimeout();
+        } else {
+          togglePlay();
+          resetControlsTimeout();
+        }
       },
       onFastForward: () => {
         if (isLockedRef.current) return;
-        if (!showControlsRef.current) setShowControls(true);
-        else if (!isLive) { seek(180000); setShowControls(true); }
+        setShowControls(true);
         resetControlsTimeout();
+        if (showControlsRef.current && !isLive) {
+          seek(180000);
+        }
       },
       onRewind: () => {
         if (isLockedRef.current) return;
-        if (!showControlsRef.current) setShowControls(true);
-        else if (!isLive) { seek(-180000); setShowControls(true); }
+        setShowControls(true);
         resetControlsTimeout();
+        if (showControlsRef.current && !isLive) {
+          seek(-180000);
+        }
       },
       onLeft: () => {
         if (isLockedRef.current) return;
-        if (!showControlsRef.current) setShowControls(true);
-        else if (!isLive && !isNavRowFocusedRef.current) accumulateSeek(-10000, true);
-        resetControlsTimeout();
+        if (!showControlsRef.current) {
+          setShowControls(true);
+          resetControlsTimeout();
+        } else if (!isLive && !isNavRowFocusedRef.current) {
+          accumulateSeek(-10000, true);
+          resetControlsTimeout();
+        }
       },
       onRight: () => {
         if (isLockedRef.current) return;
-        if (!showControlsRef.current) setShowControls(true);
-        else if (!isLive && !isNavRowFocusedRef.current) accumulateSeek(10000, true);
-        resetControlsTimeout();
+        if (!showControlsRef.current) {
+          setShowControls(true);
+          resetControlsTimeout();
+        } else if (!isLive && !isNavRowFocusedRef.current) {
+          accumulateSeek(10000, true);
+          resetControlsTimeout();
+        }
       },
       onSelect: () => {
         if (isLockedRef.current) return;
-        if (!showControlsRef.current) { setShowControls(true); resetControlsTimeout(); }
+        if (!showControlsRef.current) {
+          setShowControls(true);
+          resetControlsTimeout();
+        }
       },
-      onUp: () => { setShowControls(true); resetControlsTimeout(); },
-      onDown: () => { setShowControls(true); resetControlsTimeout(); },
+      onUp: () => {
+        setShowControls(true);
+        resetControlsTimeout();
+      },
+      onDown: () => {
+        setShowControls(true);
+        resetControlsTimeout();
+      },
+      onMenu: () => {
+        setShowControls(true);
+        resetControlsTimeout();
+      },
+      onPageUp: () => {
+        setShowControls(true);
+        resetControlsTimeout();
+      },
+      onPageDown: () => {
+        setShowControls(true);
+        resetControlsTimeout();
+      },
       onAny: () => {
-        if (!showControlsRef.current) { setShowControls(true); resetControlsTimeout(); }
+        if (!showControlsRef.current) {
+          setShowControls(true);
+          resetControlsTimeout();
+        }
       },
     },
-    isTV && !showAudioModal && !showSubtitleModal
+    {
+      enabled: !showAudioModal && !showSubtitleModal && !showVideoModal,
+      priority: DPAD_PRIORITY.PLAYER,
+    }
   );
+
+  // ── Native TV remote event listener (guarantees controls wake up on any remote event) ──
+  useTVEventHandler((evt: any) => {
+    if (!evt || !evt.eventType || evt.eventType === "focus" || evt.eventType === "blur") return;
+    const action = evt?.eventKeyAction;
+    if (action === 1 || action === "1" || action === "up") return;
+    if (showAudioModalRef.current || showSubtitleModalRef.current || showVideoModalRef.current) return;
+
+    if (!showControlsRef.current) {
+      setShowControls(true);
+      resetControlsTimeout();
+    } else {
+      resetControlsTimeout();
+    }
+  });
 
   const cyclePlaybackSpeed = () => {
     if (isLockedRef.current) return;
@@ -1223,7 +1283,7 @@ export default function PlayerScreen() {
       )}
 
       {/* TV: invisible focusable overlay to catch OK press when controls are hidden */}
-      {!showControls && isTV && (
+      {!showControls && (
         <Focusable
           hasTVPreferredFocus
           style={StyleSheet.absoluteFill}
@@ -1339,41 +1399,36 @@ export default function PlayerScreen() {
                 <Text style={S.subTitle} />
               </View>
             </View>
-            <View style={S.headerRight}>
-              <View style={[S.qualityBadge, networkQuality === "slow" && S.qualityBadgeSlow]}>
-                <Text style={S.qualityBadgeText}>{qualityLabel}</Text>
-              </View>
-            </View>
           </View>
 
-          {/* Center play / skip buttons */}
+          {/* Center play / seek buttons */}
           {!isLocked && (
             <View style={S.centerRow}>
               {!isLive && (
-                <Focusable ringOnFocus={false} focusStyle={S.controlFocused} style={S.skipBtn} onPress={() => seek(-10000)} {...navRowFocusHandlers}>
-                  {(focused: any) => (
-                    <View style={S.skipInner}>
-                      <Ionicons name="play-back" size={ps(1.4)} color="#fff" style={{ opacity: focused ? 1 : 0.7 }} />
-                      <Text style={[S.skipLabel, focused && { color: "#fff" }]}>-10s</Text>
-                    </View>
-                  )}
+                <Focusable
+                  ringOnFocus={false}
+                  focusStyle={S.skipBtnFocused}
+                  style={S.skipBtn}
+                  onPress={() => seek(-10000)}
+                  {...navRowFocusHandlers}
+                >
+                  <Ionicons name="play-back" size={ps(1.8)} color="#fff" />
                 </Focusable>
               )}
               <View style={S.playBtnContainer}>
                 <Focusable hasTVPreferredFocus ringOnFocus={false} focusStyle={S.mainPlayBtnFocused} style={S.mainPlayBtn} onPress={togglePlay} {...navRowFocusHandlers}>
-                  <LinearGradient colors={["rgba(255,255,255,0.05)", "rgba(255,255,255,0.05)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.mainPlayGradient}>
-                    <Ionicons name={isPlaying ? "pause" : "play"} size={ps(2)} color="#fff" />
-                  </LinearGradient>
+                  <Ionicons name={isPlaying ? "pause" : "play"} size={ps(2.8)} color="#fff" />
                 </Focusable>
               </View>
               {!isLive && (
-                <Focusable ringOnFocus={false} focusStyle={S.controlFocused} style={S.skipBtn} onPress={() => seek(10000)} {...navRowFocusHandlers}>
-                  {(focused: any) => (
-                    <View style={S.skipInner}>
-                      <Ionicons name="play-forward" size={ps(1.4)} color="#fff" style={{ opacity: focused ? 1 : 0.7 }} />
-                      <Text style={[S.skipLabel, focused && { color: "#fff" }]}>+10s</Text>
-                    </View>
-                  )}
+                <Focusable
+                  ringOnFocus={false}
+                  focusStyle={S.skipBtnFocused}
+                  style={S.skipBtn}
+                  onPress={() => seek(10000)}
+                  {...navRowFocusHandlers}
+                >
+                  <Ionicons name="play-forward" size={ps(1.8)} color="#fff" />
                 </Focusable>
               )}
             </View>
@@ -1476,62 +1531,42 @@ export default function PlayerScreen() {
                 </View>
               )}
 
-              {/* Live badge */}
-              {isLive && (
-                <View style={S.liveBadgeRow}>
-                  <View style={[S.liveDot, liveReconnectMode && { backgroundColor: "#ffcc00" }]} />
-                  <Text style={S.liveText}>{liveReconnectMode ? "RECONNECTING" : "LIVE"}</Text>
-                </View>
-              )}
-
               {/* Actions row */}
               <FocusGroup ref={actionsRowRef} style={S.actionsRow}>
                 {(!isLocked || isTV) && (
-                  <View style={S.actionsLeft}>
-                    {!isLive && (
-                      <>
-                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.iconChip} onPress={() => seek(-10000)} {...navRowFocusHandlers}>
-                          <MaterialCommunityIcons name="rewind-10" size={ps(1.6)} color="white" />
-                        </Focusable>
-                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.iconChip} onPress={() => seek(60000)} {...navRowFocusHandlers}>
-                          <MaterialCommunityIcons name="fast-forward-60" size={ps(1.6)} color="white" />
-                        </Focusable>
-                      </>
+                  <View style={S.actionsRight}>
+                    {isLive && (
+                      <View style={S.liveBadgeRow}>
+                        <View style={[S.liveDot, liveReconnectMode && { backgroundColor: "#ffcc00" }]} />
+                        <Text style={S.liveText}>{liveReconnectMode ? "RECONNECTING" : "LIVE"}</Text>
+                      </View>
                     )}
+                    <View style={[S.qualityBadge, networkQuality === "slow" && S.qualityBadgeSlow]}>
+                      <Text style={S.qualityBadgeText}>{qualityLabel}</Text>
+                    </View>
+                    {!isLive && (
+                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cyclePlaybackSpeed} {...navRowFocusHandlers}>
+                        <MaterialCommunityIcons name="play-speed" size={ps(2.0)} color="white" />
+                      </Focusable>
+                    )}
+                    {usingVLC && !isLive && videoTracks.length > 1 && (
+                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowVideoModal(true); }} {...navRowFocusHandlers}>
+                        <Ionicons name="settings-outline" size={ps(2.0)} color="white" />
+                      </Focusable>
+                    )}
+                    {!isLive && (
+                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowSubtitleModal(true); }} {...navRowFocusHandlers}>
+                        <MaterialCommunityIcons name="subtitles-outline" size={ps(2.0)} color="white" />
+                      </Focusable>
+                    )}
+                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowAudioModal(true); }} {...navRowFocusHandlers}>
+                      <Ionicons name="musical-notes-outline" size={ps(2.0)} color="white" />
+                    </Focusable>
+                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cycleAspectRatio} {...navRowFocusHandlers}>
+                      <MaterialCommunityIcons name="aspect-ratio" size={ps(2.0)} color="white" />
+                    </Focusable>
                   </View>
                 )}
-                <View style={S.actionsRight}>
-                  {(!isLocked || isTV) && (
-                    <>
-                      {!isLive && (
-                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cyclePlaybackSpeed} {...navRowFocusHandlers}>
-                          <Ionicons name="speedometer-outline" size={ps(1.4)} color="white" />
-                          <Text style={S.settingLabel}>{playbackSpeed.toFixed(2)}x</Text>
-                        </Focusable>
-                      )}
-                      {usingVLC && !isLive && videoTracks.length > 1 && (
-                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowVideoModal(true); }} {...navRowFocusHandlers}>
-                          <Ionicons name="aperture-outline" size={ps(1.4)} color="white" />
-                          <Text style={S.settingLabel}>QUALITY</Text>
-                        </Focusable>
-                      )}
-                      {!isLive && (
-                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowSubtitleModal(true); }} {...navRowFocusHandlers}>
-                          <Ionicons name="text-outline" size={ps(1.4)} color="white" />
-                          <Text style={S.settingLabel}>SUBS</Text>
-                        </Focusable>
-                      )}
-                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowAudioModal(true); }} {...navRowFocusHandlers}>
-                        <Ionicons name="musical-notes-outline" size={ps(1.4)} color="white" />
-                        <Text style={S.settingLabel}>AUDIO</Text>
-                      </Focusable>
-                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cycleAspectRatio} {...navRowFocusHandlers}>
-                        <Ionicons name="expand" size={ps(1.4)} color="white" />
-                        <Text style={S.settingLabel}>ASPECT</Text>
-                      </Focusable>
-                    </>
-                  )}
-                </View>
               </FocusGroup>
             </View>
           </View>
@@ -1827,25 +1862,22 @@ const S = StyleSheet.create({
     fontWeight: "600",
     fontFamily: THEME.fonts.medium,
   },
-  headerRight: { paddingTop: 8 },
   qualityBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
   qualityBadgeSlow: {
-    backgroundColor: "rgba(255,80,0,0.25)",
-    borderColor: "rgba(255,80,0,0.55)",
+    opacity: 0.7,
   },
   qualityBadgeText: {
     color: "#fff",
-    fontSize: ps(0.7),
+    fontSize: ps(1.3),
     fontWeight: "900",
     fontFamily: THEME.fonts.bold,
     letterSpacing: 1,
+    opacity: 0.9,
   },
 
   centerRow: {
@@ -1853,61 +1885,32 @@ const S = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: pw(8),
+    gap: pw(4),
   },
-  playBtnContainer: { width: ps(6), height: ps(6), alignItems: "center", justifyContent: "center" },
+  skipBtn: {
+    width: ps(3.5),
+    height: ps(3.5),
+    borderRadius: ps(1.75),
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+  },
+  skipBtnFocused: {
+    transform: [{ scale: 1.18 }],
+    backgroundColor: "rgba(255,255,255,0.15)",
+  },
+  playBtnContainer: { alignItems: "center", justifyContent: "center" },
   mainPlayBtn: {
     width: ps(4.8),
     height: ps(4.8),
     borderRadius: ps(2.4),
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
   },
   mainPlayBtnFocused: {
-    borderColor: "#fff",
-    transform: [{ scale: 1.08 }],
-    backgroundColor: "rgba(255,255,255,0.1)",
-  },
-  mainPlayGradient: {
-    flex: 1,
-    width: "100%",
-    height: "100%",
-    borderRadius: ps(2.4),
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  skipBtn: {
-    width: ps(4.2),
-    height: ps(4.2),
-    borderRadius: ps(2.1),
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    backgroundColor: "rgba(0,0,0,0.5)",
-    overflow: "hidden",
-  },
-  skipInner: {
-    flex: 1,
-    width: "100%",
-    height: "100%",
-    borderRadius: ps(2.1),
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 1,
-  },
-  skipLabel: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: ps(0.65),
-    fontWeight: "800",
-    fontFamily: THEME.fonts.bold,
-  },
-  controlFocused: {
-    borderColor: "#fff",
-    transform: [{ scale: 1.08 }],
-    backgroundColor: "rgba(255,255,255,0.1)",
+    transform: [{ scale: 1.18 }],
+    backgroundColor: "rgba(255,255,255,0.15)",
   },
 
   bottomOverlay: {
@@ -1919,12 +1922,7 @@ const S = StyleSheet.create({
     zIndex: 10,
   },
   glassControls: {
-    backgroundColor: "rgba(18,18,22,0.88)",
-    borderRadius: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    paddingVertical: 4,
   },
 
   // Live reconnect banner
@@ -1951,40 +1949,40 @@ const S = StyleSheet.create({
     fontFamily: THEME.fonts.bold,
   },
   progressBarWrapper: {
-    paddingVertical: 4,
+    paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "transparent",
   },
-  progressBarInner: { height: 24, justifyContent: "center" },
+  progressBarInner: { height: 28, justifyContent: "center" },
   progressRail: {
-    height: 4,
+    height: 6,
     width: "100%",
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 3,
     overflow: "hidden",
   },
-  progressRailFocused: { height: 4, borderRadius: 4 },
+  progressRailFocused: { height: 6, borderRadius: 3 },
   progressFill: {
     height: "100%",
-    borderRadius: 2,
+    borderRadius: 3,
     overflow: "hidden",
     backgroundColor: "#fff",
   },
   scrubber: {
     position: "absolute",
     top: "50%",
-    marginTop: -10,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    marginTop: -12,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: "white",
-    marginLeft: -10,
+    marginLeft: -12,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.4,
-    shadowRadius: 3,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 4,
   },
 
   liveBadgeRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
@@ -1997,26 +1995,19 @@ const S = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  actionsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  actionsLeft: { flexDirection: "row", alignItems: "center", gap: pw(1) },
+  actionsRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center" },
   iconChip: { padding: 6, borderRadius: 6, borderWidth: 1, borderColor: "transparent" },
-  iconChipFocused: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.1)" },
-  actionsRight: { flexDirection: "row", alignItems: "center", gap: pw(1) },
+  iconChipFocused: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.25)", transform: [{ scale: 1.1 }] },
+  actionsRight: { flexDirection: "row", alignItems: "center", gap: 14 },
   settingBtn: {
-    flexDirection: "row",
+    width: ps(3.6),
+    height: ps(3.6),
+    borderRadius: ps(1.8),
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    justifyContent: "center",
+    backgroundColor: "transparent",
     borderWidth: 1,
     borderColor: "transparent",
-  },
-  settingLabel: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: ps(0.9),
-    fontWeight: "900",
-    fontFamily: THEME.fonts.bold,
   },
 
   // ── Modal ──────────────────────────────────────────────────────────────────

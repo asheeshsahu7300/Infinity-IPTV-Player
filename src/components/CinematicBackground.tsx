@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 // This file sits two levels down, so the project-root assets folder is `../../`
 // from here — not the `../` that screens in app/ use.
-import fallbackBackground from '../../assets/images/cinematic-fallback.jpeg';
+import fallbackBackground from '../../assets/images/cinematic-fallback.png';
 
 /**
  * A remote URL, or the module id `require()` returns for a bundled asset —
@@ -62,7 +62,7 @@ export const CinematicBackground = React.memo(function CinematicBackground({ uri
         contentFit="cover"
         // The fallback is decorative, so it is blurred hard; real artwork keeps
         // whatever blur the caller asked for.
-        blurRadius={uri ? (customBlur !== undefined ? customBlur :0) : 20}
+        blurRadius={uri ? (customBlur !== undefined ? customBlur : 0) : 20}
         transition={200}
       />
 

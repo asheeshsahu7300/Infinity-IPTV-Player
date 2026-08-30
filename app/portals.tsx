@@ -10,7 +10,7 @@ import {
   Image,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePortalStore, Portal } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
@@ -22,9 +22,9 @@ import { isTV } from "../src/utils/tvUtils";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import MaskedView from "@react-native-masked-view/masked-view";
-import { Focusable } from "../src/tv";
+import { Focusable, FocusGroup } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
-// This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
+// Sized against the un-bumped scale — see psRaw in tokens.ts.
 import { THEME, pw, ph, psRaw as ps, CARD_FRAME } from "../src/theme/tokens";
 
 const { width: W } = Dimensions.get("window");
@@ -40,8 +40,6 @@ export default function PortalsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  // Selectors — see the note in live-tv.tsx. This screen is often mounted while
-  // a background refresh is writing content it does not display.
   const portals = usePortalStore((s) => s.portals);
   const activePortal = usePortalStore((s) => s.activePortal);
   const loadPortals = usePortalStore((s) => s.loadPortals);
@@ -54,8 +52,6 @@ export default function PortalsScreen() {
   const [focusedPortalId, setFocusedPortalId] = useState<string | null>(null);
   const [focusedHeader, setFocusedHeader] = useState<"back" | "add" | null>(null);
 
-  // `Alert.alert` is not usable on Android TV release builds — the delete
-  // confirmation never surfaced, so the D-pad could not reach its buttons.
   const { open: openDialog, notify, close: closeDialog, node: dialogNode } = useDialog();
 
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -112,9 +108,6 @@ export default function PortalsScreen() {
     }
   };
 
-  // OK/select is handled natively by each focusable's onPress — no global
-  // listener needed (and a global one would double-fire on Android TV).
-
   // ── Helpers ────────────────────────────────────────────────────────────────
   const handleDeletePortal = useCallback(
     (portal: Portal) => {
@@ -134,50 +127,50 @@ export default function PortalsScreen() {
     [deletePortal, openDialog, closeDialog]
   );
 
-  const getPortalTypeInfo = (type: string) => {
+  const getPortalTypeInfo = (type: string): { icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'] } => {
     switch (type) {
-      case "m3u": return { icon: "play-circle-outline", color: "#10b981" };
-      case "xtream": return { icon: "cloud-download-outline", color: "#3b82f6" };
-      case "mag": return { icon: "tv-outline", color: "#f59e0b" };
-      default: return { icon: "server-outline", color: THEME.colors.primary };
+      case "m3u": return { icon: "format-list-bulleted" };
+      case "xtream": return { icon: "cloud-sync" };
+      case "mag": return { icon: "router-wireless" };
+      default: return { icon: "server-network" };
     }
   };
 
   // ── Card ───────────────────────────────────────────────────────────────────
-  const renderCardContent = (item: Portal, isActive: boolean) => {
+  const renderCardContent = (item: Portal, isActive: boolean, isFocused: boolean) => {
     const config = item.config || {};
     const detail = (config as any).url || (config as any).mac || "--";
 
     return (
-      <>
+      <LinearGradient
+        colors={
+          isFocused
+            ? ["rgba(255,255,255,0.10)", "rgba(255,255,255,0.04)", "rgba(255,255,255,0.01)"]
+            : ["rgba(255,255,255,0.04)", "rgba(255,255,255,0.02)", "rgba(255,255,255,0.0)"]
+        }
+        locations={[0, 0.5, 1]}
+        style={S.portalCardGradient}
+      >
         <View style={S.cardHeader}>
-          <View style={[S.cardIconBox, { backgroundColor: isActive ? THEME.colors.primary + '20' : "rgba(255,255,255,0.03)" }]}>
-            <Ionicons
-              name={getPortalTypeInfo(item.type).icon as any}
-              size={ps(3.5)}
-              color={isActive ? THEME.colors.primary : "#9ca3af"}
+          <View style={[S.cardIconBox, isActive && S.cardIconBoxActive, isFocused && S.cardIconBoxFocused]}>
+            <MaterialCommunityIcons
+              name={getPortalTypeInfo(item.type).icon}
+              size={isTV ? ps(2.6) : 28}
+              color={isFocused ? "#FFFFFF" : isActive ? "#FFFFFF" : "rgba(255,255,255,0.7)"}
             />
           </View>
           {isActive && (
-            <View style={S.activeBadge}>
-              <View style={S.badgeDot} />
-              <Text style={S.activeBadgeText}>ACTIVE</Text>
+            <View style={[S.activeBadge, isFocused && S.activeBadgeFocused]}>
+              <View style={[S.badgeDot, isFocused && S.badgeDotFocused]} />
+              <Text style={[S.activeBadgeText, isFocused && S.activeBadgeTextFocused]}>ACTIVE</Text>
             </View>
           )}
         </View>
 
         <View style={S.cardMain}>
-          <MaskedView maskElement={<Text style={S.cardName} numberOfLines={1}>{item.name}</Text>}>
-            <LinearGradient
-              colors={["#fff", "rgba(255,255,255,0.4)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <Text style={[S.cardName, { opacity: 0 }]} numberOfLines={1}>{item.name}</Text>
-            </LinearGradient>
-          </MaskedView>
-          <Text style={S.cardDetailText} numberOfLines={1}>{detail}</Text>
-          <Text style={S.cardTypeLabel}>
+          <Text style={[S.cardName, isFocused && { color: "#FFFFFF" }]} numberOfLines={1}>{item.name}</Text>
+          <Text style={[S.cardDetailText, isFocused && { color: "rgba(255,255,255,0.85)" }]} numberOfLines={1}>{detail}</Text>
+          <Text style={[S.cardTypeLabel, isFocused && { color: "#FFFFFF" }]}>
             {item.type === "m3u"
               ? "M3U PLAYLIST"
               : item.type === "xtream"
@@ -185,12 +178,12 @@ export default function PortalsScreen() {
                 : "MAC PORTAL"}
           </Text>
         </View>
-      </>
+      </LinearGradient>
     );
   };
 
   const renderPortal = ({ item, index }: { item: Portal; index: number }) => {
-    const isFocused = focusedPortalId === item.id;
+    const isColFocused = focusedPortalId === item.id;
     const isActive = activePortal?.id === item.id;
 
     // Disable TV preferred focus after initial mount to prevent stealing focus on re-renders
@@ -208,44 +201,59 @@ export default function PortalsScreen() {
         style={[
           S.cardWrapper,
           {
-            transform: [{ scale: useStaticFocus ? (isFocused ? 1.05 : 1) : (isTV ? scale : isFocused ? 1.05 : 1) }],
-            opacity: useStaticFocus ? (isFocused ? 1 : 0.8) : (isTV ? opacity : 1),
-            zIndex: isFocused ? 100 : index,
+            transform: [{ scale: useStaticFocus ? (isColFocused ? 1.04 : 1) : (isTV ? scale : isColFocused ? 1.04 : 1) }],
+            opacity: useStaticFocus ? (isColFocused ? 1 : 0.85) : (isTV ? opacity : 1),
+            zIndex: isColFocused ? 100 : index,
           },
         ]}
       >
-        <Focusable
-          hasTVPreferredFocus={shouldFocus}
-          onFocus={() => {
-            setFocusedPortalId(item.id);
-            if (isTV) flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
-          }}
-          onBlur={() => setFocusedPortalId(null)}
-          onPress={() => connectToPortal(item)}
-          ringOnFocus={false}
-          style={S.pressable}
-        >
-          <View style={[S.portalCard, isFocused && S.portalCardFocused, isActive && S.portalCardActive]}>
-            {renderCardContent(item, isActive)}
-          </View>
-        </Focusable>
+        <FocusGroup style={{ flex: 1 }}>
+          <Focusable
+            hasTVPreferredFocus={shouldFocus}
+            screenKey="portals"
+            focusKey={`card-${item.id}`}
+            onFocus={() => {
+              setFocusedPortalId(item.id);
+              if (isTV) flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+            }}
+            onPress={() => connectToPortal(item)}
+            ringOnFocus={false}
+            style={S.pressable}
+          >
+            {(focused) => (
+              <View style={[
+                S.portalCard,
+                focused && S.portalCardFocused,
+                isActive && S.portalCardActive,
+                isActive && focused && S.portalCardActiveFocused,
+              ]}>
+                {renderCardContent(item, isActive, focused)}
+              </View>
+            )}
+          </Focusable>
 
-        <Focusable
-          onPress={() => handleDeletePortal(item)}
-          style={{ marginTop: ph(1.5) }}
-          ringOnFocus={false}
-        >
-          {(focusedBtn) => (
-            <View style={[
-              { height: ph(5.5), backgroundColor: "rgba(255,0,0,0.1)", borderRadius: ps(1), alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,0,0,0.2)" },
-              focusedBtn && { borderColor: "#591111", backgroundColor: "rgba(255,0,0,0.2)", transform: [{ scale: 1.02 }] }
-            ]}>
-              <Text style={{ color: "#ff4444", fontSize: ps(1.2), fontWeight: "bold", letterSpacing: 1 }}>
-                DELETE PORTAL
-              </Text>
-            </View>
-          )}
-        </Focusable>
+          <Focusable
+            screenKey="portals"
+            focusKey={`delete-${item.id}`}
+            onFocus={() => {
+              setFocusedPortalId(item.id);
+            }}
+            onPress={() => handleDeletePortal(item)}
+            style={S.deleteBtnWrapper}
+            ringOnFocus={false}
+          >
+            {(focusedBtn) => (
+              <View style={[
+                S.deleteBtn,
+                focusedBtn && S.deleteBtnFocused,
+              ]}>
+                <Text style={[S.deleteBtnText, focusedBtn && S.deleteBtnTextFocused]}>
+                  DELETE PORTAL
+                </Text>
+              </View>
+            )}
+          </Focusable>
+        </FocusGroup>
       </Animated.View>
     );
   };
@@ -254,14 +262,15 @@ export default function PortalsScreen() {
   const renderHeader = () => (
     <View style={S.header}>
       <Image source={require("../assets/images/TV.png")} style={S.headerLogoImage} resizeMode="contain" />
-
     </View>
   );
 
   // ── Add Button ─────────────────────────────────────────────────────────────
   const renderAddButton = () => (
-    <View style={S.actionArea}>
+    <FocusGroup style={S.actionArea}>
       <Focusable
+        screenKey="portals"
+        focusKey="add-portal-btn"
         ringOnFocus={false}
         onPress={() => router.push("/add-portal")}
         style={{ borderRadius: ps(1), overflow: "visible" }}
@@ -269,38 +278,22 @@ export default function PortalsScreen() {
         {(focused) => (
           <View
             style={[
-              { borderRadius: ps(1), overflow: "hidden", borderWidth: focused ? 1.5 : 1, borderColor: focused ? "#fff" : "rgba(255,255,255,0.1)" },
-              !focused && { backgroundColor: "rgba(255,255,255,0.05)" },
-              focused && {
-                backgroundColor: "#fff",
-                transform: [{ scale: 1.06 }],
-                shadowColor: "#fff",
-                shadowOpacity: 0.6,
-                shadowRadius: 12,
-                elevation: 0,
-              },
+              S.addBtn,
+              focused && S.addBtnFocused,
             ]}
           >
-            <View style={S.addBtn}>
-              <Ionicons name="add" size={ps(1.8)} color={focused ? "#000" : "#fff"} />
-              <Text style={[S.addBtnText, focused && { color: "#000" }]}>ADD NEW PORTAL</Text>
-            </View>
+            <Ionicons name="add" size={ps(1.6)} color={focused ? "#000000" : "#F5F5F7"} />
+            <Text style={[S.addBtnText, focused && S.addBtnTextFocused]}>ADD NEW PORTAL</Text>
           </View>
         )}
       </Focusable>
-    </View>
+    </FocusGroup>
   );
 
   // ── Empty state ────────────────────────────────────────────────────────────
-  // Two columns: branding and the call to action on the left, artwork on the
-  // right. It owns its own logo, so the shared header is not rendered alongside
-  // it — that would put the lockup on screen twice. Phones stack the columns.
   const renderEmptyState = () => (
     <View style={S.introRow}>
       <View style={S.introCopy}>
-        {/* favicon.png, not TV.png: the latter is 62% transparent padding, which
-            is why the header has to scale it 3x. This one is tightly cropped
-            with a near-black background that disappears against the screen. */}
         <Image source={require("../assets/images/TV.png")} style={S.introLogo} resizeMode="cover" />
 
         <Text style={S.introTitle}>Unlimited Entertainment</Text>
@@ -319,9 +312,7 @@ export default function PortalsScreen() {
             <View
               style={[
                 S.addButtonLarge,
-                { overflow: "hidden", borderWidth: focused ? 1.5 : 1, borderColor: focused ? "#fff" : "rgba(255,255,255,0.1)" },
-                !focused && { backgroundColor: "rgba(255,255,255,0.05)" },
-                focused && { backgroundColor: "#fff", transform: [{ scale: 1.06 }], shadowColor: "#fff", shadowOpacity: 0, shadowRadius: 2, elevation: 0 },
+                focused && S.addButtonLargeFocused,
               ]}
             >
               <Text style={[S.addButtonText, focused && { color: "#000" }]}>GET STARTED</Text>
@@ -330,8 +321,6 @@ export default function PortalsScreen() {
         </Focusable>
       </View>
 
-      {/* A fanned stack of the three library artworks, back to front. Order in
-          the tree is the paint order, so Live TV is last and sits on top. */}
       <View style={S.introArt}>
         <Image
           source={require("../assets/images/series.png")}
@@ -356,7 +345,6 @@ export default function PortalsScreen() {
   if (portals.length === 0) {
     return (
       <View style={S.container}>
-        {/* First child, so it layers behind the rest of the screen. */}
         <CinematicBackground />
         {isLoading && <LoadingOverlay message={loadingMessage} />}
         {renderEmptyState()}
@@ -367,8 +355,7 @@ export default function PortalsScreen() {
 
   return (
     <View style={S.container}>
-      {/* First child, so it layers behind the rest of the screen. */}
-      <CinematicBackground />
+
 
       {isLoading && <LoadingOverlay message={loadingMessage} />}
 
@@ -403,25 +390,18 @@ export default function PortalsScreen() {
       </View>
       {portals.length > 0 && renderAddButton()}
 
-      {/* Last in the tree so the overlay layers above the carousel. */}
       {dialogNode}
     </View>
   );
 }
 
 // ─── StyleSheet ───────────────────────────────────────────────────────────────
-// Rules:
-//   • All layout sizes  → pw() / ph() / ps()
-//   • borderWidth 1–2   → absolute hairlines
-//   • elevation         → absolute Android Z
-//   • letterSpacing     → small absolute sub-pixel values
-//   • opacity / scale   → unitless ratios
 const S = StyleSheet.create({
 
   // ── Root ──────────────────────────────────────────────────────────────────
   container: {
     flex: 1,
-    backgroundColor: "rgba(15, 15, 15, 0.03)",
+    backgroundColor: "#050608",
   },
 
   // ── Header ────────────────────────────────────────────────────────────────
@@ -430,58 +410,52 @@ const S = StyleSheet.create({
     paddingTop: ph(8),
     marginBottom: ph(5),
   },
-  brandingText: {
-    fontSize: isTV ? ps(2.5) : ps(2.2),
-    fontWeight: "500",
-    color: "#fff",
-    letterSpacing: 5,
-    marginBottom: ph(1),
-  },
   headerLogoImage: {
     width: pw(50),
     height: ph(8),
     transform: [{ scale: 3 }],
     marginBottom: ph(1),
   },
-  headerSubtitle: {
-    fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: "rgba(255,255,255,0.4)",
-    fontWeight: "400",
-    letterSpacing: 1.5,
-    textAlign: "center",
-    marginBottom: ph(0.5),
-  },
-  headerSubtitleAccent: {
-    fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: THEME.colors.primary,
-    fontWeight: '600',
-    letterSpacing: 2,
-    textAlign: 'center',
-  },
   actionArea: {
     alignItems: "center",
-    paddingBottom: ph(10), // Vertical spacing at bottom
-  },
-  addBtnWrapper: {
-    borderRadius: ps(1),
-    overflow: "hidden",
+    paddingBottom: ph(10),
   },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     paddingHorizontal: pw(2.5),
-    paddingVertical: ph(1.5),
+    paddingVertical: ph(1.4),
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    gap: pw(1),
-    borderRadius: ps(1),
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    gap: pw(0.8),
+    borderRadius: ps(1.5),
+  },
+  addBtnFocused: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#FFFFFF",
+    borderWidth: 1.5,
+    transform: [{ scale: 1.05 }],
+    ...Platform.select({
+      ios: {
+        shadowColor: "#FFFFFF",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 14,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
   },
   addBtnText: {
-    color: "rgba(255,255,255,0.8)",
+    color: "#F5F5F7",
     fontSize: ps(1.1),
-    fontWeight: "500",
-    letterSpacing: 2,
+    fontWeight: "700",
+    letterSpacing: 1.5,
+  },
+  addBtnTextFocused: {
+    color: "#000000",
   },
 
   // ── Carousel ──────────────────────────────────────────────────────────────
@@ -506,43 +480,46 @@ const S = StyleSheet.create({
   },
   pressable: {
     flex: 1,
-    borderRadius: ps(1.5),
+    borderRadius: ps(2),
     overflow: "hidden",
-  },
-  gradientBorder: {
-    flex: 1,
-    padding: 1, // Razor-thin border
-    borderRadius: ps(1.5),
   },
 
   // ── Portal card ───────────────────────────────────────────────────────────
   portalCard: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: ps(2),
-    padding: ps(1.8),
-    justifyContent: "space-between",
+    borderRadius: ps(2.5),
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
   },
   portalCardFocused: {
-    backgroundColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255, 255, 255, 0.9)",
     borderWidth: 1.5,
-    borderColor: "#fff",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
     ...Platform.select({
       ios: {
-        shadowColor: "#fff",
+        shadowColor: "#FFFFFF",
         shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
-        shadowRadius: 15,
+        shadowOpacity: 0.55,
+        shadowRadius: 16,
       },
       android: {
-        elevation: 0,
-      }
-    })
+        elevation: 8,
+      },
+    }),
   },
   portalCardActive: {
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  portalCardActiveFocused: {
+    borderColor: "#FFFFFF",
     borderWidth: 1.5,
-    borderColor: "rgba(255, 255, 255, 0.39)",
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+  },
+  portalCardGradient: {
+    flex: 1,
+    padding: ps(2.6),
+    justifyContent: "space-between",
   },
 
   cardHeader: {
@@ -551,34 +528,57 @@ const S = StyleSheet.create({
     alignItems: "center",
   },
   cardIconBox: {
-    width: ps(7),
-    height: ps(7),
-    borderRadius: ps(2),
+    width: ps(6.2),
+    height: ps(6.2),
+    borderRadius: ps(3.1),
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  cardIconBoxFocused: {
+    backgroundColor: "rgba(255, 255, 255, 0.10)",
+    borderColor: "rgba(255, 255, 255, 0.25)",
+  },
+  cardIconBoxActive: {
+    backgroundColor: "rgba(255, 255, 255, 0.07)",
+    borderColor: "rgba(255, 255, 255, 0.16)",
   },
 
   // ── Active badge ──────────────────────────────────────────────────────────
   activeBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     paddingHorizontal: pw(1.2),
-    paddingVertical: ph(0.7),
-    borderRadius: pw(5),          // pill
-    gap: pw(0.6),
+    paddingVertical: ph(0.6),
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    gap: pw(0.5),
+  },
+  activeBadgeFocused: {
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderColor: "rgba(255, 255, 255, 0.5)",
   },
   badgeDot: {
-    width: pw(0.6),
-    height: pw(0.6),
-    borderRadius: pw(0.3),
-    backgroundColor: "#70de5b",
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#FFFFFF",
+  },
+  badgeDotFocused: {
+    backgroundColor: "#FFFFFF",
   },
   activeBadgeText: {
-    color: "#fff",
-    fontSize: ps(0.8),
-    fontWeight: "600",
-    letterSpacing: 1,
+    color: "#FFFFFF",
+    fontSize: ps(0.85),
+    fontWeight: "700",
+    letterSpacing: 1.2,
+  },
+  activeBadgeTextFocused: {
+    color: "#FFFFFF",
   },
 
   // ── Card body ─────────────────────────────────────────────────────────────
@@ -587,64 +587,68 @@ const S = StyleSheet.create({
     justifyContent: "center",
   },
   cardName: {
-    fontSize: ps(3.2),
-    fontWeight: "300",
-    color: "#fff",
+    fontSize: ps(2.8),
+    fontWeight: "600",
+    color: "#F5F5F7",
     marginBottom: ph(0.5),
-    letterSpacing: 2,
+    letterSpacing: 1,
   },
   cardDetailText: {
-    fontSize: ps(1.4),
-    color: "rgba(255,255,255,0.3)",
-    fontWeight: "300",
-    marginBottom: ph(1.5),
-    letterSpacing: 1,
+    fontSize: ps(1.25),
+    color: "#9A9DA5",
+    fontWeight: "400",
+    marginBottom: ph(1.2),
+    letterSpacing: 0.5,
   },
   cardTypeLabel: {
-    fontSize: ps(1.6),
-    color: THEME.colors.primary,
-    fontWeight: "500",
-    letterSpacing: 4,
+    fontSize: ps(1.1),
+    color: "#666A73",
+    fontWeight: "700",
+    letterSpacing: 2.5,
   },
 
-  // ── Card actions ──────────────────────────────────────────────────────────
-  cardActionsRow: {
-    flexDirection: "row",
-    gap: pw(1.2),
+  // ── Delete Button ─────────────────────────────────────────────────────────
+  deleteBtnWrapper: {
+    marginTop: ph(1.5),
+    borderRadius: ps(1.5),
+    overflow: "visible",
   },
-  exploreBtn: {
-    flex: 1,
+  deleteBtn: {
     height: ph(5.5),
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: ps(0.8),
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderRadius: ps(1.5),
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  deleteBtnFocused: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#FFFFFF",
     borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.08)",
+    transform: [{ scale: 1.03 }],
+    ...Platform.select({
+      ios: {
+        shadowColor: "#FFFFFF",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.5,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
   },
-  exploreBtnFocused: {
-    borderColor: THEME.colors.primary,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    transform: [{ scale: 1.05 }],
-  },
-  exploreBtnText: {
-    color: "#fff",
+  deleteBtnText: {
+    color: "#9A9DA5",
     fontSize: ps(1.1),
     fontWeight: "700",
-    letterSpacing: 1,
+    letterSpacing: 1.5,
   },
-  settingsBtn: {
-    width: ph(5.5),
-    height: ph(5.5),
-    borderRadius: ps(0.8),
-    backgroundColor: "rgba(255,255,255,0.03)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.05)",
+  deleteBtnTextFocused: {
+    color: "#000000",
   },
 
-  // ── Empty state ───────────────────────────────────────────────────────────
   // ── Empty state (two-column intro) ────────────────────────────────────────
   introRow: {
     flex: 1,
@@ -655,14 +659,10 @@ const S = StyleSheet.create({
     paddingVertical: ph(4),
     gap: isTV ? pw(5) : ph(4),
   },
-  /** Left column. `flex-start` keeps every line ragged-right against the edge
-   *  the artwork does not occupy. */
   introCopy: {
     flex: isTV ? 1 : undefined,
     alignItems: "flex-start",
   },
-  /** favicon.png is a tight 3.31:1 crop, so the box is sized to that ratio and
-   *  `contain` leaves no dead space around it. */
   introLogo: {
     width: pw(20),
     height: pw(20) / 3.31,
@@ -670,14 +670,14 @@ const S = StyleSheet.create({
   },
   introTitle: {
     fontSize: isTV ? ps(3) : ps(2.4),
-    color: "#fff",
+    color: "#F5F5F7",
     fontWeight: "600",
     letterSpacing: 0.5,
   },
   introBody: {
     fontSize: isTV ? ps(1.4) : ps(1.15),
     lineHeight: isTV ? ps(2.2) : ps(1.8),
-    color: "rgba(255,255,255,0.5)",
+    color: "#9A9DA5",
     marginTop: ph(2),
     maxWidth: pw(38),
   },
@@ -687,25 +687,17 @@ const S = StyleSheet.create({
     alignSelf: "flex-start",
     marginTop: ph(5),
   },
-  /** Right column: the stage the three artworks are stacked on. No border or
-   *  clipping of its own — each layer carries its own frame, and clipping here
-   *  would cut the offsets off. */
   introArt: {
     flex: isTV ? 1.1 : undefined,
     width: isTV ? undefined : "100%",
     aspectRatio: 16 / 10,
   },
-  /** Every layer is the same size; only the offset and depth differ. 88% × 80%
-   *  of a 16:10 stage works out to roughly 16:9, which matches the artwork. */
   introArtLayer: {
     position: "absolute",
     width: "88%",
     height: "80%",
     ...CARD_FRAME,
   },
-  /** Depth comes from fading the layers behind rather than from shadows, which
-   *  Android will not draw outside a rounded, clipped view anyway. The three
-   *  offsets add up to exactly the stage, so nothing spills out of it. */
   introArtBack: {
     top: 0,
     left: "12%",
@@ -721,19 +713,36 @@ const S = StyleSheet.create({
     left: 0,
   },
   addButtonLarge: {
-    paddingHorizontal: pw(2),
+    paddingHorizontal: pw(2.5),
     paddingVertical: ph(1.5),
     alignItems: "center",
     justifyContent: "center",
     borderRadius: ps(1),
+    backgroundColor: "#17191D",
+    borderWidth: 1,
+    borderColor: "#3A3D43",
+  },
+  addButtonLargeFocused: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#FFFFFF",
+    borderWidth: 1.5,
+    transform: [{ scale: 1.06 }],
+    ...Platform.select({
+      ios: {
+        shadowColor: "#FFFFFF",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 14,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
   },
   addButtonText: {
-    color: "#fff",
+    color: "#F5F5F7",
     fontSize: ps(1.4),
     fontWeight: "700",
     letterSpacing: 1.5,
   },
-
-
-
 });

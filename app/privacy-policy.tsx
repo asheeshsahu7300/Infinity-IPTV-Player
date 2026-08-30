@@ -20,124 +20,43 @@ interface Section {
   bullets?: string[];
 }
 
-/**
- * The policy text itself, kept as data so the layout stays consistent and the
- * wording is edited in one place. Copy is intentionally unchanged from the
- * published policy — only its presentation is.
- */
 const SECTIONS: Section[] = [
   {
-    icon: 'create-outline',
-    title: 'Information You Provide',
-    body: ['Depending on the connection method you choose, the App may process information that you enter, including:'],
-    bullets: [
-      'M3U or M3U8 playlist URLs',
-      'Xtream Codes server URLs',
-      'Xtream Codes usernames',
-      'Xtream Codes passwords',
-      'MAG / Stalker portal information',
-      'MAC addresses',
-      'Favorite channels and media',
-      'Application preferences and settings',
-    ],
-  },
-  {
     icon: 'save-outline',
-    title: 'Local Storage',
+    title: 'Local Storage & Credentials',
     body: [
-      'The App may store portal information, playlist information, favorites, preferences, and related configuration data locally on your device.',
-      'This local information is used to allow the App to remember your configuration between sessions.',
+      'Your playlist URLs, credentials, favorites, and settings are stored strictly on your local device to preserve your configuration between sessions.',
+      'We do not operate backend servers and never collect, upload, or sell your personal data.',
     ],
   },
   {
     icon: 'globe-outline',
-    title: 'Third-Party IPTV Services',
+    title: 'Direct IPTV Connections',
     body: [
-      'When you connect the App to an IPTV service, the App communicates with the server or service that you provide.',
-      'Information required by that service, such as a server URL, username, password, playlist URL, or MAC address, may be transmitted to that third-party service to authenticate your connection or retrieve content.',
-      'Infinity IPTV Player does not control the privacy practices, security, or data handling of third-party IPTV providers.',
-      'You are responsible for reviewing the privacy policy and terms of any IPTV service that you connect to the App.',
+      'The App communicates directly with the IPTV service providers and playlist URLs you configure.',
+      'Infinity IPTV Player does not host, provide, or distribute media content, and has no control over third-party IPTV servers.',
     ],
   },
   {
-    icon: 'wifi-outline',
-    title: 'Network Requests',
+    icon: 'shield-checkmark-outline',
+    title: 'Zero Tracking & No Ads',
     body: [
-      'The App uses network connections to retrieve playlists, channel information, metadata, media information, and other content requested by the user.',
-      'The App does not operate or provide the IPTV services accessed through these connections.',
-    ],
-  },
-  {
-    icon: 'heart-outline',
-    title: 'Favorites and Application Settings',
-    body: [
-      'Favorites and application preferences may be stored locally on your device to provide quick access and preserve your settings.',
-    ],
-  },
-  {
-    icon: 'megaphone-outline',
-    title: 'Analytics and Advertising',
-    body: [
-      'The App does not currently display advertisements or use third-party advertising SDKs.',
-      'The App does not currently use third-party analytics services to track users.',
-    ],
-  },
-  {
-    icon: 'share-social-outline',
-    title: 'Data Sharing',
-    body: [
-      'Infinity IPTV Player does not sell user information.',
-      'The App does not intentionally share user information with third parties except where necessary to provide functionality requested by the user, such as communicating with an IPTV service configured by the user.',
-    ],
-  },
-  {
-    icon: 'lock-closed-outline',
-    title: 'Data Security',
-    body: [
-      'We take reasonable measures to protect information handled by the App.',
-      'However, no method of electronic transmission or storage can be guaranteed to be completely secure.',
-      'Users should only enter credentials for IPTV services that they are authorized to use.',
+      'The App contains no third-party advertisements, tracking SDKs, or user analytics.',
+      'Your viewing activity remains completely private to your device.',
     ],
   },
   {
     icon: 'trash-outline',
-    title: 'Data Retention and Deletion',
+    title: 'Data Control & Deletion',
     body: [
-      "Information stored locally by the App remains on the user's device until it is removed by the user, the application data is cleared, or the App is uninstalled.",
-      "Users can remove saved portal information and other locally stored application data through the App's available settings or Android system settings.",
-    ],
-  },
-  {
-    icon: 'happy-outline',
-    title: "Children's Privacy",
-    body: [
-      'Infinity IPTV Player is not specifically designed for children.',
-      'The App does not knowingly collect personal information from children.',
-    ],
-  },
-  {
-    icon: 'link-outline',
-    title: 'Third-Party Services',
-    body: [
-      'The App may communicate with third-party services configured by the user.',
-      'These third-party services operate independently and have their own privacy policies and terms.',
-      'Infinity IPTV Player is not responsible for the privacy practices of third-party services.',
-    ],
-  },
-  {
-    icon: 'refresh-outline',
-    title: 'Changes to This Privacy Policy',
-    body: [
-      'We may update this Privacy Policy from time to time.',
-      'Any changes will be reflected on this page with an updated "Last updated" date.',
+      'You have complete control over your data. Clearing app data or disconnecting a portal in Settings immediately and permanently removes all stored data from your device.',
     ],
   },
 ];
 
 const CONTACT_ROWS: { label: string; value: string; icon: IconName }[] = [
-  { label: 'Email', value: SUPPORT_EMAIL, icon: 'mail-outline' },
-  { label: 'Developer / Company', value: 'Infinity_Apps', icon: 'business-outline' },
-  { label: 'App', value: 'Infinity IPTV Player', icon: 'tv-outline' },
+  { label: 'Support Email', value: SUPPORT_EMAIL, icon: 'mail-outline' },
+  { label: 'Application', value: 'Infinity IPTV Player', icon: 'tv-outline' },
 ];
 
 /**
@@ -220,7 +139,6 @@ export default function PrivacyPolicyScreen() {
 
   const maxOffset = Math.max(0, contentH - viewportH);
   const canScroll = maxOffset > 4;
-  const thumbH = contentH > 0 ? Math.max(ps(4), (viewportH / contentH) * viewportH) : 0;
 
   const onScroll = useMemo(
     () =>
@@ -255,12 +173,6 @@ export default function PrivacyPolicyScreen() {
     { enabled: isTV && canScroll }
   );
 
-  const thumbTranslate = scrollY.interpolate({
-    inputRange: [0, Math.max(1, maxOffset)],
-    outputRange: [0, Math.max(0, viewportH - thumbH)],
-    extrapolate: 'clamp',
-  });
-
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
@@ -278,9 +190,6 @@ export default function PrivacyPolicyScreen() {
       </View>
 
       <View style={S.scrollArea} onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}>
-        {/* Animated.ScrollView, not ScrollView: a native-driver `Animated.event`
-            is an object the component attaches natively, and a plain ScrollView
-            would try to call it as a function. */}
         <Animated.ScrollView
           ref={scrollRef}
           style={S.scroll}
@@ -298,9 +207,7 @@ export default function PrivacyPolicyScreen() {
             <View style={S.heroText}>
               <Text style={S.heroTitle}>Your data stays on your device</Text>
               <Text style={S.heroBody}>
-                Infinity IPTV Player is a media player application that allows users to connect to and play content from
-                IPTV services and playlists that they are authorized to access. The App does not provide, host, sell, or
-                distribute IPTV channels, subscriptions, playlists, or credentials.
+                Infinity IPTV Player is a local media player. Your credentials, playlists, and viewing history remain strictly on your device. We do not host content, collect personal data, or track your activity.
               </Text>
             </View>
           </View>
@@ -313,14 +220,6 @@ export default function PrivacyPolicyScreen() {
             <ContactSection />
           </View>
         </Animated.ScrollView>
-
-        {/* Custom rail — the native indicator is hidden and gives no useful
-            feedback on TV, where scrolling is driven by the D-pad. */}
-        {canScroll && viewportH > 0 ? (
-          <View style={S.scrollTrack} pointerEvents="none">
-            <Animated.View style={[S.scrollThumb, { height: thumbH, transform: [{ translateY: thumbTranslate }] }]} />
-          </View>
-        ) : null}
       </View>
     </View>
   );
@@ -386,20 +285,6 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(6),
     paddingTop: ph(3),
     paddingBottom: ph(8),
-  },
-  scrollTrack: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    right: pw(1.5),
-    width: 3,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  scrollThumb: {
-    width: 3,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.45)',
   },
 
   // ── Hero ──────────────────────────────────────────────────────────────────

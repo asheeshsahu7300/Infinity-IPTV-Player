@@ -11,9 +11,9 @@ type IconName = React.ComponentProps<typeof Ionicons>["name"];
 export type DialogTone = "neutral" | "danger" | "success";
 
 const TONES: Record<DialogTone, { accent: string; badge: string; fill: string; fillText: string }> = {
-  neutral: { accent: "#ffffff", badge: "rgba(255,255,255,0.07)", fill: "#ffffff", fillText: "#000000" },
-  danger: { accent: "#c5312ab0", badge: "rgba(255,69,58,0.12)", fill: "#c73932b5", fillText: "#ffffff" },
-  success: { accent: "#33e44ebb", badge: "rgba(50,215,75,0.12)", fill: "#ffffff", fillText: "#000000" },
+  neutral: { accent: "#FFFFFF", badge: "rgba(255,255,255,0.08)", fill: "#FFFFFF", fillText: "#000000" },
+  danger: { accent: "#FF4D57", badge: "rgba(255,77,87,0.16)", fill: "#FF4D57", fillText: "#FFFFFF" },
+  success: { accent: "#63E65C", badge: "rgba(99,230,92,0.16)", fill: "#63E65C", fillText: "#000000" },
 };
 
 const DEFAULT_ICON: Record<DialogTone, IconName> = {
@@ -272,9 +272,9 @@ const S = StyleSheet.create({
     paddingVertical: ps(3.5),
     paddingHorizontal: ps(3.5),
     borderRadius: ps(2.5),
-    backgroundColor: "#101014",
+    backgroundColor: "rgba(18, 20, 26, 0.95)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.09)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
   badge: {
     width: ps(6),

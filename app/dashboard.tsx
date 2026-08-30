@@ -207,21 +207,30 @@ export default function DashboardScreen() {
             {(focused) => syncing ? (
               <ActivityIndicator size="small" color={focused ? "#000" : "#fff"} />
             ) : (
-              <Ionicons name="refresh" size={ps(2)} color={focused ? "#000" : "#fff"} />
+              <Ionicons name="refresh" size={isTV ? ps(1.8) : ps(2.2)} color={focused ? "#000" : "#fff"} />
             )}
           </Focusable>
           <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/portals")} style={S.roundBtn}>
-            {(focused) => <Ionicons name="apps" size={ps(2)} color={focused ? "#000" : "#fff"} />}
+            {(focused) => <Ionicons name="apps" size={isTV ? ps(1.8) : ps(2.2)} color={focused ? "#000" : "#fff"} />}
           </Focusable>
           <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/settings")} style={S.roundBtn}>
-            {(focused) => <Ionicons name="settings" size={ps(2)} color={focused ? "#000" : "#fff"} />}
+            {(focused) => <Ionicons name="settings-sharp" size={isTV ? ps(1.8) : ps(2.2)} color={focused ? "#000" : "#fff"} />}
           </Focusable>
         </View>
       </View>
 
+      {/* Cinematic Hero Section */}
       <View style={S.heroSection}>
+        <LinearGradient
+          colors={["rgba(8, 8, 12, 0.75)", "rgba(8, 8, 12, 0.35)", "transparent"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={S.heroGradientOverlay}
+        />
         <Text style={S.heroTitle}>Unlimited Entertainment</Text>
-        <Text style={S.heroDesc}>Access thousands of Channels, global movies and exclusive series directly on your screen.</Text>
+        <Text style={S.heroDesc}>
+          Access thousands of channels, global movies and exclusive series directly on your screen.
+        </Text>
         <View style={S.heroButtons}>
           {/* Initial focus belongs to the Live TV tile below, not here. */}
           <HeroPill icon="search" text="Search Content" onPress={() => router.push("/search")} />
@@ -259,22 +268,25 @@ export default function DashboardScreen() {
                   style={[
                     S.cardBorder,
                     focused && S.cardBorderFocused,
-                    focused && { transform: [{ scale: 1.05 }] }
+                    focused && { transform: [{ scale: 1.04 }] }
                   ]}
                 >
                   <View style={S.browseCardInner}>
-                    {/* `contain`, not `cover`: these are composed pieces of
-                        artwork, so the whole frame has to stay visible. `cover`
-                        filled the card by cropping the sides away. */}
-                    <Image source={cat.img} resizeMode="cover" style={{ width: undefined, height: undefined, flex: 1, backgroundColor: '#0000', }} />
+                    <Image source={cat.img} resizeMode="cover" style={{ width: undefined, height: undefined, flex: 1, backgroundColor: '#0000' }} />
 
-                    {/* Dark glass overlay covering the ENTIRE image */}
-
+                    {/* Dark gradient overlay to soften poster collage and ensure maximum legibility */}
+                    <LinearGradient
+                      colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.35)", "rgba(8,8,12,0.92)"]}
+                      locations={[0, 0.5, 1]}
+                      style={StyleSheet.absoluteFillObject}
+                    />
 
                     {/* Text container sitting on top at the bottom */}
                     <View style={S.browseCardContent}>
-                      <Ionicons name={cat.icon as any} size={ps(2.2)} color="#fff" />
-                      <Text style={S.browseCardTitle}>{cat.title}</Text>
+                      <View style={[S.browseCardIconWrap, focused && S.browseCardIconWrapFocused]}>
+                        <Ionicons name={cat.icon as any} size={ps(2.2)} color={focused ? "#fff" : "#d8dce8"} />
+                      </View>
+                      <Text style={[S.browseCardTitle, focused && S.browseCardTitleFocused]}>{cat.title}</Text>
                     </View>
                   </View>
                 </View>
@@ -453,7 +465,7 @@ const S = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: RAIL_H_PAD,
     // Tighter on TV so everything fits one screen without scrolling.
-    marginBottom: isTV ? ph(2) : ph(4),
+    marginBottom: isTV ? ph(1.8) : ph(4),
     marginTop: isTV ? ph(1.5) : ph(4),
   },
   logoRow: {
@@ -468,39 +480,60 @@ const S = StyleSheet.create({
     letterSpacing: 5,
   },
   headerLogoImage: {
-    width: pw(25),
-    height: ph(8),
-    transform: [{ scale: 2.5 }],
-    marginLeft: -pw(6),
+    width: isTV ? pw(22) : pw(38),
+    height: isTV ? ph(7.2) : ph(6.5),
+    transform: [{ scale: isTV ? 2.1 : 2.2 }],
+    marginLeft: isTV ? -pw(4.2) : -pw(3),
   },
   headerActions: {
     flexDirection: "row",
-    gap: pw(1.5),
+    gap: isTV ? pw(1.2) : pw(2),
+    alignItems: "center",
   },
   roundBtn: {
-    width: pw(5),
-    height: pw(5),
-    borderRadius: pw(2.5),
+    width: isTV ? pw(3.8) : pw(9.5),
+    height: isTV ? pw(3.8) : pw(9.5),
+    borderRadius: isTV ? pw(1.9) : pw(4.75),
     backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
     justifyContent: "center",
     alignItems: "center",
   },
   roundBtnFocused: {
     backgroundColor: "#FFFFFF",
-    transform: [{ scale: 1.1 }],
+    borderColor: "#FFFFFF",
+    transform: [{ scale: 1.12 }],
+    ...Platform.select({
+      ios: {
+        shadowColor: "#fff",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.85,
+        shadowRadius: 14,
+      },
+      android: {
+        elevation: 12,
+      },
+    }),
   },
 
   // ── Hero ──
   heroSection: {
     paddingHorizontal: RAIL_H_PAD,
-    maxWidth: pw(70),
+    maxWidth: pw(72),
+    position: "relative",
     // TV: this band absorbs the leftover height instead of the browse row, so
     // the cards keep their landscape shape (their artwork is landscape — letting
     // them stretch to fill crops the sides off) and the slack becomes breathing
     // room around the hero text rather than a dead black strip under the cards.
     ...(isTV
-      ? { flex: 1, justifyContent: "center" as const, marginBottom: ph(2) }
-      : { marginBottom: ph(10) }),
+      ? { flex: 1, justifyContent: "center" as const, marginBottom: ph(1.5) }
+      : { marginBottom: ph(8) }),
+  },
+  heroGradientOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: ps(2),
+    zIndex: -1,
   },
   heroTagline: {
     fontSize: ps(1.1),
@@ -508,16 +541,21 @@ const S = StyleSheet.create({
     letterSpacing: 2.5,
   },
   heroTitle: {
-    fontSize: ps(3),
-    color: "#fff",
-    fontWeight: "500",
-    marginVertical: ph(2),
+    fontSize: isTV ? ps(3.2) : ps(2.6),
+    color: "#FFFFFF",
+    fontWeight: "600",
+    letterSpacing: 0.4,
+    marginVertical: ph(1.5),
+    textShadowColor: "rgba(0, 0, 0, 0.75)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
   },
   heroDesc: {
-    fontSize: ps(1.4),
-    color: "#a0a4b8",
-    lineHeight: ph(2.5),
-    marginBottom: ph(5),
+    fontSize: isTV ? ps(1.3) : ps(1.1),
+    color: "#A2A7BD",
+    lineHeight: isTV ? ph(2.8) : ph(2.3),
+    marginBottom: ph(3.5),
+    maxWidth: isTV ? pw(58) : "100%",
   },
   heroButtons: {
     flexDirection: "row",
@@ -529,36 +567,36 @@ const S = StyleSheet.create({
   },
   heroPillContainer: {
     borderRadius: 100,
-    borderWidth: 0.8,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
     overflow: "hidden",
   },
   heroPillContainerFocused: {
-    borderColor: "#fff",
+    borderColor: "#FFFFFF",
     ...Platform.select({
       ios: {
         shadowColor: "#fff",
         shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
+        shadowOpacity: 0.75,
         shadowRadius: pw(1.5),
       },
       android: {
-        elevation: 0,
-      }
-    })
+        elevation: 8,
+      },
+    }),
   },
   heroPillGradient: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: pw(2.2),
-    paddingVertical: ph(1.2),
+    paddingHorizontal: isTV ? pw(2.2) : pw(4.5),
+    paddingVertical: isTV ? ph(1.2) : ph(1.6),
     borderRadius: 100,
     overflow: "hidden",
   },
   heroPillText: {
     color: "#fff",
     fontWeight: "600",
-    fontSize: ps(1.2),
+    fontSize: isTV ? ps(1.2) : ps(1.1),
     letterSpacing: 0.5,
   },
 
@@ -572,29 +610,24 @@ const S = StyleSheet.create({
     // the bottom, and the 1 : 1.6 split against heroSection keeps the cards
     // roughly landscape.
     ...(isTV
-      ? { flex: 1.6, marginBottom: ph(3) }
+      ? { flex: 1.6, marginBottom: ph(3.5) }
       : { marginBottom: ph(6) }),
   },
   browseContainer: {
     flexDirection: isTV ? "row" : "column",
-    // Tightened from pw(2): the gap is dead space between the cards, and
-    // narrowing it goes straight into their width.
-    gap: isTV ? pw(1.8) : pw(2),
+    // Expanded gap for breathing room as recommended by TV design feedback
+    gap: isTV ? pw(2.8) : pw(2.2),
     ...(isTV ? { flex: 1 } : null),
   },
   browseCard: {
     flex: 1,
-    // Horizontal inset almost removed — it only existed to give the old
-    // scale-on-focus room to grow without clipping, and that scale is gone, so
-    // it was costing each card 2% of the screen for nothing. Vertical inset is
-    // left alone so the cards keep the height set below.
     paddingHorizontal: pw(0.3),
-    paddingVertical: pw(1),
+    paddingVertical: pw(0.8),
     overflow: "visible",
     // Touch layouts stack these vertically inside a ScrollView, so they still
     // need an explicit height; on TV the row stretches them.
-    height: ph(42), minHeight: ph(42),
-
+    height: ph(42),
+    minHeight: ph(42),
   },
   cardBorder: {
     flex: 1,
@@ -602,28 +635,24 @@ const S = StyleSheet.create({
     ...CARD_FRAME,
   },
   cardBorderFocused: {
-    borderColor: "#ffffff",
-    borderWidth: 1,
+    borderColor: "#FFFFFF",
+    borderWidth: 1
+    ,
     backgroundColor: "transparent",
-    // No width/height/scale here on purpose: anything that changes the box
-    // makes the focused card a different size from its two neighbours.
     ...Platform.select({
       ios: {
         shadowColor: "#fff",
         shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
-        shadowRadius: 16,
+        shadowOpacity: 0.85,
+        shadowRadius: 18,
       },
       android: {
-        elevation: 0,
-      }
-    })
+        elevation: 14,
+      },
+    }),
   },
   browseCardInner: {
     flex: 1,
-    // Solid, not transparent: `contain` letterboxes the artwork, and the bands
-    // it leaves have to read as the card's own body rather than a hole through
-    // to the cinematic background.
     backgroundColor: THEME.colors.background,
     borderRadius: CARD_FRAME_INNER_RADIUS,
     overflow: "hidden",
@@ -634,7 +663,7 @@ const S = StyleSheet.create({
     width: "100%",
     left: 0,
     right: 0,
-    padding: ps(1.5),
+    padding: ps(1.6),
     borderBottomLeftRadius: ps(1.1),
     borderBottomRightRadius: ps(1.1),
     overflow: "hidden",
@@ -642,10 +671,25 @@ const S = StyleSheet.create({
     alignItems: "center",
     gap: pw(1),
   },
+  browseCardIconWrap: {
+    width: ps(3.2),
+    height: ps(3.2),
+    borderRadius: ps(1.6),
+    backgroundColor: "rgba(255,255,255,0.06)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  browseCardIconWrapFocused: {
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
   browseCardTitle: {
-    color: "#e8e8e8",
-    fontSize: ps(1.8),
+    color: "#D8DCE8",
+    fontSize: isTV ? ps(1.8) : ps(1.5),
     fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  browseCardTitleFocused: {
+    color: "#FFFFFF",
   },
 
   // ── Rails ──
