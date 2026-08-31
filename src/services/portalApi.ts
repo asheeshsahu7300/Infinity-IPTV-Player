@@ -92,6 +92,69 @@ async function tryConvertToM3U8(candidateUrl: string): Promise<string | null> {
   return null;
 }
 
+// ─── Redirect resolution ──────────────────────────────────────────────────────
+// Some Stalker/Xtream/M3U backends return a URL that itself 301/302-redirects
+// to the real CDN edge node. Letting the player follow that at play-time adds
+// a full extra DNS+TCP+TLS+HTTP round trip before the first byte arrives.
+// Resolve the chain once here and hand the player the final direct URL.
+async function resolveDirectStreamUrl(startUrl: string): Promise<string> {
+  if (!/^https?:\/\//i.test(startUrl)) return startUrl; // rtmp/rtsp/etc — nothing to resolve
+
+  // 1. Try HEAD request via Fetch API first (fastest — res.url contains final target after 301/302 redirects)
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(startUrl, {
+      method: "HEAD",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "okhttp/3.12.1",
+        Accept: "*/*",
+      },
+    });
+    clearTimeout(timeoutId);
+
+    if (res.url && /^https?:\/\//i.test(res.url) && res.url !== startUrl) {
+      return res.url;
+    }
+  } catch {
+    // HEAD failed or timed out, fallback to GET
+  }
+
+  // 2. Fallback: Fast Range GET via Axios to capture responseURL
+  try {
+    const res = await axios.get(startUrl, {
+      timeout: 4000,
+      headers: {
+        "User-Agent": "okhttp/3.12.1",
+        Accept: "application/json, text/javascript, */*; q=0.01",
+        Range: "bytes=0-1024",
+      },
+      maxRedirects: 5,
+    });
+
+    const final =
+      (res.request as any)?.responseURL ||
+      (res.request as any)?._url ||
+      (res.request as any)?._responseURL ||
+      res.config?.url;
+
+    if (final && /^https?:\/\//i.test(final)) {
+      return final;
+    }
+  } catch (err: any) {
+    const final =
+      (err?.response?.request as any)?.responseURL ||
+      (err?.request as any)?.responseURL ||
+      (err?.response?.request as any)?._url;
+    if (final && /^https?:\/\//i.test(final)) {
+      return final;
+    }
+  }
+
+  return startUrl;
+}
+
 const rmAcceptHeader = {
   transformRequest: [
     (data: any, headers?: any) => {
@@ -141,7 +204,7 @@ const headers = (mac: string, token?: string, url?: string) => {
     Accept: "application/json, text/javascript, */*; q=0.01",
     Cookie: cookieParts.join("; "),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...originHeaders,
+
 
     Connection: "Keep-Alive",
   };
@@ -474,7 +537,7 @@ function publishCategories(
     ...mapCats(vodRows, "vod"),
     ...mapCats(seriesRows, "series"),
   ];
-  if (all.length > 0) store.setCategories(all, portalId).catch(() => {});
+  if (all.length > 0) store.setCategories(all, portalId).catch(() => { });
 }
 
 // Helper for fetching lists with zero-item retry logic
@@ -636,7 +699,7 @@ export const portalApi = {
     return requestManager.request(cacheKey, async () => {
       const rawCategoryId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
       const isAllCat = !rawCategoryId || rawCategoryId === "all" || rawCategoryId === "*";
-      
+
       let rows = await fetchWithRetry(portal, (refreshed) => {
         const base = safe(refreshed.config.url).replace(/\/$/, "");
         let url = `${base}/portal.php?type=itv&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
@@ -733,7 +796,7 @@ export const portalApi = {
       try {
         const rawCategoryId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
         const isAllCat = !rawCategoryId || rawCategoryId === "all" || rawCategoryId === "*";
-        
+
         let rows = await fetchWithRetry(portal, (refreshed) => {
           const base = safe(refreshed.config.url).replace(/\/$/, "");
           let url = `${base}/portal.php?type=vod&action=get_ordered_list&max_page_items=100000&p=${page}&JsHttpRequest=1-xml`;
@@ -851,7 +914,7 @@ export const portalApi = {
       try {
         const rawCategoryId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
         const isAllCat = !rawCategoryId || rawCategoryId === "all" || rawCategoryId === "*";
-        
+
         let rows = await fetchWithRetry(portal, (refreshed) => {
           const base = safe(refreshed.config.url).replace(/\/$/, "");
           let url = `${base}/portal.php?type=series&action=get_ordered_list&max_page_items=100000&p=${page}&JsHttpRequest=1-xml`;
@@ -1061,6 +1124,10 @@ export const portalApi = {
         else rawOut = String(res.data.cmd ?? res.data.url ?? res.data.link ?? "").trim();
       }
 
+      if (rawOut && /%mac%/i.test(rawOut)) {
+        rawOut = rawOut.replace(/%mac%/ig, refreshed.config.mac ?? "");
+      }
+
       // Clean backslashes and command prefixes (ffmpeg, ffrt, auto, -i, vlc)
       let out = rawOut.replace(/\\/g, "").trim();
       out = out.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
@@ -1075,6 +1142,26 @@ export const portalApi = {
         (/^(https?|rtmp|rtsp):\/\//i.test(out) ? out : "");
 
       let finalUrl = httpUrl || out || "";
+
+      // Fix relative URLs (e.g. "/live/..." or "/media/...")
+      if (finalUrl && finalUrl.startsWith("/") && !finalUrl.startsWith("//")) {
+        finalUrl = `${base}${finalUrl}`;
+      }
+
+      // Rewrite localhost / 127.0.0.1 streams to portal host (MAG middleware proxy behavior)
+      if (finalUrl && /https?:\/\/(localhost|127\.0\.0\.1)/i.test(finalUrl)) {
+        try {
+          const baseUrlObj = new URL(base);
+          const finalUrlObj = new URL(finalUrl);
+          finalUrlObj.hostname = baseUrlObj.hostname;
+          if (baseUrlObj.port && (!finalUrlObj.port || finalUrlObj.port === "80" || finalUrlObj.port === "8080")) {
+            finalUrlObj.port = baseUrlObj.port;
+          }
+          finalUrl = finalUrlObj.toString();
+        } catch {
+          finalUrl = finalUrl.replace(/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, base);
+        }
+      }
 
       // Fix empty stream parameter (e.g. "stream=&") if portal stripped stream ID
       if (finalUrl && /stream=(&|$)/i.test(finalUrl)) {
@@ -1105,7 +1192,23 @@ export const portalApi = {
         finalUrl = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
       }
 
-      return finalUrl || out || "";
+      let out2 = finalUrl || out || "";
+
+      // Resolve redirect chains ONLY for URLs without one-time play tokens
+      if (
+        out2 &&
+        /^https?:\/\//i.test(out2) &&
+        !/\.m3u8(\?|$)/i.test(out2) &&
+        !/(play_token|token|auth_token|ticket|session)=/i.test(out2)
+      ) {
+        try {
+          out2 = await resolveDirectStreamUrl(out2);
+        } catch {
+          // fallback safely to out2
+        }
+      }
+
+      return out2;
     } catch (e) {
       console.warn("getStreamUrl failed:", e);
       if (retryCount === 0) {

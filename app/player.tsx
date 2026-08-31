@@ -95,12 +95,12 @@ function detectNetworkQuality(type: string | null, effectiveType?: string | null
 function calcNetworkCacheMs(quality: NetworkQuality, isLive: boolean, is4K: boolean): number {
   let base: number;
   switch (quality) {
-    case "fast": base = isLive ? 800 : 500; break;
-    case "medium": base = isLive ? 1500 : 1000; break;
-    case "slow": base = isLive ? 3000 : 2000; break;
-    default: base = isLive ? 1000 : 600; break;
+    case "fast": base = isLive ? 1200 : 600; break;
+    case "medium": base = isLive ? 1800 : 1000; break;
+    case "slow": base = isLive ? 2500 : 1500; break;
+    default: base = isLive ? 1500 : 800; break;
   }
-  return is4K ? Math.round(base * 1.3) : base;
+  return is4K ? Math.round(base * 1.25) : base;
 }
 
 function getQualityLabel(quality: NetworkQuality, is4K: boolean): string {
@@ -177,10 +177,12 @@ export default function PlayerScreen() {
   const insets = useSafeAreaInsets();
   const activePortal = usePortalStore((s) => s.activePortal);
 
+  const [isDetected4K, setIsDetected4K] = useState(false);
   const isLive = params.type === "live";
   const is4K =
-    typeof params.title === "string" &&
-    (params.title.toUpperCase().includes("4K") || params.title.toUpperCase().includes("UHD"));
+    isDetected4K ||
+    (typeof params.title === "string" &&
+      (params.title.toUpperCase().includes("4K") || params.title.toUpperCase().includes("UHD")));
 
   // Decided once per mount: VLC gives us all the IPTV-hardening below; when
   // it's unavailable (e.g. Expo Go, web) we fall back to expo-av so playback
@@ -271,6 +273,9 @@ export default function PlayerScreen() {
   const isAdjustingVolume = useRef(false);
   const isAdjustingBrightness = useRef(false);
   const isRetryingRef = useRef(false);
+  const hasStartedPlayingRef = useRef(false);
+  const stallCountRef = useRef(0);
+  const stallWindowStartRef = useRef(Date.now());
   const brightnessPermissionRequestInProgress = useRef(false);
 
   const targetSeekPosition = useRef<number | null>(null);
@@ -532,13 +537,13 @@ export default function PlayerScreen() {
   // ── Orientation + brightness ──────────────────────────────────────────────
   useEffect(() => {
     if (Platform.OS === "web") return;
-    ScreenOrientation.unlockAsync().catch(() => {});
+    ScreenOrientation.unlockAsync().catch(() => { });
     if (!isTV) {
       Brightness.getBrightnessAsync()
         .then((b) => {
           if (!isNaN(b)) brightnessRef.current = b;
         })
-        .catch(() => {});
+        .catch(() => { });
 
       const reqPerm = async () => {
         if (brightnessPermissionRequestInProgress.current) return;
@@ -546,7 +551,7 @@ export default function PlayerScreen() {
           brightnessPermissionRequestInProgress.current = true;
           const perm = await Brightness.getPermissionsAsync().catch(() => null);
           if (perm && !perm.granted && perm.canAskAgain) {
-            await Brightness.requestPermissionsAsync().catch(() => {});
+            await Brightness.requestPermissionsAsync().catch(() => { });
           }
         } catch {
           // Ignore permission request error
@@ -558,8 +563,8 @@ export default function PlayerScreen() {
     }
     return () => {
       if (!isTV) {
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
-        Brightness.restoreSystemBrightnessAsync().catch(() => {});
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => { });
+        Brightness.restoreSystemBrightnessAsync().catch(() => { });
       }
       if (params.contentId && positionRef.current > 0 && durationRef.current > 0) {
         StreamManager.savePlaybackPosition(params.contentId, positionRef.current, durationRef.current);
@@ -658,7 +663,7 @@ export default function PlayerScreen() {
             const newBright = Math.min(1, Math.max(0, initialTouch.current.bright + delta));
             brightnessRef.current = newBright;
             setBrightnessIndicator(newBright);
-            Brightness.setBrightnessAsync(newBright).catch(() => {});
+            Brightness.setBrightnessAsync(newBright).catch(() => { });
           }
         } else if (isScrubbing.current) {
           const amt = Math.round(dx / 10) * 1000;
@@ -1105,58 +1110,51 @@ export default function PlayerScreen() {
     }));
   };
 
-  // ── Build VLC initOptions — IPTV / 4K hardened & Instant Start ───────────
+  // ── Build VLC initOptions — Zero Buffering & Instant Startup ────────
   const buildVlcInitOptions = (): string[] => {
-    const cache = networkCacheMs;
-    const rtspCache = Math.round(cache * 0.75);
+    const liveCache = networkCacheMsRef.current ? Math.min(networkCacheMsRef.current, 600) : 300;
+    const vodCache = 200;
+    const cache = isLive ? liveCache : vodCache;
+
     return [
-      // ── Instant start & low-latency buffering ──────────────────────────
-      `--network-caching=${cache}`,       // Primary HTTP/HLS buffer
-      `--live-caching=${cache}`,          // Live stream buffer
-      `--file-caching=${isLive ? cache : Math.min(cache, 500)}`, // Local / VOD cache
-      `--sout-mux-caching=${cache}`,      // Muxer output cache
+      `--network-caching=${cache}`,
+      `--live-caching=${cache}`,
+      `--file-caching=${isLive ? cache : 150}`,
+      `--sout-mux-caching=${cache}`,
 
-      // ── Clock — zero jitter latency ───────────────────────────────────
-      `--clock-jitter=0`,
-      `--clock-synchro=0`,
+      // Instant connection & DNS
+      "--ipv4",                           // Immediate IPv4 resolution
+      "--http-reconnect",                 // Instant reconnect
+      "--http-continuous",                // Keep-alive TCP pipeline
+      "--http-user-agent=okhttp/3.12.1",
+      "--rtsp-tcp",
+      "--no-sub-autodetect-file",         // Skip local sub scanning for instant playback start
 
-      // ── RTSP / RTP ────────────────────────────────────────────────────
-      `--rtsp-tcp`,                       // TCP is more reliable than UDP on lossy links
-      `--rtsp-caching=${rtspCache}`,
-      `--rtp-max-misorder=100`,           // Tolerate 100-packet misordering (common on 3G)
+      // Hardware decode acceleration
+      "--codec=mediacodec,avcodec",
+      "--avcodec-hw=any",
+      "--avcodec-fast",
+      "--avcodec-threads=0",
+      "--avcodec-skiploopfilter=4",       // Skip non-ref deblocking for zero decode latency
 
-      // ── Fast probing & HTTP streaming ─────────────────────────────────
-      `--http-reconnect`,                 // Auto-reconnect dropped HTTP connections
-      `--http-continuous`,                // Keep TCP connection alive between HLS segments
-      `--http-user-agent=Lavf/58.76.100`, // VLC/FFmpeg-compatible UA — accepted by all IPTV providers
-      `--no-sub-autodetect-file`,         // Skip filesystem search for subtitles to start instantly
+      // Frame & audio sync
+      "--audio-time-stretch",
+      "--drop-late-frames",
+      "--skip-frames",
+      "--no-stats",
+      "--no-video-title-show",
 
-      // ── Hardware decode chain: MediaCodec → libavcodec ────────────────
-      `--codec=mediacodec,avcodec`,
-      `--avcodec-hw=any`,                 // CRITICAL for 4K streams (hardware decoding)
-      `--avcodec-threads=0`,              // Let VLC auto-detect thread count
-      `--avcodec-fast`,                   // Allow fast (non-reference) decode — critical for 4K realtime
-
-      // ── TS / HLS demux ────────────────────────────────────────────────
-      `--ts-seek-percent`,                // %-based seeking in TS (faster than byte-seeking)
-      `--no-ts-trust-pcr`,                // Don't trust PCR timestamps (wrong on many IPTV TS feeds)
-
-      // ── Audio ─────────────────────────────────────────────────────────
-      `--audio-time-stretch`,             // Compensate audio drift during buffering/reconnect
-
-      // ── Frame handling ────────────────────────────────────────────────
-      `--drop-late-frames`,               // Drop frames that arrive past their PTS
-      `--skip-frames`,                    // Allow frame-skipping under heavy load
-
-      // ── General & OSD bypass for instant frame render ─────────────────
-      `--no-video-title-show`,            // No VLC title overlay
-      `--no-stats`,                       // Disable internal statistics (saves CPU)
-      `--demux-filter=none`,              // Bypass demux filters
-
-      // ── Seek mode per content type ────────────────────────────────────
+      // Live vs VOD seek options
       ...(isLive
-        ? [`--no-input-fast-seek`]        // Fast-seek breaks HLS live-edge positioning
-        : [`--input-fast-seek`]),         // Fast-seek improves VOD scrubbing responsiveness
+        ? [
+            "--clock-jitter=0",
+            "--clock-synchro=0",
+            "--no-input-fast-seek",
+            "--no-ts-trust-pcr",
+          ]
+        : [
+            "--input-fast-seek",
+          ]),
     ];
   };
 
@@ -1170,8 +1168,7 @@ export default function PlayerScreen() {
     <View style={S.container} {...panResponder.panHandlers}>
       <StatusBar hidden />
 
-      {/* ── Player: VLC when the native module is available (full IPTV
-             hardening below), expo-av otherwise as a compatibility fallback ── */}
+      {/* ── Player: VLC when the native module is available, expo-av otherwise ── */}
       {usingVLC ? (
         // @ts-ignore
         <VLCPlayer
@@ -1181,30 +1178,43 @@ export default function PlayerScreen() {
           source={({
             uri: streamUrl,
             headers: {
-              "User-Agent": "Lavf/58.76.100",
+              "User-Agent": "okhttp/3.12.1",
               "Accept": "*/*",
               "Connection": "keep-alive",
-              "Icy-MetaData": "1",
+              ...(activePortal?.config?.url
+                ? { Referer: `${String(activePortal.config.url).replace(/\/$/, "")}/c/index.html` }
+                : {}),
             },
             initOptions: buildVlcInitOptions(),
           }) as any}
-          seek={vlcSeekTarget}
+          seek={!isLive ? vlcSeekTarget : undefined}
+          autoplay={autoPlay}
           paused={!isPlaying}
           rate={playbackSpeed}
           volume={currentVolume}
           videoAspectRatio={ASPECT_RATIOS[aspectRatioIndex].resize}
-          // @ts-ignore — videoTrack/audioTrack/textTrack exist at runtime but missing from VLC lib types
-          videoTrack={selectedVideoTrack}
           audioTrack={selectedAudioTrack}
           textTrack={selectedTextTrack}
           onLoad={(e: any) => {
+            setIsLoading(false);
+            setIsBuffering(false);
+            retryCount.current = 0;
             const durationMs = normalizeVlcTime(e.duration);
             handleLoadCommon(durationMs);
-            if (e.videoTracks) setVideoTracks(normalizeVlcTracks(e.videoTracks));
+            if (e.videoTracks) {
+              const tracks = normalizeVlcTracks(e.videoTracks);
+              setVideoTracks(tracks);
+              const has4kTrack = e.videoTracks.some(
+                (t: any) => (t.width && t.width >= 3840) || (t.height && t.height >= 2160)
+              );
+              if (has4kTrack) setIsDetected4K(true);
+            }
             if (e.audioTracks) setAudioTracks(normalizeVlcTracks(e.audioTracks));
             if (e.textTracks) setTextTracks(normalizeVlcTracks(e.textTracks));
           }}
           onPlaying={() => {
+            hasStartedPlayingRef.current = true;
+            setIsPlaying(true);
             setIsLoading(false);
             setIsBuffering(false);
             setPlaybackFailed(false);
@@ -1223,6 +1233,12 @@ export default function PlayerScreen() {
           onProgress={(e: any) => {
             const currentMs = normalizeVlcTime(e.currentTime);
             const durationMs = normalizeVlcTime(e.duration);
+
+            if (currentMs > 0) {
+              hasStartedPlayingRef.current = true;
+              setIsLoading(false);
+              setIsBuffering(false);
+            }
 
             if (durationMs > 0) { durationRef.current = durationMs; setDuration(durationMs); }
 
@@ -1248,13 +1264,20 @@ export default function PlayerScreen() {
             setIsLoading(false);
           }}
           onBuffering={(e: any) => {
-            const buffering = typeof e?.isBuffering === "boolean" ? e.isBuffering : true;
+            const buffering =
+              typeof e?.isBuffering === "boolean"
+                ? e.isBuffering
+                : typeof e?.buffering === "number"
+                  ? e.buffering < 100
+                  : typeof e?.bufferRate === "number"
+                    ? e.bufferRate < 100
+                    : false;
             handleBufferingChange(buffering);
           }}
           onStopped={() => {
             // VLC fires onStopped when the stream terminates unexpectedly
             if (!mountedRef.current || isRetryingRef.current) return;
-            if (isPlayingRef.current && !playbackFailed) {
+            if (hasStartedPlayingRef.current && isPlayingRef.current && !playbackFailed) {
               console.log("[VLC] onStopped — triggering reconnect");
               handleSilentRetryRef.current();
             }
@@ -1265,7 +1288,7 @@ export default function PlayerScreen() {
           }}
           onError={(e: any) => {
             console.warn("[VLC] onError", e);
-            if (!isRetryingRef.current) handleSilentRetry();
+            if (!isRetryingRef.current) handleSilentRetryRef.current();
           }}
         />
       ) : (
@@ -1325,22 +1348,17 @@ export default function PlayerScreen() {
         </View>
       )}
 
-      {/* ── Loading / buffering overlay ──────────────────────────────────── */}
-      {(isLoading || isRetrying || isBuffering) && !isShowingHardFailure && !isNetworkLost && (
+      {/* ── Loading overlay ──────────────────────────────────────────────── */}
+      {(isRetrying || (isLoading && !hasStartedPlayingRef.current)) && !isShowingHardFailure && !isNetworkLost && (
         <View style={S.loadingOverlay} pointerEvents="none">
           <ActivityIndicator size="large" color={THEME.colors.primary} />
           <Text style={S.loadingText}>
             {isRetrying
-              ? `Reconnecting… (${retryCount.current}/${maxRetries})`
+              ? `Connecting… (${retryCount.current}/${maxRetries})`
               : liveReconnectMode
-                ? "Reconnecting to stream…"
-                : "Buffering…"}
+                ? "Connecting…"
+                : "Loading…"}
           </Text>
-          {networkQuality === "slow" && (
-            <Text style={[S.loadingText, { fontSize: ps(0.8), opacity: 0.45, marginTop: 2 }]}>
-              Slow network — enlarged buffer active
-            </Text>
-          )}
         </View>
       )}
 
