@@ -396,38 +396,71 @@ export class XtreamApi {
       });
 
       const episodes = res.data?.episodes || {};
+      const seasonsList = Array.isArray(res.data?.seasons) ? res.data.seasons : [];
       // `get_series_info` is the only place the series' cast and plot live, and
       // the details screen is already awaiting this call — so the metadata is
       // attached to the returned seasons rather than fetched a second time.
       const seriesMeta = readMeta(res.data?.info);
 
-      const seasons: Season[] = Object.keys(episodes).map((seasonNum) => ({
-        id: seasonNum,
-        name: `Season ${seasonNum}`,
-        seasonNumber: Number(seasonNum),
-        seriesMeta,
+      const seasons: Season[] = Object.keys(episodes).map((seasonNum) => {
+        const seasonInfo = seasonsList.find(
+          (s: any) =>
+            String(s.season_number) === String(seasonNum) ||
+            String(s.id) === String(seasonNum)
+        );
+        const seasonName = seasonInfo?.name || `Season ${seasonNum}`;
+        const rawCover = seasonInfo?.cover_big || seasonInfo?.cover;
+        const seasonCover = rawCover ? buildImageUrl(this.config.url, rawCover) : undefined;
 
-        episodes: episodes[seasonNum].map((ep: any) => ({
-          id: ep.id.toString(),
-          name: ep.title,
-          episodeNum: ep.episode_num,
-          seasonNum: Number(seasonNum),
-          streamUrl: this.buildSeriesUrl(ep.id, ep.container_extension),
-          // The episode's own synopsis. Left undefined rather than filled with
-          // a placeholder, so a screen can fall back to the series' plot and
-          // tell the difference between "no episode blurb" and a real one.
-          description: cleanText(ep.info?.plot ?? ep.info?.description),
-          // Two fields, two units — hence telling the formatter which is which
-          // rather than letting it guess. `duration` is "HH:MM:SS";
-          // `duration_secs` is what its name says.
-          duration:
-            formatRuntime(cleanText(ep.info?.duration)) ??
-            formatRuntime(ep.info?.duration_secs, "seconds"),
-          rating: cleanText(ep.info?.rating),
-          airDate: cleanText(ep.info?.releasedate ?? ep.info?.air_date),
-          still: cleanText(ep.info?.movie_image ?? ep.info?.cover_big ?? ep.info?.still_path),
-        })),
-      }));
+        const epList = Array.isArray(episodes[seasonNum]) ? episodes[seasonNum] : [];
+
+        return {
+          id: seasonNum,
+          name: seasonName,
+          seasonNumber: Number(seasonNum),
+          cover: seasonCover,
+          seriesMeta,
+
+          episodes: epList.map((ep: any) => {
+            const vWidth = Number(ep.info?.video?.width || 0);
+            const vHeight = Number(ep.info?.video?.height || 0);
+            const quality =
+              vHeight >= 2160 || vWidth >= 3840
+                ? "4K UHD"
+                : vHeight >= 1080 || vWidth >= 1920
+                ? "1080p FHD"
+                : vHeight >= 720 || vWidth >= 1280
+                ? "720p HD"
+                : undefined;
+
+            const langRaw = ep.info?.audio?.tags?.language ?? ep.info?.audio?.language;
+            const audioLang = langRaw && typeof langRaw === "string" && langRaw !== "und" ? langRaw.toUpperCase() : undefined;
+
+            return {
+              id: ep.id ? ep.id.toString() : String(ep.episode_num),
+              name: ep.title || `Episode ${ep.episode_num}`,
+              episodeNum: ep.episode_num,
+              seasonNum: Number(seasonNum),
+              streamUrl: this.buildSeriesUrl(ep.id, ep.container_extension),
+              // The episode's own synopsis. Left undefined rather than filled with
+              // a placeholder, so a screen can fall back to the series' plot and
+              // tell the difference between "no episode blurb" and a real one.
+              description: cleanText(ep.info?.plot ?? ep.info?.description),
+              // Two fields, two units — hence telling the formatter which is which
+              // rather than letting it guess. `duration` is "HH:MM:SS";
+              // `duration_secs` is what its name says.
+              duration:
+                formatRuntime(cleanText(ep.info?.duration)) ??
+                formatRuntime(ep.info?.duration_secs, "seconds"),
+              rating: cleanText(ep.info?.rating),
+              airDate: cleanText(ep.info?.releasedate ?? ep.info?.air_date),
+              still: cleanText(ep.info?.movie_image ?? ep.info?.cover_big ?? ep.info?.still_path),
+              videoQuality: quality,
+              audioLanguage: audioLang,
+            };
+          }),
+        };
+      });
 
       await cacheManager.set(cacheKey, seasons, CACHE_TTL.SERIES_INFO);
       return seasons;

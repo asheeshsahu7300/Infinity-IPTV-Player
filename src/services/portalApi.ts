@@ -53,12 +53,10 @@ function parseMagEpg(js: any): EPGProgram[] {
 
   const push = (raw: any, channelId: string) => {
     if (!raw) return;
-    const cid = String(channelId || raw.ch_id || raw.channel_id || "");
+    const cid = String(channelId || raw.ch_id || raw.channel_id || raw.xml_id || raw.epg_id || "");
     if (!cid) return;
-    const start = epgTimeToMs(raw.start_timestamp ?? raw.start ?? raw.time);
-    const end = epgTimeToMs(raw.stop_timestamp ?? raw.end ?? raw.time_to);
-    // A programme with no clock on it cannot be placed on a timeline, and a
-    // zero-length one would make every progress calculation divide by zero.
+    const start = epgTimeToMs(raw.start_timestamp ?? raw.start ?? raw.time ?? raw.start_time);
+    const end = epgTimeToMs(raw.stop_timestamp ?? raw.end ?? raw.time_to ?? raw.end_time ?? raw.stop);
     if (!start || !end || end <= start) return;
     out.push({
       id: String(raw.id ?? `${cid}-${start}`),
@@ -71,17 +69,26 @@ function parseMagEpg(js: any): EPGProgram[] {
     });
   };
 
-  // Bare array, or Ministra's { data: [...] } wrapper.
-  const flat = Array.isArray(js) ? js : Array.isArray(js.data) ? js.data : null;
+  // Bare array, or Ministra's { data: [...] } / { rows: [...] } wrapper.
+  const flat = Array.isArray(js) ? js : Array.isArray(js.data) ? js.data : Array.isArray(js.rows) ? js.rows : null;
   if (flat) {
     for (const raw of flat) push(raw, "");
     return out;
   }
 
-  // Otherwise a map of channel id → programmes.
-  for (const [cid, list] of Object.entries(js)) {
-    if (!Array.isArray(list)) continue;
-    for (const raw of list) push(raw, cid);
+  // Otherwise a map of channel id → programmes or nested objects
+  if (typeof js === "object") {
+    for (const [cid, val] of Object.entries(js)) {
+      if (Array.isArray(val)) {
+        for (const raw of val) push(raw, cid);
+      } else if (val && typeof val === "object") {
+        if (Array.isArray((val as any).data)) {
+          for (const raw of (val as any).data) push(raw, cid);
+        } else if (Array.isArray((val as any).epg)) {
+          for (const raw of (val as any).epg) push(raw, cid);
+        }
+      }
+    }
   }
   return out;
 }
@@ -803,7 +810,7 @@ export const portalApi = {
 
     const handshakeData = handshake?.data?.js ?? {};
     const profileData = profile?.data?.js ?? {};
-
+    console.log(handshakeData, profileData)
     // Parse explicit epoch timestamp if present (expiresAt or expiry), else calculate from lifetime
     const rawEpoch = Number(
       handshakeData.expiresAt ??
@@ -926,7 +933,7 @@ export const portalApi = {
         category: c.tv_genre_name ?? c.genre ?? c.category_name ?? "",
         categoryId: String(c.tv_genre_id ?? c.genre_id ?? c.category_id ?? ""),
         streamUrl: c.cmd ?? "",
-        epgId: String(c.epg_id ?? ""),
+        epgId: String(c.xml_id ?? c.epg_id ?? c.xmltv_id ?? c.tvg_id ?? c.epg_xml_id ?? c.custom_epg ?? ""),
         num: magChannelNumber(c),
       }));
 
@@ -1179,29 +1186,118 @@ export const portalApi = {
     const cacheKey = `portal:${key}:series:info:${seriesId}`;
 
     return requestManager.request(cacheKey, async () => {
-      const rows = await fetchWithRetry(portal, (refreshed) => {
+      let rows = await fetchWithRetry(portal, (refreshed) => {
         const base = safe(refreshed.config.url).replace(/\/$/, "");
         return `${base}/portal.php?type=series&action=get_ordered_list&movie_id=${encodeURIComponent(
           seriesId
         )}&JsHttpRequest=1-xml`;
       });
 
+      const refreshed = await refreshToken(portal);
+      const base = safe(refreshed.config.url).replace(/\/$/, "");
+
+      if (!rows || (Array.isArray(rows) && rows.length === 0)) {
+        // Fallback: try action=get_series_info or type=vod
+        const fbUrl = `${base}/portal.php?type=series&action=get_series_info&series_id=${encodeURIComponent(
+          seriesId
+        )}&JsHttpRequest=1-xml`;
+        const fbRes = await axios.get(fbUrl, {
+          ...rmAcceptHeader,
+          headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+          timeout: 30000,
+        }).catch(() => null);
+        if (fbRes) {
+          const fbRows = extract(fbRes);
+          if (fbRows) rows = fbRows;
+        }
+      }
+
+      const rowsRaw = rows as any;
+      // Handle dictionary series structure (e.g. { info, seasons, episodes: { "1": [...] } })
+      if (rowsRaw && typeof rowsRaw === "object" && !Array.isArray(rowsRaw) && (rowsRaw.episodes || rowsRaw.seasons)) {
+        const episodesMap = rowsRaw.episodes || {};
+        const seasonsList = Array.isArray(rowsRaw.seasons) ? rowsRaw.seasons : [];
+        const seriesInfo = rowsRaw.info || {};
+        const seriesMeta = pickMeta(seriesInfo);
+
+        const dictSeasons: Season[] = Object.keys(episodesMap).map((seasonNum) => {
+          const seasonInfo = seasonsList.find(
+            (s: any) =>
+              String(s.season_number) === String(seasonNum) ||
+              String(s.id) === String(seasonNum)
+          );
+          const seasonName = seasonInfo?.name || `Season ${seasonNum}`;
+          const rawCover = seasonInfo?.cover_big || seasonInfo?.cover;
+          const seasonCover = rawCover ? buildImageUrl(base, rawCover) : undefined;
+          const epList = Array.isArray(episodesMap[seasonNum]) ? episodesMap[seasonNum] : [];
+
+          return {
+            id: seasonNum,
+            name: seasonName,
+            seasonNumber: Number(seasonNum),
+            cover: seasonCover,
+            seriesMeta,
+            episodes: epList.map((ep: any) => {
+              const vWidth = Number(ep.info?.video?.width || 0);
+              const vHeight = Number(ep.info?.video?.height || 0);
+              const quality =
+                vHeight >= 2160 || vWidth >= 3840
+                  ? "4K UHD"
+                  : vHeight >= 1080 || vWidth >= 1920
+                  ? "1080p FHD"
+                  : vHeight >= 720 || vWidth >= 1280
+                  ? "720p HD"
+                  : undefined;
+              const langRaw = ep.info?.audio?.tags?.language ?? ep.info?.audio?.language;
+              const audioLang = langRaw && typeof langRaw === "string" && langRaw !== "und" ? langRaw.toUpperCase() : undefined;
+              const rawStill = ep.info?.movie_image ?? ep.info?.cover_big ?? ep.info?.still_path ?? ep.screenshot_uri ?? ep.cover ?? ep.pic;
+
+              return {
+                id: String(ep.id ?? `${seriesId}:${seasonNum}-${ep.episode_num}`),
+                name: ep.title || `Episode ${ep.episode_num}`,
+                episodeNum: ep.episode_num,
+                seasonNum: Number(seasonNum),
+                cmd: ep.cmd,
+                streamUrl: ep.streamUrl,
+                description: pickDescription(ep.info) || pickDescription(ep),
+                duration:
+                  formatRuntime(ep.info?.duration) ??
+                  formatRuntime(ep.info?.duration_secs, "seconds") ??
+                  formatRuntime(ep.time, "minutes") ??
+                  formatRuntime(ep.duration),
+                still: rawStill ? buildImageUrl(base, rawStill) : undefined,
+                airDate: ep.info?.releasedate ?? ep.info?.air_date ?? ep.air_date ?? ep.added,
+                rating: ep.info?.rating ?? ep.rating,
+                videoQuality: quality,
+                audioLanguage: audioLang,
+              };
+            }),
+          };
+        });
+
+        if (dictSeasons.length > 0) {
+          await cacheManager.set(cacheKey, dictSeasons, CACHE_TTL.SERIES_INFO);
+          return dictSeasons;
+        }
+      }
+
+      const rowsList = Array.isArray(rows) ? rows : [];
       const seasons: Season[] = [];
 
       // MAG returns the series' credits on the season rows themselves rather
       // than in a separate info block, so the first row that has any wins.
-      // Stamped on every season, matching what the Xtream layer does — see the
-      // note on Season.seriesMeta.
       const seriesMeta = (() => {
-        for (const row of rows) {
+        for (const row of rowsList) {
           const meta = pickMeta(row);
           if (meta.cast || meta.director || meta.tags || meta.plot) return meta;
         }
         return undefined;
       })();
 
-      for (const s of rows) {
+      for (const s of rowsList) {
         const seasonNum = Number(s.season_number ?? s.season ?? 1);
+        const rawCover = s.cover_big ?? s.cover ?? s.poster ?? s.screenshot_uri ?? s.screen_uri ?? s.pic;
+        const seasonCover = rawCover ? buildImageUrl(base, rawCover) : undefined;
 
         let episodes: Episode[] = [];
         let seriesRaw = s.series ?? s.episodes ?? s.data ?? s.list;
@@ -1239,27 +1335,73 @@ export const portalApi = {
             const epNum = Number(
               item.episode_num ?? item.episode ?? item.num ?? idx + 1
             );
+            const vWidth = Number(item.info?.video?.width || 0);
+            const vHeight = Number(item.info?.video?.height || 0);
+            const quality =
+              vHeight >= 2160 || vWidth >= 3840
+                ? "4K UHD"
+                : vHeight >= 1080 || vWidth >= 1920
+                ? "1080p FHD"
+                : vHeight >= 720 || vWidth >= 1280
+                ? "720p HD"
+                : undefined;
+            const langRaw = item.info?.audio?.tags?.language ?? item.info?.audio?.language;
+            const audioLang = langRaw && typeof langRaw === "string" && langRaw !== "und" ? langRaw.toUpperCase() : undefined;
+            const rawStill = item.info?.movie_image ?? item.info?.cover_big ?? item.info?.still_path ?? item.screenshot_uri ?? item.cover ?? item.pic;
+
             return {
               id: String(item.id ?? `${seriesId}:${seasonNum}-${epNum}`),
               name: item.title ?? item.name ?? `Episode ${epNum}`,
               episodeNum: epNum,
               seasonNum,
               cmd: item.cmd ?? s.cmd,
-              description: pickDescription(item) || pickDescription(s),
-              duration: formatRuntime(item.time, "minutes") ?? formatRuntime(item.duration),
+              description: pickDescription(item.info) || pickDescription(item) || pickDescription(s),
+              duration:
+                formatRuntime(item.info?.duration) ??
+                formatRuntime(item.info?.duration_secs, "seconds") ??
+                formatRuntime(item.time, "minutes") ??
+                formatRuntime(item.duration),
+              still: rawStill ? buildImageUrl(base, rawStill) : undefined,
+              airDate: item.info?.releasedate ?? item.info?.air_date ?? item.air_date ?? item.added,
+              rating: item.info?.rating ?? item.rating,
+              videoQuality: quality,
+              audioLanguage: audioLang,
             };
           });
         } else if (s.cmd || s.id) {
           // Individual episode item returned directly
           const epNum = Number(s.episode_num ?? s.episode ?? s.num ?? 1);
+          const rawStill = s.info?.movie_image ?? s.info?.cover_big ?? s.screenshot_uri ?? s.cover ?? s.pic;
+          const vWidth = Number(s.info?.video?.width || 0);
+          const vHeight = Number(s.info?.video?.height || 0);
+          const quality =
+            vHeight >= 2160 || vWidth >= 3840
+              ? "4K UHD"
+              : vHeight >= 1080 || vWidth >= 1920
+              ? "1080p FHD"
+              : vHeight >= 720 || vWidth >= 1280
+              ? "720p HD"
+              : undefined;
+          const langRaw = s.info?.audio?.tags?.language ?? s.info?.audio?.language;
+          const audioLang = langRaw && typeof langRaw === "string" && langRaw !== "und" ? langRaw.toUpperCase() : undefined;
+
           episodes = [{
             id: String(s.id ?? `${seriesId}:${seasonNum}-${epNum}`),
             name: s.title ?? s.name ?? `Episode ${epNum}`,
             episodeNum: epNum,
             seasonNum,
             cmd: s.cmd,
-            description: pickDescription(s),
-            duration: formatRuntime(s.time, "minutes") ?? formatRuntime(s.duration),
+            description: pickDescription(s.info) || pickDescription(s),
+            duration:
+              formatRuntime(s.info?.duration) ??
+              formatRuntime(s.info?.duration_secs, "seconds") ??
+              formatRuntime(s.time, "minutes") ??
+              formatRuntime(s.duration),
+            still: rawStill ? buildImageUrl(base, rawStill) : undefined,
+            airDate: s.info?.releasedate ?? s.info?.air_date ?? s.air_date ?? s.added,
+            rating: s.info?.rating ?? s.rating,
+            videoQuality: quality,
+            audioLanguage: audioLang,
           }];
         }
 
@@ -1269,6 +1411,7 @@ export const portalApi = {
           id: String(s.id ?? seasonNum),
           name: s.name ?? `Season ${seasonNum}`,
           seasonNumber: seasonNum,
+          cover: seasonCover,
           seriesMeta,
           cmd: s.cmd,
           episodes,
@@ -1351,7 +1494,7 @@ export const portalApi = {
             timeout: 15000,
           });
           rawOut = extractLink(resClean?.data);
-        } catch {}
+        } catch { }
       }
 
       // Attempt 1c: For series episodes, some Stalker middleware requires type=series instead of type=vod
@@ -1364,7 +1507,7 @@ export const portalApi = {
             timeout: 15000,
           });
           rawOut = extractLink(resSeries?.data);
-        } catch {}
+        } catch { }
       }
 
       if (rawOut && /%mac%/i.test(rawOut)) {
@@ -1475,60 +1618,59 @@ export const portalApi = {
   /**
    * The guide for a single channel.
    *
-   * `epg_info` returns the whole portal's schedule in one very large response,
-   * which is the wrong shape for an info bar that only ever needs the current
-   * and next programme of the channel under the cursor. `get_short_epg` is the
-   * endpoint STB firmware itself uses to fill that banner.
+   * Tries standard Stalker and Ministra per-channel endpoints in sequence.
    */
   async getShortEpg(portal: Portal, channelId: string, size = 12): Promise<EPGProgram[]> {
     if (!channelId) return [];
     const refreshed = await refreshToken(portal);
     const base = safe(refreshed.config.url).replace(/\/$/, "");
-    const url =
-      `${base}/portal.php?type=itv&action=get_short_epg` +
-      `&ch_id=${encodeURIComponent(channelId)}&size=${size}&JsHttpRequest=1-xml`;
+    const requestHeaders = headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base);
 
-    const res = await axios.get(url, {
-      headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
-      timeout: 15000,
-    });
+    const candidates = [
+      `${base}/portal.php?type=itv&action=get_short_epg&ch_id=${encodeURIComponent(channelId)}&size=${size}&JsHttpRequest=1-xml`,
+      `${base}/portal.php?type=itv&action=get_epg_info&ch_id=${encodeURIComponent(channelId)}&size=${size}&JsHttpRequest=1-xml`,
+      `${base}/portal.php?type=itv&action=get_epg_info&ch_id=${encodeURIComponent(channelId)}&JsHttpRequest=1-xml`,
+      `${base}/portal.php?type=epg&action=get_short_epg&ch_id=${encodeURIComponent(channelId)}&size=${size}&JsHttpRequest=1-xml`,
+      `${base}/portal.php?type=epg&action=get_epg_info&ch_id=${encodeURIComponent(channelId)}&JsHttpRequest=1-xml`,
+    ];
 
-    const rows = Array.isArray(res.data?.js) ? res.data.js : [];
-    const out: EPGProgram[] = [];
-    for (const p of rows) {
-      if (!p) continue;
-      const start = epgTimeToMs(p.start_timestamp ?? p.start ?? p.time);
-      const end = epgTimeToMs(p.stop_timestamp ?? p.end ?? p.time_to);
-      if (!start || !(end > start)) continue;
-      out.push({
-        id: String(p.id ?? `${channelId}-${start}`),
-        channelId: String(p.ch_id ?? channelId),
-        title: p.name ?? p.title ?? "No title",
-        description: (p.descr ?? p.description) || "",
-        start,
-        end,
-      });
+    for (const url of candidates) {
+      try {
+        const res = await axios.get(url, { headers: requestHeaders, timeout: 15000 });
+        const rawJs = res.data?.js;
+        const rows = Array.isArray(rawJs)
+          ? rawJs
+          : Array.isArray(rawJs?.data)
+            ? rawJs.data
+            : Array.isArray(rawJs?.[channelId])
+              ? rawJs[channelId]
+              : [];
+
+        if (rows.length > 0) {
+          const out: EPGProgram[] = [];
+          for (const p of rows) {
+            if (!p) continue;
+            const start = epgTimeToMs(p.start_timestamp ?? p.start ?? p.time ?? p.start_time);
+            const end = epgTimeToMs(p.stop_timestamp ?? p.end ?? p.time_to ?? p.end_time ?? p.stop);
+            if (!start || !(end > start)) continue;
+            out.push({
+              id: String(p.id ?? `${channelId}-${start}`),
+              channelId: String(p.ch_id ?? channelId),
+              title: p.name ?? p.title ?? "No title",
+              description: (p.descr ?? p.description) || "",
+              start,
+              end,
+            });
+          }
+          if (out.length > 0) return out;
+        }
+      } catch { }
     }
-    return out;
+    return [];
   },
 
   /**
    * The whole portal's schedule, for as many days as it will give up.
-   *
-   * There is no single right endpoint here. Which action name a Stalker/Ministra
-   * portal answers depends on its middleware version, and the ones in the wild
-   * disagree: `get_epg_info` is canonical on Ministra and takes a `period` in
-   * days, `epg_info` is what older Stalker builds expose, and plain `epg` is
-   * what a number of resellers' forks respond to. Picking one and giving up
-   * leaves a portal with a perfectly good guide showing nothing.
-   *
-   * So all three are tried in order of how much they return, and the first that
-   * yields programmes wins. A wrong guess costs one failed request per boot —
-   * the result is cached above this — which is worth paying to avoid an empty
-   * guide that looks like a bug in the app.
-   *
-   * The response shape varies too, so parsing is shape-tolerant rather than
-   * keyed to one layout. See `parseMagEpg`.
    */
   async getEpg(portal: Portal): Promise<EPGProgram[]> {
     const refreshed = await refreshToken(portal);
@@ -1539,18 +1681,24 @@ export const portalApi = {
       base
     );
 
-    // Ordered most to least capable: period=7 asks for a week where it is
-    // understood, and is ignored rather than rejected where it is not.
     const variants = [
-      "action=get_epg_info&period=7",
-      "action=epg_info",
-      "action=epg",
+      "type=itv&action=get_epg_info&period=24",
+      "type=itv&action=get_epg_info&period=168",
+      "type=itv&action=get_epg_info&period=7",
+      "type=itv&action=get_epg_info",
+      "type=itv&action=get_all_epg",
+      "type=itv&action=get_epg_table",
+      "type=itv&action=get_simple_data_table&type=epg",
+      "type=itv&action=epg_info",
+      "type=itv&action=epg",
+      "type=epg&action=get_epg_info",
+      "type=epg&action=get_all_epg",
     ];
 
     let lastError: any = null;
 
     for (const variant of variants) {
-      const url = `${base}/portal.php?type=itv&${variant}&JsHttpRequest=1-xml`;
+      const url = `${base}/portal.php?${variant}&JsHttpRequest=1-xml`;
       try {
         const res = await axios.get(url, { headers: requestHeaders, timeout: 60000 });
         const programs = parseMagEpg(res.data?.js);
@@ -1564,8 +1712,6 @@ export const portalApi = {
 
     if (lastError) {
       console.warn("[EPG] every MAG guide endpoint failed:", lastError?.message || lastError);
-    } else {
-      console.warn("[EPG] MAG portal answered but published no programmes.");
     }
     return [];
   },

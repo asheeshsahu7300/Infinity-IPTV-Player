@@ -110,15 +110,8 @@ export interface Season {
   id: string;
   name: string;
   seasonNumber: number;
-  /**
-   * The parent series' credits, stamped on every season by the API layer.
-   *
-   * It lives here because the only call that returns it — Xtream's
-   * get_series_info — is the same call that returns the seasons, and the
-   * details screen already awaits that one. Repeating the reference per season
-   * is free and saves a second round trip.
-   */
   seriesMeta?: MediaMeta;
+  cover?: string;
   cmd?: string;
   episodes: Episode[];
   description?: string;
@@ -140,6 +133,8 @@ export interface Episode {
   airDate?: string;
   /** Per-episode still, where the provider has one. */
   still?: string;
+  videoQuality?: string;
+  audioLanguage?: string;
 }
 
 export interface Category {

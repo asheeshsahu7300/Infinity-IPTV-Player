@@ -54,6 +54,7 @@ const EpisodeTile = React.memo(function EpisodeTile({
   item,
   index,
   onPress,
+  onFocus,
   isFocusedItem,
   seriesLogo,
   itemWidth,
@@ -63,6 +64,7 @@ const EpisodeTile = React.memo(function EpisodeTile({
   item: Episode;
   index: number;
   onPress: () => void;
+  onFocus?: (item: Episode) => void;
   isFocusedItem?: boolean;
   seriesLogo?: string;
   itemWidth: number;
@@ -105,6 +107,7 @@ const EpisodeTile = React.memo(function EpisodeTile({
     <View style={{ width: itemWidth, padding: pw(0.8), overflow: "visible" }}>
       <Focusable
         onPress={onPress}
+        onFocus={() => onFocus?.(item)}
         hasTVPreferredFocus={isFocusedItem}
         ringOnFocus={false}
         accessibilityLabel={titleText}
@@ -132,6 +135,10 @@ const EpisodeTile = React.memo(function EpisodeTile({
                     <Ionicons name="tv-outline" size={ps(3)} color="rgba(255,255,255,0.15)" />
                   </View>
                 )}
+
+                <View style={S.epNumBadge}>
+                  <Text style={S.epNumBadgeText}>{`E${epNum}`}</Text>
+                </View>
 
                 {watched ? (
                   <View style={S.epWatchedBadge}>
@@ -249,6 +256,7 @@ export default function SeriesDetailsScreen() {
 
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+  const [focusedEpisode, setFocusedEpisode] = useState<Episode | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [playModalVisible, setPlayModalVisible] = useState(false);
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
@@ -460,6 +468,7 @@ export default function SeriesDetailsScreen() {
       item={item}
       index={index}
       onPress={() => handleEpisodeClick(item)}
+      onFocus={(ep) => setFocusedEpisode(ep)}
       contentId={`episode:${params.id}:${item.id}`}
       resumeVersion={resumeVersion}
       isFocusedItem={index === 0}
@@ -486,34 +495,67 @@ export default function SeriesDetailsScreen() {
           <View style={S.infoArea}>
             <Text style={S.title}>{params.name}</Text>
 
-            <View style={S.badgesRow}>
-              <MetaFacts
-                facts={[
-                  { icon: "star", iconColor: "#fbbf24", text: params.rating },
-                  { text: params.year },
-                  {
-                    text: seasons.length
-                      ? `${seasons.length} ${seasons.length === 1 ? "Season" : "Seasons"}`
-                      : null,
-                  },
-                  {
-                    text: episodeCount
-                      ? `${episodeCount} ${episodeCount === 1 ? "Episode" : "Episodes"}`
-                      : null,
-                  },
-                  { text: seriesMeta?.country },
-                ]}
-              />
-            </View>
+            {focusedEpisode ? (
+              <View style={S.focusedEpBanner}>
+                <Text style={S.focusedEpTitle} numberOfLines={1}>
+                  {`S${currentSeason?.seasonNumber || 1}:E${focusedEpisode.episodeNum || 1} · ${focusedEpisode.name || `Episode ${focusedEpisode.episodeNum}`}`}
+                </Text>
+                <View style={S.badgesRow}>
+                  <MetaFacts
+                    facts={[
+                      { icon: "star", iconColor: "#fbbf24", text: focusedEpisode.rating || params.rating },
+                      { text: focusedEpisode.videoQuality },
+                      { text: focusedEpisode.audioLanguage },
+                      { text: formatRuntime(focusedEpisode.duration) },
+                      { text: focusedEpisode.airDate },
+                      (() => {
+                        const seen = resumeIndex.progressFor(`episode:${params.id}:${focusedEpisode.id}`);
+                        return seen > 0
+                          ? {
+                              icon: "play-circle-outline" as const,
+                              iconColor: "#4ade80",
+                              text: `${Math.round(seen * 100)}% watched`,
+                              tone: "accent" as const,
+                            }
+                          : null;
+                      })(),
+                    ]}
+                  />
+                </View>
+              </View>
+            ) : (
+              <View style={S.badgesRow}>
+                <MetaFacts
+                  facts={[
+                    { icon: "star", iconColor: "#fbbf24", text: params.rating },
+                    { text: params.year || seriesMeta?.releaseDate?.slice(0, 4) },
+                    {
+                      text: seasons.length
+                        ? `${seasons.length} ${seasons.length === 1 ? "Season" : "Seasons"}`
+                        : null,
+                    },
+                    {
+                      text: episodeCount
+                        ? `${episodeCount} ${episodeCount === 1 ? "Episode" : "Episodes"}`
+                        : null,
+                    },
+                    { text: seriesMeta?.country },
+                  ]}
+                />
+              </View>
+            )}
 
             {/* The series' own credits, from get_series_info. The route params
                 only carry what the library grid knew, which is the poster and a
                 one-line blurb. */}
             <MediaMetaPanel
-              meta={seriesMeta}
+              meta={{
+                ...seriesMeta,
+                plot: focusedEpisode?.description || seriesMeta?.plot,
+              }}
               fallbackPlot={params.description}
-              plotLines={isTV ? 6 : 5}
-              emptyText="No description available for this series."
+              plotLines={isTV ? 5 : 4}
+              emptyText="No description available for this content."
             />
 
           </View>
@@ -557,7 +599,7 @@ export default function SeriesDetailsScreen() {
         accessibilityElementsHidden={playModalVisible}
         importantForAccessibility={playModalVisible ? "no-hide-descendants" : "auto"}
       >
-        <CinematicBackground uri={params.logo} />
+        <CinematicBackground uri={seriesMeta?.backdrop || params.logo} />
         <StatusBar hidden />
 
         {/* Single root VirtualizedList — hero + season pills are the header,
@@ -650,6 +692,8 @@ export default function SeriesDetailsScreen() {
                       iconColor: "#FFD700",
                       text: selectedEpisode?.rating || params.rating,
                     },
+                    { text: selectedEpisode?.videoQuality },
+                    { text: selectedEpisode?.audioLanguage },
                     { text: formatRuntime(selectedEpisode?.duration) },
                     { text: selectedEpisode?.airDate },
                     (() => {
@@ -893,6 +937,33 @@ const S = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.8)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  epNumBadge: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    paddingHorizontal: ps(0.5),
+    paddingVertical: ps(0.2),
+    borderRadius: ps(0.4),
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    borderWidth: 0.5,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  epNumBadgeText: {
+    color: "#fff",
+    fontSize: ps(0.7),
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  focusedEpBanner: {
+    marginTop: ph(0.5),
+    marginBottom: ph(0.5),
+  },
+  focusedEpTitle: {
+    color: "#fff",
+    fontSize: ps(1.2),
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
   resumeTrack: {
     position: "absolute",

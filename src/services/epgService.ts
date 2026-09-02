@@ -25,6 +25,7 @@ import { cacheManager, CACHE_TTL } from "./cacheManager";
 import { portalApi } from "./portalApi";
 import { XtreamApi } from "./xtreamApi";
 import { M3UApi } from "./m3uApi";
+import { stbEnvironment } from "./stbEnvironment";
 import type { Channel, EPGProgram, Portal } from "../store/portalStore";
 
 // ── Tunables ────────────────────────────────────────────────────────────────
@@ -379,12 +380,15 @@ class EpgServiceImpl {
     for (const key of keys) {
       if (this.poisoned.has(key)) continue;
 
+      const isFuzzyKey = key.startsWith("n:") || key.startsWith("x:");
       const currentOwner = this.keyOwner.get(key);
       if (currentOwner !== undefined && currentOwner !== owner) {
-        this.poisoned.add(key);
-        this.keyOwner.delete(key);
-        this.index.delete(key);
-        continue;
+        if (!isFuzzyKey) {
+          this.poisoned.add(key);
+          this.keyOwner.delete(key);
+          this.index.delete(key);
+          continue;
+        }
       }
 
       this.keyOwner.set(key, owner);
@@ -441,11 +445,27 @@ class EpgServiceImpl {
     this.bulkPromise = (async () => {
       try {
         let loaded = false;
-        if (portal.type === "mag") loaded = await this.loadMagBulk(portal);
-        else if (portal.type === "xtream")
-          loaded = await this.loadXtreamBulk(portal, opts.allowLargeXmltv === true);
-        else if (portal.type === "m3u")
-          loaded = await this.loadM3uBulk(portal, opts.allowLargeXmltv === true);
+        // 1. If custom XMLTV EPG URL is configured, load it first
+        const customUrl = (portal.config as any)?.customEpgUrl || stbEnvironment.snapshot?.customEpgUrl;
+        if (customUrl && typeof customUrl === "string" && customUrl.startsWith("http")) {
+          const customLoaded = await this.loadXmltv(
+            customUrl,
+            opts.allowLargeXmltv === true || stbEnvironment.snapshot?.fullXmltvGuide === true
+          );
+          if (customLoaded) loaded = true;
+        }
+
+        // 2. Load portal's native bulk EPG
+        if (portal.type === "mag") {
+          const magLoaded = await this.loadMagBulk(portal);
+          if (magLoaded) loaded = true;
+        } else if (portal.type === "xtream") {
+          const xtreamLoaded = await this.loadXtreamBulk(portal, opts.allowLargeXmltv === true);
+          if (xtreamLoaded) loaded = true;
+        } else if (portal.type === "m3u") {
+          const m3uLoaded = await this.loadM3uBulk(portal, opts.allowLargeXmltv === true);
+          if (m3uLoaded) loaded = true;
+        }
 
         if (this.portalId !== forPortal) return;
         this.lastBulkAt = Date.now();
@@ -506,30 +526,29 @@ class EpgServiceImpl {
    * the UI cannot use: programmes outside the ±window are dropped as they are
    * matched, and the source string is released before the index is published.
    */
+  /**
+   * Fetches an XMLTV guide and folds it into the index without blocking the UI thread.
+   */
   private async loadXmltv(url: string, allowLarge: boolean): Promise<boolean> {
+    if (!url) return false;
+
+    // Only skip if the server explicitly reports content-length > limit
     if (!allowLarge) {
-      // A HEAD is cheap and saves pulling 60 MB onto a 1 GB box.
       try {
         const head = await axios.head(url, { timeout: 8000, validateStatus: () => true });
         const len = Number(head.headers?.["content-length"] || 0);
-        if (len > XMLTV_SOFT_LIMIT_BYTES || len === 0) {
-          // If server reports > 24MB or does not report content-length (chunked gzip feeds are typically 50-100MB),
-          // skip bulk XMLTV to avoid OOM crash on Android.
+        if (len > XMLTV_SOFT_LIMIT_BYTES) {
           console.warn(
-            `[EPG] XMLTV guide is ${len > 0 ? (len / 1048576).toFixed(0) + " MB" : "unbounded chunked stream"} — skipped to protect memory. ` +
-            `Per-channel short EPG will be used instead.`
+            `[EPG] XMLTV guide is ${(len / 1048576).toFixed(0)} MB — skipped to protect memory. Enable Full XMLTV Guide in Settings to load.`
           );
           return false;
         }
-      } catch (headErr) {
-        console.warn("[EPG] XMLTV HEAD check failed, skipping bulk download to protect memory:", (headErr as any)?.message || headErr);
-        return false;
-      }
+      } catch {}
     }
 
     let xml: string;
     try {
-      const maxBytes = allowLarge ? 48 * 1024 * 1024 : XMLTV_SOFT_LIMIT_BYTES;
+      const maxBytes = allowLarge ? 64 * 1024 * 1024 : XMLTV_SOFT_LIMIT_BYTES;
       const res = await axios.get<string>(url, {
         timeout: 60000,
         responseType: "text",
@@ -545,49 +564,65 @@ class EpgServiceImpl {
     }
     if (!xml || xml.indexOf("<programme") === -1) return false;
 
-    const matched = this.parseXmltv(xml);
-    // Hand the source string back to the collector before anything else runs.
+    const matched = await this.parseXmltv(xml);
     xml = "";
     if (matched === 0) return false;
     this.emit();
     return true;
   }
 
-  /** Returns how many channels gained programmes. */
-  private parseXmltv(xml: string): number {
+  /** Returns how many channels gained programmes. Non-blocking parser for Hermes. */
+  private async parseXmltv(xml: string): Promise<number> {
     const now = Date.now();
     const minStart = now - WINDOW_PAST_MS;
     const maxStart = now + WINDOW_FUTURE_MS;
 
-    // channel id → display names, so a guide keyed by "bbc1.uk" still matches a
-    // playlist channel that only knows itself as "BBC One".
     const displayNames = new Map<string, string[]>();
-    const chRe = /<channel\b[^>]*\bid\s*=\s*"([^"]*)"[^>]*>([\s\S]*?)<\/channel>/g;
-    let cm: RegExpExecArray | null;
-    while ((cm = chRe.exec(xml)) !== null) {
-      const id = cm[1];
+
+    // 1. Fast parse <channel> tags
+    let chPos = 0;
+    while ((chPos = xml.indexOf("<channel", chPos)) !== -1) {
+      const chEnd = xml.indexOf("</channel>", chPos);
+      if (chEnd === -1) break;
+      const block = xml.slice(chPos, chEnd + 10);
+      chPos = chEnd + 10;
+
+      const idMatch = /\bid\s*=\s*"([^"]*)"/i.exec(block);
+      if (!idMatch) continue;
+      const id = idMatch[1].toLowerCase().trim();
+
       const names: string[] = [];
-      const nameRe = /<display-name[^>]*>([\s\S]*?)<\/display-name>/g;
+      const nameRe = /<display-name[^>]*>([\s\S]*?)<\/display-name>/gi;
       let nm: RegExpExecArray | null;
-      while ((nm = nameRe.exec(cm[2])) !== null) {
+      while ((nm = nameRe.exec(block)) !== null) {
         const n = normalizeChannelName(decodeXmlText(nm[1]));
-        if (n) names.push(n);
+        if (n && n.length >= MIN_NAME_KEY) names.push(n);
       }
-      if (names.length) displayNames.set(id.toLowerCase(), names);
+      if (names.length) displayNames.set(id, names);
     }
 
+    // 2. Fast parse <programme> tags without freezing event loop
     const byChannel = new Map<string, EPGProgram[]>();
-    // Deliberately an `exec` loop rather than `match`/`matchAll`: a national
-    // guide holds ~400k programme elements and materialising them all at once
-    // is what makes a TV box run out of memory.
-    const progRe = /<programme\b([^>]*)>([\s\S]*?)<\/programme>/g;
-    let pm: RegExpExecArray | null;
+    let pPos = 0;
+    let count = 0;
     let kept = 0;
-    while ((pm = progRe.exec(xml)) !== null) {
-      const attrs = pm[1];
-      const startAttr = /\bstart\s*=\s*"([^"]*)"/.exec(attrs);
-      const stopAttr = /\bstop\s*=\s*"([^"]*)"/.exec(attrs);
-      const chanAttr = /\bchannel\s*=\s*"([^"]*)"/.exec(attrs);
+
+    while ((pPos = xml.indexOf("<programme", pPos)) !== -1) {
+      const pEnd = xml.indexOf("</programme>", pPos);
+      if (pEnd === -1) break;
+      const tagClose = xml.indexOf(">", pPos);
+      if (tagClose === -1 || tagClose > pEnd) {
+        pPos += 10;
+        continue;
+      }
+
+      const openTag = xml.slice(pPos, tagClose + 1);
+      const body = xml.slice(tagClose + 1, pEnd);
+      pPos = pEnd + 12;
+
+      const startAttr = /\bstart\s*=\s*"([^"]*)"/i.exec(openTag);
+      const stopAttr = /\bstop\s*=\s*"([^"]*)"/i.exec(openTag);
+      const chanAttr = /\bchannel\s*=\s*"([^"]*)"/i.exec(openTag);
       if (!startAttr || !stopAttr || !chanAttr) continue;
 
       const start = parseXmltvTime(startAttr[1]);
@@ -595,9 +630,8 @@ class EpgServiceImpl {
       const end = parseXmltvTime(stopAttr[1]);
       if (!(end > start)) continue;
 
-      const body = pm[2];
-      const titleM = /<title[^>]*>([\s\S]*?)<\/title>/.exec(body);
-      const descM = /<desc[^>]*>([\s\S]*?)<\/desc>/.exec(body);
+      const titleM = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(body);
+      const descM = /<desc[^>]*>([\s\S]*?)<\/desc>/i.exec(body);
       const cid = chanAttr[1];
 
       const program: EPGProgram = {
@@ -609,20 +643,33 @@ class EpgServiceImpl {
         end,
       };
 
-      const key = cid.toLowerCase();
+      const key = cid.toLowerCase().trim();
       const list = byChannel.get(key);
       if (list) list.push(program);
       else byChannel.set(key, [program]);
       kept++;
+
+      count++;
+      // Yield to JS event loop every 800 programmes so UI remains 60fps smooth
+      if (count % 800 === 0) {
+        await new Promise((r) => setTimeout(r, 0));
+      }
     }
 
     if (kept === 0) return 0;
 
     byChannel.forEach((list, cid) => {
       const keys = [`x:${cid}`, `id:${cid}`];
-      for (const n of displayNames.get(cid) || []) keys.push(`n:${n}`);
+      for (const n of displayNames.get(cid) || []) {
+        if (n && n.length >= MIN_NAME_KEY) keys.push(`n:${n}`);
+      }
+      const normCid = normalizeChannelName(cid);
+      if (normCid && normCid.length >= MIN_NAME_KEY && !keys.includes(`n:${normCid}`)) {
+        keys.push(`n:${normCid}`);
+      }
       this.merge(keys, list, `xmltv:${cid}`);
     });
+
     return byChannel.size;
   }
 
@@ -745,6 +792,9 @@ class EpgServiceImpl {
     let programs: EPGProgram[] = [];
     if (portal.type === "mag") {
       programs = await portalApi.getShortEpg(portal, String(channel.id), 12).catch(() => []);
+      if (programs.length === 0 && channel.epgId && channel.epgId !== channel.id) {
+        programs = await portalApi.getShortEpg(portal, String(channel.epgId), 12).catch(() => []);
+      }
     } else if (portal.type === "xtream") {
       const api = new XtreamApi({
         url: portal.config.url,
@@ -753,6 +803,10 @@ class EpgServiceImpl {
       });
       const raw = await api.getShortEpg(String(channel.id), 12).catch(() => null);
       programs = parseXtreamShortEpg(raw, String(channel.id));
+      if (programs.length === 0 && channel.epgId && channel.epgId !== channel.id) {
+        const rawEpgId = await api.getShortEpg(String(channel.epgId), 12).catch(() => null);
+        programs = parseXtreamShortEpg(rawEpgId, String(channel.id));
+      }
     }
     // M3U has no per-channel endpoint — for it, it is XMLTV or nothing.
 

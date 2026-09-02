@@ -107,6 +107,8 @@ export interface StbSettings {
    * empty links need to be played through the portal host as a proxy.
    */
   sameHostStreamProxy: boolean;
+  /** Custom external XMLTV EPG source URL (e.g. iptv-org, epgshare, or provider XMLTV). */
+  customEpgUrl: string;
 }
 
 const DEFAULTS: StbSettings = {
@@ -120,6 +122,7 @@ const DEFAULTS: StbSettings = {
   resumeLastChannel: true,
   hardwareAcceleration: true,
   sameHostStreamProxy: false,
+  customEpgUrl: "",
 };
 
 type Listener = (settings: StbSettings) => void;
