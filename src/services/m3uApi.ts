@@ -15,12 +15,47 @@ export interface M3UEntry {
   category: string;
   type: M3UType;
   streamUrl: string;
+  /** `tvg-id` — the key an XMLTV guide files this channel under. */
+  epgId?: string;
+  /** `tvg-chno` — the provider's channel number, for the numeric tuner. */
+  num?: number;
+}
+
+/**
+ * FNV-1a over the identifying attributes of an entry.
+ *
+ * Entry ids used to be `Math.random()`, which meant every re-parse of the
+ * playlist renamed every channel — favourites, parental locks and cached
+ * guides all pointed at ids that no longer existed. Hashing the tvg-id (or the
+ * stream URL) keeps an id stable for as long as the playlist itself is.
+ */
+function stableId(seed: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * Pulls the guide URL out of an `#EXTM3U` header line.
+ * Both spellings are in the wild: `x-tvg-url` and `url-tvg`.
+ */
+function parseHeaderEpgUrl(head: string): string | null {
+  const m = /#EXTM3U[^\n]*?(?:x-tvg-url|url-tvg)\s*=\s*"([^"]+)"/i.exec(head);
+  if (!m?.[1]) return null;
+  // Some providers list several comma-separated guides; the first is enough.
+  const first = m[1].split(",")[0].trim();
+  return /^https?:\/\//i.test(first) ? first : null;
 }
 
 export class M3UApi {
   private playlist: M3UEntry[] = [];
   private loadError: Error | null = null;
   private lastLoadTime: number = 0;
+  /** `x-tvg-url` / `url-tvg` from the #EXTM3U header, if the playlist has one. */
+  private epgUrl: string | null = null;
 
   constructor(private config: { url: string; portalId?: string }) { }
 
@@ -150,6 +185,47 @@ export class M3UApi {
   clearCache(): void {
     this.playlist = [];
     this.loadError = null;
+    this.epgUrl = null;
+  }
+
+  /**
+   * The XMLTV guide URL the playlist advertises in its `#EXTM3U` header.
+   *
+   * M3U has no per-channel guide endpoint, so this is the only EPG a plain
+   * playlist can offer. Returns null when the provider does not publish one.
+   */
+  async getEpgUrl(): Promise<string | null> {
+    const cacheKey = this.getCacheKey("epg_url");
+    if (this.epgUrl) return this.epgUrl;
+
+    const cached = await cacheManager.get<string>(cacheKey);
+    if (cached) {
+      this.epgUrl = cached;
+      return cached;
+    }
+
+    // Parsing the playlist populates `epgUrl` as a side effect; a cache hit in
+    // load() skips that, so fall back to re-reading just the header.
+    await this.load().catch(() => []);
+    if (!this.epgUrl) {
+      this.epgUrl = await this.fetchHeaderEpgUrl().catch(() => null);
+    }
+    if (this.epgUrl) await cacheManager.set(cacheKey, this.epgUrl, CACHE_TTL.CHANNELS);
+    return this.epgUrl;
+  }
+
+  /** Reads only the first bytes of the playlist to recover its #EXTM3U header. */
+  private async fetchHeaderEpgUrl(): Promise<string | null> {
+    const res = await requestManager.axiosWithRetry<string>({
+      url: this.config.url,
+      method: "get",
+      responseType: "text",
+      timeout: 20000,
+      headers: { Range: "bytes=0-2047" },
+      validateStatus: () => true,
+    });
+    if (typeof res.data !== "string") return null;
+    return parseHeaderEpgUrl(res.data.slice(0, 4096));
   }
 
   // --------------------------------------------------
@@ -158,6 +234,11 @@ export class M3UApi {
   private parseM3U(text: string): M3UEntry[] {
     const lines = text.split(/\r?\n/);
     const entries: M3UEntry[] = [];
+
+    this.epgUrl = parseHeaderEpgUrl(text.slice(0, 4096));
+    // Providers routinely repeat the same name across regions; the counter
+    // keeps their hashed ids apart when nothing else distinguishes them.
+    const idSeen = new Map<string, number>();
 
     // Validate M3U format
     if (!text.includes("#EXTINF")) {
@@ -178,13 +259,22 @@ export class M3UApi {
       // ---------------- EXTINF ----------------
       if (line.startsWith("#EXTINF")) {
         current = {
-          id: Math.random().toString(36).slice(2),
+          id: "",
           name: "Unknown Channel",
           category: "Other",
           logo: null,
           type: "live",
           streamUrl: "",
         };
+
+        // tvg-id — how an XMLTV guide refers to this channel.
+        const tvgIdMatch = line.match(/tvg-id="([^"]*)"/i);
+        if (tvgIdMatch?.[1]) current.epgId = tvgIdMatch[1].trim();
+
+        // tvg-chno / channel-number — the LCN the numeric tuner dials.
+        const chnoMatch = line.match(/(?:tvg-chno|channel-number|tvg-num)="([^"]*)"/i);
+        const chno = chnoMatch?.[1] ? Number(chnoMatch[1].trim()) : NaN;
+        if (Number.isFinite(chno) && chno > 0) current.num = chno;
 
         // Channel name (after last comma)
         const name = line.split(",").pop();
@@ -224,6 +314,10 @@ export class M3UApi {
 
         // Only push valid entries
         if (current.streamUrl.length > 5) {
+          const seed = current.epgId || `${current.name}|${current.streamUrl}`;
+          const dupe = idSeen.get(seed) ?? 0;
+          idSeen.set(seed, dupe + 1);
+          current.id = dupe === 0 ? stableId(seed) : `${stableId(seed)}-${dupe}`;
           entries.push({ ...current });
         }
 
@@ -282,6 +376,8 @@ export class M3UApi {
       logo: c.logo ?? undefined,
       category: c.category,
       streamUrl: c.streamUrl,
+      epgId: c.epgId,
+      num: c.num,
     }));
 
     return result;

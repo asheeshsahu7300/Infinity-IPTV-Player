@@ -1,6 +1,8 @@
 import React from "react";
 import { Platform, TVEventHandler } from "react-native";
 
+import { isKeyPress, resetKeyPressState } from "./keyPress";
+
 export type DPadEventType =
   | "up"
   | "down"
@@ -13,7 +15,11 @@ export type DPadEventType =
   | "rewind"
   | "menu"
   | "pageUp"
-  | "pageDown";
+  | "pageDown"
+  | "info"
+  | "next"
+  | "previous"
+  | "stop";
 
 export interface DPadHandlers {
   onUp?: () => void;
@@ -28,6 +34,12 @@ export interface DPadHandlers {
   onMenu?: () => void;
   onPageUp?: () => void;
   onPageDown?: () => void;
+  /** INFO on a set-top remote. RN's Android bridge does forward this one. */
+  onInfo?: () => void;
+  /** Media next/previous — the closest thing to CH+/CH- the stock bridge has. */
+  onNext?: () => void;
+  onPrevious?: () => void;
+  onStop?: () => void;
   onAny?: (eventType: DPadEventType) => void;
 }
 
@@ -59,18 +71,7 @@ const subscribers: Subscriber[] = [];
 let nativeSubscription: { remove: () => void } | null = null;
 let seqCounter = 0;
 
-/**
- * Android reports 0 for ACTION_DOWN and 1 for ACTION_UP; tvOS reports -1 or
- * nothing at all. Treat everything that is not an explicit key-up as a
- * key-down so tvOS events are not silently dropped.
- */
-const isKeyDown = (evt: any): boolean => {
-  const action = evt?.eventKeyAction;
-  if (action == null) return true;
-  if (typeof action === "number") return action !== 1;
-  if (typeof action === "string") return action !== "1" && action !== "up";
-  return true;
-};
+
 
 function activeSubscriberForEvent(handlerKey: keyof DPadHandlers): Subscriber | null {
   let best: Subscriber | null = null;
@@ -120,6 +121,10 @@ const PLAY_TYPES = new Set([
 const FF_TYPES = new Set(["fastForward", "fast_forward", "media_fast_forward", "media_step_forward", "KEYCODE_MEDIA_FAST_FORWARD"]);
 const REW_TYPES = new Set(["rewind", "media_rewind", "media_step_backward", "KEYCODE_MEDIA_REWIND"]);
 const MENU_TYPES = new Set(["menu", "KEYCODE_MENU"]);
+const INFO_TYPES = new Set(["info", "KEYCODE_INFO"]);
+const NEXT_TYPES = new Set(["next", "media_next", "KEYCODE_MEDIA_NEXT"]);
+const PREV_TYPES = new Set(["previous", "media_previous", "KEYCODE_MEDIA_PREVIOUS"]);
+const STOP_TYPES = new Set(["stop", "media_stop", "KEYCODE_MEDIA_STOP"]);
 const PAGE_UP_TYPES = new Set(["pageUp", "KEYCODE_PAGE_UP"]);
 const PAGE_DOWN_TYPES = new Set(["pageDown", "KEYCODE_PAGE_DOWN"]);
 
@@ -132,10 +137,18 @@ function dispatch(evt: any) {
 
   const isSelect = SELECT_TYPES.has(type);
 
-  // Filter out key-up (action 1) events so only key-down triggers actions
-  if (!isKeyDown(evt)) return;
+  // One call per physical press.
+  //
+  // This was `if (!isKeyDown(evt)) return;` — filtering for ACTION_DOWN, which
+  // seems right and is not: the bridge only delivers ACTION_UP unless a native
+  // feature flag is enabled, so that line dropped every event. Focus movement
+  // kept working because the Android focus engine does it without JS, which is
+  // what hid this. See the note at the top of keyPress.ts.
+  if (!isKeyPress(type, evt)) return;
 
-  // Debounce select events (150ms) because Android TV remotes can send action 1 and 0 back-to-back
+  // Select keeps a short debounce on top. Some remotes report the OK button
+  // through more than one eventType ("select" and "enter"), which pairing
+  // cannot collapse because they are different keys.
   if (isSelect) {
     const now = Date.now();
     if (now - lastSelectTime < 150) {
@@ -157,6 +170,10 @@ function dispatch(evt: any) {
   else if (MENU_TYPES.has(type)) handlerKey = "onMenu";
   else if (PAGE_UP_TYPES.has(type)) handlerKey = "onPageUp";
   else if (PAGE_DOWN_TYPES.has(type)) handlerKey = "onPageDown";
+  else if (INFO_TYPES.has(type)) handlerKey = "onInfo";
+  else if (NEXT_TYPES.has(type)) handlerKey = "onNext";
+  else if (PREV_TYPES.has(type)) handlerKey = "onPrevious";
+  else if (STOP_TYPES.has(type)) handlerKey = "onStop";
 
   const target = activeSubscriberForEvent(handlerKey || "onAny");
   if (!target) return;
@@ -192,6 +209,7 @@ function attachNative() {
 
 function detachNativeIfIdle() {
   if (subscribers.length === 0) {
+    resetKeyPressState();
     if (tvEventHandlerInstance && typeof tvEventHandlerInstance.disable === "function") {
       try {
         tvEventHandlerInstance.disable();

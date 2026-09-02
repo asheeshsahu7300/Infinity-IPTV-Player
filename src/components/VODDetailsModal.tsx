@@ -246,7 +246,6 @@ const S = StyleSheet.create({
     fontSize: ps(1.3),
     fontWeight: "800",
     marginBottom: ph(0.8),
-    fontFamily: THEME.fonts.bold,
   },
   titleTV: {
     fontSize: ps(1.6),
@@ -326,7 +325,6 @@ const S = StyleSheet.create({
     color: "#fff",
     fontSize: ps(1.0),
     fontWeight: "700",
-    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.5,
   },
   btnTextGhost: {

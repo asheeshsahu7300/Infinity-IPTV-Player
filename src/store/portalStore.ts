@@ -49,9 +49,39 @@ export interface Channel {
   categoryId?: string;
   streamUrl?: string;
   epgId?: string;
+  /**
+   * Set-top-box channel number (LCN). Providers expose it as `tvg-chno` in M3U
+   * or `num` in Xtream; when a portal omits it the live list assigns a
+   * positional one, so the numeric tuner always has something to dial.
+   */
+  num?: number;
 }
 
-export interface VODItem {
+/**
+ * The credits and classification a detail screen shows.
+ *
+ * Shared by films, series and episodes because all three carry the same shape
+ * of it, and every field is optional because no portal type supplies all of
+ * them — MAG has `actors`/`director` on the list row, Xtream hides them behind
+ * a per-title `get_vod_info`/`get_series_info` call, and a plain M3U has
+ * nothing but a name. A screen must render correctly with all of it missing.
+ */
+export interface MediaMeta {
+  /** Billed cast, in the provider's order. */
+  cast?: string[];
+  director?: string;
+  /** Genres, keywords — whatever the provider files it under. */
+  tags?: string[];
+  /** The long synopsis, when it is richer than `description`. */
+  plot?: string;
+  country?: string;
+  releaseDate?: string;
+  /** Wide backdrop, distinct from the portrait poster in `logo`. */
+  backdrop?: string;
+  trailer?: string;
+}
+
+export interface VODItem extends MediaMeta {
   id: string;
   name: string;
   logo?: string;
@@ -64,7 +94,7 @@ export interface VODItem {
   duration?: string;
 }
 
-export interface Series {
+export interface Series extends MediaMeta {
   id: string;
   name: string;
   logo?: string;
@@ -80,6 +110,15 @@ export interface Season {
   id: string;
   name: string;
   seasonNumber: number;
+  /**
+   * The parent series' credits, stamped on every season by the API layer.
+   *
+   * It lives here because the only call that returns it — Xtream's
+   * get_series_info — is the same call that returns the seasons, and the
+   * details screen already awaits that one. Repeating the reference per season
+   * is free and saves a second round trip.
+   */
+  seriesMeta?: MediaMeta;
   cmd?: string;
   episodes: Episode[];
   description?: string;
@@ -94,8 +133,13 @@ export interface Episode {
   seasonNum: number;
   cmd?: string;
   streamUrl?: string;
+  /** The episode's own synopsis — not the series'. */
   description?: string;
   duration?: string;
+  rating?: string;
+  airDate?: string;
+  /** Per-episode still, where the provider has one. */
+  still?: string;
 }
 
 export interface Category {

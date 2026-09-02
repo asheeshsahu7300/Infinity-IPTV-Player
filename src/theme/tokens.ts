@@ -46,26 +46,26 @@ export const CARD_FRAME_INNER_RADIUS = psRaw(1.5);
 
 export const THEME = {
   colors: {
-    background: "#0E0F14",          // softer than pure black
-    surface: "#171923",             // elevated card surface
-    surfaceLight: "rgba(255,255,255,0.07)",
+    background: "#000000",          // Pure deep black background
+    surface: "#0c0d12",             // Deep surface card
+    surfaceLight: "rgba(255, 255, 255, 0.06)",
 
-    primary: "#ffffff",                 // monochrome primary
-    secondary: "#aaaaaa",               // monochrome secondary
-    accent: "#ffffff",                  // monochrome accent
+    primary: "#ffffff",             // Pure white primary
+    secondary: "#e0e0e0",           // Crisp silver secondary
+    accent: "#ffffff",              // Pure white accent
 
     text: "#FFFFFF",
-    textMuted: "#C5C9D6",           // better readability at distance
-    textDim: "#8E93A8",
+    textMuted: "rgba(255, 255, 255, 0.70)",
+    textDim: "rgba(255, 255, 255, 0.45)",
 
-    border: "rgba(255,255,255,0.10)",
-    borderLight: "rgba(255,255,255,0.05)",
+    border: "rgba(255, 255, 255, 0.12)",
+    borderLight: "rgba(255, 255, 255, 0.06)",
 
-    overlay: "rgba(0,0,0,0.72)",
+    overlay: "rgba(0, 0, 0, 0.85)",
 
-    // optional TV focus colors
+    // TV focus colors - strict monochrome white ring / glow
     focusRing: "#FFFFFF",
-    focusGlow: "rgba(255, 77, 116, 0.45)",
+    focusGlow: "rgba(255, 255, 255, 0.25)",
 
     // Glassmorphism
     glassBg: "rgba(255, 255, 255, 0.04)",
@@ -94,9 +94,25 @@ export const THEME = {
     caption: ps(1.1),
     tiny: ps(0.8),
   },
-  // Only families registered by useFonts() render; anything else silently
-  // falls back to the system font. Weight is carried by `fontWeight`, so all
-  // three aliases point at the single loaded family.
+  /**
+   * Only families registered by useFonts() render; anything else silently
+   * falls back to the system font.
+   *
+   * All three aliases point at the same family because Tenor Sans **is** a
+   * single-weight typeface — only `TenorSans_400Regular` is loaded, and no
+   * bold cut exists to load.
+   *
+   * `fontWeight` does NOT make up the difference, which is the trap here.
+   * Pairing `fontFamily: THEME.fonts.bold` with a heavy `fontWeight` asks
+   * Android for a bold cut of a family that has none, and it answers with a
+   * synthesised one — doubled, smeared glyphs with wrong metrics. It showed up
+   * first on the player's seek indicator at weight 900.
+   *
+   * So: use these for text at its natural weight, and for anything that needs
+   * real weight omit `fontFamily` entirely and let the system font carry it.
+   * `bold` and `medium` are kept as distinct names only so call sites can say
+   * what they meant; they are not different faces.
+   */
   fonts: {
     regular: FONT_FAMILY,
     medium: FONT_FAMILY,

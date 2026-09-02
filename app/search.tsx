@@ -19,7 +19,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 
 import { usePortalStore } from "../src/store/portalStore";
-import { portalApi } from "../src/services/portalApi";
+import { portalApi, buildImageUrl } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { isTV } from "../src/utils/tvUtils";
@@ -28,6 +28,7 @@ import { Focusable, FocusGroup, Overlay } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
 import { THEME, pw, ph, ps, psRaw, CARD_FRAME, CARD_FRAME_INNER_RADIUS } from "../src/theme/tokens";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
+import { playbackQueue } from "../src/services/playbackQueue";
 
 const { width: W } = Dimensions.get("window");
 const RAIL_H_PAD = pw(isTV ? 4.2 : 4);
@@ -136,8 +137,6 @@ const ContentCard = React.memo(function ContentCard({
       onPress={handlePress}
       onFocus={handleFocus}
       ringOnFocus={false}
-      screenKey="search"
-      focusKey={`${item.type}-${item.id}`}
       accessibilityLabel={item.name}
       style={[S.cardWrapper, { width: itemWidth, overflow: "visible" }]}
     >
@@ -274,16 +273,53 @@ const ContentRail = React.memo(function ContentRail({
   onPress: (item: any) => void;
   onFocus?: (item: any) => void;
 }) {
-  if (!data || data.length === 0) return null;
   const scrollRef = useRef<ScrollView>(null);
+  /** Rail viewport width and current offset, for the visibility test below. */
+  const viewportRef = useRef(0);
+  const offsetRef = useRef(0);
 
+  /**
+   * Scrolls only when the focused card is not already fully visible.
+   *
+   * This used to run `scrollTo((idx - 1) * itemWidth)` on every focus event,
+   * unconditionally. Two things fell out of that. Moving focus into a rail from
+   * the search box or a neighbouring rail yanked it sideways even though the
+   * card was already on screen, and stepping along a rail re-anchored the whole
+   * strip on every press instead of scrolling once at the edge — which is the
+   * drifting, over-eager scrolling this screen had.
+   *
+   * Now it behaves like scroll-into-view: off the left edge, reveal leftward;
+   * off the right, reveal rightward; already visible, do nothing at all.
+   */
   const handleCardFocus = useCallback((item: any, idx: number) => {
     onFocus?.(item);
-    // Smoothly scroll the rail when navigating with D-pad
-    const itemFullWidth = itemWidth + (isTV ? pw(1.2) : pw(1.5));
-    const targetX = Math.max(0, (idx - 1) * itemFullWidth);
-    scrollRef.current?.scrollTo({ x: targetX, animated: true });
+
+    const gap = isTV ? pw(1.2) : pw(1.5);
+    const stride = itemWidth + gap;
+    const viewport = viewportRef.current;
+    // Before the first layout there is nothing to measure against, and
+    // guessing would reintroduce the yank.
+    if (viewport <= 0) return;
+
+    const left = idx * stride;
+    const right = left + stride;
+    const offset = offsetRef.current;
+
+    if (left < offset) {
+      scrollRef.current?.scrollTo({ x: Math.max(0, left - gap), animated: true });
+    } else if (right > offset + viewport) {
+      scrollRef.current?.scrollTo({ x: right - viewport + gap, animated: true });
+    }
   }, [itemWidth, onFocus]);
+
+  // Below the hooks, not above them.
+  //
+  // This return sat before the useRef and useCallback above, so a rail whose
+  // data arrived after mount — which is every rail, since the library streams
+  // in — went from calling zero hooks to calling two. React matches hook state
+  // by call order, so that mismatch remounted the rail and dropped whatever
+  // had focus inside it. It is the focus jumping on this screen.
+  if (!data || data.length === 0) return null;
 
   return (
     <FocusGroup style={S.railSection}>
@@ -296,6 +332,11 @@ const ContentRail = React.memo(function ContentRail({
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={S.railScrollContent}
+        onLayout={(e) => { viewportRef.current = e.nativeEvent.layout.width; }}
+        onScroll={(e) => { offsetRef.current = e.nativeEvent.contentOffset.x; }}
+        // Cheap: this only feeds the visibility test, so it needs to be roughly
+        // current, not every frame.
+        scrollEventThrottle={64}
       >
         {data.map((item, idx) => (
           <ContentCard
@@ -311,6 +352,15 @@ const ContentRail = React.memo(function ContentRail({
   );
 });
 
+type ContentFilter = "all" | "live" | "vod" | "series";
+
+const FILTER_TABS: { id: ContentFilter; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { id: "all", label: "All", icon: "grid-outline" },
+  { id: "live", label: "Live TV", icon: "tv-outline" },
+  { id: "vod", label: "Movies", icon: "film-outline" },
+  { id: "series", label: "Series", icon: "albums-outline" },
+];
+
 // ─────────────────────────────────────────────
 // Main Search Screen Component
 // ─────────────────────────────────────────────
@@ -324,9 +374,10 @@ export default function SearchScreen() {
   const vodItems = usePortalStore((s) => s.vodItems);
   const series = usePortalStore((s) => s.series);
   const searchTimeout = useRef<any>(null);
+  const searchRequestId = useRef(0);
 
   const [query, setQuery] = useState("");
-  const [activeType, setActiveType] = useState<string>("all");
+  const [activeFilter, setActiveFilter] = useState<ContentFilter>("all");
   const [results, setResults] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -345,148 +396,188 @@ export default function SearchScreen() {
 
   // ── Curated Content Rails (Discovery State) ──
   const discoveryRails = useMemo(() => {
-    if (activeType === "live") {
-      return [
-        { title: "Top Live Channels", subtitle: "Direct broadcast streams from your playlist", data: channels.slice(0, 18).map((c) => ({ ...c, type: "live" })) },
-        { title: "Entertainment & News", subtitle: "Browse more live channels", data: channels.slice(18, 36).map((c) => ({ ...c, type: "live" })) },
-      ];
-    }
-    if (activeType === "vod") {
-      return [
-        { title: "Featured Movies", subtitle: "Top rated titles available to stream", data: vodItems.slice(0, 18).map((v) => ({ ...v, type: "vod" })) },
-        { title: "Recently Added Movies", subtitle: "Fresh additions to your movie library", data: vodItems.slice(18, 36).map((v) => ({ ...v, type: "vod" })) },
-      ];
-    }
-    if (activeType === "series") {
-      return [
-        { title: "Popular Series", subtitle: "Binge-worthy shows with all seasons", data: series.slice(0, 18).map((s) => ({ ...s, type: "series" })) },
-        { title: "Recommended TV Shows", subtitle: "Top series from your provider", data: series.slice(18, 36).map((s) => ({ ...s, type: "series" })) },
-      ];
-    }
-
-    // "all": Rich multi-rail home discovery with priority order
+    const base = (activePortal?.config?.url || "").replace(/\/$/, "");
     const rails: any[] = [];
     if (vodItems.length > 0) {
       rails.push({
         title: "Recommended Movies",
         subtitle: "Popular on-demand films",
-        data: vodItems.slice(0, 16).map((v) => ({ ...v, type: "vod" })),
+        data: vodItems.slice(0, 16).map((v) => ({
+          ...v,
+          type: "vod",
+          logo: buildImageUrl(base, v.logo || (v as any).screen_uri || (v as any).poster || (v as any).cover || ""),
+        })),
       });
     }
     if (series.length > 0) {
       rails.push({
         title: "Trending Series",
         subtitle: "Top television shows",
-        data: series.slice(0, 16).map((s) => ({ ...s, type: "series" })),
+        data: series.slice(0, 16).map((s) => ({
+          ...s,
+          type: "series",
+          logo: buildImageUrl(base, s.logo || (s as any).screen_uri || (s as any).poster || (s as any).cover || ""),
+        })),
       });
     }
     if (channels.length > 0) {
       rails.push({
         title: "Top Live Channels",
         subtitle: "Direct live TV broadcast streams",
-        data: channels.slice(0, 16).map((c) => ({ ...c, type: "live" })),
+        data: channels.slice(0, 16).map((c) => ({
+          ...c,
+          type: "live",
+          logo: buildImageUrl(base, c.logo),
+        })),
       });
     }
     if (vodItems.length > 16) {
       rails.push({
         title: "Recently Added",
         subtitle: "Latest entertainment in your library",
-        data: vodItems.slice(16, 32).map((v) => ({ ...v, type: "vod" })),
+        data: vodItems.slice(16, 32).map((v) => ({
+          ...v,
+          type: "vod",
+          logo: buildImageUrl(base, v.logo || (v as any).screen_uri || (v as any).poster || (v as any).cover || ""),
+        })),
       });
     }
     return rails;
-  }, [activeType, channels, vodItems, series]);
+  }, [channels, vodItems, series, activePortal]);
 
-  // Search Logic (Instant, Error-Free In-Memory + MAG Fallback)
-  const performSearch = useCallback(async (q: string, type: string) => {
-    if (!q.trim() || !activePortal) {
-      setResults([]);
-      return;
-    }
+  // ── Derived Filtered Discovery Rails ──
+  const filteredRails = useMemo(() => {
+    if (activeFilter === "all") return discoveryRails;
+    return discoveryRails.filter((r) => r.data?.[0]?.type === activeFilter);
+  }, [discoveryRails, activeFilter]);
 
-    setIsLoading(true);
-    const term = q.toLowerCase();
-
-    try {
-      let finalResults: any[] = [];
-
-      // ================= M3U & XTREAM (Direct Memory Search — 0ms, No 503 errors) =================
-      if (activePortal.type === "m3u" || activePortal.type === "xtream") {
-        if (type === "all" || type === "live") {
-          finalResults = [
-            ...finalResults,
-            ...channels.filter((c) => c.name.toLowerCase().includes(term)).map((c) => ({ ...c, type: "live" })),
-          ];
-        }
-        if (type === "all" || type === "vod") {
-          finalResults = [
-            ...finalResults,
-            ...vodItems.filter((v) => v.name.toLowerCase().includes(term)).map((v) => ({ ...v, type: "vod" })),
-          ];
-        }
-        if (type === "all" || type === "series") {
-          finalResults = [
-            ...finalResults,
-            ...series.filter((s) => s.name.toLowerCase().includes(term)).map((s) => ({ ...s, type: "series" })),
-          ];
-        }
+  // Search Logic (Instant Synchronous In-Memory + Debounced MAG Remote Search)
+  const performSearch = useCallback(
+    (q: string) => {
+      const term = q.trim().toLowerCase();
+      if (!term || !activePortal) {
+        setResults([]);
+        setIsLoading(false);
+        return;
       }
 
-      // ================= MAG / STALKER =================
-      else if (activePortal.type === "mag") {
-        const searchTypes = type === "all" ? ["live", "vod", "series"] : [type];
-        for (const st of searchTypes) {
+      const base = (activePortal?.config?.url || "").replace(/\/$/, "");
+
+      // 1. Instant local search across all loaded in-memory items (0ms, zero errors, never disappears)
+      const localLive = channels
+        .filter((c) => (c.name || (c as any).title || "").toLowerCase().includes(term))
+        .map((c) => ({
+          ...c,
+          type: "live" as const,
+          logo: buildImageUrl(base, c.logo),
+        }));
+      const localVod = vodItems
+        .filter((v) => (v.name || (v as any).title || (v as any).o_name || "").toLowerCase().includes(term))
+        .map((v) => ({
+          ...v,
+          type: "vod" as const,
+          logo: buildImageUrl(base, v.logo || (v as any).screen_uri || (v as any).poster || (v as any).cover || (v as any).stream_icon || ""),
+        }));
+      const localSeries = series
+        .filter((s) => (s.name || (s as any).title || "").toLowerCase().includes(term))
+        .map((s) => ({
+          ...s,
+          type: "series" as const,
+          logo: buildImageUrl(base, s.logo || (s as any).screen_uri || (s as any).poster || (s as any).cover || (s as any).stream_icon || ""),
+        }));
+
+      const localCombined = [...localLive, ...localVod, ...localSeries];
+      setResults(localCombined);
+
+      // 2. If it's a MAG portal, perform fast remote search to augment results
+      if (activePortal.type === "mag") {
+        const reqId = ++searchRequestId.current;
+        setIsLoading(true);
+
+        if (searchTimeout.current) clearTimeout(searchTimeout.current);
+        searchTimeout.current = setTimeout(async () => {
           try {
-            const apiResults = await portalApi.search(activePortal, q, st as any);
-            const mapped = (apiResults || []).map((i: any) => ({
-              ...i,
-              id: String(i.id || i.cmd || ""),
-              streamUrl: i.cmd || "",
-              name: i.name || i.title,
-              logo: i.screenshot_uri || i.logo || "",
-              type: st,
-              year: pickYear(i),
-              description: i.description || i.descr || i.plot || "",
-              rating: pickRating(i),
-            }));
-            finalResults = [...finalResults, ...mapped];
-          } catch (magErr) {
-            console.warn(`MAG search failed for ${st}:`, magErr);
+            // Determine which types to search based on activeFilter
+            const typesToQuery: ("live" | "vod" | "series")[] =
+              activeFilter === "all" ? ["live", "vod", "series"] : [activeFilter];
+
+            const remoteMatches: any[] = [];
+            for (const st of typesToQuery) {
+              if (searchRequestId.current !== reqId) return;
+
+              try {
+                const apiResults = await portalApi.search(activePortal, q, st);
+                if (searchRequestId.current !== reqId) return;
+
+                const base = (activePortal?.config?.url || "").replace(/\/$/, "");
+                const mapped = (apiResults || []).map((i: any) => ({
+                  ...i,
+                  id: String(i.id || i.cmd || ""),
+                  streamUrl: i.cmd || "",
+                  name: i.name || i.title,
+                  logo: buildImageUrl(
+                    base,
+                    i.screen_uri || i.screenshot_uri || i.poster || i.cover || i.logo || i.stream_icon || ""
+                  ),
+                  type: st,
+                  year: pickYear(i),
+                  description: i.description || i.descr || i.plot || "",
+                  rating: pickRating(i),
+                }));
+                remoteMatches.push(...mapped);
+              } catch {
+                // Keep local in-memory matches intact
+              }
+            }
+
+            if (searchRequestId.current !== reqId) return;
+
+            // Merge remote matches with existing local matches, deduplicating by key
+            setResults((prev) => {
+              const map = new Map<string, any>();
+              for (const item of prev) {
+                map.set(`${item.type}-${item.id}`, item);
+              }
+              for (const item of remoteMatches) {
+                map.set(`${item.type}-${item.id}`, item);
+              }
+              return Array.from(map.values()).slice(0, 100);
+            });
+          } finally {
+            if (searchRequestId.current === reqId) {
+              setIsLoading(false);
+            }
           }
-        }
+        }, 350);
+      } else {
+        setIsLoading(false);
       }
-
-      const seen = new Set();
-      const unique = finalResults.filter((item) => {
-        const key = `${item.type}-${item.id}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-
-      setResults(unique.slice(0, 60));
-    } catch (error) {
-      console.error("Search error:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activePortal, channels, vodItems, series]);
+    },
+    [activePortal, channels, vodItems, series, activeFilter]
+  );
 
   useEffect(() => {
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    performSearch(query);
+  }, [query, activeFilter, performSearch]);
 
-    searchTimeout.current = setTimeout(() => {
-      performSearch(query, activeType);
-    }, 250);
-
-    return () => {
-      if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    };
-  }, [query, activeType, performSearch]);
+  const filteredResults = useMemo(() => {
+    if (activeFilter === "all") return results;
+    return results.filter((item) => item.type === activeFilter);
+  }, [results, activeFilter]);
 
   const handleResultPress = (item: any) => {
     if (item.type === "live") {
-      router.push({ pathname: "/player", params: { url: item.streamUrl, title: item.name, type: "live" } });
+      router.push({
+        pathname: "/player",
+        params: {
+          url: item.streamUrl,
+          title: item.name,
+          type: "live",
+          logo: item.logo || "",
+          cmd: item.streamUrl,
+          contentId: `live:${item.id}`,
+        },
+      });
       return;
     }
     if (item.type === "series") {
@@ -544,12 +635,33 @@ export default function SearchScreen() {
     if (isExternal) {
       launchExternalPlayer({ url: streamUrl, title: selectedItem.name });
     } else {
+      playbackQueue.start(
+        [
+          {
+            id: `vod:${selectedItem.id}`,
+            title: selectedItem.name,
+            subtitle: selectedItem.category || "Movie",
+            poster: selectedItem.logo || "",
+            streamUrl: streamUrl || selectedItem.streamUrl || "",
+            description: selectedItem.description,
+            kind: "vod",
+          },
+        ],
+        0,
+        selectedItem.name,
+        activePortal.id,
+        false
+      );
+
       router.push({
         pathname: "/player",
         params: {
           url: streamUrl,
           title: selectedItem.name,
           type: "vod",
+          logo: selectedItem.logo || "",
+          poster: selectedItem.logo || "",
+          cmd: selectedItem.streamUrl || streamUrl,
           contentId: `vod:${selectedItem.id}`,
         },
       });
@@ -561,14 +673,35 @@ export default function SearchScreen() {
   // Sized so that 6 cards + padding show fully and ~18-20% of the 7th card peeks on the right
   const RAIL_ITEM_WIDTH = isTV ? pw(13.2) : pw(27);
 
-  const renderResultItem = useCallback(({ item }: any) => (
-    <ContentCard
-      item={item}
-      itemWidth={CARD_WIDTH}
-      onPress={handleResultPress}
-      onFocus={(it) => it.logo && setFocusedImage(it.logo)}
-    />
-  ), [CARD_WIDTH, handleResultPress]);
+  // Chunk flat results into rows of RESULT_COLUMNS — same pattern as vod.tsx.
+  // A FocusGroup (TVFocusGuideView) wraps each row so left/right D-pad
+  // movement is bounded within the row and can't jump to a different section.
+  const chunkedResults = useMemo(() => {
+    const rows: { id: string; items: any[] }[] = [];
+    for (let i = 0; i < filteredResults.length; i += RESULT_COLUMNS) {
+      rows.push({ id: `row-${i}`, items: filteredResults.slice(i, i + RESULT_COLUMNS) });
+    }
+    return rows;
+  }, [filteredResults, RESULT_COLUMNS]);
+
+  // Keep a stable ref so renderResultRow doesn't recreate on every focusedImage change
+  const handleResultFocus = useCallback((it: any) => {
+    if (it.logo) setFocusedImage(it.logo);
+  }, []);
+
+  const renderResultRow = useCallback(({ item: row }: { item: { id: string; items: any[] } }) => (
+    <FocusGroup style={{ flexDirection: "row" }}>
+      {row.items.map((it) => (
+        <ContentCard
+          key={`${it.type}-${it.id}`}
+          item={it}
+          itemWidth={CARD_WIDTH}
+          onPress={handleResultPress}
+          onFocus={handleResultFocus}
+        />
+      ))}
+    </FocusGroup>
+  ), [CARD_WIDTH, handleResultPress, handleResultFocus]);
 
   return (
     <View style={[S.container, { paddingTop: insets.top + (isTV ? ph(3) : ph(3.5)) }]}>
@@ -665,49 +798,44 @@ export default function SearchScreen() {
           </View>
         </FocusGroup>
 
-        {/* Filter row */}
-        <FocusGroup>
-          <View style={S.filterRow}>
-            {[
-              { id: "all", label: "All Content", icon: "grid-outline" },
-              { id: "live", label: "Live TV", icon: "tv-outline" },
-              { id: "vod", label: "Movies", icon: "film-outline" },
-              { id: "series", label: "Series", icon: "albums-outline" },
-            ].map((filter) => {
-              const isActive = activeType === filter.id;
-              return (
-                <Focusable
-                  key={filter.id}
-                  onPress={() => setActiveType(filter.id)}
-                  ringOnFocus={false}
-                  style={S.filterPillWrapper}
-                >
-                  {(focused) => (
-                    <View style={[
-                      S.filterPill,
-                      isActive && S.filterPillActive,
-                      focused && S.filterPillFocused,
-                      focused && { transform: [{ scale: 1.05 }] },
-                    ]}>
-                      <Ionicons
-                        name={filter.icon as any}
-                        size={isTV ? ps(1.1) : ps(1.0)}
-                        color={focused ? "#000000" : (isActive ? "#FFFFFF" : "rgba(255,255,255,0.6)")}
-                        style={{ marginRight: pw(0.5) }}
-                      />
-                      <Text style={[
-                        S.filterText,
-                        isActive && S.filterTextActive,
-                        focused && S.filterTextFocused,
-                      ]}>
-                        {filter.label}
-                      </Text>
-                    </View>
-                  )}
-                </Focusable>
-              );
-            })}
-          </View>
+        {/* ── Content Type Filter Tabs (Live TV, VOD, Series) ── */}
+        <FocusGroup style={S.filterBar}>
+          {FILTER_TABS.map((tab) => {
+            const isActive = activeFilter === tab.id;
+            return (
+              <Focusable
+                key={tab.id}
+                ringOnFocus={false}
+                onPress={() => setActiveFilter(tab.id)}
+                style={S.filterChipWrapper}
+              >
+                {(focused) => (
+                  <View
+                    style={[
+                      S.filterChip,
+                      isActive && S.filterChipActive,
+                      focused && S.filterChipFocused,
+                    ]}
+                  >
+                    <Ionicons
+                      name={tab.icon}
+                      size={isTV ? ps(1.1) : ps(1.0)}
+                      color={focused || isActive ? "#000000" : "rgba(255,255,255,0.7)"}
+                    />
+                    <Text
+                      style={[
+                        S.filterChipText,
+                        isActive && S.filterChipTextActive,
+                        focused && S.filterChipTextFocused,
+                      ]}
+                    >
+                      {tab.label}
+                    </Text>
+                  </View>
+                )}
+              </Focusable>
+            );
+          })}
         </FocusGroup>
 
         {/* Dynamic Content Area: Horizontal Rails (Discovery) OR Grid (Search Results) */}
@@ -718,7 +846,7 @@ export default function SearchScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: ph(8) }}
           >
-            {discoveryRails.map((rail, idx) => (
+            {filteredRails.map((rail, idx) => (
               <ContentRail
                 key={`${rail.title}-${idx}`}
                 title={rail.title}
@@ -735,10 +863,16 @@ export default function SearchScreen() {
           <FocusGroup style={S.resultsArea}>
             <View style={S.sectionLabelArea}>
               <Text style={S.sectionLabelTitle}>
-                Results for "{query}" ({results.length})
+                Results for "{query}" ({filteredResults.length})
               </Text>
               <Text style={S.sectionLabelSubtitle}>
-                Showing matching live channels, movies, and series
+                {activeFilter === "all"
+                  ? "Showing matching live channels, movies, and series"
+                  : activeFilter === "live"
+                    ? "Showing matching live TV channels"
+                    : activeFilter === "vod"
+                      ? "Showing matching movies"
+                      : "Showing matching series"}
               </Text>
             </View>
 
@@ -749,18 +883,16 @@ export default function SearchScreen() {
             )}
 
             <FlatList
-              data={results}
-              numColumns={RESULT_COLUMNS}
-              key={`results-${RESULT_COLUMNS}`}
-              keyExtractor={(item: any) => `${item.type}-${item.id}`}
+              data={chunkedResults}
+              key={`results-${RESULT_COLUMNS}-${activeFilter}`}
+              keyExtractor={(row: any) => row.id}
               contentContainerStyle={{ paddingHorizontal: RAIL_H_PAD, paddingBottom: ph(6) }}
-              columnWrapperStyle={{ justifyContent: "flex-start" }}
-              removeClippedSubviews={Platform.OS === "android" && !isTV}
-              initialNumToRender={RESULT_COLUMNS * 3}
-              maxToRenderPerBatch={RESULT_COLUMNS * 2}
-              windowSize={5}
-              updateCellsBatchingPeriod={50}
-              renderItem={renderResultItem}
+              removeClippedSubviews={false}
+              initialNumToRender={4}
+              maxToRenderPerBatch={3}
+              windowSize={isTV ? 9 : 7}
+              updateCellsBatchingPeriod={80}
+              renderItem={renderResultRow}
               ListEmptyComponent={
                 !isLoading ? (
                   <View style={S.emptyState}>
@@ -786,41 +918,73 @@ export default function SearchScreen() {
         style={{ justifyContent: "flex-end", backgroundColor: "transparent" }}
         contentStyle={{ width: "100%", maxWidth: "100%", margin: 0, padding: 0 }}
       >
-        <BlurView intensity={120} tint="dark" style={{ width: "100%", borderTopLeftRadius: 36, borderTopRightRadius: 36, overflow: "hidden", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.25)", borderBottomWidth: 0 }}>
-          {selectedItem?.logo && (
+        <BlurView intensity={120} tint="dark" style={S.modalBlurContainer}>
+          {selectedItem?.logo ? (
             <Image
               source={{ uri: selectedItem.logo }}
-              style={[StyleSheet.absoluteFillObject, { opacity: 0.4 }]}
-              blurRadius={40}
+              style={[StyleSheet.absoluteFillObject, { opacity: 0.25 }]}
+              blurRadius={50}
               contentFit="cover"
             />
-          )}
+          ) : null}
           <LinearGradient
-            colors={["rgba(255,255,255,0.1)", "rgba(0,0,0,0.5)", "#000"]}
+            colors={["rgba(10, 12, 18, 0.75)", "rgba(8, 8, 12, 0.95)", "#08080a"]}
             style={StyleSheet.absoluteFillObject}
           />
-          <View style={[isTV ? S.modalTVContent : null, { padding: ps(3) }]}>
+          <View style={[isTV ? S.modalTVContent : null, S.modalBody]}>
+            {/* Left: Poster Image */}
+            <View style={S.modalPosterWrapper}>
+              {selectedItem?.logo ? (
+                <Image
+                  source={{ uri: selectedItem.logo }}
+                  style={S.modalPosterImg}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                />
+              ) : (
+                <View style={S.modalPosterFallback}>
+                  <Ionicons
+                    name={selectedItem?.type === "series" ? "albums-outline" : "film-outline"}
+                    size={ps(3.2)}
+                    color="rgba(255, 255, 255, 0.3)"
+                  />
+                </View>
+              )}
+            </View>
+
+            {/* Middle: Details */}
             <View style={S.modalLeft}>
+              <View style={S.modalTypeBadge}>
+                <Text style={S.modalTypeBadgeText}>
+                  {selectedItem?.type === "series" ? "SERIES" : "MOVIE"}
+                </Text>
+              </View>
               <Text style={S.modalTitle} numberOfLines={2}>{selectedItem?.name}</Text>
-              <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-                {selectedItem?.description || "No description available for this content."}
-              </Text>
               <View style={S.modalMetaRow}>
                 {selectedItem?.rating ? (
                   <View style={S.modalBadge}>
-                    <Ionicons name="star" size={ps(1)} color="#FFD700" />
+                    <Ionicons name="star" size={ps(0.9)} color="#FFD700" />
                     <Text style={S.modalBadgeText}>{selectedItem.rating}</Text>
                   </View>
                 ) : null}
                 {selectedItem?.year ? (
                   <View style={S.modalBadge}>
-                    <Ionicons name="calendar-outline" size={ps(1)} color="#fff" />
+                    <Ionicons name="calendar-outline" size={ps(0.9)} color="#fff" />
                     <Text style={S.modalBadgeText}>{selectedItem.year}</Text>
                   </View>
                 ) : null}
+                {selectedItem?.category ? (
+                  <View style={S.modalBadge}>
+                    <Text style={S.modalBadgeText}>{selectedItem.category}</Text>
+                  </View>
+                ) : null}
               </View>
+              <Text style={S.modalDescription} numberOfLines={isTV ? 5 : 4}>
+                {selectedItem?.description || "No description available for this content."}
+              </Text>
             </View>
 
+            {/* Right: Action buttons */}
             <View style={S.modalRight}>
               <Focusable
                 hasTVPreferredFocus
@@ -831,6 +995,7 @@ export default function SearchScreen() {
                 {(focused) => (
                   <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
                     <View style={S.modalBtnPrimaryInner}>
+                      <Ionicons name="play" size={ps(1.1)} color="#000" />
                       <Text style={[S.modalBtnPrimaryText, focused && { color: "#000" }]}>WATCH NOW</Text>
                     </View>
                   </View>
@@ -844,6 +1009,7 @@ export default function SearchScreen() {
                 {(focused) => (
                   <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
                     <View style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
+                      <Ionicons name="open-outline" size={ps(1.1)} color={focused ? "#000" : "#fff"} />
                       <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>EXTERNAL PLAYER</Text>
                     </View>
                   </View>
@@ -857,6 +1023,7 @@ export default function SearchScreen() {
                 {(focused) => (
                   <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
                     <View style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
+                      <Ionicons name="close" size={ps(1.1)} color={focused ? "#000" : "#fff"} />
                       <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>CLOSE</Text>
                     </View>
                   </View>
@@ -950,59 +1117,46 @@ const S = StyleSheet.create({
     fontWeight: "500",
   },
 
-  // ── Filter Pills ──
-  filterRow: {
-    flexDirection: "row",
-    gap: isTV ? pw(0.9) : pw(1.2),
-    paddingHorizontal: RAIL_H_PAD,
-    marginBottom: isTV ? ph(2) : ph(2.5),
-  },
-  filterPillWrapper: {
-    borderRadius: 100,
-    overflow: "hidden",
-  },
-  filterPill: {
+  // ── Filter Bar ──
+  filterBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: isTV ? pw(1.6) : pw(2.8),
-    paddingVertical: isTV ? ph(0.75) : ph(0.9),
-    borderRadius: 100,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: RAIL_H_PAD,
+    gap: ps(0.8),
+    marginBottom: isTV ? ph(1.6) : ph(1.8),
   },
-  filterPillActive: {
-    borderColor: "rgba(255,255,255,0.5)",
-    backgroundColor: "rgba(255,255,255,0.15)",
+  filterChipWrapper: {
+    borderRadius: ps(2),
   },
-  filterPillFocused: {
-    borderColor: "#FFFFFF",
-    backgroundColor: "#FFFFFF",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#fff",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.8,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: ps(0.45),
+    paddingHorizontal: ps(1.1),
+    paddingVertical: ps(0.48),
+    borderRadius: ps(2),
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
   },
-  filterText: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: isTV ? ps(1.0) : ps(0.92),
+  filterChipActive: {
+    backgroundColor: "#ffffff",
+  },
+  filterChipFocused: {
+    backgroundColor: "#ffffff",
+    transform: [{ scale: 1.06 }],
+  },
+  filterChipText: {
+    color: "rgba(255, 255, 255, 0.75)",
+    fontSize: ps(0.88),
     fontWeight: "600",
-    letterSpacing: 0.3,
+    fontFamily: THEME.fonts.medium,
   },
-  filterTextActive: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-  filterTextFocused: {
+  filterChipTextActive: {
     color: "#000000",
-    fontWeight: "700",
+    fontWeight: "800",
+  },
+  filterChipTextFocused: {
+    color: "#000000",
+    fontWeight: "800",
   },
 
   // ── Rails ──
@@ -1302,35 +1456,144 @@ const S = StyleSheet.create({
   },
 
   // ── Action overlay ──
-  modalContainer: { backgroundColor: "#111", width: isTV ? ps(65) : "92%", borderRadius: 24, padding: ps(2), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
-  modalTVContent: { flexDirection: "row" },
-  modalLeft: { flex: 1.4, padding: ps(1.5) },
-  modalRight: { flex: 0.6, padding: ps(2), paddingRight: isTV ? ps(4) : ps(2), justifyContent: "center", gap: 12 },
-  modalTitle: { color: "#fff", fontSize: ps(1.9), fontWeight: "900", marginBottom: 12 },
-  modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(1.2), lineHeight: ps(1.4), marginBottom: 18 },
-  modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
-  modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "700" },
-  modalBtnWrapper: { borderRadius: 8, overflow: "visible", width: "100%", maxWidth: 380, alignSelf: "flex-end" },
-  modalBtnBorder: { padding: 1, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.15)" },
-  modalBtnBorderFocused: {
-    padding: 1,
-    borderWidth: 0,
-    backgroundColor: "#fff",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#fff",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.8,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 0,
-      }
-    })
+  modalBlurContainer: {
+    width: "100%",
+    borderTopLeftRadius: ps(2),
+    borderTopRightRadius: ps(2),
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    borderBottomWidth: 0,
+    backgroundColor: "rgba(10, 12, 18, 0.95)",
   },
-  modalBtnPrimaryInner: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "transparent", overflow: "hidden" },
-  modalBtnSecondaryInner: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.3)", overflow: "hidden" },
-  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1 },
-  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5 },
+  modalBody: {
+    padding: ps(2.2),
+  },
+  modalTVContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  modalPosterWrapper: {
+    width: isTV ? pw(11) : pw(22),
+    aspectRatio: 2 / 3,
+    borderRadius: ps(0.8),
+    overflow: "hidden",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    marginRight: isTV ? pw(2) : pw(3),
+  },
+  modalPosterImg: {
+    width: "100%",
+    height: "100%",
+  },
+  modalPosterFallback: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+  },
+  modalTypeBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    paddingHorizontal: ps(0.6),
+    paddingVertical: ps(0.2),
+    borderRadius: ps(0.3),
+    marginBottom: ps(0.5),
+  },
+  modalTypeBadgeText: {
+    color: "#FFFFFF",
+    fontSize: ps(0.7),
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  modalLeft: {
+    flex: 1.4,
+    paddingRight: ps(1.5),
+    justifyContent: "center",
+  },
+  modalRight: {
+    flex: 0.65,
+    paddingLeft: ps(1.5),
+    justifyContent: "center",
+    gap: ps(0.8),
+  },
+  modalTitle: {
+    color: "#FFFFFF",
+    fontSize: ps(1.6),
+    fontWeight: "800",
+    marginBottom: ps(0.6),
+  },
+  modalDescription: {
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: ps(0.95),
+    lineHeight: ps(1.3),
+    marginTop: ps(0.4),
+  },
+  modalMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: ps(0.6),
+    marginBottom: ps(0.4),
+  },
+  modalBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: ps(0.3),
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    paddingHorizontal: ps(0.6),
+    paddingVertical: ps(0.3),
+    borderRadius: ps(0.4),
+  },
+  modalBadgeText: {
+    color: "#FFFFFF",
+    fontSize: ps(0.8),
+    fontWeight: "700",
+  },
+  modalBtnWrapper: {
+    borderRadius: ps(0.6),
+    overflow: "visible",
+    width: "100%",
+  },
+  modalBtnBorder: {
+    padding: 1,
+    borderRadius: ps(0.6),
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+  },
+  modalBtnBorderFocused: {
+    borderColor: "#FFFFFF",
+    backgroundColor: "#FFFFFF",
+  },
+  modalBtnPrimaryInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: ps(0.4),
+    paddingVertical: ps(0.7),
+    paddingHorizontal: ps(1.2),
+    borderRadius: ps(0.5),
+    backgroundColor: "#FFFFFF",
+  },
+  modalBtnSecondaryInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: ps(0.4),
+    paddingVertical: ps(0.7),
+    paddingHorizontal: ps(1.2),
+    borderRadius: ps(0.5),
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  },
+  modalBtnPrimaryText: {
+    color: "#000000",
+    fontSize: ps(0.88),
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  modalBtnSecondaryText: {
+    color: "#FFFFFF",
+    fontSize: ps(0.88),
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
 });

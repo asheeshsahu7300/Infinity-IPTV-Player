@@ -9,7 +9,7 @@
 //     version, so the screen still works when VLC isn't present — it just
 //     loses the extra IPTV-hardening features in that case.
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -38,14 +38,31 @@ import * as Brightness from "expo-brightness";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { safeStorage } from "../src/services/safeStorage";
 import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
 import { useKeepAwake } from "expo-keep-awake";
 import { StreamManager } from "../src/services/StreamManager";
 import { PlaybackState } from "../src/services/PlaybackState";
-import { usePortalStore } from "../src/store/portalStore";
+import { usePortalStore, Channel } from "../src/store/portalStore";
 import { isTV } from "../src/utils/tvUtils";
 import { THEME, ps, pw, ph } from "../src/theme/tokens";
-import { Focusable, FocusGroup, Overlay, useDPad, DPAD_PRIORITY } from "../src/tv";
+import { Focusable, FocusGroup, Overlay, useDPad, DPAD_PRIORITY, useStbKeys, STB_PRIORITY } from "../src/tv";
 import NetInfo from "@react-native-community/netinfo";
+import { epgService } from "../src/services/epgService";
+import { buildImageUrl } from "../src/services/portalApi";
+import { parentalControl } from "../src/services/parentalControl";
+import { stbEnvironment, BufferTuning, applySameHostStreamProxy } from "../src/services/stbEnvironment";
+import { liveChannelSession, buildChannelNumbers, withChannelNumbers } from "../src/services/liveChannelSession";
+import { playbackQueue, QueueItem } from "../src/services/playbackQueue";
+import { resumeIndex } from "../src/services/resumeIndex";
+import { useNowNext } from "../src/hooks/useNowNext";
+import { useChannelTuner } from "../src/hooks/useChannelTuner";
+import ChannelInfoBar from "../src/components/ChannelInfoBar";
+import ChannelZapList from "../src/components/ChannelZapList";
+import MediaInfoBar from "../src/components/MediaInfoBar";
+import QueueList from "../src/components/QueueList";
+import UpNextCard from "../src/components/UpNextCard";
+import { ChannelTunerReadout } from "../src/components/ChannelTunerOverlay";
+import PinPrompt from "../src/components/PinPrompt";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -65,6 +82,26 @@ const isVLCSupported = () => {
 // ─── Types ────────────────────────────────────────────────────────────────────
 type AspectRatioType = "16:9" | "4:3" | "fit" | "fill";
 type NetworkQuality = "fast" | "medium" | "slow" | "unknown";
+
+/**
+ * Within this much of the duration, a stream that stops has finished rather
+ * than stalled. Two seconds covers the rounding between a container's declared
+ * duration and the last frame VLC actually reports.
+ */
+const END_OF_MEDIA_MS = 2000;
+
+/**
+ * How long before the end the "up next" card appears.
+ *
+ * Two minutes, which is roughly where a closing scene gives way to credits, and
+ * is what every streaming service settled on. Offering it only once playback
+ * has actually stopped is too late: by then the viewer has already reached for
+ * the remote or given up.
+ *
+ * It only affects when the card is *shown* — the countdown inside it still has
+ * to elapse, and cancelling leaves the current episode playing to its end.
+ */
+const UP_NEXT_LEAD_MS = 2 * 60 * 1000;
 
 const ASPECT_RATIOS: { key: AspectRatioType; label: string; resize: PlayerAspectRatio }[] = [
   { key: "16:9", label: "16:9", resize: "16:9" },
@@ -103,13 +140,48 @@ function calcNetworkCacheMs(quality: NetworkQuality, isLive: boolean, is4K: bool
   return is4K ? Math.round(base * 1.25) : base;
 }
 
-function getQualityLabel(quality: NetworkQuality, is4K: boolean): string {
+/**
+ * The cache VLC is actually given, in ms.
+ *
+ * Three inputs, in priority order:
+ *
+ *   • the buffer profile the viewer chose — their stated preference for
+ *     zap speed over resilience;
+ *   • the network floor — "Instant" cannot be honoured on a 3G connection, so
+ *     a poor line raises the minimum whatever the setting says;
+ *   • the stall boost — after repeated stalls the player deepens its own
+ *     buffer, because a viewer watching it stutter did not get the trade they
+ *     asked for. This is the part that makes playback settle down on a bad
+ *     line instead of stuttering indefinitely.
+ */
+function resolveCacheMs(
+  tuning: BufferTuning,
+  quality: NetworkQuality,
+  isLive: boolean,
+  is4K: boolean,
+  boost: number
+): number {
+  const preference = isLive ? tuning.liveCacheMs : tuning.vodCacheMs;
+  const floor = calcNetworkCacheMs(quality, isLive, is4K);
+  return Math.round(Math.max(preference, floor) * boost);
+}
+
+/**
+ * The quality chip's text, or null when there is nothing honest to put in it.
+ *
+ * This used to fall back to "LIVE" for unknown quality, which was wrong twice
+ * over: "LIVE" describes the stream type, not its quality, so the chip claimed
+ * to have measured something it had not — and on a live channel it collided
+ * with the actual LIVE indicator, producing two badges labelled "LIVE" (and the
+ * duplicate-key warning that exposed it). An unmeasured line gets no chip.
+ */
+function getQualityLabel(quality: NetworkQuality, is4K: boolean): string | null {
   if (is4K) return "4K";
   switch (quality) {
     case "fast": return "HD";
     case "medium": return "SD";
     case "slow": return "LOW";
-    default: return "LIVE";
+    default: return null;
   }
 }
 
@@ -171,6 +243,7 @@ export default function PlayerScreen() {
     type: string;
     contentId?: string;
     cmd?: string;
+    logo?: string;
     drmScheme?: string;
     drmLicenseUrl?: string;
   }>();
@@ -198,7 +271,9 @@ export default function PlayerScreen() {
   const networkCacheMsRef = useRef(networkCacheMs);
 
   // ── Core playback state ───────────────────────────────────────────────────
-  const [streamUrl, setStreamUrl] = useState(params.url || "");
+  const [streamUrl, setStreamUrl] = useState(() =>
+    applySameHostStreamProxy(params.url || "", activePortal, params.cmd)
+  );
   const [seekBarNode, setSeekBarNode] = useState<number | undefined>(undefined);
   const [dummyLeftNode, setDummyLeftNode] = useState<number | undefined>(undefined);
   const [dummyRightNode, setDummyRightNode] = useState<number | undefined>(undefined);
@@ -208,6 +283,7 @@ export default function PlayerScreen() {
   const dummyRightRef = useRef<any>(null);
   const [showControls, setShowControls] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
   const [aspectRatioIndex, setAspectRatioIndex] = useState(0);
@@ -239,6 +315,96 @@ export default function PlayerScreen() {
   const [volumeIndicator, setVolumeIndicator] = useState<number | null>(null);
   const [brightnessIndicator, setBrightnessIndicator] = useState<number | null>(null);
   const [currentVolume, setCurrentVolume] = useState(100);
+
+  // ── Set-top-box layer ─────────────────────────────────────────────────────
+  /**
+   * Whether the zap session belongs to the channel this screen was opened with.
+   *
+   * The session outlives the player, so a live stream opened from Search or a
+   * deep link would otherwise adopt whatever list Live TV left behind. Decided
+   * once at mount: a zap replaces the tuned channel, so re-checking later would
+   * only ever agree with itself.
+   */
+  const [hasZapSession] = useState(() =>
+    hasZapSessionInitial(params.type, params.contentId) || params.type === "live"
+  );
+  /** The tuned channel, when Live TV handed a zap list over. */
+  const [liveChannel, setLiveChannel] = useState<Channel | null>(() => {
+    if (hasZapSessionInitial(params.type, params.contentId)) {
+      return liveChannelSession.channel;
+    }
+    if (params.type === "live") {
+      const storeChannels = usePortalStore.getState().channels;
+      if (params.contentId && storeChannels.length > 0) {
+        const found = storeChannels.find((c) => String(c.id) === String(params.contentId));
+        if (found) {
+          const allNumbered = withChannelNumbers(storeChannels, buildChannelNumbers(storeChannels));
+          const idx = Math.max(0, allNumbered.findIndex((c) => String(c.id) === String(params.contentId)));
+          liveChannelSession.start(allNumbered, idx, "Live TV", usePortalStore.getState().activePortal?.id || "", allNumbered);
+          return allNumbered[idx];
+        }
+      }
+      return {
+        id: params.contentId || "live_stream",
+        name: params.title || "Live Channel",
+        streamUrl: params.url || "",
+        logo: params.logo || undefined,
+      } as Channel;
+    }
+    return null;
+  });
+  const [zapIndex, setZapIndex] = useState(() =>
+    hasZapSessionInitial(params.type, params.contentId) ? liveChannelSession.current?.index ?? 0 : 0
+  );
+  const [showBanner, setShowBanner] = useState(params.type === "live");
+  const [showZapList, setShowZapList] = useState(false);
+
+  // ── On-demand queue ───────────────────────────────────────────────────────
+  const queueHasItems = !isLive && !!playbackQueue.current && playbackQueue.size > 0;
+  /** Whether the queue belongs to what this screen was opened with. */
+  const [hasQueue, setHasQueue] = useState(() => hasQueueInitial(params.type, params.contentId) || queueHasItems);
+  const [queueItem, setQueueItem] = useState<QueueItem | null>(() =>
+    (hasQueueInitial(params.type, params.contentId) || queueHasItems) ? playbackQueue.item : null
+  );
+  const [queueIndex, setQueueIndex] = useState(() =>
+    (hasQueueInitial(params.type, params.contentId) || queueHasItems) ? playbackQueue.index : 0
+  );
+  /** The end-of-episode card. Null when nothing is queued behind this one. */
+  const [upNext, setUpNext] = useState<QueueItem | null>(null);
+  /**
+   * Offered once per title when there is somewhere worth resuming to. The
+   * player used to seek straight there, which is the right default but leaves
+   * no way to start over.
+   */
+  const [resumeOffer, setResumeOffer] = useState<{ position: number } | null>(null);
+  const [showQueueList, setShowQueueList] = useState(false);
+  const rawPoster = queueItem?.poster || params.logo || (params as any).poster;
+  const vodPoster = useMemo(() => {
+    if (!rawPoster) return "";
+    const base = (activePortal?.config?.url || "").replace(/\/$/, "");
+    return buildImageUrl(base, rawPoster);
+  }, [rawPoster, activePortal]);
+  const vodTitle = queueItem?.title || params.title || "Playing";
+  const vodSubtitle = queueItem?.subtitle || (!isLive ? (queueItem?.kind === "episode" ? "Episode" : "Movie") : undefined);
+  const [pinTarget, setPinTarget] = useState<Channel | null>(null);
+  /** Bumped to force VLC to remount when the buffer depth changes. */
+  const [bufferGeneration, setBufferGeneration] = useState(0);
+  const [bufferTuning, setBufferTuning] = useState<BufferTuning>(() => stbEnvironment.buffer);
+
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bufferTuningRef = useRef(bufferTuning);
+  bufferTuningRef.current = bufferTuning;
+  /**
+   * Multiplier applied to the cache after repeated stalls. Steps 1 → 2 → 3 and
+   * never comes back down within a session: a line that stalled three times is
+   * not one to keep probing with a shallow buffer.
+   */
+  const bufferBoostRef = useRef(1);
+  const isNetworkLostRef = useRef(false);
+  /** Live values for the channel being watched; a zap replaces both. */
+  const activeCmdRef = useRef<string>(params.cmd || params.url || "");
+  const activeContentIdRef = useRef<string>(params.contentId || "");
+  const zapInFlightRef = useRef(false);
 
   // ── Retry configuration ───────────────────────────────────────────────────
   const BUFFERING_UI_DEBOUNCE_MS = 600;
@@ -273,7 +439,20 @@ export default function PlayerScreen() {
   const isAdjustingVolume = useRef(false);
   const isAdjustingBrightness = useRef(false);
   const isRetryingRef = useRef(false);
+  const lastVlcErrorTimeRef = useRef(0);
   const hasStartedPlayingRef = useRef(false);
+  /**
+   * Set the first time the reported position actually moves.
+   *
+   * The VLC binding polls `getTime()` on a 250 ms timer rather than reporting
+   * time-changed events, so a frozen stream keeps delivering progress with an
+   * unchanging clock — which is exactly what makes position-freeze the right
+   * stall signal. The flipside is a stream whose clock never leaves zero: for
+   * that one, freeze detection would reconnect every few seconds forever. The
+   * watchdog waits for this flag so it only ever judges a clock it has seen
+   * running.
+   */
+  const hasObservedProgressRef = useRef(false);
   const stallCountRef = useRef(0);
   const stallWindowStartRef = useRef(Date.now());
   const brightnessPermissionRequestInProgress = useRef(false);
@@ -296,6 +475,8 @@ export default function PlayerScreen() {
   const showSubtitleModalRef = useRef(showSubtitleModal);
   const seekBarFocusedRef = useRef(seekBarFocused);
   const isFullscreenRef = useRef(isFullscreen);
+  const showZapListRef = useRef(false);
+  const showBannerRef = useRef(false);
   const positionRef = useRef(position);
   const durationRef = useRef(duration);
   const isSeekableRef = useRef(isSeekable);
@@ -305,6 +486,18 @@ export default function PlayerScreen() {
   const accumulateSeekRef = useRef<(delta: number, isProgressive?: boolean) => void>(() => { });
   const handleTapRef = useRef<(x: number) => void>(() => { });
   const handleSilentRetryRef = useRef<() => void>(() => { });
+  // The zap helpers are defined further down but the D-pad handlers above need
+  // them, so they are reached through refs. Assigned where they are defined.
+  const zapByRef = useRef<(delta: number) => void>(() => { });
+  const flashBannerRef = useRef<() => void>(() => { });
+  const canZapRef = useRef(false);
+  const playQueueItemRef = useRef<(item: QueueItem, index: number) => void>(() => { });
+  const stepQueueRef = useRef<(delta: number) => void>(() => { });
+  const handleReachedEndRef = useRef<() => void>(() => { });
+  const hasQueueRef = useRef(false);
+  const showQueueListRef = useRef(false);
+  /** Set once the up-next card has been offered for the current title. */
+  const upNextArmedRef = useRef(false);
 
   // ── Ref sync effects ──────────────────────────────────────────────────────
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
@@ -314,6 +507,9 @@ export default function PlayerScreen() {
   useEffect(() => { showSubtitleModalRef.current = showSubtitleModal; }, [showSubtitleModal]);
   useEffect(() => { seekBarFocusedRef.current = seekBarFocused; }, [seekBarFocused]);
   useEffect(() => { isFullscreenRef.current = isFullscreen; }, [isFullscreen]);
+  useEffect(() => { showZapListRef.current = showZapList; }, [showZapList]);
+  useEffect(() => { showQueueListRef.current = showQueueList; }, [showQueueList]);
+  useEffect(() => { showBannerRef.current = showBanner; }, [showBanner]);
   useEffect(() => { positionRef.current = position; }, [position]);
   useEffect(() => { durationRef.current = duration; }, [duration]);
   useEffect(() => { isSeekableRef.current = isSeekable; }, [isSeekable]);
@@ -321,6 +517,23 @@ export default function PlayerScreen() {
   useEffect(() => {
     networkCacheMsRef.current = networkCacheMs;
   }, [networkCacheMs]);
+
+  // The box's own settings drive the buffer depth and the banner timeout, so
+  // they are loaded before the first VLC mount rather than read lazily.
+  useEffect(() => {
+    let alive = true;
+    stbEnvironment.load().then(() => {
+      if (alive) setBufferTuning(stbEnvironment.buffer);
+    });
+    parentalControl.load();
+    const unsubscribe = stbEnvironment.subscribe(() => {
+      if (alive) setBufferTuning(stbEnvironment.buffer);
+    });
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, []);
 
   // ── Unmount cleanup ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -336,6 +549,7 @@ export default function PlayerScreen() {
   useEffect(() => {
     const applyNetworkState = (type: string | null, effectiveType?: string | null, connected?: boolean | null) => {
       const lost = connected === false;
+      isNetworkLostRef.current = lost;
       setIsNetworkLost(lost);
       if (!lost) {
         const quality = detectNetworkQuality(type, effectiveType);
@@ -372,9 +586,32 @@ export default function PlayerScreen() {
         lastProgressStateUpdateTime.current = now;
       }
 
-      if (params.contentId && params.type !== "live" && now - lastPositionSaveTime.current > 10000) {
+      // Offer the next episode while the current one is still playing.
+      const hasValidQueue = !isLive && (hasQueueRef.current || (!!playbackQueue.current && playbackQueue.size > 0));
+      const remainingMs = durationMs - positionMs;
+      const shouldTriggerLead =
+        durationMs > 20000 &&
+        (remainingMs <= 45000 || (durationMs > UP_NEXT_LEAD_MS && remainingMs <= UP_NEXT_LEAD_MS));
+
+      if (
+        !isLive &&
+        !upNextArmedRef.current &&
+        shouldTriggerLead &&
+        hasValidQueue &&
+        playbackQueue.hasNext
+      ) {
+        upNextArmedRef.current = true;
+        const next = playbackQueue.current?.items[playbackQueue.index + 1];
+        if (next) setUpNext(next);
+      }
+
+      const contentId = activeContentIdRef.current || params.contentId;
+      if (contentId && params.type !== "live" && now - lastPositionSaveTime.current > 10000) {
         lastPositionSaveTime.current = now;
-        StreamManager.savePlaybackPosition(params.contentId, positionMs, durationMs);
+        StreamManager.savePlaybackPosition(contentId, positionMs, durationMs);
+        // Mirrored so a grid the viewer backs out to shows the bar where they
+        // actually left off, not where it was when that screen mounted.
+        resumeIndex.note(contentId, positionMs, durationMs);
       }
     },
     [params.contentId, params.type]
@@ -382,6 +619,15 @@ export default function PlayerScreen() {
 
   // ── Shared buffering handler (debounced UI flag, used by both players) ────
   const handleBufferingChange = useCallback((buffering: boolean) => {
+    if (isLive) {
+      if (bufferingTimeoutRef.current) {
+        clearTimeout(bufferingTimeoutRef.current);
+        bufferingTimeoutRef.current = null;
+      }
+      setIsBuffering(false);
+      lastProgressTimeRef.current = Date.now();
+      return;
+    }
     if (buffering) {
       if (bufferingStartedRef.current === null) bufferingStartedRef.current = Date.now();
       if (!bufferingTimeoutRef.current) {
@@ -401,6 +647,76 @@ export default function PlayerScreen() {
       // Advance stall clock — player is actively receiving data again
       lastProgressTimeRef.current = Date.now();
     }
+  }, []);
+
+  // ── Stall watchdog ────────────────────────────────────────────────────────
+  //
+  // The single biggest cause of "it just froze" on an IPTV box. VLC does not
+  // reliably report a dead socket: onError and onStopped cover a stream that
+  // ends, but a provider that quietly stops sending data leaves the player
+  // sitting on a full decoder with no callback of any kind. Progress simply
+  // stops advancing, and without something watching for that the picture is
+  // frozen until the viewer presses a button.
+  //
+  // Both stall clocks were already being kept up to date — every progress
+  // event, every buffering change, every reconnect touches lastProgressTimeRef
+  // — but nothing ever read them. This is the reader.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!mountedRef.current) return;
+      // Paused, seeking, already reconnecting, or offline: not a stall, and
+      // firing a reconnect in any of those states makes things worse.
+      if (!isPlayingRef.current || isSeeking.current) return;
+      if (isRetryingRef.current || isNetworkLostRef.current) return;
+      if (!hasStartedPlayingRef.current || !hasObservedProgressRef.current) return;
+
+      const since = Date.now() - lastProgressTimeRef.current;
+      // The timeout has to clear the buffer depth, or the watchdog fires while
+      // the player is legitimately filling a deep cache after a zap.
+      if (since < bufferTuningRef.current.stallTimeoutMs) return;
+
+      // Reset the clock first: the reconnect is asynchronous and this must not
+      // fire again on the next tick while it is still in flight.
+      lastProgressTimeRef.current = Date.now();
+
+      // A film or episode sitting still at its own end has not stalled — it has
+      // finished. Plenty of IPTV VOD streams never emit a clean end-of-media
+      // event and simply stop delivering, so without this the watchdog would
+      // reconnect at the end of every episode and restart it, which is also
+      // exactly what stopped auto-advance from ever being reached.
+      if (!isLive && durationRef.current > 0) {
+        const remaining = durationRef.current - positionRef.current;
+        if (remaining <= END_OF_MEDIA_MS) {
+          console.log("[Player] stopped at the end — treating as finished");
+          setIsPlaying(false);
+          handleReachedEndRef.current();
+          return;
+        }
+      }
+
+      const now = Date.now();
+      if (now - stallWindowStartRef.current > 60000) {
+        stallWindowStartRef.current = now;
+        stallCountRef.current = 0;
+      }
+      stallCountRef.current += 1;
+
+      // Three stalls in a minute means the current buffer is not deep enough
+      // for this line. Deepen it and remount, rather than reconnecting into
+      // the same conditions over and over.
+      if (stallCountRef.current >= 3 && bufferBoostRef.current < 3) {
+        bufferBoostRef.current += 1;
+        stallCountRef.current = 0;
+        console.log(`[Player] repeated stalls — raising buffer to ${bufferBoostRef.current}x`);
+        setBufferGeneration((g) => g + 1);
+        return;
+      }
+
+      console.log(`[Player] no progress for ${since}ms — reconnecting`);
+      handleSilentRetryRef.current();
+    }, 1000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // ── Controls auto-hide ────────────────────────────────────────────────────
@@ -566,8 +882,11 @@ export default function PlayerScreen() {
         ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => { });
         Brightness.restoreSystemBrightnessAsync().catch(() => { });
       }
-      if (params.contentId && positionRef.current > 0 && durationRef.current > 0) {
-        StreamManager.savePlaybackPosition(params.contentId, positionRef.current, durationRef.current);
+      // The tuned/queued id, not the launch id: after stepping to episode three
+      // this would otherwise write episode three's position over episode one's.
+      const watchingId = activeContentIdRef.current || params.contentId;
+      if (watchingId && positionRef.current > 0 && durationRef.current > 0) {
+        StreamManager.savePlaybackPosition(watchingId, positionRef.current, durationRef.current);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -576,6 +895,16 @@ export default function PlayerScreen() {
   // ── Back handler ──────────────────────────────────────────────────────────
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      // The channel list and the tuner are the top layer, so BACK dismisses
+      // them before it does anything to playback.
+      if (showZapListRef.current) {
+        setShowZapList(false);
+        return true;
+      }
+      if (showQueueListRef.current) {
+        setShowQueueList(false);
+        return true;
+      }
       if (isFullscreenRef.current) {
         setIsFullscreen(false);
         ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
@@ -587,7 +916,7 @@ export default function PlayerScreen() {
         return true;
       }
       StreamManager.savePlaybackPosition(
-        params.contentId as string,
+        activeContentIdRef.current || (params.contentId as string),
         positionRef.current,
         durationRef.current
       );
@@ -612,6 +941,9 @@ export default function PlayerScreen() {
           const saved = await StreamManager.getPlaybackPosition(params.contentId);
           if (saved && saved.position > 0 && saved.duration - saved.position > 5000) {
             savedResumePosition.current = saved.position;
+            // Ask rather than jump. The seek still happens by default — the
+            // card times out into it — but "start over" stops being impossible.
+            setResumeOffer({ position: saved.position });
             // If duration is already known, apply resume seek immediately
             if (!hasSetInitialPosition.current && durationRef.current > 0) {
               hasSetInitialPosition.current = true;
@@ -878,22 +1210,58 @@ export default function PlayerScreen() {
         }
       },
       onUp: () => {
+        // With the controls down, up/down are the channel keys — the mapping
+        // every set-top remote uses when no transport bar is showing.
+        if (isLive && !showControlsRef.current && canZapRef.current) {
+          zapByRef.current(1);
+          return;
+        }
         setShowControls(true);
         resetControlsTimeout();
       },
       onDown: () => {
+        if (isLive && !showControlsRef.current && canZapRef.current) {
+          zapByRef.current(-1);
+          return;
+        }
         setShowControls(true);
         resetControlsTimeout();
+      },
+      // INFO arrives on this path, not through useStbKeys — see the note at
+      // the top of stbKeys.ts. Toggling rather than only showing, because a
+      // banner you cannot dismiss with the key that raised it is a trap.
+      onInfo: () => {
+        if (showBannerRef.current) setShowBanner(false);
+        else flashBannerRef.current();
+      },
+      // Media next/previous are the only channel-ish keys the stock React
+      // Native bridge forwards, so they double as CH+/CH- on live and as
+      // next/previous episode on demand.
+      onNext: () => {
+        if (isLive) zapByRef.current(1);
+        else stepQueueRef.current(1);
+      },
+      onPrevious: () => {
+        if (isLive) zapByRef.current(-1);
+        else stepQueueRef.current(-1);
       },
       onMenu: () => {
         setShowControls(true);
         resetControlsTimeout();
       },
       onPageUp: () => {
+        if (isLive && canZapRef.current) {
+          zapByRef.current(1);
+          return;
+        }
         setShowControls(true);
         resetControlsTimeout();
       },
       onPageDown: () => {
+        if (isLive && canZapRef.current) {
+          zapByRef.current(-1);
+          return;
+        }
         setShowControls(true);
         resetControlsTimeout();
       },
@@ -905,7 +1273,12 @@ export default function PlayerScreen() {
       },
     },
     {
-      enabled: !showAudioModal && !showSubtitleModal && !showVideoModal,
+      // The up-next card is included: while it counts down its cancel button
+      // holds focus, and a stray D-pad press waking the transport controls
+      // would take that focus away at the worst possible moment.
+      enabled:
+        !showAudioModal && !showSubtitleModal && !showVideoModal &&
+        !showZapList && !showQueueList && !upNext && !pinTarget,
       priority: DPAD_PRIORITY.PLAYER,
     }
   );
@@ -963,7 +1336,7 @@ export default function PlayerScreen() {
   const handleSilentRetry = useCallback(async () => {
     if (isRetryingRef.current) return;
 
-    if (retryCount.current >= maxRetries || !activePortal || !params.cmd) {
+    if (retryCount.current >= maxRetries || !activePortal || !activeCmdRef.current) {
       setIsLoading(false);
       setIsBuffering(false);
       if (bufferingTimeoutRef.current) {
@@ -972,7 +1345,7 @@ export default function PlayerScreen() {
       }
 
       // Live streams: enter a 15 s silent reconnect loop instead of hard failure
-      if (isLive && activePortal && params.cmd && !liveReconnectIntervalRef.current) {
+      if (isLive && activePortal && activeCmdRef.current && !liveReconnectIntervalRef.current) {
         setLiveReconnectMode(true);
         liveReconnectIntervalRef.current = setInterval(() => {
           if (!mountedRef.current) return;
@@ -1008,10 +1381,18 @@ export default function PlayerScreen() {
       await new Promise((r) => setTimeout(r, backoffMs));
 
       const result = await StreamManager.retryStream(
-        { id: params.contentId || "", name: params.title || "", streamUrl: params.cmd },
+        {
+          id: activeContentIdRef.current,
+          name: liveChannelRef.current?.name || params.title || "",
+          // After a zap this is the *tuned* channel's command, not the one the
+          // screen was opened with — reconnecting to the launch channel would
+          // silently drop the viewer back where they started.
+          streamUrl: activeCmdRef.current,
+        },
         activePortal,
         params.type === "live" ? "itv" : "vod",
-        retryCount.current - 1
+        retryCount.current - 1,
+        playbackQueue.item?.episodeNum
       );
 
       if (result.success && result.url) {
@@ -1022,6 +1403,12 @@ export default function PlayerScreen() {
         bufferingStartedRef.current = null;
         lastProgressTimeRef.current = Date.now();
         lastProgressPositionRef.current = positionRef.current;
+        // The new URL is a new clock — the watchdog has to see it move before
+        // it is allowed to judge it again.
+        hasObservedProgressRef.current = false;
+        hasStartedPlayingRef.current = false;
+        setHasStartedPlaying(false);
+        upNextArmedRef.current = false;
 
         if (!isLive) {
           hasSetInitialPosition.current = false;
@@ -1031,7 +1418,7 @@ export default function PlayerScreen() {
         setVlcSeekTarget(undefined);
         setIsBuffering(false);
         setIsLoading(true);
-        setStreamUrl(result.url);
+        setStreamUrl(applySameHostStreamProxy(result.url, activePortal, activeCmdRef.current));
         stopLiveReconnectLoop();
       } else {
         setIsLoading(false);
@@ -1047,6 +1434,335 @@ export default function PlayerScreen() {
 
   useEffect(() => { handleSilentRetryRef.current = handleSilentRetry; }, [handleSilentRetry]);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Zapping — changing channel without leaving the video
+  // ─────────────────────────────────────────────────────────────────────────
+  const liveChannelRef = useRef<Channel | null>(liveChannel);
+  liveChannelRef.current = liveChannel;
+
+  /** Shows the channel banner and starts its auto-hide timer. */
+  const flashBanner = useCallback(() => {
+    setShowBanner(true);
+    if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+    const seconds = stbEnvironment.snapshot.infoBarSeconds || 5;
+    bannerTimerRef.current = setTimeout(() => setShowBanner(false), seconds * 1000);
+  }, []);
+
+  useEffect(() => () => {
+    if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+  }, []);
+
+  /**
+   * Tunes to a channel from the session list.
+   *
+   * Everything that identifies the old stream is replaced in one go — the URL,
+   * the retry command, the saved-position id — because a half-updated player
+   * reconnects to the previous channel the first time the new one hiccups.
+   */
+  const tuneToChannel = useCallback(async (channel: Channel, index: number) => {
+    if (!channel?.streamUrl || zapInFlightRef.current) return;
+
+    // The lock is checked here rather than at each caller, so CH+, the number
+    // pad and the channel list all go through the same gate.
+    if (parentalControl.isChannelLocked(channel)) {
+      setPinTarget(channel);
+      return;
+    }
+
+    zapInFlightRef.current = true;
+    try {
+      setLiveChannel(channel);
+      setZapIndex(index);
+      liveChannelSession.tuneToId(String(channel.id));
+
+      // Flash banner immediately so info bar appears with zero delay upon tuning
+      flashBanner();
+
+      // A zap starts a fresh connection, so the retry ladder and the stall
+      // clock both start over — carrying the previous channel's failure count
+      // would make the new channel give up early.
+      retryCount.current = 0;
+      isRetryingRef.current = false;
+      stallCountRef.current = 0;
+      hasStartedPlayingRef.current = false;
+      setHasStartedPlaying(false);
+      hasObservedProgressRef.current = false;
+      upNextArmedRef.current = false;
+      lastProgressPositionRef.current = 0;
+      lastProgressTimeRef.current = Date.now();
+      stopLiveReconnectLoop();
+      setPlaybackFailed(false);
+      setIsLoading(true);
+      setIsPlaying(true);
+
+      activeCmdRef.current = channel.streamUrl;
+      activeContentIdRef.current = String(channel.id);
+
+      let url = channel.streamUrl;
+      if (activePortal?.type === "mag") {
+        const result = await StreamManager.getStreamUrl(channel, activePortal, "itv");
+        if (result.success && result.url) url = result.url;
+      }
+      if (!mountedRef.current) return;
+
+      setStreamUrl(applySameHostStreamProxy(url, activePortal, channel.streamUrl));
+      flashBanner();
+
+      if (activePortal) {
+        liveChannelSession.rememberLastChannel(channel, activePortal.id).catch(() => { });
+        epgService.ensureChannel(activePortal, channel).catch(() => { });
+      }
+    } finally {
+      zapInFlightRef.current = false;
+    }
+  }, [activePortal, flashBanner, stopLiveReconnectLoop]);
+
+  /** True when zapping is available: a live stream, with a list to walk. */
+  const canZap = hasZapSession && liveChannelSession.canZap;
+
+  /** CH+ / CH- — one channel along the list Live TV handed over. */
+  const zapBy = useCallback((delta: number) => {
+    if (!isLive || !canZapRef.current) return;
+    const next = liveChannelSession.step(delta);
+    const session = liveChannelSession.current;
+    if (next && session) tuneToChannel(next, session.index);
+  }, [isLive, tuneToChannel]);
+
+  canZapRef.current = canZap;
+
+  zapByRef.current = zapBy;
+  flashBannerRef.current = flashBanner;
+
+  /** The numeric tuner's target. Resolves across active session and all portal channels. */
+  const tuneToNumber = useCallback((num: number) => {
+    const found = liveChannelSession.findByNumber(num);
+    if (!found) {
+      // Nothing on that number. Say so rather than silently doing nothing.
+      setSeekIndicator(`Channel ${num} not found`);
+      setTimeout(() => setSeekIndicator(null), 1500);
+      return;
+    }
+
+    let targetIndex = found.index;
+    if (found.isFromAll) {
+      targetIndex = liveChannelSession.adoptChannel(found.channel);
+    }
+    tuneToChannel(found.channel, targetIndex);
+  }, [tuneToChannel]);
+
+  const tunerMaxDigits = useMemo(() => {
+    let widest = 1;
+    const session = hasZapSession ? liveChannelSession.current : null;
+    const pool = session?.allChannels && session.allChannels.length > 0
+      ? session.allChannels
+      : (session?.channels ?? usePortalStore.getState().channels);
+    for (const c of pool) {
+      if (c.num) widest = Math.max(widest, String(c.num).length);
+    }
+    return Math.min(5, Math.max(widest, 3));
+  }, [liveChannel, hasZapSession]);
+
+  const tuner = useChannelTuner({
+    onCommit: tuneToNumber,
+    hasPrefix: useCallback((prefix: number) => liveChannelSession.hasNumberPrefix(prefix), []),
+    maxDigits: tunerMaxDigits,
+    enabled: isLive && hasZapSession && !pinTarget,
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // On-demand queue — episode to episode without leaving the video
+  // ─────────────────────────────────────────────────────────────────────────
+  hasQueueRef.current = hasQueue;
+
+  /**
+   * Plays a queued item.
+   *
+   * The on-demand twin of `tuneToChannel`, and it has the same rule: every
+   * identity the player holds is replaced together. The resume id in particular
+   * — get that wrong and episode four's position is written over episode
+   * three's the first time the progress timer fires.
+   */
+  const playQueueItem = useCallback(async (item: QueueItem, index: number) => {
+    if (!item?.streamUrl || zapInFlightRef.current) return;
+
+    zapInFlightRef.current = true;
+    try {
+      setUpNext(null);
+      setResumeOffer(null);
+      setQueueItem(item);
+      setQueueIndex(index);
+      playbackQueue.jumpTo(index);
+
+      retryCount.current = 0;
+      isRetryingRef.current = false;
+      stallCountRef.current = 0;
+      hasStartedPlayingRef.current = false;
+      setHasStartedPlaying(false);
+      hasObservedProgressRef.current = false;
+      upNextArmedRef.current = false;
+      lastProgressPositionRef.current = 0;
+      lastProgressTimeRef.current = Date.now();
+      stopLiveReconnectLoop();
+      setPlaybackFailed(false);
+      setIsLoading(true);
+      setIsPlaying(true);
+      setPosition(0);
+      setDuration(0);
+      durationRef.current = 0;
+      positionRef.current = 0;
+
+      activeCmdRef.current = item.streamUrl;
+      activeContentIdRef.current = item.id;
+
+      // A new title has its own resume point, and its own right to be sought
+      // to once the duration is known.
+      hasSetInitialPosition.current = false;
+      const saved = await StreamManager.getPlaybackPosition(item.id);
+      savedResumePosition.current =
+        saved && saved.position > 0 && saved.duration - saved.position > 5000 ? saved.position : 0;
+      // Stepping back to a half-watched episode gets the same offer arriving at
+      // one does — it resumes, and says so, and can be started over.
+      if (savedResumePosition.current > 0) {
+        setResumeOffer({ position: savedResumePosition.current });
+      }
+
+      let url = item.streamUrl;
+      if (activePortal?.type === "mag") {
+        const result = await StreamManager.getStreamUrl(
+          { id: item.id, name: item.title, streamUrl: item.streamUrl } as any,
+          activePortal,
+          "vod",
+          item.episodeNum
+        );
+        if (result.success && result.url) {
+          url = result.url;
+        } else {
+          console.warn("[playQueueItem] Stream resolution failed for", item.title, result.error);
+          setIsLoading(false);
+          setPlaybackFailed(true);
+          return;
+        }
+      }
+      if (!mountedRef.current) return;
+
+      const finalUrl = applySameHostStreamProxy(url, activePortal, item.streamUrl);
+      if (!finalUrl || !/^(https?|rtsp|mms):\/\//i.test(finalUrl)) {
+        console.warn("[playQueueItem] Invalid final stream URL:", finalUrl);
+        setIsLoading(false);
+        setPlaybackFailed(true);
+        return;
+      }
+
+      setStreamUrl(finalUrl);
+      flashBanner();
+    } finally {
+      zapInFlightRef.current = false;
+    }
+  }, [activePortal, flashBanner, stopLiveReconnectLoop]);
+
+  playQueueItemRef.current = playQueueItem;
+
+  /** Next/previous episode. Stops at the ends — a season is not a ring. */
+  const stepQueue = useCallback((delta: number) => {
+    if (!hasQueueRef.current) return;
+    const next = playbackQueue.step(delta);
+    if (next) playQueueItemRef.current(next, playbackQueue.index);
+  }, []);
+
+  stepQueueRef.current = stepQueue;
+
+  /**
+   * What happens when a title runs out.
+   *
+   * Clearing the resume point first matters: a finished episode that keeps its
+   * position resumes into its own credits next time, and the grid keeps drawing
+   * a nearly-full progress bar over something already watched.
+   */
+  const handleReachedEnd = useCallback(() => {
+    const finishedId = activeContentIdRef.current || params.contentId;
+    if (finishedId) {
+      StreamManager.clearPlaybackPosition(finishedId).catch(() => { });
+      // Noted as complete rather than forgotten, so the grid can mark it
+      // watched instead of showing it as never started.
+      resumeIndex.note(finishedId, durationRef.current, durationRef.current);
+    }
+
+    const hasValidQueue = !isLive && (hasQueueRef.current || (!!playbackQueue.current && playbackQueue.size > 0));
+    if (!hasValidQueue || !playbackQueue.hasNext) return;
+
+    // Normally the card is already up — the progress handler offers it near the end.
+    if (upNextArmedRef.current) return;
+    upNextArmedRef.current = true;
+
+    // Offered, not forced: the card counts down visibly and its cancel button
+    // takes the focus, so nothing starts without the viewer being able to stop it.
+    const next = playbackQueue.current?.items[playbackQueue.index + 1];
+    if (next) setUpNext(next);
+  }, [params.contentId]);
+
+  handleReachedEndRef.current = handleReachedEnd;
+
+  const hasValidQueue = !isLive && (hasQueue || (!!playbackQueue.current && playbackQueue.size > 0));
+  const canStepQueue = hasValidQueue && playbackQueue.size > 0;
+  const hasPrevEpisode = hasValidQueue && playbackQueue.hasPrevious;
+  const hasNextEpisode = hasValidQueue && playbackQueue.hasNext;
+
+  /**
+   * Percentage jump.
+   *
+   * On a set-top box the number keys mean something different once you are in a
+   * recording rather than on a channel: "3" is thirty per cent of the way in,
+   * not channel three. Reusing the same keys for both is the convention, and
+   * the readout above makes clear which one is in effect.
+   */
+  const jumpToPercent = useCallback((digit: number) => {
+    if (durationRef.current <= 0 || !isSeekableRef.current) return;
+    const target = Math.round((digit / 10) * durationRef.current);
+    performSeek(target);
+    setSeekIndicator(`${digit * 10}%`);
+    setTimeout(() => setSeekIndicator(null), 900);
+  }, [performSeek]);
+
+  const tunerName = useMemo(() => {
+    if (!tuner.entry) return null;
+    const targetNum = Number(tuner.entry);
+    const found = liveChannelSession.findByNumber(targetNum);
+    return found?.channel?.name ?? null;
+  }, [tuner.entry]);
+
+  // The guide for whatever is tuned. Passing the portal opts this channel into
+  // an on-demand fetch, so a channel the bulk guide missed still fills in.
+  const liveNowNext = useNowNext(isLive ? liveChannel : null, activePortal);
+
+  // ── Set-top keys: number pad, CH+/CH-, INFO, GUIDE ───────────────────────
+  useStbKeys(
+    {
+      // Live: dial a channel. On demand: jump to that percentage of the title.
+      // Straight off the remote. There is no on-screen number pad by design —
+      // react-native-tvos delivers these keys itself (see stbKeys.ts), so the
+      // remote *is* the keypad, and the readout is the only UI it needs.
+      onDigit: (digit) => (isLive ? tuner.pushDigit(digit) : jumpToPercent(digit)),
+      onChannelUp: () => (isLive ? zapBy(1) : stepQueue(1)),
+      onChannelDown: () => (isLive ? zapBy(-1) : stepQueue(-1)),
+      onGuide: () =>
+        isLive ? setShowZapList((v) => !v) : canStepQueue && setShowQueueList((v) => !v),
+    },
+    {
+      enabled: !showZapList && !showQueueList && !pinTarget,
+      priority: STB_PRIORITY.PLAYER,
+    }
+  );
+
+
+
+  // Show the banner on arrival, the way a box does when it tunes or starts a
+  // recording. Both kinds get it; only the contents differ.
+  useEffect(() => {
+    if (stbEnvironment.snapshot.autoInfoBar) flashBanner();
+    resumeIndex.load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── expo-av status handler (fallback path) ────────────────────────────────
   const onExpoStatusUpdate = useCallback(
     (status: AVPlaybackStatus) => {
@@ -1060,14 +1776,17 @@ export default function PlayerScreen() {
       if (status.positionMillis !== undefined && !isSeeking.current) {
         handleNormalizedProgress(status.positionMillis, status.durationMillis || durationRef.current);
       }
+      if (status.isPlaying && (status.positionMillis || 0) > 0) {
+        hasStartedPlayingRef.current = true;
+        setHasStartedPlaying(true);
+        setIsLoading(false);
+      }
       if (status.didJustFinish) {
         setIsPlaying(false);
-        if (params.contentId) {
-          StreamManager.savePlaybackPosition(params.contentId, 0, status.durationMillis || durationRef.current);
-        }
+        handleReachedEndRef.current();
       }
     },
-    [handleBufferingChange, handleNormalizedProgress, params.contentId]
+    [handleBufferingChange, handleNormalizedProgress]
   );
 
 
@@ -1110,32 +1829,51 @@ export default function PlayerScreen() {
     }));
   };
 
-  // ── Build VLC initOptions — Zero Buffering & Instant Startup ────────
+  /**
+   * VLC start-up options.
+   *
+   * The cache line is the one that decides whether this feels like a set-top
+   * box. It used to be pinned at 300–600 ms in the name of instant start, and
+   * that is exactly what produces the stutter this is meant to fix: at 300 ms a
+   * single late segment on an IPTV relay is a visible freeze. The depth now
+   * comes from the viewer's buffer profile, floored by the measured network
+   * quality and multiplied by the stall boost, so a clean line still zaps
+   * instantly and a bad one settles down instead of stuttering indefinitely.
+   */
   const buildVlcInitOptions = (): string[] => {
-    const liveCache = networkCacheMsRef.current ? Math.min(networkCacheMsRef.current, 600) : 300;
-    const vodCache = 200;
-    const cache = isLive ? liveCache : vodCache;
+    const cache = resolveCacheMs(
+      bufferTuningRef.current,
+      networkQuality,
+      isLive,
+      is4K,
+      bufferBoostRef.current
+    );
+    const hardwareDecode = stbEnvironment.snapshot.hardwareAcceleration !== false;
+    // Dropping the deblocking filter buys decode latency at the cost of visible
+    // artefacts, which is a trade only the "Instant" profile actually asked for.
+    const instantProfile = stbEnvironment.snapshot.bufferProfile === "instant";
 
     return [
       `--network-caching=${cache}`,
       `--live-caching=${cache}`,
-      `--file-caching=${isLive ? cache : 150}`,
+      `--file-caching=${isLive ? cache : Math.round(cache * 0.75)}`,
       `--sout-mux-caching=${cache}`,
 
       // Instant connection & DNS
       "--ipv4",                           // Immediate IPv4 resolution
-      "--http-reconnect",                 // Instant reconnect
+      "--http-reconnect",                 // Reconnect without tearing the input down
       "--http-continuous",                // Keep-alive TCP pipeline
       "--http-user-agent=okhttp/3.12.1",
       "--rtsp-tcp",
-      "--no-sub-autodetect-file",         // Skip local sub scanning for instant playback start
+      "--no-sub-autodetect-file",         // Skip local sub scanning for a faster start
 
-      // Hardware decode acceleration
-      "--codec=mediacodec,avcodec",
-      "--avcodec-hw=any",
+      // Decode
+      ...(hardwareDecode
+        ? ["--codec=mediacodec,avcodec", "--avcodec-hw=any"]
+        : ["--codec=avcodec", "--avcodec-hw=none"]),
       "--avcodec-fast",
       "--avcodec-threads=0",
-      "--avcodec-skiploopfilter=4",       // Skip non-ref deblocking for zero decode latency
+      ...(instantProfile ? ["--avcodec-skiploopfilter=4"] : []),
 
       // Frame & audio sync
       "--audio-time-stretch",
@@ -1161,6 +1899,74 @@ export default function PlayerScreen() {
   const qualityLabel = getQualityLabel(networkQuality, is4K);
   const isShowingHardFailure = playbackFailed && !isLive;
 
+  /**
+   * The channel/title banner, built once and mounted in one of two places.
+   *
+   * While the transport controls are up it goes inside them, so the two are one
+   * panel; with the controls down it gets its own bottom-anchored host. Same
+   * node either way, so the two paths cannot drift apart.
+   *
+   * It is visible whenever the controls are, regardless of its own auto-hide
+   * timer: the banner is the top half of that panel, and letting the timer
+   * expire underneath a visible control row would leave the panel looking
+   * decapitated. The timer still governs the case it was written for — a
+   * banner shown on its own by a zap or an INFO press.
+   */
+  const bannerVisible = (showBanner || showControls) && !showZapList && !showQueueList;
+
+  /**
+   * Builds the banner in one of two dresses from one definition.
+   *
+   * `inline` is the version that sits inside the transport-control panel as its
+   * top half: it drops its own edge padding and scrim so it inherits the
+   * panel's, which is what lines the two up on both margins instead of leaving
+   * them as separately-inset bands. The standalone version keeps both, because
+   * with the controls down there is no host to inherit from.
+   */
+  const buildBanner = (inline: boolean) => !bannerVisible
+    ? null
+    : isLive && liveChannel
+      ? (
+        <ChannelInfoBar
+          channel={liveChannel}
+          nowNext={liveNowNext}
+          variant={inline ? "inline" : "player"}
+          badges={[
+            { label: liveReconnectMode ? "RECONNECTING" : "LIVE", tone: liveReconnectMode ? "warn" : "live" },
+            ...(qualityLabel ? [{ label: qualityLabel, tone: "muted" as const }] : []),
+          ]}
+          hint={
+            canZap
+              ? `CH ${zapIndex + 1} of ${liveChannelSession.size}  ·  UP/DOWN to change channel`
+              : undefined
+          }
+        />
+      )
+      : !isLive && queueItem
+        ? (
+          <MediaInfoBar
+            item={queueItem}
+            position={position}
+            duration={duration}
+            queuePosition={hasQueue ? { index: queueIndex, total: playbackQueue.size } : undefined}
+            badges={[
+              ...(qualityLabel ? [{ label: qualityLabel, tone: "muted" as const }] : []),
+              ...(playbackSpeed !== 1 ? [{ label: `${playbackSpeed}x`, tone: "warn" as const }] : []),
+            ]}
+            nextTitle={
+              canStepQueue && playbackQueue.hasNext
+                ? playbackQueue.current?.items[queueIndex + 1]?.title
+                : null
+            }
+            hint={canStepQueue ? "CH +/- for the next episode  ·  0-9 to jump" : undefined}
+            inline={inline}
+          />
+        )
+        : null;
+
+  const bannerNode = buildBanner(false);
+  const inlineBannerNode = buildBanner(true);
+
   // ─────────────────────────────────────────────────────────────────────────
   // Render
   // ─────────────────────────────────────────────────────────────────────────
@@ -1169,10 +1975,13 @@ export default function PlayerScreen() {
       <StatusBar hidden />
 
       {/* ── Player: VLC when the native module is available, expo-av otherwise ── */}
-      {usingVLC ? (
+      {usingVLC && streamUrl && /^(https?|rtsp|mms):\/\//i.test(streamUrl) ? (
         // @ts-ignore
         <VLCPlayer
-          key={`vlc-${streamUrl}`}
+          // The buffer generation is part of the identity on purpose: initOptions
+          // are only read at construction, so deepening the cache after repeated
+          // stalls has no effect until the view is rebuilt.
+          key={`vlc-${streamUrl}-${bufferGeneration}`}
           ref={vlcPlayerRef}
           style={S.video}
           source={({
@@ -1196,7 +2005,6 @@ export default function PlayerScreen() {
           audioTrack={selectedAudioTrack}
           textTrack={selectedTextTrack}
           onLoad={(e: any) => {
-            setIsLoading(false);
             setIsBuffering(false);
             retryCount.current = 0;
             const durationMs = normalizeVlcTime(e.duration);
@@ -1214,6 +2022,7 @@ export default function PlayerScreen() {
           }}
           onPlaying={() => {
             hasStartedPlayingRef.current = true;
+            setHasStartedPlaying(true);
             setIsPlaying(true);
             setIsLoading(false);
             setIsBuffering(false);
@@ -1236,6 +2045,7 @@ export default function PlayerScreen() {
 
             if (currentMs > 0) {
               hasStartedPlayingRef.current = true;
+              setHasStartedPlaying(true);
               setIsLoading(false);
               setIsBuffering(false);
             }
@@ -1256,6 +2066,7 @@ export default function PlayerScreen() {
             if (currentMs !== lastProgressPositionRef.current) {
               lastProgressPositionRef.current = currentMs;
               lastProgressTimeRef.current = Date.now();
+              if (currentMs > 0) hasObservedProgressRef.current = true;
               bufferingStartedRef.current = null;
               setIsBuffering(false);
             }
@@ -1284,11 +2095,16 @@ export default function PlayerScreen() {
           }}
           onEnd={() => {
             setIsPlaying(false);
-            if (params.contentId) StreamManager.savePlaybackPosition(params.contentId, 0, durationRef.current);
+            handleReachedEndRef.current();
           }}
           onError={(e: any) => {
             console.warn("[VLC] onError", e);
-            if (!isRetryingRef.current) handleSilentRetryRef.current();
+            const now = Date.now();
+            if (now - lastVlcErrorTimeRef.current < 2500) return; // Drop rapid repeated VLC error ticks
+            lastVlcErrorTimeRef.current = now;
+            if (!isRetryingRef.current && !playbackFailed) {
+              handleSilentRetryRef.current();
+            }
           }}
         />
       ) : (
@@ -1306,7 +2122,7 @@ export default function PlayerScreen() {
       )}
 
       {/* TV: invisible focusable overlay to catch OK press when controls are hidden */}
-      {!showControls && (
+      {!showControls && !showQueueList && !showZapList && (
         <Focusable
           hasTVPreferredFocus
           style={StyleSheet.absoluteFill}
@@ -1348,17 +2164,78 @@ export default function PlayerScreen() {
         </View>
       )}
 
-      {/* ── Loading overlay ──────────────────────────────────────────────── */}
-      {(isRetrying || (isLoading && !hasStartedPlayingRef.current)) && !isShowingHardFailure && !isNetworkLost && (
-        <View style={S.loadingOverlay} pointerEvents="none">
-          <ActivityIndicator size="large" color={THEME.colors.primary} />
-          <Text style={S.loadingText}>
-            {isRetrying
-              ? `Connecting… (${retryCount.current}/${maxRetries})`
-              : liveReconnectMode
-                ? "Connecting…"
-                : "Loading…"}
-          </Text>
+      {/* ── Initial loading state for VOD & Series ────────────────────────── */}
+      {!isLive && (!hasStartedPlaying || (isLoading && position === 0)) && !isShowingHardFailure && !isNetworkLost && (
+        <View style={S.vodLoadingOverlay} pointerEvents="none">
+          {vodPoster ? (
+            <Image
+              source={{ uri: vodPoster }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              blurRadius={35}
+            />
+          ) : null}
+          <View style={S.vodLoadingBackdropDim} />
+
+          <View style={S.vodLoadingCard}>
+            {vodPoster ? (
+              <View style={S.vodPosterWrapper}>
+                <Image
+                  source={{ uri: vodPoster }}
+                  style={S.vodPosterImage}
+                  contentFit="cover"
+                />
+              </View>
+            ) : (
+              <View style={S.vodPosterFallback}>
+                <Ionicons name="film-outline" size={36} color="rgba(255,255,255,0.45)" />
+              </View>
+            )}
+
+            <View style={S.vodMetaBlock}>
+              <View style={S.vodBadge}>
+                <Text style={S.vodBadgeText}>
+                  {vodSubtitle?.toLowerCase().includes("season") || vodSubtitle?.toLowerCase().includes("episode")
+                    ? "SERIES"
+                    : "MOVIE"}
+                </Text>
+              </View>
+
+              <Text style={S.vodLoadingTitle} numberOfLines={2}>
+                {vodTitle}
+              </Text>
+              {vodSubtitle ? (
+                <Text style={S.vodLoadingSubtitle} numberOfLines={1}>
+                  {vodSubtitle}
+                </Text>
+              ) : null}
+
+              <View style={S.vodSpinnerRow}>
+                <ActivityIndicator size="small" color="#ffffff" style={S.vodSpinner} />
+                <Text style={S.vodLoadingStatus}>
+                  {isRetrying
+                    ? `Connecting… (${retryCount.current}/${maxRetries})`
+                    : isBuffering
+                      ? "Buffering stream…"
+                      : "Loading video…"}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* ── Initial loading for Live TV — suppressed for instant channel tuning ── */}
+
+      {/* ── Mid-stream buffering indicator (compact center pill) ─────────── */}
+      {!isLive && hasStartedPlaying && (isBuffering || isRetrying) && !isShowingHardFailure && !isNetworkLost && (
+        <View style={S.midstreamBufferingOverlay} pointerEvents="none">
+          <View style={S.midstreamBufferingPill}>
+            <ActivityIndicator size="small" color={THEME.colors.primary} />
+            <Text style={S.midstreamBufferingText}>
+              {isRetrying ? `Reconnecting (${retryCount.current})…` : "Buffering…"}
+            </Text>
+          </View>
         </View>
       )}
 
@@ -1407,17 +2284,13 @@ export default function PlayerScreen() {
       {/* ── Controls overlay ─────────────────────────────────────────────── */}
       {showControls && (
         <FocusGroup style={S.controlsOverlay}>
-          <LinearGradient colors={["rgba(0,0,0,0.78)", "transparent"]} style={S.topGradient} pointerEvents="none" />
-
-          {/* Header */}
-          <View style={[S.header, { paddingTop: insets.top + (isTV ? ph(2) : ph(1)) }]}>
-            <View style={S.headerLeft}>
-              <View style={S.headerInfo}>
-                <Text style={S.mainTitle} numberOfLines={1}>{params.title || "Unknown Content"}</Text>
-                <Text style={S.subTitle} />
-              </View>
-            </View>
-          </View>
+          {/* No header.
+              Its only content was the title, which the banner at the foot of
+              this same panel already carries — along with the channel number,
+              logo and what is on now. Two copies of the title at opposite ends
+              of the screen is worse than one in the place that has the rest of
+              the context. The top gradient went with it: it existed to make
+              that title legible over the picture. */}
 
           {/* Center play / seek buttons */}
           {!isLocked && (
@@ -1456,6 +2329,14 @@ export default function PlayerScreen() {
 
           {/* Bottom controls */}
           <View style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2) }]}>
+            {/* The banner is the top half of this panel rather than a separate
+                island floating above it. It used to be pinned at a fixed
+                distance from the bottom of the screen, which left a band of
+                empty video between the two and made them read as unrelated. */}
+            {bannerNode ? (
+              <View pointerEvents="none">{inlineBannerNode}</View>
+            ) : null}
+
             <View style={S.glassControls}>
 
               {/* Live reconnect banner */}
@@ -1553,15 +2434,65 @@ export default function PlayerScreen() {
               <FocusGroup ref={actionsRowRef} style={S.actionsRow}>
                 {(!isLocked || isTV) && (
                   <View style={S.actionsRight}>
-                    {isLive && (
-                      <View style={S.liveBadgeRow}>
-                        <View style={[S.liveDot, liveReconnectMode && { backgroundColor: "#ffcc00" }]} />
-                        <Text style={S.liveText}>{liveReconnectMode ? "RECONNECTING" : "LIVE"}</Text>
-                      </View>
+                    {/* No LIVE dot or quality chip here.
+                        The banner directly above already carries both as
+                        badges, and it is now always visible whenever these
+                        controls are — so repeating them put "LIVE  4K" on
+                        screen twice, one line apart, which is what made the
+                        two rows read as competing panels rather than one. */}
+
+                    {/* Set-top controls. These duplicate remote keys that most
+                        Android TV builds never deliver to JS at all, so on that
+                        hardware they are the only way to zap. */}
+                    {!isLive && canStepQueue && (
+                      <>
+                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => setShowQueueList(true)} accessibilityLabel="Episode list" {...navRowFocusHandlers}>
+                          <Ionicons name="list-outline" size={ps(2.0)} color="white" />
+                        </Focusable>
+                        {playbackQueue.size > 1 && (
+                          <>
+                            <Focusable
+                              ringOnFocus={false}
+                              focusStyle={S.iconChipFocused}
+                              style={[S.settingBtn, !hasPrevEpisode && { opacity: 0.35 }]}
+                              disabled={!hasPrevEpisode}
+                              onPress={() => stepQueue(-1)}
+                              accessibilityLabel="Previous episode"
+                              {...navRowFocusHandlers}
+                            >
+                              <Ionicons name="play-skip-back" size={ps(2.0)} color="white" />
+                            </Focusable>
+                            <Focusable
+                              ringOnFocus={false}
+                              focusStyle={S.iconChipFocused}
+                              style={[S.settingBtn, !hasNextEpisode && { opacity: 0.35 }]}
+                              disabled={!hasNextEpisode}
+                              onPress={() => stepQueue(1)}
+                              accessibilityLabel="Next episode"
+                              {...navRowFocusHandlers}
+                            >
+                              <Ionicons name="play-skip-forward" size={ps(2.0)} color="white" />
+                            </Focusable>
+                          </>
+                        )}
+                      </>
                     )}
-                    <View style={[S.qualityBadge, networkQuality === "slow" && S.qualityBadgeSlow]}>
-                      <Text style={S.qualityBadgeText}>{qualityLabel}</Text>
-                    </View>
+                    {isLive && canZap && (
+                      <>
+                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { setShowZapList(true); }} accessibilityLabel="Channel list" {...navRowFocusHandlers}>
+                          <Ionicons name="list-outline" size={ps(2.0)} color="white" />
+                        </Focusable>
+                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => zapBy(1)} accessibilityLabel="Channel up" {...navRowFocusHandlers}>
+                          <Ionicons name="chevron-up" size={ps(2.0)} color="white" />
+                        </Focusable>
+                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => zapBy(-1)} accessibilityLabel="Channel down" {...navRowFocusHandlers}>
+                          <Ionicons name="chevron-down" size={ps(2.0)} color="white" />
+                        </Focusable>
+                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => flashBanner()} accessibilityLabel="Channel info" {...navRowFocusHandlers}>
+                          <Ionicons name="information-circle-outline" size={ps(2.0)} color="white" />
+                        </Focusable>
+                      </>
+                    )}
                     {!isLive && (
                       <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cyclePlaybackSpeed} {...navRowFocusHandlers}>
                         <MaterialCommunityIcons name="play-speed" size={ps(2.0)} color="white" />
@@ -1612,8 +2543,102 @@ export default function PlayerScreen() {
         onSelect={(id: number) => { setSelectedTextTrack(id); setShowSubtitleModal(false); }}
         onClose={() => setShowSubtitleModal(false)}
       />
+
+      {/* ── Set-top banner, when the transport bar is down ───────────────── */}
+      {/* With the controls up the banner is rendered inside them instead, as
+          the top half of one panel — see bannerNode. This host only covers the
+          other case: a banner on its own after a zap or an INFO press. */}
+      {!showControls && bannerNode ? (
+        <View style={[S.bannerHost, { bottom: insets.bottom }]} pointerEvents="none">
+          {bannerNode}
+        </View>
+      ) : null}
+
+      {/* ── Numeric tuner ─────────────────────────────────────────────────── */}
+      {isLive && hasZapSession && (
+        <ChannelTunerReadout entry={tuner.entry} resolvedName={tunerName} width={tunerMaxDigits} />
+      )}
+
+      {/* ── Channel list, over the running video ──────────────────────────── */}
+      <ChannelZapList
+        visible={showZapList && canZap}
+        channels={liveChannelSession.current?.channels ?? []}
+        currentIndex={zapIndex}
+        categoryName={liveChannelSession.current?.categoryName}
+        onSelect={(channel, index) => {
+          setShowZapList(false);
+          tuneToChannel(channel, index);
+        }}
+        onClose={() => setShowZapList(false)}
+      />
+
+      {/* ── Episode list, over the running video ─────────────────────────── */}
+      <QueueList
+        visible={showQueueList && canStepQueue}
+        items={playbackQueue.current?.items ?? []}
+        currentIndex={queueIndex}
+        title={playbackQueue.current?.title}
+        onSelect={(item, index) => {
+          setShowQueueList(false);
+          playQueueItem(item, index);
+        }}
+        onClose={() => setShowQueueList(false)}
+      />
+
+      {/* ── Up next ───────────────────────────────────────────────────────── */}
+      <UpNextCard
+        visible={!!upNext}
+        item={upNext}
+        onPlayNow={() => {
+          const next = upNext;
+          setUpNext(null);
+          if (next) playQueueItem(next, queueIndex + 1);
+        }}
+        onCancel={() => setUpNext(null)}
+      />
+
+
+
+      {/* ── Parental lock ─────────────────────────────────────────────────── */}
+      <PinPrompt
+        visible={!!pinTarget}
+        title="Channel Locked"
+        message={pinTarget ? `Enter your PIN to watch ${pinTarget.name}.` : ""}
+        onSubmit={(pin) => parentalControl.unlock(pin)}
+        onCancel={() => setPinTarget(null)}
+        onSuccess={() => {
+          const target = pinTarget;
+          setPinTarget(null);
+          if (!target) return;
+          const session = liveChannelSession.current;
+          const at = session
+            ? session.channels.findIndex((c) => String(c.id) === String(target.id))
+            : -1;
+          tuneToChannel(target, at >= 0 ? at : zapIndex);
+        }}
+      />
     </View>
   );
+}
+
+/**
+ * Same check as `hasZapSession`, hoisted so the two `useState` initialisers
+ * below it can use it before that state exists.
+ */
+function hasZapSessionInitial(type: string | undefined, contentId: string | undefined): boolean {
+  if (type !== "live" || !liveChannelSession.ownsChannel(contentId)) return false;
+  // A list built against a different portal points at channels that no longer
+  // exist. Live TV clears the session on a portal switch, but the player must
+  // not depend on having been reached through it.
+  const portalId = usePortalStore.getState().activePortal?.id;
+  return !portalId || liveChannelSession.current?.portalId === portalId;
+}
+
+/** The same check for the on-demand queue. */
+function hasQueueInitial(type: string | undefined, contentId: string | undefined): boolean {
+  if (type === "live" || !playbackQueue.ownsItem(contentId)) return false;
+  const portalId = usePortalStore.getState().activePortal?.id;
+  return !portalId || playbackQueue.current?.portalId === portalId;
 }
 
 // ─── normalizeVlcTime (module-level for VLC callbacks) ───────────────────────
@@ -1630,9 +2655,12 @@ function TrackSelectionModal({
   return (
     <Overlay visible={visible} onClose={onClose} contentStyle={S.modalContent}>
       <View style={S.modalHeader}>
-        <LinearGradient colors={["#FFFFFF", "#E5E5E5"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={S.modalIconBg}>
-          <Ionicons name={(icon as any) || "settings"} size={20} color="#000000" />
-        </LinearGradient>
+        {/* A flat chip rather than a white gradient pill. The gradient was the
+            brightest thing on the panel and pulled the eye to an icon that is
+            only there to label the list. */}
+        <View style={S.modalIconBg}>
+          <Ionicons name={(icon as any) || "settings"} size={ps(1.7)} color="rgba(255,255,255,0.8)" />
+        </View>
         <Text style={S.modalTitle}>{title}</Text>
         <Text style={S.modalSubtitle}>
           {options.length === 0 ? "No tracks available" : `${options.length} track${options.length !== 1 ? "s" : ""} available`}
@@ -1653,14 +2681,18 @@ function TrackSelectionModal({
             {(focused: boolean) => (
               <View style={S.modalOptionInner}>
                 <View style={S.modalOptionLeft}>
-                  <View style={[S.trackIndexBadge, selected === undefined && S.trackIndexBadgeActive]}>
-                    <Ionicons name="aperture" size={14} color={selected === undefined ? "#000" : "rgba(255,255,255,0.5)"} />
+                  <View style={[S.trackIndexBadge, (selected === undefined || focused) && S.trackIndexBadgeActive]}>
+                    <Ionicons
+                      name="aperture"
+                      size={ps(1.1)}
+                      color={selected === undefined || focused ? "#000" : "rgba(255,255,255,0.5)"}
+                    />
                   </View>
                   <Text style={[S.modalOptionText, selected === undefined && S.modalOptionTextSelected, focused && S.modalOptionTextFocused]}>
                     Auto (Recommended)
                   </Text>
                 </View>
-                {selected === undefined && <View style={S.checkBadge}><Ionicons name="checkmark" size={14} color="#000" /></View>}
+                {selected === undefined && <View style={[S.checkBadge, focused && S.checkBadgeFocused]}><Ionicons name="checkmark" size={ps(1.1)} color={focused ? "#fff" : "#000"} /></View>}
               </View>
             )}
           </Focusable>
@@ -1690,14 +2722,14 @@ function TrackSelectionModal({
                 {(focused: boolean) => (
                   <View style={S.modalOptionInner}>
                     <View style={S.modalOptionLeft}>
-                      <View style={[S.trackIndexBadge, isSelected && S.trackIndexBadgeActive]}>
-                        <Text style={[S.trackIndexText, isSelected && S.trackIndexTextActive]}>{index + 1}</Text>
+                      <View style={[S.trackIndexBadge, (isSelected || focused) && S.trackIndexBadgeActive]}>
+                        <Text style={[S.trackIndexText, (isSelected || focused) && S.trackIndexTextActive]}>{index + 1}</Text>
                       </View>
                       <Text style={[S.modalOptionText, isSelected && S.modalOptionTextSelected, focused && S.modalOptionTextFocused]} numberOfLines={2}>
                         {trackName}
                       </Text>
                     </View>
-                    {isSelected && <View style={S.checkBadge}><Ionicons name="checkmark" size={14} color="#000" /></View>}
+                    {isSelected && <View style={[S.checkBadge, focused && S.checkBadgeFocused]}><Ionicons name="checkmark" size={ps(1.1)} color={focused ? "#fff" : "#000"} /></View>}
                   </View>
                 )}
               </Focusable>
@@ -1716,14 +2748,18 @@ function TrackSelectionModal({
             {(focused: boolean) => (
               <View style={S.modalOptionInner}>
                 <View style={S.modalOptionLeft}>
-                  <View style={[S.trackIndexBadge, selected === -1 && S.trackIndexBadgeActive]}>
-                    <Ionicons name="close" size={14} color={selected === -1 ? "#000" : "rgba(255,255,255,0.5)"} />
+                  <View style={[S.trackIndexBadge, (selected === -1 || focused) && S.trackIndexBadgeActive]}>
+                    <Ionicons
+                      name="close"
+                      size={ps(1.1)}
+                      color={selected === -1 || focused ? "#000" : "rgba(255,255,255,0.5)"}
+                    />
                   </View>
                   <Text style={[S.modalOptionText, selected === -1 && S.modalOptionTextSelected, focused && S.modalOptionTextFocused]}>
                     Disable Subtitles
                   </Text>
                 </View>
-                {selected === -1 && <View style={S.checkBadge}><Ionicons name="checkmark" size={14} color="#000" /></View>}
+                {selected === -1 && <View style={[S.checkBadge, focused && S.checkBadgeFocused]}><Ionicons name="checkmark" size={ps(1.1)} color={focused ? "#fff" : "#000"} /></View>}
               </View>
             )}
           </Focusable>
@@ -1739,7 +2775,13 @@ function TrackSelectionModal({
         focusStyle={S.modalCloseBtnFocused}
         onPress={onClose}
       >
-        <Text style={S.modalCloseBtnText}>CLOSE</Text>
+        {/* Render prop, not a bare child: the focused button is solid white,
+            so a 70%-white label on it would be invisible. */}
+        {(focused: boolean) => (
+          <Text style={[S.modalCloseBtnText, focused && S.modalCloseBtnTextFocused]}>
+            CLOSE
+          </Text>
+        )}
       </Focusable>
     </Overlay>
   );
@@ -1749,6 +2791,50 @@ function TrackSelectionModal({
 const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
   video: { ...StyleSheet.absoluteFillObject },
+
+  bannerHost: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 40,
+  },
+  // Cancels bottomOverlay's horizontal padding so the banner keeps the same
+  // full-bleed width — and the same gradient reaching the screen edges — that
+  // it has when it renders on its own.
+  bannerInControls: { marginHorizontal: -pw(5) },
+
+  resumeHost: {
+    position: "absolute",
+    top: ph(10),
+    alignSelf: "center",
+    zIndex: 70,
+  },
+  resumeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: pw(1),
+    paddingHorizontal: pw(1.6),
+    paddingVertical: ph(1),
+    borderRadius: ps(1),
+    backgroundColor: "rgba(10,11,16,0.95)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+  },
+  resumeTitle: { color: "#fff", fontSize: ps(1), fontWeight: "700" },
+  resumeBtnWrapper: { borderRadius: ps(0.7) },
+  resumeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: pw(0.5),
+    paddingHorizontal: pw(1.2),
+    paddingVertical: ph(0.7),
+    borderRadius: ps(0.7),
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  resumeBtnFocused: { backgroundColor: "#fff", borderColor: "#fff" },
+  resumeBtnText: { color: "#fff", fontSize: ps(0.82), fontWeight: "900", letterSpacing: 0.8 },
 
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1767,6 +2853,119 @@ const S = StyleSheet.create({
     paddingHorizontal: 24,
   },
 
+  vodLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#000000",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 50,
+  },
+  vodLoadingBackdropDim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.90)",
+  },
+  vodLoadingCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: ps(27),
+    maxWidth: "85%",
+    paddingHorizontal: ps(1.2),
+    paddingVertical: ps(1.0),
+    borderRadius: ps(0.9),
+    backgroundColor: "#000000",
+    gap: ps(1.0),
+    elevation: 20,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.8,
+    shadowRadius: 18,
+  },
+  vodPosterWrapper: {
+    width: ps(4.8),
+    height: ps(7.2),
+    borderRadius: ps(0.55),
+    overflow: "hidden",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  vodPosterImage: {
+    width: "100%",
+    height: "100%",
+  },
+  vodPosterFallback: {
+    width: ps(4.8),
+    height: ps(7.2),
+    borderRadius: ps(0.55),
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  vodMetaBlock: {
+    flex: 1,
+    gap: ps(0.2),
+  },
+  vodBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
+    paddingHorizontal: ps(0.45),
+    paddingVertical: ps(0.16),
+    borderRadius: ps(0.3),
+    marginBottom: ps(0.12),
+  },
+  vodBadgeText: {
+    color: "#ffffff",
+    fontSize: ps(0.68),
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
+  vodLoadingTitle: {
+    color: "#ffffff",
+    fontSize: ps(1.18),
+    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
+    lineHeight: ps(1.5),
+  },
+  vodLoadingSubtitle: {
+    color: "rgba(255, 255, 255, 0.7)",
+    fontSize: ps(0.85),
+    fontWeight: "600",
+    fontFamily: THEME.fonts.medium,
+  },
+  vodSpinnerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: ps(0.6),
+    marginTop: ps(0.6),
+  },
+  vodSpinner: {
+    width: ps(1.0),
+    height: ps(1.0),
+  },
+  vodLoadingStatus: {
+    color: "rgba(255, 255, 255, 0.8)",
+    fontSize: ps(0.85),
+    fontWeight: "600",
+    fontFamily: THEME.fonts.medium,
+    letterSpacing: 0.2,
+  },
+  midstreamBufferingOverlay: {
+    position: "absolute",
+    top: "50%",
+    alignSelf: "center",
+    marginTop: -24,
+    zIndex: 55,
+  },
+  midstreamBufferingPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: ps(0.6),
+  },
+  midstreamBufferingText: {
+    color: "#ffffff",
+    fontSize: ps(0.9),
+    fontWeight: "600",
+    fontFamily: THEME.fonts.medium,
+  },
+
   centerIndicator: {
     position: "absolute",
     top: "50%",
@@ -1781,7 +2980,6 @@ const S = StyleSheet.create({
     color: "#fff",
     fontSize: 18,
     fontWeight: "bold",
-    fontFamily: THEME.fonts.bold,
     marginTop: 10,
   },
   barContainer: {
@@ -1806,7 +3004,6 @@ const S = StyleSheet.create({
     color: "#fff",
     fontSize: ps(1),
     fontWeight: "800",
-    fontFamily: THEME.fonts.bold,
     letterSpacing: 2,
   },
 
@@ -1845,41 +3042,18 @@ const S = StyleSheet.create({
     color: "#fff",
     fontSize: ps(1.6),
     fontWeight: "900",
-    fontFamily: THEME.fonts.bold,
+    // No fontFamily here on purpose. Tenor Sans is a single-weight face and
+    // only its 400 is loaded, so asking for it at weight 900 makes Android
+    // synthesise a bold it does not have — which rendered as doubled, smeared
+    // glyphs. Heavy text uses the system font, which has real weights.
+    // See the note on THEME.fonts in src/theme/tokens.ts.
     marginTop: 4,
     letterSpacing: 1,
   },
 
   controlsOverlay: { ...StyleSheet.absoluteFillObject },
-  topGradient: { position: "absolute", top: 0, left: 0, right: 0, height: "30%" },
   bottomGradient: { position: "absolute", bottom: 0, left: 0, right: 0, height: "45%" },
 
-  header: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: pw(5),
-    alignItems: "flex-start",
-    zIndex: 10,
-  },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 20, flex: 1 },
-  headerInfo: { gap: 4, flex: 1 },
-  mainTitle: {
-    color: "#fff",
-    fontSize: ps(1.8),
-    fontWeight: "900",
-    fontFamily: THEME.fonts.bold,
-    letterSpacing: -0.5,
-  },
-  subTitle: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: ps(0.9),
-    fontWeight: "600",
-    fontFamily: THEME.fonts.medium,
-  },
   qualityBadge: {
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -1893,7 +3067,6 @@ const S = StyleSheet.create({
     color: "#fff",
     fontSize: ps(1.3),
     fontWeight: "900",
-    fontFamily: THEME.fonts.bold,
     letterSpacing: 1,
     opacity: 0.9,
   },
@@ -1955,7 +3128,6 @@ const S = StyleSheet.create({
     color: "#ffcc00",
     fontSize: ps(0.8),
     fontWeight: "700",
-    fontFamily: THEME.fonts.medium,
   },
 
   progressSection: { gap: 4, marginBottom: 4 },
@@ -1964,7 +3136,6 @@ const S = StyleSheet.create({
     color: "#fff",
     fontSize: ps(0.8),
     fontWeight: "700",
-    fontFamily: THEME.fonts.bold,
   },
   progressBarWrapper: {
     paddingVertical: 6,
@@ -2009,7 +3180,6 @@ const S = StyleSheet.create({
     color: "#fff",
     fontSize: ps(0.85),
     fontWeight: "900",
-    fontFamily: THEME.fonts.bold,
     letterSpacing: 1,
   },
 
@@ -2029,57 +3199,75 @@ const S = StyleSheet.create({
   },
 
   // ── Modal ──────────────────────────────────────────────────────────────────
+  // ── Track pickers ────────────────────────────────────────────────────────
+  //
+  // Brought in line with the rest of the player. Three things were out of
+  // step and all three made it look like a different app:
+  //
+  //   • every size was a raw pixel value (16, 13, 12, 11), so on a TV — where
+  //     everything else is sized through ps() — this was the only panel set in
+  //     fine print;
+  //   • a focused row was 15% white with a white text label, while every other
+  //     focusable surface in the app goes solid white with black text. Focus
+  //     has to look the same everywhere or it stops reading as focus;
+  //   • the custom font family was paired with weights the family has no cut
+  //     for. See the note on THEME.fonts in src/theme/tokens.ts.
   modalContent: {
-    backgroundColor: "rgba(15, 15, 15, 0.95)",
-    width: isTV ? "40%" : "75%",
-    maxWidth: 380,
-    maxHeight: "80%",
-    borderRadius: 24,
+    // The same surface as the detail sheets, so panels over video match.
+    backgroundColor: "rgba(8,9,13,0.97)",
+    width: isTV ? "42%" : "78%",
+    maxWidth: ps(34),
+    maxHeight: "82%",
+    borderRadius: ps(1.4),
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.1)",
     overflow: "hidden",
   },
-  modalHeader: { alignItems: "center", paddingTop: 20, paddingBottom: 12, paddingHorizontal: 20 },
+  modalHeader: {
+    alignItems: "center",
+    paddingTop: ph(2.4),
+    paddingBottom: ph(1.4),
+    paddingHorizontal: pw(2),
+  },
   modalIconBg: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    width: ps(3.4),
+    height: ps(3.4),
+    borderRadius: ps(1.7),
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: ph(1.2),
   },
   modalTitle: {
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-    fontFamily: THEME.fonts.bold,
-    letterSpacing: -0.5,
+    fontSize: ps(1.5),
+    fontWeight: "800",
     textAlign: "center",
   },
   modalSubtitle: {
-    color: "rgba(255,255,255,0.4)",
-    fontSize: 11,
+    color: "rgba(255,255,255,0.45)",
+    fontSize: ps(1),
     fontWeight: "600",
-    fontFamily: THEME.fonts.medium,
-    marginTop: 4,
+    marginTop: ph(0.4),
     textAlign: "center",
   },
-  modalDivider: { height: 1, backgroundColor: "rgba(255,255,255,0.06)", marginHorizontal: 20 },
-  modalScroll: { paddingHorizontal: 16, paddingVertical: 12 },
-  emptyState: { alignItems: "center", paddingVertical: 20, gap: 12 },
+  modalDivider: { height: 1, backgroundColor: "rgba(255,255,255,0.07)", marginHorizontal: pw(2) },
+  modalScroll: { paddingHorizontal: pw(1.6), paddingVertical: ph(1.2) },
+  emptyState: { alignItems: "center", paddingVertical: ph(3), gap: ph(1.2) },
   emptyText: {
-    color: "rgba(255,255,255,0.3)",
-    fontSize: 13,
+    color: "rgba(255,255,255,0.35)",
+    fontSize: ps(1.1),
     fontWeight: "600",
-    fontFamily: THEME.fonts.medium,
   },
   modalOption: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 6,
+    borderRadius: ps(0.9),
+    paddingVertical: ph(1.1),
+    paddingHorizontal: pw(1.4),
+    marginBottom: ph(0.6),
     borderWidth: 1,
     borderColor: "transparent",
     backgroundColor: "rgba(255,255,255,0.05)",
@@ -2088,18 +3276,20 @@ const S = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
     borderColor: "rgba(255,255,255,0.3)",
   },
-  modalOptionFocused: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.15)" },
+  // Solid white, as everywhere else. Ordered after the selected style at the call
+  // sites so focus wins when a row is both.
+  modalOptionFocused: { borderColor: "#fff", backgroundColor: "#fff" },
   modalOptionInner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     flex: 1,
   },
-  modalOptionLeft: { flexDirection: "row", alignItems: "center", gap: 14, flex: 1 },
+  modalOptionLeft: { flexDirection: "row", alignItems: "center", gap: pw(1.2), flex: 1 },
   trackIndexBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: ps(2.2),
+    height: ps(2.2),
+    borderRadius: ps(1.1),
     backgroundColor: "rgba(255,255,255,0.08)",
     alignItems: "center",
     justifyContent: "center",
@@ -2107,46 +3297,48 @@ const S = StyleSheet.create({
   trackIndexBadgeActive: { backgroundColor: "#fff" },
   trackIndexText: {
     color: "rgba(255,255,255,0.5)",
-    fontSize: 10,
+    fontSize: ps(0.85),
     fontWeight: "900",
-    fontFamily: THEME.fonts.bold,
   },
   trackIndexTextActive: { color: "#000" },
   modalOptionText: {
     color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-    fontFamily: THEME.fonts.bold,
+    fontSize: ps(1.15),
+    fontWeight: "700",
     flex: 1,
   },
-  modalOptionTextSelected: { color: THEME.colors.primary, fontFamily: THEME.fonts.bold },
-  modalOptionTextFocused: { color: "#fff", fontFamily: THEME.fonts.bold },
+  modalOptionTextSelected: { color: THEME.colors.primary },
+  // Black on the white focused row — the same inversion the grids use.
+  modalOptionTextFocused: { color: "#000" },
+  // Inverted on a focused row, which is solid white — a white badge there is
+  // an invisible container around a visible tick.
+  checkBadgeFocused: { backgroundColor: "#0E0F14" },
   checkBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: ps(1.8),
+    height: ps(1.8),
+    borderRadius: ps(0.9),
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
   },
   modalCloseBtn: {
     alignItems: "center",
-    paddingVertical: 10,
-    marginHorizontal: 16,
-    marginVertical: 6,
-    borderRadius: 10,
+    paddingVertical: ph(1.3),
+    marginHorizontal: pw(1.6),
+    marginVertical: ph(0.8),
+    borderRadius: ps(0.9),
     backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
     borderColor: "transparent",
   },
-  modalCloseBtnFocused: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.12)" },
+  modalCloseBtnFocused: { borderColor: "#fff", backgroundColor: "#fff" },
   modalCloseBtnText: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: 11,
-    fontWeight: "700",
-    fontFamily: THEME.fonts.bold,
+    color: "rgba(255,255,255,0.7)",
+    fontSize: ps(1),
+    fontWeight: "900",
     letterSpacing: 2,
   },
+  modalCloseBtnTextFocused: { color: "#000" },
 
   // Unused legacy slots (kept to avoid import errors from other files referencing S)
   backBtn: {
@@ -2166,5 +3358,5 @@ const S = StyleSheet.create({
     fontFamily: THEME.fonts.medium,
   },
   actionLabelBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
-  actionLabel: { color: "#fff", fontSize: ps(0.75), fontWeight: "900", fontFamily: THEME.fonts.bold },
+  actionLabel: { color: "#fff", fontSize: ps(0.75), fontWeight: "900" },
 });

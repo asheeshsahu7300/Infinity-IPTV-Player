@@ -3,6 +3,8 @@ import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
 import { safeStorage } from "./safeStorage";
 import { cacheManager, CACHE_TTL } from "./cacheManager";
 import { requestManager } from "./requestManager";
+import { cleanMetaText, splitMetaList as splitList } from "./metaText";
+import { formatRuntime } from "../utils/duration";
 import { NetworkActivity } from "./networkActivity";
 import { prewarmDns } from "./dnsResolver";
 import {
@@ -19,6 +21,83 @@ import {
 import { usePortalStore } from "../store/portalStore";
 
 const safe = (v: any) => (typeof v === "string" ? v : "");
+
+/**
+ * Portal timestamps arrive as unix seconds, unix milliseconds, or a formatted
+ * date string depending on the endpoint and the firmware behind it. Every EPG
+ * reader in this file goes through here so they cannot drift apart.
+ */
+function magChannelNumber(c: any): number | undefined {
+  const n = Number(c?.number ?? c?.num ?? c?.ch_number);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/**
+ * Normalises whatever a MAG portal calls a programme list.
+ *
+ * Three shapes are known to come back from the endpoints above:
+ *
+ *   • `{ "<chId>": [ ...programmes ] }` — the common bulk form;
+ *   • `{ data: [ ...programmes ] }` — Ministra's paginated wrapper, where each
+ *     programme carries its own `ch_id`;
+ *   • a bare array, same as `data` without the wrapper.
+ *
+ * Field names vary within those too (`name`/`title`, `descr`/`description`,
+ * `start_timestamp`/`start`/`time`), which is why every read below is a
+ * fallback chain rather than a single key.
+ */
+function parseMagEpg(js: any): EPGProgram[] {
+  if (!js) return [];
+
+  const out: EPGProgram[] = [];
+
+  const push = (raw: any, channelId: string) => {
+    if (!raw) return;
+    const cid = String(channelId || raw.ch_id || raw.channel_id || "");
+    if (!cid) return;
+    const start = epgTimeToMs(raw.start_timestamp ?? raw.start ?? raw.time);
+    const end = epgTimeToMs(raw.stop_timestamp ?? raw.end ?? raw.time_to);
+    // A programme with no clock on it cannot be placed on a timeline, and a
+    // zero-length one would make every progress calculation divide by zero.
+    if (!start || !end || end <= start) return;
+    out.push({
+      id: String(raw.id ?? `${cid}-${start}`),
+      channelId: cid,
+      title: raw.name ?? raw.title ?? "",
+      description:
+        (raw.descr ?? raw.description) || "No description available for this content.",
+      start,
+      end,
+    });
+  };
+
+  // Bare array, or Ministra's { data: [...] } wrapper.
+  const flat = Array.isArray(js) ? js : Array.isArray(js.data) ? js.data : null;
+  if (flat) {
+    for (const raw of flat) push(raw, "");
+    return out;
+  }
+
+  // Otherwise a map of channel id → programmes.
+  for (const [cid, list] of Object.entries(js)) {
+    if (!Array.isArray(list)) continue;
+    for (const raw of list) push(raw, cid);
+  }
+  return out;
+}
+
+function epgTimeToMs(v: any): number {
+  if (v == null) return 0;
+  if (typeof v === "number") return v < 1e12 ? v * 1000 : v;
+  const str = String(v).trim();
+  if (!str) return 0;
+  if (/^\d+$/.test(str)) {
+    const n = Number(str);
+    return n < 1e12 ? n * 1000 : n;
+  }
+  const parsed = Date.parse(str);
+  return isNaN(parsed) ? 0 : parsed;
+}
 
 // Try converting a .ts segment URL to a plausible .m3u8 playlist URL by
 // generating candidates and probing them with HEAD requests. Returns the
@@ -336,17 +415,94 @@ const extract = (res: any): any[] => {
   return [];
 };
 
-const buildImageUrl = (base: string, raw?: any): string => {
+export const buildImageUrl = (base: string, raw?: any): string => {
   if (!raw || typeof raw !== "string") return "";
   const s = raw.trim();
   if (!s || s === "null" || s === "undefined" || s === "N/A" || s === "none") return "";
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
 
   const serverRoot = base
     .replace(/\/$/, "")
     .replace(/\/portal\.php$/i, "")
     .replace(/\/c$/i, "");
 
+  // Stale or internal domains hardcoded in provider databases (e.g. webhop.live, starshare.live, localhost)
+  // that must be rewritten to the user's active portal base URL.
+  const rewriteStaleOrigin = (urlStr: string): string => {
+    const STALE_HOSTS = /(?:webhop\.live|starshare\.live|localhost|127\.0\.0\.1)/i;
+    const urlMatch = urlStr.match(/^(https?:\/\/[^\/]+)(\/.*)?$/i);
+    if (urlMatch) {
+      const origin = urlMatch[1];
+      const path = urlMatch[2] || "";
+      if (STALE_HOSTS.test(origin)) {
+        return path ? (path.startsWith("/") ? `${serverRoot}${path}` : `${serverRoot}/${path}`) : serverRoot;
+      }
+    }
+    return urlStr;
+  };
+
+  // 1. Data URI: already has the data: scheme (e.g. data:image/png;base64,...)
+  if (s.startsWith("data:")) return s;
+
+  // 2. Direct HTTP / HTTPS link: rewrite stale provider hostnames if matched
+  if (s.startsWith("http://") || s.startsWith("https://")) {
+    return rewriteStaleOrigin(s);
+  }
+
+  // 3. Base64-encoded URL (e.g. aHR0cDov... -> http:// or aHR0cHM6... -> https://)
+  if (s.startsWith("aHR0cDov") || s.startsWith("aHR0cHM6") || s.startsWith("aHR0cDox")) {
+    try {
+      const decoded = typeof atob === "function" ? atob(s) : Buffer.from(s, "base64").toString("utf-8");
+      if (decoded && (decoded.startsWith("http://") || decoded.startsWith("https://"))) {
+        return rewriteStaleOrigin(decoded);
+      }
+    } catch {
+      // not a base64 url
+    }
+  }
+
+  // 4. Raw base64 image data without the data: prefix
+  // Common magic signatures in base64:
+  // - /9j/ -> JPEG (0xFF, 0xD8, 0xFF)
+  // - iVBORw0KGgo -> PNG (0x89, 0x50, 0x4E, 0x47, ...)
+  // - R0lGOD -> GIF (GIF87a / GIF89a)
+  // - UklGR -> WEBP (RIFF)
+  // - PHN2Zw or PD94bW -> SVG (<svg or <?xml)
+  // - Qk -> BMP (BM)
+  if (s.startsWith("/9j/")) {
+    return `data:image/jpeg;base64,${s}`;
+  }
+  if (s.startsWith("iVBORw0KGgo")) {
+    return `data:image/png;base64,${s}`;
+  }
+  if (s.startsWith("R0lGOD")) {
+    return `data:image/gif;base64,${s}`;
+  }
+  if (s.startsWith("UklGR")) {
+    return `data:image/webp;base64,${s}`;
+  }
+  if (s.startsWith("PHN2Zw") || s.startsWith("PD94bW")) {
+    return `data:image/svg+xml;base64,${s}`;
+  }
+  if (s.startsWith("Qk")) {
+    return `data:image/bmp;base64,${s}`;
+  }
+
+  // Long base64 string without URL slashes or dots (common raw base64 image payload)
+  if (s.length > 80 && /^[A-Za-z0-9+/=\s]+$/.test(s)) {
+    try {
+      const sample = s.replace(/\s+/g, "").slice(0, 32);
+      const decoded = typeof atob === "function" ? atob(sample) : Buffer.from(sample, "base64").toString("binary");
+      if (decoded.startsWith("\x89PNG")) return `data:image/png;base64,${s}`;
+      if (decoded.charCodeAt(0) === 0xff && decoded.charCodeAt(1) === 0xd8) return `data:image/jpeg;base64,${s}`;
+      if (decoded.startsWith("GIF")) return `data:image/gif;base64,${s}`;
+      if (decoded.startsWith("RIFF")) return `data:image/webp;base64,${s}`;
+      return `data:image/jpeg;base64,${s}`;
+    } catch {
+      // not a raw base64 image
+    }
+  }
+
+  // 5. Server-relative path
   if (s.startsWith("/")) {
     return `${serverRoot}${s}`;
   }
@@ -408,6 +564,27 @@ const pickYear = (v: any) => {
   const match = s.match(/(19\d{2}|20\d{2})/);
   return match ? match[0] : undefined;
 };
+
+/**
+ * The credit block, as MAG/Stalker spells it.
+ *
+ * Unlike Xtream, this arrives on the ordinary list row — there is no separate
+ * detail call — so it costs nothing to read here and the details sheet has it
+ * immediately.
+ */
+const pickMeta = (v: any) => ({
+  cast: splitList(v?.actors ?? v?.actor ?? v?.cast),
+  director: cleanMeta(v?.director),
+  // Not `category_name`: see the matching note in xtreamApi.ts. On MAG that
+  // fallback fired for every item, so the chip row was always just the
+  // category restated rather than genre data.
+  tags: splitList(v?.genres_str ?? v?.genre_str ?? v?.genre),
+  plot: cleanMeta(v?.description ?? v?.plot ?? v?.storyline),
+  country: cleanMeta(v?.country),
+  releaseDate: cleanMeta(v?.year ?? v?.released ?? v?.release_date),
+});
+
+const cleanMeta = cleanMetaText;
 
 const pickDescription = (v: any): string => {
   const desc =
@@ -741,14 +918,16 @@ export const portalApi = {
           if (fbRows2 && fbRows2.length > 0) rows = fbRows2;
         }
       }
+
       const result = rows.map((c: any) => ({
         id: String(c.id ?? c.cmd ?? ""),
         name: c.name ?? c.title ?? "Unknown",
-        logo: buildImageUrl(base, c.logo ?? c.logo_30x30 ?? c.screenshot_uri ?? c.poster ?? c.pic ?? ""),
+        logo: buildImageUrl(base, c.logo ?? c.logo_30x30 ?? c.screen_uri ?? c.screenshot_uri ?? c.poster ?? c.pic ?? c.cover ?? ""),
         category: c.tv_genre_name ?? c.genre ?? c.category_name ?? "",
         categoryId: String(c.tv_genre_id ?? c.genre_id ?? c.category_id ?? ""),
         streamUrl: c.cmd ?? "",
         epgId: String(c.epg_id ?? ""),
+        num: magChannelNumber(c),
       }));
 
       if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.CHANNELS);
@@ -841,6 +1020,7 @@ export const portalApi = {
 
         const result = rows.map((v: any) => {
           const rawLogo =
+            v.screen_uri ??
             v.screenshot_uri ??
             v.poster ??
             v.cover ??
@@ -862,7 +1042,8 @@ export const portalApi = {
             description: pickDescription(v),
             year: pickYear(v),
             rating: pickRating(v),
-            duration: v.time ?? v.duration ?? "",
+            duration: formatRuntime(v.time, "minutes") ?? formatRuntime(v.duration) ?? "",
+            ...pickMeta(v),
           };
         });
 
@@ -959,9 +1140,10 @@ export const portalApi = {
 
         const result = rows.map((v: any) => {
           const rawLogo =
+            v.screen_uri ??
             v.screenshot_uri ??
-            v.poster ??
             v.cover ??
+            v.poster ??
             v.big_poster ??
             v.poster_url ??
             v.pic ??
@@ -979,6 +1161,7 @@ export const portalApi = {
             description: pickDescription(v),
             year: pickYear(v),
             rating: pickRating(v),
+            ...pickMeta(v),
           };
         });
 
@@ -1004,6 +1187,18 @@ export const portalApi = {
       });
 
       const seasons: Season[] = [];
+
+      // MAG returns the series' credits on the season rows themselves rather
+      // than in a separate info block, so the first row that has any wins.
+      // Stamped on every season, matching what the Xtream layer does — see the
+      // note on Season.seriesMeta.
+      const seriesMeta = (() => {
+        for (const row of rows) {
+          const meta = pickMeta(row);
+          if (meta.cast || meta.director || meta.tags || meta.plot) return meta;
+        }
+        return undefined;
+      })();
 
       for (const s of rows) {
         const seasonNum = Number(s.season_number ?? s.season ?? 1);
@@ -1051,7 +1246,7 @@ export const portalApi = {
               seasonNum,
               cmd: item.cmd ?? s.cmd,
               description: pickDescription(item) || pickDescription(s),
-              duration: item.time ?? item.duration ?? undefined,
+              duration: formatRuntime(item.time, "minutes") ?? formatRuntime(item.duration),
             };
           });
         } else if (s.cmd || s.id) {
@@ -1064,7 +1259,7 @@ export const portalApi = {
             seasonNum,
             cmd: s.cmd,
             description: pickDescription(s),
-            duration: s.time ?? s.duration ?? undefined,
+            duration: formatRuntime(s.time, "minutes") ?? formatRuntime(s.duration),
           }];
         }
 
@@ -1074,6 +1269,7 @@ export const portalApi = {
           id: String(s.id ?? seasonNum),
           name: s.name ?? `Season ${seasonNum}`,
           seasonNumber: seasonNum,
+          seriesMeta,
           cmd: s.cmd,
           episodes,
         });
@@ -1093,35 +1289,82 @@ export const portalApi = {
   ): Promise<string> {
     const latestPortal = usePortalStore.getState().activePortal ?? portal;
     const forceRefresh = retryCount > 0;
-    const refreshed = await refreshToken(latestPortal, forceRefresh);
+    let refreshed = latestPortal;
+    try {
+      refreshed = await refreshToken(latestPortal, forceRefresh);
+    } catch (authErr) {
+      console.warn("[portalApi] refreshToken error during getStreamUrl, using existing config:", authErr);
+    }
     const base = safe(refreshed.config.url).replace(/\/$/, "");
+    const serverRoot = base
+      .replace(/\/$/, "")
+      .replace(/\/portal\.php$/i, "")
+      .replace(/\/c$/i, "");
+
+    const cleanCmd = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
+
     let url = `${base}/portal.php?type=${type}&action=create_link&cmd=${encodeURIComponent(
       cmd
     )}&JsHttpRequest=1-xml`;
     if (ep != null) url += `&series=${ep}`;
 
+    const extractLink = (resData: any): string => {
+      const js = resData?.js;
+      const target = Array.isArray(js) ? js[0] : js;
+      if (typeof target === "string") return target;
+      if (target && typeof target === "object") {
+        const found = target.cmd ?? target.url ?? target.link ?? target.playlist ?? target.stream ?? target.stream_url ?? target.uri ?? target.file ?? target.path ?? "";
+        if (found) return String(found).trim();
+      }
+      const dataTarget = Array.isArray(resData) ? resData[0] : resData;
+      if (typeof dataTarget === "string") return dataTarget;
+      if (dataTarget && typeof dataTarget === "object") {
+        const found = dataTarget.cmd ?? dataTarget.url ?? dataTarget.link ?? dataTarget.stream ?? dataTarget.stream_url ?? dataTarget.uri ?? "";
+        if (found) return String(found).trim();
+      }
+      return "";
+    };
+
     try {
+      const reqHeaders = headers(
+        refreshed.config.mac ?? "",
+        refreshed.config.token ?? "",
+        base
+      );
+
       const res = await axios.get(url, {
         ...rmAcceptHeader,
-        headers: headers(
-          refreshed.config.mac ?? "",
-          refreshed.config.token ?? "",
-          base
-        ),
+        headers: reqHeaders,
         timeout: 30000,
       });
 
-      // Extract raw stream URL string from various response formats (object or string)
-      let rawOut = "";
-      const js = res?.data?.js;
-      if (typeof js === "string") {
-        rawOut = js;
-      } else if (js && typeof js === "object") {
-        rawOut = String(js.cmd ?? js.url ?? js.playlist ?? js.link ?? "").trim();
+      let rawOut = extractLink(res?.data);
+
+      // Attempt 1b: If rawOut is empty and cmd had prefixes like "auto " or "ffmpeg ", try with cleanCmd
+      if (!rawOut && cleanCmd && cleanCmd !== cmd) {
+        try {
+          let cleanUrl = `${base}/portal.php?type=${type}&action=create_link&cmd=${encodeURIComponent(cleanCmd)}&JsHttpRequest=1-xml`;
+          if (ep != null) cleanUrl += `&series=${ep}`;
+          const resClean = await axios.get(cleanUrl, {
+            ...rmAcceptHeader,
+            headers: reqHeaders,
+            timeout: 15000,
+          });
+          rawOut = extractLink(resClean?.data);
+        } catch {}
       }
-      if (!rawOut && res?.data) {
-        if (typeof res.data === "string") rawOut = res.data;
-        else rawOut = String(res.data.cmd ?? res.data.url ?? res.data.link ?? "").trim();
+
+      // Attempt 1c: For series episodes, some Stalker middleware requires type=series instead of type=vod
+      if (!rawOut && ep != null && type === "vod") {
+        try {
+          const seriesUrl = `${base}/portal.php?type=series&action=create_link&cmd=${encodeURIComponent(cleanCmd || cmd)}&series=${ep}&JsHttpRequest=1-xml`;
+          const resSeries = await axios.get(seriesUrl, {
+            ...rmAcceptHeader,
+            headers: reqHeaders,
+            timeout: 15000,
+          });
+          rawOut = extractLink(resSeries?.data);
+        } catch {}
       }
 
       if (rawOut && /%mac%/i.test(rawOut)) {
@@ -1145,21 +1388,21 @@ export const portalApi = {
 
       // Fix relative URLs (e.g. "/live/..." or "/media/...")
       if (finalUrl && finalUrl.startsWith("/") && !finalUrl.startsWith("//")) {
-        finalUrl = `${base}${finalUrl}`;
+        finalUrl = `${serverRoot}${finalUrl}`;
       }
 
-      // Rewrite localhost / 127.0.0.1 streams to portal host (MAG middleware proxy behavior)
-      if (finalUrl && /https?:\/\/(localhost|127\.0\.0\.1)/i.test(finalUrl)) {
+      // Rewrite localhost / 127.0.0.1 / stale provider domains to portal host
+      if (finalUrl && /(localhost|127\.0\.0\.1|webhop\.live|starshare\.live)/i.test(finalUrl)) {
         try {
-          const baseUrlObj = new URL(base);
+          const serverRootObj = new URL(serverRoot);
           const finalUrlObj = new URL(finalUrl);
-          finalUrlObj.hostname = baseUrlObj.hostname;
-          if (baseUrlObj.port && (!finalUrlObj.port || finalUrlObj.port === "80" || finalUrlObj.port === "8080")) {
-            finalUrlObj.port = baseUrlObj.port;
+          finalUrlObj.hostname = serverRootObj.hostname;
+          if (serverRootObj.port && (!finalUrlObj.port || finalUrlObj.port === "80" || finalUrlObj.port === "8080")) {
+            finalUrlObj.port = serverRootObj.port;
           }
           finalUrl = finalUrlObj.toString();
         } catch {
-          finalUrl = finalUrl.replace(/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, base);
+          finalUrl = finalUrl.replace(/https?:\/\/[^\/]+/i, serverRoot);
         }
       }
 
@@ -1181,15 +1424,15 @@ export const portalApi = {
         }
       }
 
-      // If finalUrl is empty or invalid and we haven't retried yet, force token refresh and retry
+      // If create_link returned empty, BUT cmd is already a direct HTTP/HTTPS stream URL, use cleanCmd directly!
+      if (!finalUrl && /^https?:\/\//i.test(cleanCmd)) {
+        finalUrl = cleanCmd;
+      }
+
+      // If finalUrl is still empty and we haven't retried yet, force token refresh and retry
       if (!finalUrl && retryCount === 0) {
         console.warn("[portalApi] getStreamUrl returned empty link. Forcing session token refresh & retrying...");
         return this.getStreamUrl(latestPortal, cmd, type, ep, 1);
-      }
-
-      // Fallback: If create_link returned empty/invalid URL, but original cmd is a direct HTTP stream URL, use original cmd
-      if (!finalUrl && /^https?:\/\//i.test(cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim())) {
-        finalUrl = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
       }
 
       let out2 = finalUrl || out || "";
@@ -1208,72 +1451,139 @@ export const portalApi = {
         }
       }
 
-      return out2;
-    } catch (e) {
-      console.warn("getStreamUrl failed:", e);
-      if (retryCount === 0) {
+      const { applySameHostStreamProxy } = await import("./stbEnvironment");
+      return applySameHostStreamProxy(out2, latestPortal, cleanCmd || cmd);
+    } catch (e: any) {
+      console.warn("getStreamUrl failed:", e?.message || e);
+      const { applySameHostStreamProxy } = await import("./stbEnvironment");
+      if (/^https?:\/\//i.test(cleanCmd)) return applySameHostStreamProxy(cleanCmd, latestPortal, cleanCmd);
+
+      // On 503 or server error, construct the direct stream URL on the same host if possible
+      const fallbackUrl = applySameHostStreamProxy("", latestPortal, cleanCmd || cmd);
+      if (fallbackUrl) return fallbackUrl;
+
+      // Don't retry if server returned 503 (temporarily unavailable / overloaded)
+      const is503 = e?.response?.status === 503;
+      if (retryCount === 0 && !is503) {
         console.warn("[portalApi] getStreamUrl error. Forcing session token refresh & retrying...");
         return this.getStreamUrl(latestPortal, cmd, type, ep, 1);
       }
-      const cleanCmd = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
-      if (/^https?:\/\//i.test(cleanCmd)) return cleanCmd;
       return "";
     }
   },
 
-  async getEpg(portal: Portal): Promise<EPGProgram[]> {
+  /**
+   * The guide for a single channel.
+   *
+   * `epg_info` returns the whole portal's schedule in one very large response,
+   * which is the wrong shape for an info bar that only ever needs the current
+   * and next programme of the channel under the cursor. `get_short_epg` is the
+   * endpoint STB firmware itself uses to fill that banner.
+   */
+  async getShortEpg(portal: Portal, channelId: string, size = 12): Promise<EPGProgram[]> {
+    if (!channelId) return [];
     const refreshed = await refreshToken(portal);
     const base = safe(refreshed.config.url).replace(/\/$/, "");
-    const url = `${base}/portal.php?type=itv&action=epg_info&JsHttpRequest=1-xml`;
+    const url =
+      `${base}/portal.php?type=itv&action=get_short_epg` +
+      `&ch_id=${encodeURIComponent(channelId)}&size=${size}&JsHttpRequest=1-xml`;
 
     const res = await axios.get(url, {
-      headers: headers(
-        refreshed.config.mac ?? "",
-        refreshed.config.token ?? "",
-        base
-      ),
-      timeout: 60000,
+      headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+      timeout: 15000,
     });
 
-    const js = res.data?.js ?? {};
+    const rows = Array.isArray(res.data?.js) ? res.data.js : [];
     const out: EPGProgram[] = [];
-
-    const toMs = (v: any): number => {
-      if (typeof v === "number") return v < 1e12 ? v * 1000 : v;
-      if (typeof v === "string" && /^\d+$/.test(v)) {
-        const n = Number(v);
-        return n < 1e12 ? n * 1000 : n;
-      }
-      const parsed = Date.parse(v);
-      return isNaN(parsed) ? Date.now() : parsed;
-    };
-
-    for (const [cid, list] of Object.entries(js)) {
-      if (!Array.isArray(list)) continue;
-      for (const p of list) {
-        if (!p) continue;
-        out.push({
-          id: String(p.id ?? `${cid}-${p.start}`),
-          channelId: cid,
-          title: p.name ?? p.title ?? "",
-          description: (p.descr ?? p.description) || "No description available for this content.",
-          start: toMs(p.start_timestamp ?? p.start),
-          end: toMs(p.stop_timestamp ?? p.end),
-        });
-      }
+    for (const p of rows) {
+      if (!p) continue;
+      const start = epgTimeToMs(p.start_timestamp ?? p.start ?? p.time);
+      const end = epgTimeToMs(p.stop_timestamp ?? p.end ?? p.time_to);
+      if (!start || !(end > start)) continue;
+      out.push({
+        id: String(p.id ?? `${channelId}-${start}`),
+        channelId: String(p.ch_id ?? channelId),
+        title: p.name ?? p.title ?? "No title",
+        description: (p.descr ?? p.description) || "",
+        start,
+        end,
+      });
     }
     return out;
   },
 
-  async search(portal: Portal, q: string, type: string) {
-    const rows = await fetchWithRetry(portal, (refreshed) => {
-      const base = safe(refreshed.config.url).replace(/\/$/, "");
-      return `${base}/portal.php?type=${type}&action=get_ordered_list&search=${encodeURIComponent(
-        q
-      )}&JsHttpRequest=1-xml`;
-    });
+  /**
+   * The whole portal's schedule, for as many days as it will give up.
+   *
+   * There is no single right endpoint here. Which action name a Stalker/Ministra
+   * portal answers depends on its middleware version, and the ones in the wild
+   * disagree: `get_epg_info` is canonical on Ministra and takes a `period` in
+   * days, `epg_info` is what older Stalker builds expose, and plain `epg` is
+   * what a number of resellers' forks respond to. Picking one and giving up
+   * leaves a portal with a perfectly good guide showing nothing.
+   *
+   * So all three are tried in order of how much they return, and the first that
+   * yields programmes wins. A wrong guess costs one failed request per boot —
+   * the result is cached above this — which is worth paying to avoid an empty
+   * guide that looks like a bug in the app.
+   *
+   * The response shape varies too, so parsing is shape-tolerant rather than
+   * keyed to one layout. See `parseMagEpg`.
+   */
+  async getEpg(portal: Portal): Promise<EPGProgram[]> {
+    const refreshed = await refreshToken(portal);
+    const base = safe(refreshed.config.url).replace(/\/$/, "");
+    const requestHeaders = headers(
+      refreshed.config.mac ?? "",
+      refreshed.config.token ?? "",
+      base
+    );
 
-    return rows;
+    // Ordered most to least capable: period=7 asks for a week where it is
+    // understood, and is ignored rather than rejected where it is not.
+    const variants = [
+      "action=get_epg_info&period=7",
+      "action=epg_info",
+      "action=epg",
+    ];
+
+    let lastError: any = null;
+
+    for (const variant of variants) {
+      const url = `${base}/portal.php?type=itv&${variant}&JsHttpRequest=1-xml`;
+      try {
+        const res = await axios.get(url, { headers: requestHeaders, timeout: 60000 });
+        const programs = parseMagEpg(res.data?.js);
+        if (programs.length > 0) {
+          return programs;
+        }
+      } catch (err: any) {
+        lastError = err;
+      }
+    }
+
+    if (lastError) {
+      console.warn("[EPG] every MAG guide endpoint failed:", lastError?.message || lastError);
+    } else {
+      console.warn("[EPG] MAG portal answered but published no programmes.");
+    }
+    return [];
+  },
+
+  async search(portal: Portal, q: string, type: string): Promise<any[]> {
+    const magType = type === "live" ? "itv" : type;
+    const base = safe(portal.config.url).replace(/\/$/, "");
+    const action = magType === "itv" ? "get_all_channels" : "get_ordered_list";
+    const url = `${base}/portal.php?type=${magType}&action=${action}&search=${encodeURIComponent(
+      q
+    )}&p=1&JsHttpRequest=1-xml`;
+
+    try {
+      const res = await portalGet(portal, url, { timeout: 12000 }, 0);
+      return extract(res);
+    } catch {
+      return [];
+    }
   },
 
   async getLiveChannelsForSearch(portal: Portal): Promise<Channel[]> {
@@ -1281,19 +1591,21 @@ export const portalApi = {
     const cacheKey = `portal:${key}:live:channels:search:all`;
 
     return requestManager.request(cacheKey, async () => {
+      const base = safe(portal.config.url).replace(/\/$/, "");
       const rows = await fetchWithRetry(portal, (refreshed) => {
-        const base = safe(refreshed.config.url).replace(/\/$/, "");
-        return `${base}/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml`;
+        const refreshedBase = safe(refreshed.config.url).replace(/\/$/, "");
+        return `${refreshedBase}/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml`;
       });
 
       const result: Channel[] = rows.map((c: any) => ({
         id: String(c.id ?? c.cmd ?? ""),
         name: c.name ?? c.title ?? "Unknown",
-        logo: c.logo ?? c.logo_30x30 ?? c.screenshot_uri ?? "",
+        logo: buildImageUrl(base, c.logo ?? c.logo_30x30 ?? c.screen_uri ?? c.screenshot_uri ?? c.poster ?? c.pic ?? c.cover ?? ""),
         category: c.tv_genre_name ?? c.genre ?? c.category_name ?? "",
         categoryId: String(c.tv_genre_id ?? c.genre_id ?? c.category_id ?? ""),
         streamUrl: c.cmd ?? "",
         epgId: String(c.epg_id ?? ""),
+        num: magChannelNumber(c),
       }));
       await cacheManager.set(cacheKey, result, CACHE_TTL.CHANNELS);
       return result;
@@ -1522,11 +1834,12 @@ export const portalApi = {
       const liveChannels: Channel[] = liveChannelsRows.map((c: any) => ({
         id: String(c.id ?? c.cmd ?? ""),
         name: c.name ?? c.title ?? "Unknown",
-        logo: c.logo ?? c.logo_30x30 ?? c.screenshot_uri ?? "",
+        logo: buildImageUrl(base, c.logo ?? c.logo_30x30 ?? c.screen_uri ?? c.screenshot_uri ?? c.poster ?? c.pic ?? c.cover ?? ""),
         category: c.tv_genre_name ?? c.genre ?? c.category_name ?? "",
         categoryId: String(c.tv_genre_id ?? c.genre_id ?? c.category_id ?? ""),
         streamUrl: c.cmd ?? "",
         epgId: String(c.epg_id ?? ""),
+        num: magChannelNumber(c),
       }));
 
       const vodCategories = vodCategoriesRows.map((c: any) => {
@@ -1542,14 +1855,14 @@ export const portalApi = {
       const vodItems: VODItem[] = vodItemsRows.map((v: any) => ({
         id: String(v.id ?? ""),
         name: v.name ?? v.title ?? "Unknown",
-        logo: v.screenshot_uri ?? v.logo ?? v.stream_icon ?? "",
+        logo: buildImageUrl(base, v.screen_uri ?? v.screenshot_uri ?? v.poster ?? v.cover ?? v.logo ?? v.stream_icon ?? ""),
         category: v.category_name ?? v.genre ?? "",
         categoryId: String(v.category_id ?? ""),
         streamUrl: v.cmd ?? "",
         description: pickDescription(v),
         year: pickYear(v),
         rating: pickRating(v),
-        duration: v.time ?? v.duration ?? "",
+        duration: formatRuntime(v.time, "minutes") ?? formatRuntime(v.duration) ?? "",
       }));
 
       const seriesCategories = seriesCategoriesRows.map((c: any) => {
@@ -1565,7 +1878,7 @@ export const portalApi = {
       const seriesList: Series[] = seriesListRows.map((v: any) => ({
         id: String(v.id ?? ""),
         name: v.name ?? v.title ?? "Unknown",
-        logo: v.screenshot_uri ?? v.logo ?? "",
+        logo: buildImageUrl(base, v.screen_uri ?? v.screenshot_uri ?? v.cover ?? v.poster ?? v.logo ?? v.stream_icon ?? ""),
         category: v.category_name ?? v.genre ?? "",
         categoryId: String(v.category_id ?? ""),
         description: pickDescription(v),

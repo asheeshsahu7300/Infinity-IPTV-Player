@@ -22,6 +22,8 @@ import ErrorBoundary from "../src/components/ErrorBoundary";
 import { usePortalStore } from "../src/store/portalStore";
 import { ThemeProvider } from "../src/context/ThemeContext";
 import { AppBootManager, SYNC_INTERVAL } from "../src/services/AppBootManager";
+import { stbEnvironment } from "../src/services/stbEnvironment";
+import { parentalControl } from "../src/services/parentalControl";
 import { DeepLink } from "../src/services/DeepLink";
 import { PlaybackState } from "../src/services/PlaybackState";
 import { isTV } from "../src/utils/tvUtils";
@@ -153,9 +155,19 @@ export default function RootLayout() {
       }
     });
 
+    // Both are read synchronously all over the app — the player asks for the
+    // buffer depth before its first frame, and every channel list asks whether
+    // a row is locked while rendering — so they are warmed during boot rather
+    // than awaited at each use site.
+    const stbProcess = Promise.all([
+      stbEnvironment.load().catch(() => { }),
+      parentalControl.load().catch(() => { }),
+    ]);
+
     const bootProcess = DeepLink.capture()
       .catch(() => { })
-      .then(() => AppBootManager.initialize());
+      .then(() => AppBootManager.initialize())
+      .then(() => stbProcess);
 
     Promise.all([bootProcess, soundDelay])
       .then(() => {
@@ -251,6 +263,13 @@ export default function RootLayout() {
                 <Stack.Screen name="search" />
                 <Stack.Screen name="settings" />
                 <Stack.Screen name="privacy-policy" />
+                {/* Set-top-box screens. The guide has always been on disk but
+                    was never registered here, so nothing could route to it. */}
+                <Stack.Screen name="epg" />
+                <Stack.Screen name="speed-test" />
+                <Stack.Screen name="parental-control" />
+                <Stack.Screen name="system-info" />
+                <Stack.Screen name="categories" />
               </Stack>
             </View>
           </GestureHandlerRootView>

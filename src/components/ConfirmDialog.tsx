@@ -10,10 +10,25 @@ type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 export type DialogTone = "neutral" | "danger" | "success";
 
+/**
+ * Black and white throughout, whatever the tone.
+ *
+ * The tones used to carry colour — red for danger, green for success — and on
+ * this app's surfaces that red was the loudest thing on the screen: a red
+ * ringed icon, red label and red border all shouting at once for what is a
+ * two-button question. The rest of the interface is monochrome, so a coloured
+ * dialog read as belonging to a different app.
+ *
+ * `DialogTone` is kept as a type and the three entries stay distinct so call
+ * sites can still say what they mean, and so a colour can be reintroduced in
+ * one place if it is ever wanted. What separates a destructive action from an
+ * ordinary one here is the wording and which button takes focus — see
+ * `preferCancel` below, which puts the cursor on Cancel for a danger dialog.
+ */
 const TONES: Record<DialogTone, { accent: string; badge: string; fill: string; fillText: string }> = {
   neutral: { accent: "#FFFFFF", badge: "rgba(255,255,255,0.08)", fill: "#FFFFFF", fillText: "#000000" },
-  danger: { accent: "#FF4D57", badge: "rgba(255,77,87,0.16)", fill: "#FF4D57", fillText: "#FFFFFF" },
-  success: { accent: "#63E65C", badge: "rgba(99,230,92,0.16)", fill: "#63E65C", fillText: "#000000" },
+  danger: { accent: "#FFFFFF", badge: "rgba(255,255,255,0.08)", fill: "#FFFFFF", fillText: "#000000" },
+  success: { accent: "#FFFFFF", badge: "rgba(255,255,255,0.08)", fill: "#FFFFFF", fillText: "#000000" },
 };
 
 const DEFAULT_ICON: Record<DialogTone, IconName> = {
@@ -57,9 +72,9 @@ interface ActionProps {
 function DialogAction({ label, variant, tone, onPress, preferred, busy, disabled }: ActionProps) {
   const t = TONES[tone];
   const isConfirm = variant === "confirm";
-  const restColor = isConfirm && tone === "danger" ? t.accent : "#fff";
+  const restColor = "#fff";
   const restBorder =
-    isConfirm && tone === "danger" ? "rgba(255,69,58,0.45)" : isConfirm ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.12)";
+    isConfirm ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.12)";
 
   return (
     <Focusable
@@ -272,9 +287,12 @@ const S = StyleSheet.create({
     paddingVertical: ps(3.5),
     paddingHorizontal: ps(3.5),
     borderRadius: ps(2.5),
-    backgroundColor: "rgba(18, 20, 26, 0.95)",
+    // Effectively opaque. At 0.95 the portal card behind this dialog showed
+    // through its own text — the card's name and URL were legible straight
+    // across the message. A confirmation has to sit on something solid.
+    backgroundColor: "rgba(10, 11, 16, 0.99)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
   },
   badge: {
     width: ps(6),

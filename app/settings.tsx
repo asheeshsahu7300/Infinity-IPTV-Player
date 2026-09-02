@@ -14,6 +14,11 @@ import Constants from 'expo-constants';
 
 import { safeStorage } from '../src/services/safeStorage';
 import { usePortalStore } from '../src/store/portalStore';
+import { BUFFER_PROFILES, stbEnvironment, StbSettings } from '../src/services/stbEnvironment';
+import { parentalControl } from '../src/services/parentalControl';
+import { epgService } from '../src/services/epgService';
+import { hiddenCategories } from '../src/services/hiddenCategories';
+import PinPrompt from '../src/components/PinPrompt';
 import { isTV } from '../src/utils/tvUtils';
 import { THEME, pw, ph, psRaw as ps } from '../src/theme/tokens';
 import { Focusable, FocusGroup, FocusMemory, useFocusRestore } from '../src/tv';
@@ -28,13 +33,24 @@ const SCREEN_KEY = 'settings';
 
 /** What sits at the trailing edge of a row. Declarative rather than a render
  *  prop so the row itself owns the focused styling of its control. */
-type RowControl = { kind: 'switch'; on: boolean } | { kind: 'chevron' };
+type RowControl =
+  | { kind: 'switch'; on: boolean }
+  | { kind: 'chevron' }
+  /** A setting that cycles through named states rather than toggling. */
+  | { kind: 'value'; text: string };
 
 function RowControlView({ control, focused }: { control: RowControl; focused: boolean }) {
   if (control.kind === 'switch') {
     return (
       <View style={[S.switchTrack, focused && S.switchTrackFocused, control.on && S.switchTrackOn]}>
         <View style={[S.switchKnob, control.on && S.switchKnobOn]} />
+      </View>
+    );
+  }
+  if (control.kind === 'value') {
+    return (
+      <View style={[S.valuePill, focused && S.valuePillFocused]}>
+        <Text style={[S.valuePillText, focused && { color: '#000' }]}>{control.text}</Text>
       </View>
     );
   }
@@ -133,12 +149,17 @@ function DataTile({ icon, title, subtitle, focusKey, onPress, value }: DataTileP
             <Text style={S.tileSubtitle} numberOfLines={2}>
               {subtitle}
             </Text>
+            {/* Under the title, not beside it.
+                As a sibling of the text column this pill claimed its intrinsic
+                width first and left the flexible column with almost nothing, so a tile
+                with a value rendered the icon and the pill and no title at all
+                — which is what "Off" and "19 hidden" looked like. */}
+            {value ? (
+              <View style={S.valuePill}>
+                <Text style={S.valuePillText}>{value}</Text>
+              </View>
+            ) : null}
           </View>
-          {value ? (
-            <View style={S.valuePill}>
-              <Text style={S.valuePillText}>{value}</Text>
-            </View>
-          ) : null}
         </View>
       )}
     </Focusable>
@@ -164,6 +185,14 @@ export default function SettingsScreen() {
   const setOverscanPadding = usePortalStore((s) => s.setOverscanPadding);
 
   const [hardwareAcceleration, setHardwareAcceleration] = useState(true);
+
+  // Set-top-box settings live in their own store; the switch above predates it
+  // and still writes app_settings, so stbEnvironment mirrors that one key.
+  const [stb, setStb] = useState<StbSettings>(() => stbEnvironment.snapshot);
+  const [parentalOn, setParentalOn] = useState(() => parentalControl.isEnabled);
+  const [hiddenCategoryCount, setHiddenCategoryCount] = useState(() => hiddenCategories.count);
+  /** Set when the parental lock guards this screen and the PIN is still owed. */
+  const [pinGateTarget, setPinGateTarget] = useState<null | 'parental' | 'portals'>(null);
 
   // Confirmations run through an in-tree overlay rather than `Alert.alert`,
   // which never reliably surfaces on an Android TV release build.
@@ -201,6 +230,59 @@ export default function SettingsScreen() {
     })();
   }, []);
 
+  useEffect(() => {
+    stbEnvironment.load().then((s) => setStb({ ...s }));
+    parentalControl.load().then(() => setParentalOn(parentalControl.isEnabled));
+    const unsubscribeStb = stbEnvironment.subscribe((s) => setStb({ ...s }));
+    const unsubscribeLock = parentalControl.subscribe(() => setParentalOn(parentalControl.isEnabled));
+    hiddenCategories.load().then(() => setHiddenCategoryCount(hiddenCategories.count));
+    const unsubscribeHidden = hiddenCategories.subscribe(() =>
+      setHiddenCategoryCount(hiddenCategories.count)
+    );
+    return () => {
+      unsubscribeStb();
+      unsubscribeLock();
+      unsubscribeHidden();
+    };
+  }, []);
+
+  /**
+   * Routes to a screen the parental lock may be guarding.
+   *
+   * The PIN is asked for here rather than inside the destination for the portal
+   * list, which has no lock of its own — the guard has to sit on the way in or
+   * it is not a guard.
+   */
+  const openGuarded = useCallback((destination: 'parental' | 'portals') => {
+    const scope = destination === 'parental' ? 'settings' : 'portals';
+    if (parentalControl.requiresPin(scope)) {
+      setPinGateTarget(destination);
+      return;
+    }
+    router.push(destination === 'parental' ? '/parental-control' : '/portals');
+  }, [router]);
+
+  const cycleBufferProfile = useCallback(() => {
+    stbEnvironment.cycleBufferProfile();
+  }, []);
+
+  const cycleInfoBarSeconds = useCallback(() => {
+    // 3 → 5 → 8 → 12 → off, which covers "just a glance" through to "leave it
+    // up while I read the synopsis".
+    const steps = [3, 5, 8, 12, 0];
+    const next = steps[(steps.indexOf(stbEnvironment.snapshot.infoBarSeconds) + 1) % steps.length];
+    stbEnvironment.update({ infoBarSeconds: next, autoInfoBar: next > 0 });
+  }, []);
+
+  const toggleFullGuide = useCallback(async () => {
+    const next = !stbEnvironment.snapshot.fullXmltvGuide;
+    await stbEnvironment.update({ fullXmltvGuide: next });
+    // Re-fetch immediately: switching this on and seeing nothing change until
+    // the next cold start reads as a broken switch.
+    const portal = usePortalStore.getState().activePortal;
+    if (portal) epgService.loadBulk(portal, { force: true, allowLargeXmltv: next }).catch(() => { });
+  }, []);
+
   /**
    * Merged into whatever is already stored rather than overwriting the record.
    * `app_settings` is shared — player.tsx also reads it — so a blind write would
@@ -220,6 +302,9 @@ export default function SettingsScreen() {
     const next = !hardwareAcceleration;
     setHardwareAcceleration(next);
     persistSettings({ hardwareAcceleration: next });
+    // The player reads this through stbEnvironment when it builds its VLC
+    // options, so both records have to move together.
+    stbEnvironment.update({ hardwareAcceleration: next });
   }, [hardwareAcceleration, persistSettings]);
 
   const cycleOverscan = useCallback(() => {
@@ -384,7 +469,114 @@ export default function SettingsScreen() {
               selected={hardwareAcceleration}
               control={{ kind: 'switch', on: hardwareAcceleration }}
             />
+            <SettingRow
+              icon="server-outline"
+              title="Same Host Stream Proxy"
+              subtitle="Rewrite stream URLs to match portal host to prevent buffering and bypass dead or empty links"
+              focusKey="same-host-proxy"
+              onPress={() => stbEnvironment.update({ sameHostStreamProxy: !stb.sameHostStreamProxy })}
+              accessibilityRole="switch"
+              selected={stb.sameHostStreamProxy}
+              control={{ kind: 'switch', on: stb.sameHostStreamProxy }}
+            />
           </View>
+        </View>
+
+        {/* Set-Top Box Section */}
+        <View style={S.rootSection}>
+          <SectionLabel>SET-TOP BOX</SectionLabel>
+          <View style={S.groupedCard}>
+            <SettingRow
+              icon="speedometer-outline"
+              title="Buffer Profile"
+              subtitle={BUFFER_PROFILES[stb.bufferProfile].detail}
+              focusKey="buffer-profile"
+              onPress={cycleBufferProfile}
+              control={{ kind: 'value', text: BUFFER_PROFILES[stb.bufferProfile].label }}
+            />
+            <SettingRow
+              icon="information-circle-outline"
+              title="Channel Banner"
+              subtitle="How long the channel and programme banner stays up after a zap"
+              focusKey="info-bar"
+              onPress={cycleInfoBarSeconds}
+              control={{ kind: 'value', text: stb.infoBarSeconds > 0 ? `${stb.infoBarSeconds}s` : 'Off' }}
+            />
+            <SettingRow
+              icon="play-forward-outline"
+              title="Autoplay Next Episode"
+              subtitle="Roll into the next episode when one finishes, with a countdown you can cancel"
+              focusKey="autoplay-next"
+              onPress={() => stbEnvironment.update({ autoplayNext: !stb.autoplayNext })}
+              accessibilityRole="switch"
+              selected={stb.autoplayNext}
+              control={{ kind: 'switch', on: stb.autoplayNext }}
+            />
+            <SettingRow
+              icon="time-outline"
+              title="24-Hour Clock"
+              subtitle="Show times as 21:40 rather than 9:40 PM"
+              focusKey="clock"
+              onPress={() => stbEnvironment.update({ clock24h: !stb.clock24h })}
+              accessibilityRole="switch"
+              selected={stb.clock24h}
+              control={{ kind: 'switch', on: stb.clock24h }}
+            />
+            <SettingRow
+              icon="calendar-outline"
+              title="Full XMLTV Guide"
+              subtitle="Download the provider's complete guide. Accurate, but can be tens of megabytes."
+              focusKey="full-guide"
+              onPress={toggleFullGuide}
+              accessibilityRole="switch"
+              selected={stb.fullXmltvGuide}
+              control={{ kind: 'switch', on: stb.fullXmltvGuide }}
+            />
+          </View>
+        </View>
+
+        {/* Tools Section */}
+        <View style={S.rootSection}>
+          <SectionLabel>TOOLS &amp; DIAGNOSTICS</SectionLabel>
+          <FocusGroup style={S.tileRow}>
+            <DataTile
+              icon="speedometer-outline"
+              title="Speed Test"
+              subtitle="Measure the line to your provider"
+              focusKey="speed-test"
+              onPress={() => router.push('/speed-test')}
+            />
+            <DataTile
+              icon="lock-closed-outline"
+              title="Parental Control"
+              subtitle="PIN lock for channels and settings"
+              focusKey="parental"
+              onPress={() => openGuarded('parental')}
+              value={parentalOn ? 'On' : 'Off'}
+            />
+            <DataTile
+              icon="hardware-chip-outline"
+              title="System Info"
+              subtitle="MAC, device and portal details"
+              focusKey="system-info"
+              onPress={() => router.push('/system-info')}
+            />
+            <DataTile
+              icon="eye-off-outline"
+              title="Categories"
+              subtitle="Hide the ones you never open"
+              focusKey="categories"
+              onPress={() => router.push('/categories')}
+              value={hiddenCategoryCount > 0 ? hiddenCategoryCount + " hidden" : undefined}
+            />
+            <DataTile
+              icon="calendar-outline"
+              title="TV Guide"
+              subtitle="Browse the programme schedule"
+              focusKey="guide"
+              onPress={() => router.push('/epg')}
+            />
+          </FocusGroup>
         </View>
 
         {/* Data Section */}
@@ -436,6 +628,19 @@ export default function SettingsScreen() {
           <Text style={S.footerSubtext}>Version {appVersion}</Text>
         </View>
       </ScrollView>
+
+      <PinPrompt
+        visible={!!pinGateTarget}
+        title="Parental Control"
+        message="Enter your PIN to continue."
+        onSubmit={(pin) => parentalControl.unlock(pin)}
+        onCancel={() => setPinGateTarget(null)}
+        onSuccess={() => {
+          const target = pinGateTarget;
+          setPinGateTarget(null);
+          if (target) router.push(target === 'parental' ? '/parental-control' : '/portals');
+        }}
+      />
 
       {dialogNode}
     </View>
@@ -598,22 +803,26 @@ const S = StyleSheet.create({
   // ── Data tiles ────────────────────────────────────────────────────
   tileRow: {
     flexDirection: isTV ? 'row' : 'column',
-    gap: isTV ? pw(2) : ph(1.5),
+    ...(isTV ? { flexWrap: 'wrap' as const } : null),
+    gap: isTV ? 16 : ph(1.5),
   },
   tileWrapper: {
-    ...(isTV ? { flex: 1 } : { alignSelf: 'stretch' }),
+    ...(isTV
+      ? { width: '31.8%', minWidth: 0, flexGrow: 0, flexShrink: 0 }
+      : { alignSelf: 'stretch' }),
     borderRadius: ps(2.5),
   },
   tile: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: ps(2.5),
-    padding: ps(2.5),
+    paddingHorizontal: ps(2),
+    paddingVertical: ps(2),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.07)',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: pw(1.5),
+    gap: pw(1.2),
   },
   tileFocused: {
     backgroundColor: 'rgba(255,255,255,0.12)',
@@ -637,6 +846,11 @@ const S = StyleSheet.create({
   },
   tileText: {
     flex: 1,
+    // Lets the column shrink to the space actually available instead of
+    // forcing the row wider than the tile.
+    minWidth: 0,
+    gap: ph(0.4),
+    alignItems: 'flex-start',
   },
   tileTitle: {
     fontSize: isTV ? ps(1.5) : ps(1.35),
@@ -656,6 +870,7 @@ const S = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
   },
+  valuePillFocused: { backgroundColor: '#fff' },
   valuePillText: {
     color: '#fff',
     fontSize: ps(1.2),

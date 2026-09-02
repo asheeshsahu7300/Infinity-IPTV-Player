@@ -21,7 +21,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 
 import { usePortalStore, Series, Category } from "../src/store/portalStore";
-import { portalApi } from "../src/services/portalApi";
+import { portalApi, buildImageUrl } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { cacheManager } from "../src/services/cacheManager";
@@ -33,6 +33,8 @@ import { AppBootManager } from "../src/services/AppBootManager";
 import { filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
 import { useNetworkActivity } from "../src/services/networkActivity";
 import { Focusable, FocusGroup, FocusMemory, useInitialFocusPulse } from "../src/tv";
+import { hiddenCategories } from "../src/services/hiddenCategories";
+import { parentalControl } from "../src/services/parentalControl";
 
 const { width: SCREEN_WIDTH_VAL } = Dimensions.get("window");
 
@@ -98,7 +100,7 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(1.5),
     paddingVertical: ph(0.6),
   },
-  countText: { color: THEME.colors.primary, fontSize: ps(1), fontWeight: "800", fontFamily: THEME.fonts.bold },
+  countText: { color: THEME.colors.primary, fontSize: ps(1), fontWeight: "800" },
   body: { flex: 1, flexDirection: "row" },
   gridArea: { flex: 1 },
   list: { padding: pw(1), paddingBottom: ph(10) },
@@ -131,13 +133,21 @@ const S = StyleSheet.create({
   posterPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.03)" },
   textOverlay: { display: "none" },
   cardContent: { position: "absolute", bottom: 0, width: "100%", padding: ps(0.8), borderBottomLeftRadius: ps(1.1), borderBottomRightRadius: ps(1.1), overflow: "hidden" },
-  seriesTitle: { color: "#fff", fontSize: ps(0.95), fontWeight: "700", fontFamily: THEME.fonts.bold },
+  seriesTitle: { color: "#fff", fontSize: ps(0.95), fontWeight: "700" },
   metaRow: { flexDirection: "row", alignItems: "center", marginTop: 6, height: ps(1.6) },
-  seriesMetaText: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.8), fontWeight: "600", fontFamily: THEME.fonts.medium },
+  seriesMetaText: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.8), fontWeight: "600" },
   metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.4)", marginHorizontal: 6 },
   ratingWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 215, 0, 0.15)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  ratingText: { color: "#FFD700", fontSize: ps(0.8), fontWeight: "800", marginLeft: 3, fontFamily: THEME.fonts.bold },
+  ratingText: { color: "#FFD700", fontSize: ps(0.8), fontWeight: "800", marginLeft: 3 },
   favoriteBtn: { position: "absolute", top: 10, right: 10, backgroundColor: "rgba(0,0,0,0.4)", borderRadius: 12, padding: 6 },
+  lockBadge: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 12,
+    padding: 6,
+  },
   loadingCenter: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: { color: "rgba(255,255,255,0.4)", marginTop: 15, fontSize: ps(1), fontFamily: THEME.fonts.regular },
   emptyState: { flex: 1, justifyContent: "center", alignItems: "center", opacity: 0.5 },
@@ -157,7 +167,7 @@ const S = StyleSheet.create({
   loadMoreFooter: { paddingVertical: ph(3), alignItems: "center", justifyContent: "center" },
   loadMoreBtn: { flexDirection: "row", alignItems: "center", gap: pw(0.8), paddingHorizontal: pw(3), paddingVertical: ph(1.4), backgroundColor: "rgba(255,255,255,0.06)", borderRadius: ps(1), borderWidth: 1, borderColor: "transparent" },
   loadMoreBtnFocused: { borderColor: "#fff", backgroundColor: THEME.colors.primary, shadowColor: THEME.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 12, elevation: 12 },
-  loadMoreBtnText: { color: "#fff", fontSize: ps(1), fontWeight: "900", letterSpacing: 1.5, fontFamily: THEME.fonts.bold },
+  loadMoreBtnText: { color: "#fff", fontSize: ps(1), fontWeight: "900", letterSpacing: 1.5 },
 });
 
 // ─────────────────────────────────────────────
@@ -172,6 +182,7 @@ const SeriesItem = React.memo(function SeriesItem({
   isFavorite,
   itemWidth,
   isFocusedItem,
+  locked,
 }: {
   item: Series;
   index?: number;
@@ -181,6 +192,7 @@ const SeriesItem = React.memo(function SeriesItem({
   isFavorite: boolean;
   itemWidth: number;
   isFocusedItem?: boolean;
+  locked?: boolean;
 }) {
   const handlePress = useCallback(() => {
     onPress(item);
@@ -229,6 +241,16 @@ const SeriesItem = React.memo(function SeriesItem({
                     <Ionicons name="tv-outline" size={ps(3)} color="rgba(255,255,255,0.15)" />
                   </View>
                 )}
+
+                {/* Mirrors the film grid: a locked title still shows, so the
+                    viewer can see it exists and that it needs the PIN, rather
+                    than it silently vanishing. Hiding is the category hider's
+                    job — see src/services/hiddenCategories.ts. */}
+                {locked ? (
+                  <View style={S.lockBadge}>
+                    <Ionicons name="lock-closed" size={ps(0.95)} color="#fff" />
+                  </View>
+                ) : null}
 
                 {isFavorite && (
                   <View style={S.favoriteBtn}>
@@ -360,6 +382,21 @@ export default function SeriesScreen() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchResults, setSearchResults] = useState<Series[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  /** Bumped when the hidden-category set changes, to rebuild the sidebar. */
+  const [hiddenVersion, setHiddenVersion] = useState(0);
+  /** Bumped when a lock is toggled, so padlocks on the grid stay current. */
+  const [parentalVersion, setParentalVersion] = useState(0);
+
+  useEffect(() => {
+    hiddenCategories.load().then(() => setHiddenVersion((v) => v + 1));
+    parentalControl.load().then(() => setParentalVersion((v) => v + 1));
+    const unsubscribeHidden = hiddenCategories.subscribe(() => setHiddenVersion((v) => v + 1));
+    const unsubscribeLock = parentalControl.subscribe(() => setParentalVersion((v) => v + 1));
+    return () => {
+      unsubscribeHidden();
+      unsubscribeLock();
+    };
+  }, []);
   const [refreshing, setRefreshing] = useState(false);
   // True while *any* portal request is in flight, including ones this screen did
   // not start — the boot sync, the periodic refresh, the empty-body retry.
@@ -698,11 +735,15 @@ export default function SeriesScreen() {
             onFavoritePress={handleFavoritePress}
             isFavorite={favorites.series.includes(seriesItem.id)}
             itemWidth={itemWidth}
+            locked={parentalControl.isRestricted("series", seriesItem)}
           />
         );
       })}
     </FocusGroup>
-  ), [favorites.series, itemWidth, numColumns, handleSeriesPress, handleSeriesFocus, handleFavoritePress]);
+    // parentalVersion is read through parentalControl rather than passed, so it
+    // has to be a dependency or a toggled lock leaves a stale padlock on screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [favorites.series, itemWidth, numColumns, handleSeriesPress, handleSeriesFocus, handleFavoritePress, parentalVersion]);
 
 
 
@@ -728,10 +769,11 @@ export default function SeriesScreen() {
         setIsLoading(true);
         const apiResults = await portalApi.search(activePortal, debouncedQuery, "series");
         if (!isMounted) return;
+        const base = (activePortal?.config?.url || "").replace(/\/$/, "");
         const mapped = apiResults.map(i => ({
           id: String(i.id || i.cmd || ""),
           name: i.name || i.title,
-          logo: i.screenshot_uri ?? i.logo ?? i.stream_icon ?? i.cover ?? "",
+          logo: buildImageUrl(base, i.screen_uri ?? i.screenshot_uri ?? i.cover ?? i.poster ?? i.logo ?? i.stream_icon ?? ""),
           year: pickYear(i),
           description: pickDescription(i),
           rating: pickRating(i),
@@ -824,9 +866,12 @@ export default function SeriesScreen() {
     );
     return [
       { id: "all", name: "All Series", type: "series" as const },
-      ...seriesCats,
+      // See the note in live-tv.tsx: hidden categories leave the sidebar, not
+      // the library.
+      ...hiddenCategories.filter("series", seriesCats),
     ];
-  }, [categories]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories, hiddenVersion]);
 
   // The sidebar owns focus on this screen: it takes the initial focus on entry
   // and keeps it when the category changes. No grid tile claims

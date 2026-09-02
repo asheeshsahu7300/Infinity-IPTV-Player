@@ -234,6 +234,11 @@ export default function DashboardScreen() {
         <View style={S.heroButtons}>
           {/* Initial focus belongs to the Live TV tile below, not here. */}
           <HeroPill icon="search" text="Search Content" onPress={() => router.push("/search")} />
+          {/* The guide lives here rather than behind a button in the Live TV
+              header. It is a place you go, like Search — not a control on the
+              channel grid — and from the remote it is still one GUIDE press
+              away from anywhere. */}
+          <HeroPill icon="calendar-outline" text="TV Guide" onPress={() => router.push("/epg")} />
         </View>
       </View>
 

@@ -21,8 +21,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import * as IntentLauncher from "expo-intent-launcher";
 
-import { usePortalStore, VODItem, Category } from "../src/store/portalStore";
-import { portalApi } from "../src/services/portalApi";
+import { usePortalStore, VODItem, Category, MediaMeta } from "../src/store/portalStore";
+import { portalApi, buildImageUrl } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { cacheManager } from "../src/services/cacheManager";
@@ -36,6 +36,14 @@ import { filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategory
 import { useNetworkActivity } from "../src/services/networkActivity";
 import { Focusable, FocusGroup, Overlay, FocusMemory, useInitialFocusPulse } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
+import { parentalControl } from "../src/services/parentalControl";
+import { hiddenCategories } from "../src/services/hiddenCategories";
+import { playbackQueue, queueFromVod } from "../src/services/playbackQueue";
+import { resumeIndex } from "../src/services/resumeIndex";
+import PinPrompt from "../src/components/PinPrompt";
+import MediaMetaPanel from "../src/components/MediaMetaPanel";
+import MetaFacts from "../src/components/MetaFacts";
+import { formatRuntime } from "../src/utils/duration";
 
 const { width: SCREEN_WIDTH_VAL } = Dimensions.get("window");
 
@@ -101,7 +109,7 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(1.5),
     paddingVertical: ph(0.6),
   },
-  countText: { color: THEME.colors.primary, fontSize: ps(1), fontWeight: "800", fontFamily: THEME.fonts.bold },
+  countText: { color: THEME.colors.primary, fontSize: ps(1), fontWeight: "800" },
   body: { flex: 1, flexDirection: "row" },
   gridArea: { flex: 1 },
   list: { padding: pw(1), paddingBottom: ph(10) },
@@ -134,13 +142,32 @@ const S = StyleSheet.create({
   posterPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.03)" },
   textOverlay: { display: "none" },
   cardContent: { position: "absolute", bottom: 0, width: "100%", padding: ps(0.8), borderBottomLeftRadius: ps(1.1), borderBottomRightRadius: ps(1.1), overflow: "hidden" },
-  vodTitle: { color: "#fff", fontSize: ps(0.95), fontWeight: "700", fontFamily: THEME.fonts.bold },
+  vodTitle: { color: "#fff", fontSize: ps(0.95), fontWeight: "700" },
   metaRow: { flexDirection: "row", alignItems: "center", marginTop: 6, height: ps(1.6) },
-  vodMetaText: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.8), fontWeight: "600", fontFamily: THEME.fonts.medium },
+  vodMetaText: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.8), fontWeight: "600" },
   metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.4)", marginHorizontal: 6 },
   ratingWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 215, 0, 0.15)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  ratingText: { color: "#FFD700", fontSize: ps(0.8), fontWeight: "800", marginLeft: 3, fontFamily: THEME.fonts.bold },
+  ratingText: { color: "#FFD700", fontSize: ps(0.8), fontWeight: "800", marginLeft: 3 },
   favoriteBtn: { position: "absolute", top: 10, right: 10, backgroundColor: "rgba(0,0,0,0.4)", borderRadius: 12, padding: 6 },
+  lockBadge: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 12,
+    padding: 6,
+  },
+  // Sits on the poster's bottom edge, the way a partially-watched title is
+  // marked on every set-top box and streaming grid.
+  resumeTrack: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 3,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  resumeFill: { height: "100%", backgroundColor: "#e50914" },
   loadingCenter: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: { color: "rgba(255,255,255,0.5)", marginTop: 15, fontSize: ps(1), fontFamily: THEME.fonts.regular },
   emptyState: { flex: 1, justifyContent: "center", alignItems: "center", opacity: 0.5 },
@@ -161,41 +188,131 @@ const S = StyleSheet.create({
   // Modal Styles
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
   modalContainer: { width: isTV ? ps(65) : "92%", borderRadius: 36, padding: ps(2), borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.3)", overflow: "hidden" },
-  modalTVContent: { flexDirection: "row" },
-  modalLeft: { flex: 1.4, padding: ps(1.5) },
-  modalRight: { flex: 0.6, padding: ps(2), paddingRight: isTV ? ps(4) : ps(2), justifyContent: "center", gap: 12 },
-  modalTitle: { color: "#fff", fontSize: ps(1.9), fontWeight: "900", marginBottom: 12, fontFamily: THEME.fonts.bold },
-  modalDescription: { color: "rgba(255,255,255,0.7)", fontSize: ps(1.2), lineHeight: ps(1.4), marginBottom: 18, fontFamily: THEME.fonts.regular },
-  modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
-  modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.1)", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.2)" },
-  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "800", fontFamily: THEME.fonts.bold },
-  // ── Play-modal buttons: gradient acts as the border ──
-  modalBtnWrapper: { borderRadius: 8, overflow: "visible", width: "100%", maxWidth: 380, alignSelf: "flex-end" },
-  modalBtnBorder: { padding: 1, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.15)" },
-  modalBtnBorderFocused: {
-    padding: 1,
-    borderWidth: 0,
-    backgroundColor: "#fff",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#fff",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.8,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 0,
-      }
-    })
+  modalSurface: {
+    width: '100%',
+    borderTopLeftRadius: ps(2),
+    borderTopRightRadius: ps(2),
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    borderBottomWidth: 0,
+    backgroundColor: 'rgba(10, 12, 18, 0.95)',
   },
-  modalBtnPrimaryInner: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "transparent", overflow: "hidden" },
-  modalBtnSecondaryInner: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.3)", overflow: "hidden" },
-  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1, fontFamily: THEME.fonts.bold },
-  modalBtnSecondaryText: { color: "rgba(255,255,255,0.9)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5, fontFamily: THEME.fonts.bold },
+  modalBody: {
+    padding: ps(2.2),
+  },
+  modalTVContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  modalPosterWrapper: {
+    width: isTV ? pw(11) : pw(22),
+    aspectRatio: 2 / 3,
+    borderRadius: ps(0.8),
+    overflow: "hidden",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    marginRight: isTV ? pw(2) : pw(3),
+  },
+  modalPosterImg: {
+    width: "100%",
+    height: "100%",
+  },
+  modalPosterFallback: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+  },
+  modalTypeBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    paddingHorizontal: ps(0.6),
+    paddingVertical: ps(0.2),
+    borderRadius: ps(0.3),
+    marginBottom: ps(0.5),
+  },
+  modalTypeBadgeText: {
+    color: "#FFFFFF",
+    fontSize: ps(0.7),
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  modalLeft: {
+    flex: 1.4,
+    paddingRight: ps(1.5),
+    justifyContent: "center",
+  },
+  modalRight: {
+    flex: 0.65,
+    paddingLeft: ps(1.5),
+    justifyContent: "center",
+    gap: ps(0.8),
+  },
+  modalTitle: {
+    color: "#FFFFFF",
+    fontSize: ps(1.6),
+    fontWeight: "800",
+    marginBottom: ps(0.6),
+  },
+  modalMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: ps(0.6),
+    marginBottom: ps(0.4),
+    flexWrap: "wrap",
+  },
+  modalBtnWrapper: {
+    borderRadius: ps(0.6),
+    overflow: "visible",
+    width: "100%",
+  },
+  modalBtnBorder: {
+    padding: 1,
+    borderRadius: ps(0.6),
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+  },
+  modalBtnBorderFocused: {
+    borderColor: "#FFFFFF",
+    backgroundColor: "#FFFFFF",
+  },
+  modalBtnPrimaryInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: ps(0.4),
+    paddingVertical: ps(0.7),
+    paddingHorizontal: ps(1.2),
+    borderRadius: ps(0.5),
+    backgroundColor: "#FFFFFF",
+  },
+  modalBtnSecondaryInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: ps(0.4),
+    paddingVertical: ps(0.7),
+    paddingHorizontal: ps(1.2),
+    borderRadius: ps(0.5),
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  },
+  modalBtnPrimaryText: {
+    color: "#000000",
+    fontSize: ps(0.88),
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  modalBtnSecondaryText: {
+    color: "#FFFFFF",
+    fontSize: ps(0.88),
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
   loadMoreFooter: { paddingVertical: ph(3), alignItems: "center", justifyContent: "center" },
   loadMoreBtn: { flexDirection: "row", alignItems: "center", gap: pw(0.8), paddingHorizontal: pw(3), paddingVertical: ph(1.4), backgroundColor: "rgba(255,255,255,0.06)", borderRadius: ps(1), borderWidth: 2, borderColor: "transparent" },
   loadMoreBtnFocused: { borderColor: "#fff", backgroundColor: "#fff", shadowColor: "#fff", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 12, elevation: 12 },
-  loadMoreBtnText: { color: "#fff", fontSize: ps(1), fontWeight: "900", letterSpacing: 1.5, fontFamily: THEME.fonts.bold },
+  loadMoreBtnText: { color: "#fff", fontSize: ps(1), fontWeight: "900", letterSpacing: 1.5 },
 });
 
 // ─────────────────────────────────────────────
@@ -210,6 +327,8 @@ const MovieItem = React.memo(function MovieItem({
   isFavorite,
   itemWidth,
   isFocusedItem,
+  locked,
+  resumeVersion,
 }: {
   item: VODItem;
   index?: number;
@@ -219,10 +338,25 @@ const MovieItem = React.memo(function MovieItem({
   isFavorite: boolean;
   itemWidth: number;
   isFocusedItem?: boolean;
+  locked?: boolean;
+  /**
+   * Bumped when a resume position is written, so the bar below moves without
+   * every poster in the grid holding its own subscription.
+   */
+  resumeVersion: number;
 }) {
   const handlePress = useCallback(() => {
     onPress(item);
   }, [onPress, item]);
+
+  // A film half-watched carries a bar the way it does on a set-top box; one
+  // never started, or finished, carries nothing. Both of those states read
+  // better as the absence of a bar than as an empty or full one.
+  const progress = useMemo(
+    () => resumeIndex.progressFor(`vod:${item.id}`),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [item.id, resumeVersion]
+  );
 
   const handleFocus = useCallback(() => {
     onFocus?.(item, index);
@@ -273,6 +407,18 @@ const MovieItem = React.memo(function MovieItem({
                     <Ionicons name="heart" size={ps(1.1)} color="#ff2d55" />
                   </View>
                 )}
+
+                {locked ? (
+                  <View style={S.lockBadge}>
+                    <Ionicons name="lock-closed" size={ps(0.95)} color="#fff" />
+                  </View>
+                ) : null}
+
+                {progress > 0 && progress < 0.98 ? (
+                  <View style={S.resumeTrack}>
+                    <View style={[S.resumeFill, { width: `${Math.round(progress * 100)}%` }]} />
+                  </View>
+                ) : null}
               </View>
 
               <LinearGradient
@@ -437,6 +583,37 @@ export default function VODScreen() {
   );
   const [playModalVisible, setPlayModalVisible] = useState(false);
   const [selectedVod, setSelectedVod] = useState<VODItem | null>(null);
+  /** Film held behind the parental PIN; the prompt reopens the play sheet. */
+  const [pinTarget, setPinTarget] = useState<VODItem | null>(null);
+  const [resumeVersion, setResumeVersion] = useState(0);
+  const [parentalVersion, setParentalVersion] = useState(0);
+  /** Bumped when the hidden-category set changes, to rebuild the sidebar. */
+  const [hiddenVersion, setHiddenVersion] = useState(0);
+  /**
+   * Credits for the open sheet.
+   *
+   * Seeded from the list row and then topped up by the per-title detail call,
+   * because Xtream keeps cast, director and genre behind get_vod_info — one
+   * request per film, which is only affordable for the one being looked at.
+   */
+  const [vodMeta, setVodMeta] = useState<MediaMeta | null>(null);
+  /** Which title the sheet is showing, so a late detail response can be dropped. */
+  const selectedVodIdRef = useRef<string>("");
+
+  useEffect(() => {
+    parentalControl.load().then(() => setParentalVersion((v) => v + 1));
+    resumeIndex.load();
+    const unsubscribeResume = resumeIndex.subscribe(() => setResumeVersion((v) => v + 1));
+    const unsubscribeLock = parentalControl.subscribe(() => setParentalVersion((v) => v + 1));
+    hiddenCategories.load().then(() => setHiddenVersion((v) => v + 1));
+    const unsubscribeHidden = hiddenCategories.subscribe(() => setHiddenVersion((v) => v + 1));
+    return () => {
+      unsubscribeResume();
+      unsubscribeLock();
+      unsubscribeHidden();
+    };
+  }, []);
+
   const searchInputRef = useRef<TextInput>(null);
 
   const xtreamApiRef = useRef<XtreamApi | null>(null);
@@ -684,7 +861,31 @@ export default function VODScreen() {
 
   const handleVodPress = useCallback(async (vod: VODItem) => {
     setSelectedVod(vod);
+    selectedVodIdRef.current = String(vod.id);
+    // Whatever the list row already carried, so the sheet is never blank while
+    // the detail call is in flight.
+    setVodMeta({ cast: vod.cast, director: vod.director, tags: vod.tags, plot: vod.plot, country: vod.country });
+
+    if (parentalControl.isLocked("vod", vod)) {
+      setPinTarget(vod);
+      return;
+    }
     setPlayModalVisible(true);
+
+    // Top up the credits for the sheet that just opened. Fire-and-forget: the
+    // panel already has whatever the list row carried, so a slow or missing
+    // detail call costs nothing but a thinner sheet. Guarded by id so a fast
+    // second selection cannot have the first one's response land on it.
+    if (activePortal?.type === "xtream" && xtreamApiRef.current) {
+      const forId = String(vod.id);
+      xtreamApiRef.current
+        .getVodInfo(forId)
+        .then((detail) => {
+          if (String(selectedVodIdRef.current) !== forId) return;
+          setVodMeta((current) => ({ ...(current || {}), ...detail }));
+        })
+        .catch(() => { });
+    }
   }, []);
 
   const totalCountRef = useRef(0);
@@ -748,6 +949,8 @@ export default function VODScreen() {
             url,
             title: title || selectedVod?.name || "Movie",
             type: "vod",
+            logo: selectedVod?.logo || "",
+            cmd: selectedVod?.streamUrl || url,
             // Required for resume — the player only saves/restores position
             // when it is given a stable content id.
             ...(contentId ? { contentId } : {}),
@@ -784,6 +987,21 @@ export default function VODScreen() {
       return;
     }
 
+    // A film is a queue of one. It still goes through the queue so the player's
+    // banner, resume offer and percentage jump have something to describe — and
+    // so `ownsItem` can tell a film opened from here apart from a season left
+    // behind by an earlier visit to a series.
+    if (!isExternal && latestPortal) {
+      playbackQueue.start(
+        queueFromVod(selectedVod),
+        0,
+        selectedVod.name,
+        latestPortal.id,
+        // Nothing follows a film, so nothing auto-advances.
+        false
+      );
+    }
+
     startPlayback(streamUrl, isExternal, titleSnapshot, contentIdSnapshot);
   };
 
@@ -801,11 +1019,16 @@ export default function VODScreen() {
             onFavoritePress={handleFavoritePress}
             isFavorite={favorites.vod.includes(movie.id)}
             itemWidth={itemWidth}
+            locked={parentalControl.isRestricted("vod", movie)}
+            resumeVersion={resumeVersion}
           />
         );
       })}
     </FocusGroup>
-  ), [favorites.vod, itemWidth, numColumns, handleVodPress, handleVodFocus, handleFavoritePress]);
+    // parentalVersion is read through parentalControl rather than passed, so it
+    // has to be a dependency or a toggled lock leaves a stale padlock on screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [favorites.vod, itemWidth, numColumns, handleVodPress, handleVodFocus, handleFavoritePress, resumeVersion, parentalVersion]);
 
 
 
@@ -831,11 +1054,12 @@ export default function VODScreen() {
         setIsLoading(true);
         const apiResults = await portalApi.search(activePortal, debouncedQuery, "vod");
         if (!isMounted) return;
+        const base = (activePortal?.config?.url || "").replace(/\/$/, "");
         const mapped = apiResults.map(i => ({
           id: String(i.id || i.cmd || ""),
           streamUrl: i.cmd || "",
           name: i.name || i.title,
-          logo: i.screenshot_uri ?? i.logo ?? i.stream_icon ?? i.cover ?? "",
+          logo: buildImageUrl(base, i.screen_uri ?? i.screenshot_uri ?? i.poster ?? i.cover ?? i.logo ?? i.stream_icon ?? ""),
           year: pickYear(i),
           description: pickDescription(i),
           rating: pickRating(i),
@@ -916,13 +1140,19 @@ export default function VODScreen() {
   const sidebarCategories: Category[] = useMemo(
     () => [
       { id: "all", name: "All Movies", type: "vod" as const },
-      ...categories.filter(c =>
-        c.type === "vod" &&
-        c.name.toLowerCase() !== "all" &&
-        c.name.toLowerCase() !== "all movies"
+      // See the note in live-tv.tsx: hidden categories leave the sidebar, not
+      // the library.
+      ...hiddenCategories.filter(
+        "vod",
+        categories.filter(c =>
+          c.type === "vod" &&
+          c.name.toLowerCase() !== "all" &&
+          c.name.toLowerCase() !== "all movies"
+        )
       ),
     ],
-    [categories]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [categories, hiddenVersion]
   );
 
   // The sidebar owns focus on this screen: it takes the initial focus on entry
@@ -1082,41 +1312,66 @@ export default function VODScreen() {
         style={{ justifyContent: 'flex-end', backgroundColor: 'transparent' }}
         contentStyle={{ width: '100%', maxWidth: '100%', margin: 0, padding: 0 }}
       >
-        <BlurView intensity={120} tint="dark" style={{ width: '100%', borderTopLeftRadius: 36, borderTopRightRadius: 36, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.25)", borderBottomWidth: 0 }}>
+        {/* The opaque backgroundColor is load-bearing, not decoration.
+            expo-blur renders as fully transparent on a good number of Android
+            TV builds — there is no native blur to fall back on — and this sheet
+            was relying on it for its entire backdrop, so the poster grid showed
+            straight through the synopsis. The blur is now a bonus on devices
+            that support it, over a base that is readable everywhere. */}
+        <BlurView intensity={120} tint="dark" style={S.modalSurface}>
           {selectedVod?.logo && (
             <Image
               source={{ uri: selectedVod.logo }}
-              style={[StyleSheet.absoluteFillObject, { opacity: 0.4 }]}
-              blurRadius={40}
+              style={[StyleSheet.absoluteFillObject, { opacity: 0.22 }]}
+              blurRadius={50}
               contentFit="cover"
             />
           )}
           <LinearGradient
-            colors={['rgba(255,255,255,0.1)', 'rgba(0,0,0,0.5)', '#000']}
+            colors={['rgba(10,12,18,0.78)', 'rgba(8,8,12,0.96)', '#08080a']}
             style={StyleSheet.absoluteFillObject}
           />
-          <View style={[isTV ? S.modalTVContent : null, { padding: ps(3) }]}>
-            <View style={S.modalLeft}>
-              <Text style={S.modalTitle} numberOfLines={2}>{selectedVod?.name}</Text>
-              <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
-                {getDisplayDescription(selectedVod?.description)}
-              </Text>
-              <View style={S.modalMetaRow}>
-                {selectedVod?.rating && (
-                  <View style={S.modalBadge}>
-                    <Ionicons name="star" size={ps(1)} color="#FFD700" />
-                    <Text style={S.modalBadgeText}>{selectedVod.rating}</Text>
-                  </View>
-                )}
-                {selectedVod?.year && (
-                  <View style={S.modalBadge}>
-                    <Ionicons name="calendar-outline" size={ps(1)} color="#fff" />
-                    <Text style={S.modalBadgeText}>{selectedVod.year}</Text>
-                  </View>
-                )}
-              </View>
+          <View style={[isTV ? S.modalTVContent : null, S.modalBody]}>
+            {/* Poster thumbnail */}
+            <View style={S.modalPosterWrapper}>
+              {selectedVod?.logo ? (
+                <Image
+                  source={{ uri: selectedVod.logo }}
+                  style={S.modalPosterImg}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                />
+              ) : (
+                <View style={S.modalPosterFallback}>
+                  <Ionicons name="film-outline" size={ps(3.2)} color="rgba(255,255,255,0.3)" />
+                </View>
+              )}
             </View>
 
+            {/* Details */}
+            <View style={S.modalLeft}>
+              <View style={S.modalTypeBadge}>
+                <Text style={S.modalTypeBadgeText}>MOVIE</Text>
+              </View>
+              <Text style={S.modalTitle} numberOfLines={2}>{selectedVod?.name}</Text>
+              <View style={S.modalMetaRow}>
+                <MetaFacts
+                  facts={[
+                    { icon: "star", iconColor: "#FFD700", text: selectedVod?.rating },
+                    { text: selectedVod?.year },
+                    { text: formatRuntime(selectedVod?.duration) },
+                  ]}
+                />
+              </View>
+              <MediaMetaPanel
+                meta={vodMeta}
+                fallbackPlot={selectedVod?.description}
+                plotLines={isTV ? 5 : 3}
+                emptyText="No description available for this title."
+              />
+            </View>
+
+            {/* Actions */}
             <View style={S.modalRight}>
               <Focusable
                 hasTVPreferredFocus
@@ -1127,7 +1382,8 @@ export default function VODScreen() {
                 {(focused) => (
                   <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
                     <View style={S.modalBtnPrimaryInner}>
-                      <Text style={[S.modalBtnPrimaryText, focused && { color: "#000" }]}>WATCH NOW</Text>
+                      <Ionicons name="play" size={ps(1.1)} color="#000" />
+                      <Text style={S.modalBtnPrimaryText}>WATCH NOW</Text>
                     </View>
                   </View>
                 )}
@@ -1139,7 +1395,8 @@ export default function VODScreen() {
               >
                 {(focused) => (
                   <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                    <View style={S.modalBtnSecondaryInner}>
+                    <View style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
+                      <Ionicons name="open-outline" size={ps(1.1)} color={focused ? "#000" : "#fff"} />
                       <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>EXTERNAL PLAYER</Text>
                     </View>
                   </View>
@@ -1152,7 +1409,8 @@ export default function VODScreen() {
               >
                 {(focused) => (
                   <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                    <View style={S.modalBtnSecondaryInner}>
+                    <View style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
+                      <Ionicons name="close" size={ps(1.1)} color={focused ? "#000" : "#fff"} />
                       <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>CLOSE</Text>
                     </View>
                   </View>
@@ -1162,6 +1420,18 @@ export default function VODScreen() {
           </View>
         </BlurView>
       </Overlay>
+
+      <PinPrompt
+        visible={!!pinTarget}
+        title="Title Locked"
+        message={pinTarget ? `Enter your PIN to watch ${pinTarget.name}.` : ""}
+        onSubmit={(pin) => parentalControl.unlock(pin)}
+        onCancel={() => setPinTarget(null)}
+        onSuccess={() => {
+          setPinTarget(null);
+          setPlayModalVisible(true);
+        }}
+      />
 
       {dialogNode}
     </View>

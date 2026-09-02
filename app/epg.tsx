@@ -1,624 +1,714 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
+// ─────────────────────────────────────────────────────────────────────────────
+// EPG — the programme guide.
+//
+// Laid out as channels on the left and one channel's schedule on the right,
+// rather than as a scrolling time grid. That is the shape set-top firmware
+// itself uses, and on a D-pad it is the only one that works: a time grid needs
+// two axes of scrolling plus a third for the channel list, and every press
+// becomes a guess about which one moved.
+//
+// It also matches what can actually be fetched. Only MAG hands over the whole
+// schedule at once; Xtream serves a few programmes per channel on request, and
+// a plain M3U has nothing but an XMLTV file that may or may not exist. Asking
+// for one channel at a time is the access pattern all three can satisfy — see
+// src/services/epgService.ts.
+// ─────────────────────────────────────────────────────────────────────────────
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  Dimensions,
-  Animated,
-  ScrollView,
+  ActivityIndicator,
   FlatList,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { FlashList } from "@shopify/flash-list";
-import { format, addHours, startOfHour } from "date-fns";
 
 import { usePortalStore, Channel, EPGProgram } from "../src/store/portalStore";
-import { portalApi } from "../src/services/portalApi";
-import LoadingOverlay from "../src/components/LoadingOverlay";
+import { epgService } from "../src/services/epgService";
+import { parentalControl } from "../src/services/parentalControl";
+import { stbEnvironment } from "../src/services/stbEnvironment";
+import {
+  buildChannelNumbers,
+  liveChannelSession,
+  withChannelNumbers,
+} from "../src/services/liveChannelSession";
+import { StreamManager } from "../src/services/StreamManager";
 import { CinematicBackground } from "../src/components/CinematicBackground";
-import { THEME, pw, ph, ps } from "../src/theme/tokens";
-import { isTV } from "../src/utils/tvUtils";
+import PinPrompt from "../src/components/PinPrompt";
+import { THEME, ph, ps, pw } from "../src/theme/tokens";
 import { Focusable, FocusGroup } from "../src/tv";
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-const HOUR_WIDTH = pw(40); // 40vw per hour
-const CHANNEL_SIDEBAR_WIDTH = pw(12);
-const ROW_HEIGHT = ph(10);
-const HEADER_HEIGHT = ph(35);
+const CHANNEL_PANE_WIDTH = pw(30);
+const CHANNEL_ROW_HEIGHT = ph(11);
+const PROGRAM_ROW_HEIGHT = ph(11);
 
-const TIME_SLOTS = 24; // Show 24 hours starting from now
+// ─────────────────────────────────────────────────────────────────────────────
+// Rows
+// ─────────────────────────────────────────────────────────────────────────────
 
-const FlashListAny = FlashList as any;
+const ChannelRow = React.memo(
+  function ChannelRow({
+    channel,
+    number,
+    isSelected,
+    preferFocus,
+    locked,
+    onFocusChannel,
+    onPlay,
+    epgVersion,
+  }: {
+    channel: Channel;
+    number?: number;
+    isSelected: boolean;
+    preferFocus: boolean;
+    locked: boolean;
+    onFocusChannel: (channel: Channel, index: number) => void;
+    onPlay: (channel: Channel) => void;
+    epgVersion: number;
+    index: number;
+  }) {
+    const nowNext = useMemo(
+      () => epgService.nowNext(channel),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [channel.id, epgVersion]
+    );
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-const safeFormat = (date: any, formatStr: string, fallback = "--:--") => {
-  try {
-    if (!date) return fallback;
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return fallback;
-    return format(d, formatStr);
-  } catch {
-    return fallback;
-  }
-};
-const getTimeSlots = () => {
-  const start = startOfHour(new Date());
-  return Array.from({ length: TIME_SLOTS }).map((_, i) => addHours(start, i));
-};
-
-// ─── Components ───────────────────────────────────────────────────────────────
-
-// ── Program Block — TV-compliant Focusable ────────────────────────────────────
-const ProgramBlock = ({
-  program,
-  onFocusProgram,
-  onPress,
-  autoFocus = false,
-}: any) => {
-  const start = new Date(program.start);
-  const end = new Date(program.end);
-  const durationMin = (end.getTime() - start.getTime()) / (1000 * 60);
-  const width = (durationMin / 60) * HOUR_WIDTH;
-
-  const [shouldFocus, setShouldFocus] = useState(autoFocus);
-  useEffect(() => {
-    if (autoFocus) {
-      setShouldFocus(true);
-      const timer = setTimeout(() => setShouldFocus(false), 500);
-      return () => clearTimeout(timer);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return (
-    <View style={{ width: width - pw(0.5), paddingVertical: ph(0.75), paddingHorizontal: pw(0.25), overflow: "visible" }}>
+    return (
       <Focusable
-        onFocus={onFocusProgram}
-        onPress={onPress}
-        hasTVPreferredFocus={shouldFocus}
         ringOnFocus={false}
-        style={{ overflow: "visible" }}
+        hasTVPreferredFocus={preferFocus}
+        onFocus={() => onFocusChannel(channel, -1)}
+        onPress={() => onPlay(channel)}
+        style={S.channelRowWrapper}
+        accessibilityLabel={`${channel.name}${nowNext.now ? `, now ${nowNext.now.title}` : ""}`}
       >
         {(focused) => (
-          <LinearGradient
-            colors={focused ? [THEME.colors.primary, THEME.colors.secondary] : ["transparent", "transparent"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[
-              S.programBorder,
-              focused && {
-                transform: [{ scale: 1.04 }],
-                shadowColor: THEME.colors.primary,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.6,
-                shadowRadius: 10,
-                elevation: 10,
-              },
-            ]}
-          >
-            <View style={[
-              S.programBlock,
-              program.isLive && S.programBlockLive,
-            ]}>
-              <View style={S.programContent}>
-                <Text style={S.programTitle} numberOfLines={1}>{program.title}</Text>
-                <Text style={S.programTime}>
-                  {safeFormat(program.start, "HH:mm")} - {safeFormat(program.end, "HH:mm")}
-                </Text>
-              </View>
-              {program.isLive && (
-                <View style={S.liveBadge}>
-                  <Text style={S.liveBadgeText}>LIVE</Text>
-                </View>
+          <View style={[S.channelRow, isSelected && S.channelRowSelected, focused && S.channelRowFocused]}>
+            <Text style={[S.channelNumber, focused && S.textOnFocus]}>{number ?? "—"}</Text>
+
+            <View style={S.channelLogo}>
+              {locked ? (
+                <Ionicons name="lock-closed" size={ps(1.1)} color={focused ? "#000" : "rgba(255,255,255,0.5)"} />
+              ) : channel.logo ? (
+                <Image source={{ uri: channel.logo }} style={S.channelLogoImage} contentFit="contain" cachePolicy="memory-disk" />
+              ) : (
+                <Ionicons name="tv-outline" size={ps(1.1)} color={focused ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.2)"} />
               )}
             </View>
-          </LinearGradient>
-        )}
-      </Focusable>
-    </View>
-  );
-};
 
-// ── Channel Row ───────────────────────────────────────────────────────────────
-const ChannelRow = ({ item, onFocusProgram, onProgramPress, timeSlots, isFirst }: any) => {
-  const startTime = timeSlots[0].getTime();
-
-  return (
-    <View style={S.channelRow}>
-      {/* Channel Sidebar Info */}
-      <View style={S.channelCell}>
-        <View style={S.channelLogoWrapper}>
-          {item.logo ? (
-            <Image source={{ uri: item.logo }} style={S.channelLogo} contentFit="contain" />
-          ) : (
-            <Ionicons name="tv" size={ps(1.5)} color={THEME.colors.textDim} />
-          )}
-        </View>
-        <Text style={S.channelLabel} numberOfLines={1}>{item.name}</Text>
-      </View>
-
-      {/* Programs List */}
-      <View style={S.programsContainer}>
-        {item.programs.length > 0 ? (
-          item.programs.map((prog: any, idx: number) => {
-            const start = new Date(prog.start).getTime();
-            const offset = ((start - startTime) / (1000 * 60 * 60)) * HOUR_WIDTH;
-            return (
-              <View key={prog.id} style={{ position: "absolute", left: offset }}>
-                <ProgramBlock
-                  program={prog}
-                  onFocusProgram={() => onFocusProgram(prog)}
-                  onPress={() => onProgramPress(item, prog)}
-                  autoFocus={isFirst && idx === 0}
-                />
-              </View>
-            );
-          })
-        ) : (
-          <View style={{ position: "absolute", left: 0 }}>
-            <ProgramBlock
-              program={{ title: "No EPG Data", description: "No EPG available", start: Date.now(), end: Date.now() + 86400000 }}
-              onFocusProgram={() => onFocusProgram({ title: "No EPG Data", description: "This channel does not have any EPG information available." })}
-              onPress={() => {}}
-              autoFocus={isFirst}
-            />
+            <View style={S.channelText}>
+              <Text style={[S.channelName, focused && S.textOnFocus]} numberOfLines={1}>
+                {channel.name}
+              </Text>
+              <Text style={[S.channelNow, focused && { color: "rgba(0,0,0,0.6)" }]} numberOfLines={1}>
+                {nowNext.now ? nowNext.now.title : "No guide data"}
+              </Text>
+              {nowNext.now ? (
+                <View style={[S.miniTrack, focused && { backgroundColor: "rgba(0,0,0,0.18)" }]}>
+                  <View
+                    style={[
+                      S.miniFill,
+                      focused && { backgroundColor: "#000" },
+                      { width: `${Math.round(nowNext.progress * 100)}%` },
+                    ]}
+                  />
+                </View>
+              ) : null}
+            </View>
           </View>
         )}
-      </View>
-    </View>
+      </Focusable>
+    );
+  },
+  (prev, next) =>
+    prev.channel.id === next.channel.id &&
+    prev.isSelected === next.isSelected &&
+    prev.preferFocus === next.preferFocus &&
+    prev.locked === next.locked &&
+    prev.number === next.number &&
+    prev.epgVersion === next.epgVersion
+);
+
+const ProgramRow = React.memo(function ProgramRow({
+  program,
+  isNow,
+  isPast,
+  onFocusProgram,
+  onPlay,
+  preferFocus,
+}: {
+  program: EPGProgram;
+  isNow: boolean;
+  isPast: boolean;
+  onFocusProgram: (program: EPGProgram) => void;
+  onPlay: () => void;
+  preferFocus: boolean;
+}) {
+  const progress = isNow
+    ? Math.min(1, Math.max(0, (Date.now() - program.start) / Math.max(1, program.end - program.start)))
+    : 0;
+
+  return (
+    <Focusable
+      ringOnFocus={false}
+      hasTVPreferredFocus={preferFocus}
+      onFocus={() => onFocusProgram(program)}
+      onPress={onPlay}
+      style={S.programRowWrapper}
+      accessibilityLabel={`${program.title} at ${stbEnvironment.formatClock(program.start)}`}
+    >
+      {(focused) => (
+        <View style={[S.programRow, isNow && S.programRowNow, focused && S.programRowFocused]}>
+          <View style={S.programTimeCol}>
+            <Text style={[S.programTime, focused && S.textOnFocus, isPast && !focused && S.dimmed]}>
+              {stbEnvironment.formatClock(program.start)}
+            </Text>
+            <Text style={[S.programEnd, focused && { color: "rgba(0,0,0,0.5)" }]}>
+              {stbEnvironment.formatClock(program.end)}
+            </Text>
+          </View>
+
+          <View style={S.programBody}>
+            <View style={S.programTitleRow}>
+              <Text style={[S.programTitle, focused && S.textOnFocus, isPast && !focused && S.dimmed]} numberOfLines={1}>
+                {program.title}
+              </Text>
+              {isNow ? (
+                <View style={[S.nowBadge, focused && { backgroundColor: "#000" }]}>
+                  <Text style={S.nowBadgeText}>ON NOW</Text>
+                </View>
+              ) : null}
+            </View>
+            {program.description ? (
+              <Text style={[S.programDesc, focused && { color: "rgba(0,0,0,0.6)" }]} numberOfLines={1}>
+                {program.description}
+              </Text>
+            ) : null}
+            {isNow ? (
+              <View style={[S.miniTrack, focused && { backgroundColor: "rgba(0,0,0,0.18)" }]}>
+                <View
+                  style={[
+                    S.miniFill,
+                    focused && { backgroundColor: "#000" },
+                    { width: `${Math.round(progress * 100)}%` },
+                  ]}
+                />
+              </View>
+            ) : null}
+          </View>
+        </View>
+      )}
+    </Focusable>
   );
-};
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Screen
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function EPGScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  // Selectors — see the note in live-tv.tsx.
+
+  // Per-field selectors — see the note in live-tv.tsx.
   const activePortal = usePortalStore((s) => s.activePortal);
-  const channels = usePortalStore((s) => s.channels);
+  const storeChannels = usePortalStore((s) => s.channels);
 
-  const [epgData, setEpgData] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedProgram, setSelectedProgram] = useState<any>(null);
-  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [epgVersion, setEpgVersion] = useState(0);
+  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
+  const [selectedProgram, setSelectedProgram] = useState<EPGProgram | null>(null);
+  const [pinTarget, setPinTarget] = useState<Channel | null>(null);
+  const [loadingChannelId, setLoadingChannelId] = useState<string | null>(null);
 
-  const timeSlots = useMemo(() => getTimeSlots(), []);
-  const scrollX = useRef(new Animated.Value(0)).current;
+  const programListRef = useRef<FlatList<EPGProgram>>(null);
+  const selectedIdRef = useRef<string | null>(null);
 
-  const loadEPG = async () => {
-    if (!activePortal) return;
-    try {
-      setIsLoading(true);
-      const programs: EPGProgram[] = await portalApi.getEpg(activePortal);
-      
-      const epgMap = new Map<string, any[]>();
-      const now = Date.now();
+  // ── Data ──────────────────────────────────────────────────────────────────
 
-      programs.forEach(p => {
-        const cid = String(p.channelId);
-        if (!epgMap.has(cid)) epgMap.set(cid, []);
-        
-        const isLive = now >= p.start && now < p.end;
-        epgMap.get(cid)!.push({ ...p, isLive });
-      });
+  const channels = useMemo(
+    () => storeChannels.filter((c) => !!c.streamUrl),
+    [storeChannels]
+  );
 
-      const processed = channels.map(c => ({
-        ...c,
-        programs: epgMap.get(String(c.id)) || epgMap.get(String(c.epgId)) || []
-      }));
-
-      setEpgData(processed.slice(0, 100)); // Limit for performance
-      if (processed.length > 0) {
-        if (processed[0].programs.length > 0) {
-          setSelectedProgram(processed[0].programs[0]);
-        } else {
-          setSelectedProgram({ title: "No EPG Data", description: "This channel does not have any EPG information available." });
-        }
-      }
-    } catch (error) {
-      console.error("EPG Load error:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const channelNumbers = useMemo(() => buildChannelNumbers(channels), [channels]);
 
   useEffect(() => {
-    loadEPG();
-  }, [activePortal]);
+    const unsubscribe = epgService.subscribe(() => setEpgVersion((v) => v + 1));
+    parentalControl.load().then(() => setEpgVersion((v) => v + 1));
+    stbEnvironment.load();
+    return unsubscribe;
+  }, []);
 
-  const handleProgramPress = (channel: any, program: any) => {
-    router.push({
-      pathname: "/player",
-      params: { url: channel.streamUrl, title: channel.name, type: "live" }
-    });
-  };
-
-  const getDisplayDescription = (desc: string | undefined | null) => {
-    if (!desc) return "Select a program below to see details and schedule information.";
-    const lower = desc.trim().toLowerCase();
-    if (lower === "n/a" || lower === "na" || lower === "undefined" || lower === "null" || lower === "") {
-      return "Select a program below to see details and schedule information.";
+  useEffect(() => {
+    if (!activePortal) {
+      router.replace("/");
+      return;
     }
-    return desc.trim();
-  };
+    epgService
+      .loadBulk(activePortal, { allowLargeXmltv: stbEnvironment.snapshot.fullXmltvGuide })
+      .catch(() => { });
+  }, [activePortal?.id]);
+
+  // Open on the first channel so the right-hand pane is never blank.
+  useEffect(() => {
+    if (selectedChannel || channels.length === 0) return;
+    setSelectedChannel(channels[0]);
+  }, [channels, selectedChannel]);
+
+  // Warm the guide for the channel under the cursor and the ones just after it,
+  // so moving down the list does not stall on a request per row.
+  const handleChannelFocus = useCallback(
+    (channel: Channel) => {
+      selectedIdRef.current = String(channel.id);
+      setSelectedChannel(channel);
+
+      const portal = usePortalStore.getState().activePortal;
+      if (!portal) return;
+      const at = channels.findIndex((c) => String(c.id) === String(channel.id));
+      epgService.ensureChannel(portal, channel).catch(() => { });
+      if (at >= 0) epgService.prefetch(portal, channels.slice(at + 1, at + 8));
+    },
+    [channels]
+  );
+
+  const programs = useMemo(
+    () => epgService.programsFor(selectedChannel),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedChannel?.id, epgVersion]
+  );
+
+  const nowIndex = useMemo(() => {
+    const now = Date.now();
+    return programs.findIndex((p) => p.start <= now && p.end > now);
+  }, [programs]);
+
+  // A schedule that opens at 6 a.m. is not useful; jump to what is on now.
+  useEffect(() => {
+    if (nowIndex < 0 || !programListRef.current) return;
+    const timer = setTimeout(() => {
+      try {
+        programListRef.current?.scrollToIndex({ index: nowIndex, animated: false, viewPosition: 0.15 });
+      } catch {
+        /* not measured yet */
+      }
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [nowIndex, selectedChannel?.id]);
+
+  // Keep the hero pinned to whatever is on now until the viewer moves the
+  // cursor into the schedule themselves.
+  useEffect(() => {
+    if (nowIndex >= 0) setSelectedProgram(programs[nowIndex]);
+    else setSelectedProgram(programs[0] ?? null);
+  }, [programs, nowIndex]);
+
+  // ── Playback ──────────────────────────────────────────────────────────────
+
+  const playChannel = useCallback(
+    async (channel: Channel) => {
+      const portal = usePortalStore.getState().activePortal;
+      if (!portal || !channel.streamUrl) return;
+
+      if (parentalControl.isChannelLocked(channel)) {
+        setPinTarget(channel);
+        return;
+      }
+
+      setLoadingChannelId(String(channel.id));
+
+      // The guide is a channel list too, so it seeds the zap session the same
+      // way Live TV does — CH+/CH- in the player then walks this list.
+      const zapList = withChannelNumbers(channels, channelNumbers);
+      const index = Math.max(0, zapList.findIndex((c) => String(c.id) === String(channel.id)));
+      liveChannelSession.start(zapList, index, "TV Guide", portal.id);
+
+      try {
+        let url = channel.streamUrl;
+        if (portal.type === "mag") {
+          const result = await StreamManager.getStreamUrl(channel, portal, "itv");
+          if (result.success && result.url) url = result.url;
+        }
+        router.push({
+          pathname: "/player",
+          params: {
+            url,
+            title: channel.name,
+            type: "live",
+            contentId: String(channel.id),
+            cmd: channel.streamUrl,
+          },
+        });
+      } catch {
+        router.push({
+          pathname: "/player",
+          params: { url: channel.streamUrl, title: channel.name, type: "live" },
+        });
+      } finally {
+        setLoadingChannelId(null);
+      }
+    },
+    [channels, channelNumbers, router]
+  );
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  const renderChannel = useCallback(
+    ({ item, index }: { item: Channel; index: number }) => (
+      <ChannelRow
+        channel={item}
+        index={index}
+        number={item.num && item.num > 0 ? item.num : channelNumbers.get(String(item.id))}
+        isSelected={String(item.id) === String(selectedChannel?.id)}
+        preferFocus={index === 0 && !selectedIdRef.current}
+        locked={parentalControl.isChannelRestricted(item)}
+        onFocusChannel={handleChannelFocus}
+        onPlay={playChannel}
+        epgVersion={epgVersion}
+      />
+    ),
+    [channelNumbers, selectedChannel?.id, handleChannelFocus, playChannel, epgVersion]
+  );
+
+  const renderProgram = useCallback(
+    ({ item, index }: { item: EPGProgram; index: number }) => (
+      <ProgramRow
+        program={item}
+        isNow={index === nowIndex}
+        isPast={item.end < Date.now()}
+        preferFocus={false}
+        onFocusProgram={setSelectedProgram}
+        onPlay={() => selectedChannel && playChannel(selectedChannel)}
+      />
+    ),
+    [nowIndex, selectedChannel, playChannel]
+  );
+
+  const guideStatus = epgService.status;
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
+      <StatusBar hidden />
 
-      {/* 1. Header: Hero Program Info */}
-      <View style={S.heroSection}>
-        <View style={S.heroContent}>
+      {/* ─── Hero: the focused programme ─── */}
+      <View style={S.hero}>
+        <View style={S.heroText}>
+          <Text style={S.heroEyebrow} numberOfLines={1}>
+            {selectedChannel
+              ? `${selectedChannel.num && selectedChannel.num > 0
+                ? selectedChannel.num
+                : channelNumbers.get(String(selectedChannel.id)) ?? "—"}  ·  ${selectedChannel.name}`
+              : "TV GUIDE"}
+          </Text>
           <Text style={S.heroTitle} numberOfLines={1}>
-            {selectedProgram?.title || "Select a program"}
+            {selectedProgram?.title ?? "No programme information"}
           </Text>
-          <View style={S.heroMeta}>
-            <Text style={S.heroMetaText}>
-              {safeFormat(selectedProgram?.start, "HH:mm")} - {safeFormat(selectedProgram?.end, "HH:mm")}
+          {selectedProgram ? (
+            <Text style={S.heroTime}>
+              {stbEnvironment.formatClock(selectedProgram.start)} –{" "}
+              {stbEnvironment.formatClock(selectedProgram.end)}
+              {"   ·   "}
+              {Math.max(1, Math.round((selectedProgram.end - selectedProgram.start) / 60000))} min
             </Text>
-            <View style={S.badge}><Text style={S.badgeText}>4K HDR</Text></View>
-            <Text style={S.heroMetaText}>Action, Sci-Fi</Text>
-          </View>
+          ) : null}
           <Text style={S.heroDesc} numberOfLines={3}>
-            {getDisplayDescription(selectedProgram?.description)}
+            {selectedProgram?.description?.trim() ||
+              "No description available for this programme."}
           </Text>
-          <FocusGroup>
-            <View style={S.heroActions}>
-              <Focusable
-                ringOnFocus={false}
-                onPress={() => selectedProgram?.streamUrl && handleProgramPress(selectedProgram, selectedProgram)}
-                style={{ borderRadius: ps(0.5), overflow: "visible" }}
-              >
-                {(focused) => (
-                  <LinearGradient
-                    colors={focused ? [THEME.colors.primary, THEME.colors.secondary] : [THEME.colors.primary, THEME.colors.accent]}
-                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                    style={[
-                      S.heroBtnActive,
-                      focused && { transform: [{ scale: 1.06 }], shadowColor: THEME.colors.primary, shadowOpacity: 0.7, shadowRadius: 12, elevation: 12 },
-                    ]}
-                  >
-                    <Ionicons name="play" size={ps(1.4)} color="#fff" />
-                    <Text style={S.heroBtnText}>WATCH NOW</Text>
-                  </LinearGradient>
+        </View>
+
+        <View style={S.heroArt}>
+          {selectedChannel?.logo ? (
+            <Image
+              source={{ uri: selectedChannel.logo }}
+              style={S.heroLogo}
+              contentFit="contain"
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <Ionicons name="tv-outline" size={ps(3)} color="rgba(255,255,255,0.12)" />
+          )}
+          <LinearGradient
+            colors={["transparent", "rgba(0,0,0,0.4)"]}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+        </View>
+      </View>
+
+      {/* ─── Panes ─── */}
+      <View style={S.panes}>
+        <FocusGroup style={{ width: CHANNEL_PANE_WIDTH }}>
+          <Text style={S.paneLabel}>CHANNELS</Text>
+          <FlatList
+            data={channels}
+            keyExtractor={(item) => String(item.id)}
+            renderItem={renderChannel}
+            getItemLayout={(_, index) => ({
+              length: CHANNEL_ROW_HEIGHT,
+              offset: CHANNEL_ROW_HEIGHT * index,
+              index,
+            })}
+            initialNumToRender={10}
+            maxToRenderPerBatch={8}
+            windowSize={5}
+            removeClippedSubviews={false}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={S.paneContent}
+            ListEmptyComponent={
+              <View style={S.empty}>
+                <ActivityIndicator color={THEME.colors.primary} />
+                <Text style={S.emptyText}>Loading channels…</Text>
+              </View>
+            }
+          />
+        </FocusGroup>
+
+        <FocusGroup style={S.schedulePane}>
+          <Text style={S.paneLabel}>
+            {selectedChannel ? `SCHEDULE · ${selectedChannel.name.toUpperCase()}` : "SCHEDULE"}
+          </Text>
+          <FlatList
+            ref={programListRef}
+            data={programs}
+            keyExtractor={(item) => item.id}
+            renderItem={renderProgram}
+            getItemLayout={(_, index) => ({
+              length: PROGRAM_ROW_HEIGHT,
+              offset: PROGRAM_ROW_HEIGHT * index,
+              index,
+            })}
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            windowSize={5}
+            removeClippedSubviews={false}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={S.paneContent}
+            onScrollToIndexFailed={(info) => {
+              setTimeout(() => {
+                try {
+                  programListRef.current?.scrollToIndex({ index: info.index, animated: false });
+                } catch {
+                  /* list shrank in the meantime */
+                }
+              }, 80);
+            }}
+            ListEmptyComponent={
+              <View style={S.empty}>
+                {guideStatus === "loading" ? (
+                  <>
+                    <ActivityIndicator color={THEME.colors.primary} />
+                    <Text style={S.emptyText}>Loading guide…</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="calendar-outline" size={ps(3)} color="rgba(255,255,255,0.1)" />
+                    <Text style={S.emptyTitle}>No guide for this channel</Text>
+                    <Text style={S.emptyText}>
+                      {guideStatus === "unavailable"
+                        ? "This portal does not publish a programme guide."
+                        : "The provider has no listings for this channel."}
+                    </Text>
+                  </>
                 )}
-              </Focusable>
-              <Focusable
-                ringOnFocus={false}
-                onPress={() => {}}
-                style={{ borderRadius: ps(0.5), overflow: "visible" }}
-              >
-                {(focused) => (
-                  <View style={[
-                    S.heroBtn,
-                    focused && { backgroundColor: "rgba(255,255,255,0.18)", transform: [{ scale: 1.06 }] },
-                  ]}>
-                    <Ionicons name="radio-button-on" size={ps(1.4)} color="#fff" />
-                    <Text style={S.heroBtnText}>SCHEDULE</Text>
-                  </View>
-                )}
-              </Focusable>
-            </View>
-          </FocusGroup>
-        </View>
-
-        {/* Video Preview / Poster area */}
-        <View style={S.heroPreview}>
-            <LinearGradient colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.8)"]} style={StyleSheet.absoluteFillObject} />
-            <Ionicons name="play-circle" size={ps(4)} color="rgba(255,255,255,0.6)" />
-        </View>
+              </View>
+            }
+          />
+        </FocusGroup>
       </View>
 
-      {/* 2. Timeline Grid */}
-      <View style={S.gridContainer}>
-        {/* Timeline Header */}
-        <View style={S.timelineHeaderRow}>
-            <View style={S.channelsLabelCell}>
-                <Text style={S.channelsLabel}>CHANNELS</Text>
-            </View>
-            <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false}
-                scrollEnabled={false} // Sync with main grid scroll
-                contentOffset={{ x: 0, y: 0 }}
-            >
-                <View style={S.timeSlotsRow}>
-                    {timeSlots.map((ts, i) => (
-                        <View key={i} style={S.timeSlotCell}>
-                            <Text style={S.timeSlotText}>{format(ts, "hh:mm a")}</Text>
-                        </View>
-                    ))}
-                </View>
-            </ScrollView>
-        </View>
-
-        {/* Main Grid: Channels & Programs */}
-        <FlashListAny
-            data={epgData}
-            estimatedItemSize={ROW_HEIGHT}
-            keyExtractor={(item: any) => item.id}
-            renderItem={({ item, index }: any) => (
-                <ChannelRow
-                    item={item}
-                    isFirst={index === 0}
-                    timeSlots={timeSlots}
-                    onFocusProgram={(prog: any) => {
-                        setSelectedProgram(prog);
-                    }}
-                    onProgramPress={handleProgramPress}
-                />
-            )}
-            ListEmptyComponent={isLoading ? <LoadingOverlay /> : null}
-        />
-        
-        {/* Time Progress Indicator Line */}
-        <View style={[S.currentTimeLine, { left: CHANNEL_SIDEBAR_WIDTH + pw(10) }]} />
+      {/* ─── Footer hints ─── */}
+      <View style={S.footer}>
+        <Text style={S.footerHint}>OK to watch  ·  BACK to close</Text>
+        {loadingChannelId ? (
+          <View style={S.footerBusy}>
+            <ActivityIndicator size="small" color={THEME.colors.primary} />
+            <Text style={S.footerHint}>Opening channel…</Text>
+          </View>
+        ) : null}
       </View>
 
-      {/* Bottom Shortcuts */}
-      <View style={S.bottomBar}>
-        <View style={S.statusItem}><View style={[S.dot, {backgroundColor: THEME.colors.primary}]} /><Text style={S.statusText}>LIVE NOW</Text></View>
-        <View style={S.statusItem}><View style={[S.dot, {backgroundColor: '#7e8299'}]} /><Text style={S.statusText}>RECORDED</Text></View>
-      </View>
+      <PinPrompt
+        visible={!!pinTarget}
+        title="Channel Locked"
+        message={pinTarget ? `Enter your PIN to watch ${pinTarget.name}.` : ""}
+        onSubmit={(pin) => parentalControl.unlock(pin)}
+        onCancel={() => setPinTarget(null)}
+        onSuccess={() => {
+          const target = pinTarget;
+          setPinTarget(null);
+          if (target) playChannel(target);
+        }}
+      />
     </View>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Styles
+// ─────────────────────────────────────────────────────────────────────────────
+
 const S = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: THEME.colors.background,
-  },
-  
-  // Hero Section
-  heroSection: {
-    height: HEADER_HEIGHT,
-    flexDirection: "row",
-    padding: pw(5),
-    paddingBottom: ph(2),
-  },
-  heroContent: {
-    flex: 1.5,
-    justifyContent: "center",
-  },
-  heroTitle: {
-    color: "#fff",
-    fontSize: ps(3.5),
-    fontWeight: "800",
-    marginBottom: ph(1),
-  },
-  heroMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: pw(1.2),
-    marginBottom: ph(2),
-  },
-  heroMetaText: {
-    color: THEME.colors.accent,
-    fontSize: ps(1.2),
-    fontWeight: "700",
-  },
-  heroDesc: {
-    color: THEME.colors.textMuted,
-    fontSize: ps(1.4),
-    lineHeight: ph(2.8),
-    maxWidth: pw(50),
-    marginBottom: ph(3),
-  },
-  heroActions: {
-    flexDirection: "row",
-    gap: pw(1),
-  },
-  heroBtnActive: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: THEME.colors.primary,
-    paddingHorizontal: pw(2),
-    paddingVertical: ph(1.2),
-    borderRadius: ps(0.5),
-    gap: pw(0.5),
-  },
-  heroBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.1)",
-    paddingHorizontal: pw(2),
-    paddingVertical: ph(1.2),
-    borderRadius: ps(0.5),
-    gap: pw(0.5),
-  },
-  heroBtnText: {
-    color: "#fff",
-    fontSize: ps(1),
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
-  heroPreview: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: ps(1.5),
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
+  container: { flex: 1, backgroundColor: THEME.colors.background },
 
-  // Grid
-  gridContainer: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.02)",
-    marginHorizontal: pw(2),
-    borderRadius: ps(1.5),
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  timelineHeaderRow: {
+  // ── Hero ──
+  hero: {
     flexDirection: "row",
-    height: ph(8),
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  channelsLabelCell: {
-    width: CHANNEL_SIDEBAR_WIDTH,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRightWidth: 1,
-    borderRightColor: "rgba(255,255,255,0.05)",
-  },
-  channelsLabel: {
-    color: THEME.colors.textDim,
-    fontSize: ps(1),
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
-  timeSlotsRow: {
-    flexDirection: "row",
-  },
-  timeSlotCell: {
-    width: HOUR_WIDTH,
-    justifyContent: "center",
-    paddingLeft: pw(1.5),
-  },
-  timeSlotText: {
-    color: THEME.colors.textMuted,
-    fontSize: ps(1.2),
-    fontWeight: "600",
-  },
-
-  // Channel & Program Rows
-  channelRow: {
-    flexDirection: "row",
-    height: ROW_HEIGHT,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.03)",
-  },
-  channelCell: {
-    width: CHANNEL_SIDEBAR_WIDTH,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.1)",
-    borderRightWidth: 1,
-    borderRightColor: "rgba(255,255,255,0.05)",
-  },
-  channelLogoWrapper: {
-    width: ps(3),
-    height: ps(3),
-    borderRadius: ps(0.5),
-    backgroundColor: "rgba(255,255,255,0.03)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: ph(0.5),
-  },
-  channelLogo: {
-    width: "70%",
-    height: "70%",
-  },
-  channelLabel: {
-    color: THEME.colors.textMuted,
-    fontSize: ps(0.8),
-    fontWeight: "600",
-  },
-  programsContainer: {
-    flex: 1,
-    overflow: "hidden",
-  },
-  programBorder: {
-    padding: 1.5,
-    borderRadius: ps(0.8),
-    height: ROW_HEIGHT - ph(1.5),
-  },
-  programBlock: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: ps(0.8) - 1.5,
-    padding: ps(0.8),
-    justifyContent: "center",
-  },
-  programBlockLive: {
-    backgroundColor: "rgba(255,25,138,0.05)",
-    borderColor: "rgba(255,25,138,0.2)",
-  },
-  programContent: {
-    flex: 1,
-  },
-  programTitle: {
-    color: "#fff",
-    fontSize: ps(1.3),
-    fontWeight: "700",
-    marginBottom: 2,
-  },
-  programTime: {
-    color: THEME.colors.textDim,
-    fontSize: ps(1),
-  },
-  noEpgText: {
-    color: THEME.colors.textDim,
-    fontSize: ps(1.1),
-    fontStyle: 'italic',
-  },
-  liveBadge: {
-    position: "absolute",
-    top: ps(0.8),
-    right: ps(0.8),
-    backgroundColor: THEME.colors.primary,
-    paddingHorizontal: pw(0.6),
-    paddingVertical: ph(0.2),
-    borderRadius: 4,
-  },
-  liveBadgeText: {
-    color: "#fff",
-    fontSize: ps(0.7),
-    fontWeight: "900",
-  },
-
-  // Extras
-  badge: {
-    backgroundColor: "rgba(255,255,255,0.1)",
-    paddingHorizontal: pw(0.8),
-    paddingVertical: ph(0.4),
-    borderRadius: 4,
-  },
-  badgeText: {
-    color: "#fff",
-    fontSize: ps(0.8),
-    fontWeight: "800",
-  },
-  currentTimeLine: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: 2,
-    backgroundColor: THEME.colors.primary,
-    shadowColor: THEME.colors.primary,
-    shadowRadius: 10,
-    elevation: 10,
-    zIndex: 100,
-  },
-  bottomBar: {
-    flexDirection: "row",
-    height: ph(6),
-    alignItems: "center",
-    paddingHorizontal: pw(4),
+    paddingHorizontal: pw(3),
+    paddingTop: ph(2),
+    paddingBottom: ph(1.5),
     gap: pw(3),
   },
-  statusItem: {
+  heroText: { flex: 1, justifyContent: "center" },
+  heroEyebrow: {
+    color: THEME.colors.textDim,
+    fontSize: ps(1),
+    fontWeight: "900",
+    letterSpacing: 1.5,
+    marginBottom: ph(0.6),
+  },
+  heroTitle: { color: "#fff", fontSize: ps(2.2), fontWeight: "900" },
+  heroTime: {
+    color: THEME.colors.textMuted,
+    fontSize: ps(1.05),
+    fontWeight: "700",
+    marginTop: ph(0.5),
+    fontVariant: ["tabular-nums"],
+  },
+  heroDesc: {
+    color: THEME.colors.textDim,
+    fontSize: ps(1),
+    lineHeight: ps(1.6),
+    marginTop: ph(0.8),
+    maxWidth: pw(52),
+  },
+  heroArt: {
+    width: pw(16),
+    height: ph(14),
+    borderRadius: ps(1.2),
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  heroLogo: { width: "72%", height: "72%" },
+
+  // ── Panes ──
+  panes: { flex: 1, flexDirection: "row", paddingHorizontal: pw(2), gap: pw(1.5) },
+  schedulePane: { flex: 1 },
+  paneLabel: {
+    color: "rgba(255,255,255,0.35)",
+    fontSize: ps(0.85),
+    fontWeight: "900",
+    letterSpacing: 2,
+    paddingHorizontal: pw(1),
+    paddingBottom: ph(0.8),
+  },
+  paneContent: { paddingBottom: ph(4) },
+
+  // ── Channel rows ──
+  channelRowWrapper: { height: CHANNEL_ROW_HEIGHT, justifyContent: "center", paddingHorizontal: pw(0.5) },
+  channelRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: pw(0.5),
+    gap: pw(1),
+    paddingHorizontal: pw(1),
+    paddingVertical: ph(1),
+    borderRadius: ps(0.9),
+    borderWidth: 1,
+    borderColor: "transparent",
+    backgroundColor: "rgba(255,255,255,0.03)",
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusText: {
-    color: THEME.colors.textMuted,
+  channelRowSelected: { backgroundColor: "rgba(255,255,255,0.09)" },
+  channelRowFocused: { backgroundColor: "#fff", borderColor: "#fff" },
+  channelNumber: {
+    minWidth: ps(2.2),
+    color: "rgba(255,255,255,0.4)",
     fontSize: ps(1),
-    fontWeight: "700",
-    letterSpacing: 1,
+    fontWeight: "900",
+    fontVariant: ["tabular-nums"],
   },
+  channelLogo: { width: ps(2.8), height: ps(2), alignItems: "center", justifyContent: "center" },
+  channelLogoImage: { width: "100%", height: "100%" },
+  channelText: { flex: 1, gap: 2 },
+  channelName: { color: "#fff", fontSize: ps(1.05), fontWeight: "700" },
+  channelNow: { color: "rgba(255,255,255,0.4)", fontSize: ps(0.85), fontWeight: "600" },
+
+  // ── Programme rows ──
+  programRowWrapper: { height: PROGRAM_ROW_HEIGHT, justifyContent: "center", paddingHorizontal: pw(0.5) },
+  programRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: pw(1.5),
+    paddingHorizontal: pw(1.4),
+    paddingVertical: ph(1),
+    borderRadius: ps(0.9),
+    borderWidth: 1,
+    borderColor: "transparent",
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  programRowNow: { backgroundColor: "rgba(255,255,255,0.08)" },
+  programRowFocused: { backgroundColor: "#fff", borderColor: "#fff" },
+  programTimeCol: { alignItems: "flex-start", minWidth: ps(4) },
+  programTime: {
+    color: "#fff",
+    fontSize: ps(1.05),
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
+  },
+  programEnd: {
+    color: "rgba(255,255,255,0.32)",
+    fontSize: ps(0.82),
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
+  },
+  programBody: { flex: 1, gap: 2 },
+  programTitleRow: { flexDirection: "row", alignItems: "center", gap: pw(0.8) },
+  programTitle: { color: "#fff", fontSize: ps(1.1), fontWeight: "700", flexShrink: 1 },
+  programDesc: { color: "rgba(255,255,255,0.38)", fontSize: ps(0.85) },
+  nowBadge: {
+    backgroundColor: "rgba(255,255,255,0.9)",
+    paddingHorizontal: pw(0.6),
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  nowBadgeText: { color: "#000", fontSize: ps(0.62), fontWeight: "900", letterSpacing: 0.8 },
+
+  // ── Shared ──
+  textOnFocus: { color: "#000" },
+  dimmed: { opacity: 0.45 },
+  miniTrack: {
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    marginTop: 3,
+    overflow: "hidden",
+  },
+  miniFill: { height: "100%", backgroundColor: "#fff" },
+
+  empty: { alignItems: "center", justifyContent: "center", paddingVertical: ph(10), gap: ph(1) },
+  emptyTitle: { color: "rgba(255,255,255,0.45)", fontSize: ps(1.2), fontWeight: "700" },
+  emptyText: { color: "rgba(255,255,255,0.25)", fontSize: ps(0.95), textAlign: "center", maxWidth: pw(30) },
+
+  footer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: pw(2),
+    paddingHorizontal: pw(3),
+    paddingVertical: ph(1.2),
+  },
+  footerHint: {
+    color: "rgba(255,255,255,0.3)",
+    fontSize: ps(0.85),
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  footerBusy: { flexDirection: "row", alignItems: "center", gap: pw(0.8) },
 });

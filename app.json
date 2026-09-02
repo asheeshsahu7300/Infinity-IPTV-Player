@@ -15,6 +15,7 @@
     "android": {
       "package": "com.infinity.iptvplayertv",
       "edgeToEdgeEnabled": true,
+      "largeHeap": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
@@ -45,8 +46,6 @@
           "backgroundColor": "#000000"
         }
       ],
-      "expo-video",
-      "expo-audio",
       [
         "@react-native-tvos/config-tv",
         {

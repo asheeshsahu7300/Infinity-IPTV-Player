@@ -207,7 +207,6 @@ const S = StyleSheet.create({
     color: "#fff",
     fontSize: ps(1.15),
     fontWeight: "700",
-    fontFamily: THEME.fonts.bold,
   },
   subtitle: {
     color: "rgba(255,255,255,0.5)",

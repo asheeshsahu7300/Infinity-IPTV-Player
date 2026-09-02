@@ -5,6 +5,7 @@ import { Portal, Channel, VODItem, Episode } from "../store/portalStore";
 import { usePortalStore } from "../store/portalStore";
 import { NetworkResilience } from "./NetworkResilience";
 import { safeStorage } from "./safeStorage";
+import { applySameHostStreamProxy } from "./stbEnvironment";
 
 export type StreamableContent = Channel | VODItem | Episode;
 
@@ -36,26 +37,50 @@ class StreamManagerClass {
         episodeNum?: number
     ): Promise<StreamResult> {
         try {
-            // Import portalApi dynamically to avoid circular deps
-            const { portalApi } = await import("./portalApi");
-
-            // Get fresh stream URL (portalApi handles token refresh internally)
             const cmd = content.streamUrl || (content as Episode).cmd || "";
-
             if (!cmd) {
                 return { url: "", success: false, error: "No stream command available" };
             }
 
             const latestPortal = usePortalStore.getState().activePortal ?? portal;
+
+            // Direct stream for Xtream or M3U portals
+            if (portal.type !== "mag") {
+                const proxied = applySameHostStreamProxy(cmd, latestPortal, cmd);
+                return { url: proxied, success: !!proxied };
+            }
+
+            // Import portalApi dynamically to avoid circular deps
+            const { portalApi } = await import("./portalApi");
+
             const url = await portalApi.getStreamUrl(latestPortal, cmd, type, episodeNum);
 
             if (!url) {
+                const proxied = applySameHostStreamProxy("", latestPortal, cmd);
+                if (proxied) {
+                    return { url: proxied, success: true };
+                }
+                const cleanCmd = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
+                if (/^https?:\/\//i.test(cleanCmd)) {
+                    return { url: applySameHostStreamProxy(cleanCmd, latestPortal, cmd), success: true };
+                }
                 return { url: "", success: false, error: "Failed to generate stream URL" };
             }
 
-            return { url, success: true };
+            const proxiedUrl = applySameHostStreamProxy(url, latestPortal, cmd);
+            return { url: proxiedUrl, success: true };
         } catch (error: any) {
-            console.error("❌ StreamManager.getStreamUrl failed:", error);
+            console.warn("⚠️ StreamManager.getStreamUrl error:", error?.message || error);
+            const cmd = content.streamUrl || (content as Episode).cmd || "";
+            const latestPortal = usePortalStore.getState().activePortal ?? portal;
+            const proxied = applySameHostStreamProxy("", latestPortal, cmd);
+            if (proxied) {
+                return { url: proxied, success: true };
+            }
+            const cleanCmd = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
+            if (/^https?:\/\//i.test(cleanCmd)) {
+                return { url: applySameHostStreamProxy(cleanCmd, latestPortal, cmd), success: true };
+            }
             return { url: "", success: false, error: error.message || "Stream URL generation failed" };
         }
     }
@@ -75,6 +100,12 @@ class StreamManagerClass {
             return { url: "", success: false, error: `Failed after ${this.maxRetries} retries` };
         }
 
+        if (portal.type !== "mag") {
+            const latestPortal = usePortalStore.getState().activePortal ?? portal;
+            const proxied = applySameHostStreamProxy(content.streamUrl || "", latestPortal, content.streamUrl);
+            return { url: proxied, success: !!proxied };
+        }
+
         try {
             // 1. Ensure we have network
             if (!NetworkResilience.connected) {
@@ -85,31 +116,8 @@ class StreamManagerClass {
                 }
             }
 
-            // 2. Force token refresh before retry
-            const { portalApi } = await import("./portalApi");
-
-            // Get fresh portal with refreshed token
-            let freshPortal = portal;
-            if (portal.type === "mag") {
-                try {
-                    const auth = await portalApi.authenticate(portal);
-                    freshPortal = {
-                        ...portal,
-                        config: {
-                            ...portal.config,
-                            token: auth.token,
-                            expiry: auth.expiry,
-                        },
-                    };
-
-                    // Update store with fresh token — config only. Going through
-                    // setActivePortal here cleared every loaded list, so a single
-                    // stream retry emptied the app behind the player.
-                    usePortalStore.getState().persistPortalConfig(freshPortal);
-                } catch (authError) {
-                    console.warn("Token refresh failed during retry:", authError);
-                }
-            }
+            // 2. Use latest portal from store (portalApi handles token refresh on retry)
+            const freshPortal = usePortalStore.getState().activePortal ?? portal;
 
             // 3. Generate completely NEW stream URL
             const result = await this.getStreamUrl(content, freshPortal, type, episodeNum);
