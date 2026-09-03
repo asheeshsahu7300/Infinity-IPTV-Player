@@ -14,7 +14,7 @@ import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Focusable } from "../tv";
-import { THEME, pw, ph, ps } from "../theme/tokens";
+import { THEME, pw, ph, ps, TILE_FRAME, TILE_FRAME_FOCUSED } from "../theme/tokens";
 
 export type CardAspectRatio = "16:9" | "2:3" | "1:1";
 export type CardType = "channel" | "vod" | "series";
@@ -125,31 +125,21 @@ export const ContentCard = React.memo(function ContentCard({
             </View>
           );
 
-          if (focused) {
-            return (
-              <LinearGradient
-                colors={[THEME.colors.primary, THEME.colors.secondary]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[
-                  S.gradientBorder,
-                  {
-                    transform: [{ scale: 1.06 }],
-                    shadowColor: THEME.colors.primary,
-                    shadowOffset: { width: 0, height: 6 },
-                    shadowOpacity: 0.6,
-                    shadowRadius: 10,
-                    elevation: 14,
-                  },
-                ]}
-              >
-                {cardContent}
-              </LinearGradient>
-            );
-          }
-
+          // One frame, both states — the same wrapper the VOD poster uses.
+          //
+          // Focus used to swap this whole branch for a LinearGradient filling a
+          // `padding: 1.5` box: a fake border, in the app's accent colours, and
+          // the reason this card never matched the poster grids it sits next to.
+          // The resting branch was the same box left transparent, so at rest
+          // there was no border at all.
           return (
-            <View style={[S.gradientBorder, { backgroundColor: "transparent" }]}>
+            <View
+              style={[
+                S.frame,
+                focused && S.frameFocused,
+                focused && { transform: [{ scale: 1.06 }] },
+              ]}
+            >
               {cardContent}
             </View>
           );
@@ -166,12 +156,16 @@ const S = StyleSheet.create({
     padding: pw(0.8),
     overflow: "visible",
   },
-  gradientBorder: {
-    padding: 1.5,
-    borderRadius: ps(1.2),
-  },
+  // The frame lives out here, on the card's outermost box. Putting it on
+  // `card` below instead would draw a border inside a border — the same
+  // box-in-a-box the settings rows ended up with.
+  frame: { ...TILE_FRAME, borderRadius: ps(1.2) },
+  frameFocused: { ...TILE_FRAME_FOCUSED },
+  // Inner content, clipped one step inside `frame` so the corners nest
+  // instead of leaving a sliver of frame showing through. Transparent, because
+  // the frame carries the wash — this used to be an opaque #161622 slab.
   card: {
-    backgroundColor: "#161622",
+    backgroundColor: "transparent",
     borderRadius: ps(1.1),
     overflow: "hidden",
   },

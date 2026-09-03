@@ -53,4 +53,28 @@ class MainActivity : ReactActivity() {
           super.invokeDefaultOnBackPressed()
       }
   }
+
+  override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+    return try {
+      super.onKeyDown(keyCode, event)
+    } catch (e: Exception) {
+      false
+    }
+  }
+
+  override fun onKeyUp(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+    return try {
+      super.onKeyUp(keyCode, event)
+    } catch (e: Exception) {
+      false
+    }
+  }
+
+  override fun onKeyMultiple(keyCode: Int, repeatCount: Int, event: android.view.KeyEvent?): Boolean {
+    return try {
+      super.onKeyMultiple(keyCode, repeatCount, event)
+    } catch (e: Exception) {
+      false
+    }
+  }
 }

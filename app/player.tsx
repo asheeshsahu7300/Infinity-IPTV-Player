@@ -48,7 +48,7 @@ import { THEME, ps, pw, ph } from "../src/theme/tokens";
 import { Focusable, FocusGroup, Overlay, useDPad, DPAD_PRIORITY, useStbKeys, STB_PRIORITY } from "../src/tv";
 import NetInfo from "@react-native-community/netinfo";
 import { epgService } from "../src/services/epgService";
-import { buildImageUrl } from "../src/services/portalApi";
+import { buildImageUrl, portalApi, streamHeaders } from "../src/services/portalApi";
 import { parentalControl } from "../src/services/parentalControl";
 import { stbEnvironment, BufferTuning, applySameHostStreamProxy } from "../src/services/stbEnvironment";
 import { liveChannelSession, buildChannelNumbers, withChannelNumbers } from "../src/services/liveChannelSession";
@@ -285,6 +285,8 @@ export default function PlayerScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  /** Whether the buffering pill is on screen. See PILL_AFTER_STALL_MS. */
+  const [showBufferingPill, setShowBufferingPill] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
   const [aspectRatioIndex, setAspectRatioIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -408,6 +410,34 @@ export default function PlayerScreen() {
 
   // ── Retry configuration ───────────────────────────────────────────────────
   const BUFFERING_UI_DEBOUNCE_MS = 600;
+
+  /**
+   * How long the position must sit still before the pill is shown.
+   *
+   * Buffering ahead is not something the viewer needs told about. While the
+   * picture is still moving the player is doing its job, whatever it says
+   * about its buffer — so filling the next part happens silently and the
+   * pill is reserved for the picture having actually stopped.
+   *
+   * Sits between two other numbers. Above the progress tick, so ordinary
+   * jitter between events cannot trigger it. Well below
+   * `stallTimeoutMs` (6-15s by profile), so a real freeze is admitted to
+   * long before the stall watchdog gives up and reconnects.
+   */
+  const PILL_AFTER_STALL_MS = 1200;
+
+  /** One arrow press, as in VLC. */
+  const ARROW_SEEK_MS = 10000;
+  /**
+   * How long to gather arrow presses before seeking.
+   *
+   * VLC seeks on every press because it is reading a local file. Over a
+   * network stream each seek costs a re-buffer, so a burst is coalesced
+   * into one jump: five presses move 50s and re-buffer once, not five
+   * times. Short enough that a single press still lands immediately, long
+   * enough to swallow the key-repeat of a held button.
+   */
+  const ARROW_SEEK_COMMIT_MS = 250;
   const MAX_RETRIES_LIVE = 5;
   const MAX_RETRIES_VOD = 3;
   const maxRetries = isLive ? MAX_RETRIES_LIVE : MAX_RETRIES_VOD;
@@ -430,6 +460,8 @@ export default function PlayerScreen() {
   const lastProgressTimeRef = useRef(Date.now());
   const lastProgressPositionRef = useRef(0);
   const bufferingStartedRef = useRef<number | null>(null);
+  /** Mirror of `isBuffering`, readable from the progress tick. */
+  const isBufferingRef = useRef(false);
   const lastProgressStateUpdateTime = useRef(0);
   const lastPositionSaveTime = useRef(0);
   const lastAccumulateTime = useRef(0);
@@ -468,6 +500,8 @@ export default function PlayerScreen() {
 
   // Ref mirrors (stable captures for timers/effects without stale closures)
   const isPlayingRef = useRef(isPlaying);
+  const isLoadingRef = useRef(isLoading);
+  const showBufferingPillRef = useRef(showBufferingPill);
   const showControlsRef = useRef(showControls);
   const isLockedRef = useRef(isLocked);
   const showVideoModalRef = useRef(showVideoModal);
@@ -476,6 +510,9 @@ export default function PlayerScreen() {
   const seekBarFocusedRef = useRef(seekBarFocused);
   const isFullscreenRef = useRef(isFullscreen);
   const showZapListRef = useRef(false);
+
+  useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
+  useEffect(() => { showBufferingPillRef.current = showBufferingPill; }, [showBufferingPill]);
   const showBannerRef = useRef(false);
   const positionRef = useRef(position);
   const durationRef = useRef(duration);
@@ -483,7 +520,7 @@ export default function PlayerScreen() {
   const dummyLeftFocusedRef = useRef(false);
   const dummyRightFocusedRef = useRef(false);
   const isNavRowFocusedRef = useRef(false);
-  const accumulateSeekRef = useRef<(delta: number, isProgressive?: boolean) => void>(() => { });
+  const accumulateSeekRef = useRef<(delta: number, commitAfterMs?: number) => void>(() => { });
   const handleTapRef = useRef<(x: number) => void>(() => { });
   const handleSilentRetryRef = useRef<() => void>(() => { });
   // The zap helpers are defined further down but the D-pad handlers above need
@@ -523,22 +560,31 @@ export default function PlayerScreen() {
   useEffect(() => {
     let alive = true;
     stbEnvironment.load().then(() => {
-      if (alive) setBufferTuning(stbEnvironment.buffer);
+      const activeP = usePortalStore.getState().activePortal;
+      if (alive) setBufferTuning(stbEnvironment.getBufferTuning(activeP));
     });
     parentalControl.load();
     const unsubscribe = stbEnvironment.subscribe(() => {
-      if (alive) setBufferTuning(stbEnvironment.buffer);
+      const activeP = usePortalStore.getState().activePortal;
+      if (alive) setBufferTuning(stbEnvironment.getBufferTuning(activeP));
     });
     return () => {
       alive = false;
       unsubscribe();
     };
-  }, []);
+  }, [activePortal?.id]);
 
   // ── Unmount cleanup ───────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       mountedRef.current = false;
+      try {
+        if (vlcPlayerRef.current) {
+          // Explicitly pause/stop the player to free native Video Surfaces immediately
+          // @ts-ignore
+          vlcPlayerRef.current.pause?.();
+        }
+      } catch {}
       safeStorage.removeItem("resume_player_state").catch(() => { });
       if (stablePlaybackTimerRef.current) clearTimeout(stablePlaybackTimerRef.current);
       if (liveReconnectIntervalRef.current) clearInterval(liveReconnectIntervalRef.current);
@@ -576,6 +622,33 @@ export default function PlayerScreen() {
   const handleNormalizedProgress = useCallback(
     (positionMs: number, durationMs: number) => {
       if (isSeeking.current) return;
+
+      /**
+       * A moving position is proof the player is not buffering, whatever the
+       * last onBuffering event said.
+       *
+       * Nothing else cleared the flag. VLC does not reliably deliver a final
+       * 100% buffering event — it can stop reporting part-way and start
+       * playing anyway — and the progress handler, which is the one thing
+       * that knows for certain that frames are arriving, said nothing about
+       * it. That is how "Buffering..." ended up pinned over a picture that
+       * was playing perfectly well.
+       *
+       * It is the same ground truth the stall watchdog already trusts: VLC
+       * polls getTime() on a timer, so a frozen position is the stall signal
+       * and a rising one is its opposite.
+       */
+      if (positionMs > positionRef.current) {
+        if (bufferingTimeoutRef.current) {
+          clearTimeout(bufferingTimeoutRef.current);
+          bufferingTimeoutRef.current = null;
+        }
+        bufferingStartedRef.current = null;
+        // Guarded on the ref: this runs four times a second, and setting
+        // state unconditionally would re-render the player on every tick.
+        if (isBufferingRef.current) setIsBuffering(false);
+      }
+
       positionRef.current = positionMs;
       durationRef.current = durationMs;
 
@@ -617,6 +690,10 @@ export default function PlayerScreen() {
     [params.contentId, params.type]
   );
 
+  useEffect(() => {
+    isBufferingRef.current = isBuffering;
+  }, [isBuffering]);
+
   // ── Shared buffering handler (debounced UI flag, used by both players) ────
   const handleBufferingChange = useCallback((buffering: boolean) => {
     if (isLive) {
@@ -647,7 +724,89 @@ export default function PlayerScreen() {
       // Advance stall clock — player is actively receiving data again
       lastProgressTimeRef.current = Date.now();
     }
-  }, []);
+    // `isLive` is read above, so it has to be a dependency. With an empty array
+    // this closed over whatever it was on first render — harmless while a
+    // player only ever shows one kind of content, and wrong the moment a live
+    // channel and a VOD share a mounted player.
+  }, [isLive]);
+
+  // ── Portal watchdog ───────────────────────────────────────────────────────
+  //
+  // Distinct from the stall watchdog below: that one watches the picture,
+  // this one keeps the *session* alive. Stalker portals publish a
+  // `watchdog_timeout` and expect the box to check in on it; left unheard
+  // from, the portal eventually reaps the session and stops authorising
+  // further HLS segments. Nothing reports an auth failure — playback just
+  // stalls part-way through and recovers on a re-tune, which is why this
+  // reads as a buffering problem rather than a session one.
+  //
+  // Tied to having a stream rather than to being un-paused: a paused VOD
+  // still has to be able to resume, and that needs the session.
+  useEffect(() => {
+    if (!activePortal || activePortal.type !== "mag" || !streamUrl) return;
+
+    const period = portalApi.watchdogPeriodMs(activePortal);
+    // No ping on mount: create_link has only just spoken to the portal, so
+    // the session is as fresh as it gets. The first one is due a period in.
+    const id = setInterval(() => {
+      // Read the portal fresh rather than closing over it. A ping refreshes
+      // the token, which replaces the store object — so depending on that
+      // object would restart this timer on every tick, and a period longer
+      // than the gap between store writes would mean it never fired at all.
+      const current = usePortalStore.getState().activePortal;
+      if (current?.type === "mag") portalApi.watchdog(current).catch(() => { });
+    }, period);
+
+    return () => clearInterval(id);
+    // Keyed on the portal identity, not the object: see above.
+  }, [activePortal?.id, activePortal?.type, streamUrl]);
+
+  /**
+   * Drives the buffering pill from whether the picture is moving.
+   *
+   * It used to be driven by `isBuffering`, which comes from VLC's
+   * onBuffering events, and those turned out to be a poor proxy: VLC reports
+   * a buffer filling while frames continue to arrive perfectly well, and
+   * does not reliably send a closing event when it is done. The result was
+   * "Buffering..." pinned over playing video.
+   *
+   * `lastProgressTimeRef` is the honest signal and was already being kept
+   * current by every progress event, buffering change and reconnect — the
+   * same clock the stall watchdog below reads.
+   */
+  useEffect(() => {
+    if (isLive) {
+      if (showBufferingPillRef.current) {
+        showBufferingPillRef.current = false;
+        setShowBufferingPill(false);
+      }
+      return;
+    }
+
+    const id = setInterval(() => {
+      if (!mountedRef.current) return;
+
+      // Paused is not stalled, and neither is seeking or a stream that has
+      // not begun. Reconnecting has its own message, so leave it alone.
+      if (!isPlayingRef.current || isSeeking.current || isRetryingRef.current) {
+        if (showBufferingPillRef.current) {
+          showBufferingPillRef.current = false;
+          setShowBufferingPill(false);
+        }
+        return;
+      }
+      if (!hasStartedPlayingRef.current || !hasObservedProgressRef.current) return;
+
+      const frozenFor = Date.now() - lastProgressTimeRef.current;
+      const shouldShow = frozenFor > PILL_AFTER_STALL_MS;
+      if (showBufferingPillRef.current !== shouldShow) {
+        showBufferingPillRef.current = shouldShow;
+        setShowBufferingPill(shouldShow);
+      }
+    }, 400);
+
+    return () => clearInterval(id);
+  }, [isLive]);
 
   // ── Stall watchdog ────────────────────────────────────────────────────────
   //
@@ -1080,8 +1239,17 @@ export default function PlayerScreen() {
   );
   useEffect(() => { handleTapRef.current = handleTap; }, [handleTap]);
 
+  /**
+   * Moves the seek target by `delta` and commits once the presses stop.
+   *
+   * There used to be an `isProgressive` mode that **ignored `delta`** and
+   * walked a 1m/2m/5m/10m ladder instead. Every arrow-key caller passed it,
+   * so a single left press jumped a minute however clearly the call site
+   * said 10 seconds. Nothing wants that ladder — fast-forward and rewind
+   * use seek() directly — so it is gone and the delta is honoured.
+   */
   const accumulateSeek = useCallback(
-    (delta: number, isProgressive = false) => {
+    (delta: number, commitAfterMs = 800) => {
       if (isLockedRef.current || duration <= 0 || !isSeekable || params.type === "live") return;
       const now = Date.now();
       if (now - lastAccumulateTime.current < 50) return;
@@ -1092,33 +1260,15 @@ export default function PlayerScreen() {
         accumulatedDelta.current = 0;
       }
 
-      if (isProgressive) {
-        const steps = [0, 60000, 120000, 300000, 600000];
-        if (delta > 0) {
-          if (accumulatedDelta.current >= 0) {
-            const next = steps.find((s) => s > accumulatedDelta.current);
-            accumulatedDelta.current = next !== undefined ? next : accumulatedDelta.current + 600000;
-          } else {
-            const abs = Math.abs(accumulatedDelta.current);
-            accumulatedDelta.current = -([...steps].reverse().find((s) => s < abs) || 0);
-          }
-        } else {
-          if (accumulatedDelta.current <= 0) {
-            const abs = Math.abs(accumulatedDelta.current);
-            const next = steps.find((s) => s > abs);
-            accumulatedDelta.current = -(next !== undefined ? next : abs + 600000);
-          } else {
-            accumulatedDelta.current = [...steps].reverse().find((s) => s < accumulatedDelta.current) || 0;
-          }
-        }
-      } else {
-        accumulatedDelta.current += delta;
-      }
+      accumulatedDelta.current += delta;
 
       targetSeekPosition.current = Math.max(0, Math.min(position + accumulatedDelta.current, duration));
       setPosition(targetSeekPosition.current);
 
-      const sign = accumulatedDelta.current > 0 ? "+" : "";
+      // Both directions get a sign. Backwards used to get none, so a left
+      // press read "10s" — indistinguishable from a forward jump at a glance,
+      // which is the one thing this indicator exists to tell you.
+      const sign = accumulatedDelta.current < 0 ? "-" : "+";
       const absMs = Math.abs(accumulatedDelta.current);
       const displayStr =
         absMs >= 60000
@@ -1145,7 +1295,7 @@ export default function PlayerScreen() {
             seekBarRef.current?.focus();
           }
         }
-      }, 800);
+      }, commitAfterMs);
 
       resetControlsTimeout();
     },
@@ -1182,25 +1332,28 @@ export default function PlayerScreen() {
           seek(-180000);
         }
       },
+      // Left and right are the 10-second jumps, as on VLC.
+      //
+      // They seek on the *first* press whether the transport bar is up or
+      // not. Previously a press with the controls hidden only woke the bar,
+      // so skipping back took two presses — one to reveal something the
+      // viewer had not asked for, one to actually move.
+      //
+      // The one exception is the button row: while that has focus, left and
+      // right are how you get between the buttons.
       onLeft: () => {
         if (isLockedRef.current) return;
-        if (!showControlsRef.current) {
-          setShowControls(true);
-          resetControlsTimeout();
-        } else if (!isLive && !isNavRowFocusedRef.current) {
-          accumulateSeek(-10000, true);
-          resetControlsTimeout();
-        }
+        if (showControlsRef.current && isNavRowFocusedRef.current) return;
+        if (!isLive) accumulateSeek(-ARROW_SEEK_MS, ARROW_SEEK_COMMIT_MS);
+        setShowControls(true);
+        resetControlsTimeout();
       },
       onRight: () => {
         if (isLockedRef.current) return;
-        if (!showControlsRef.current) {
-          setShowControls(true);
-          resetControlsTimeout();
-        } else if (!isLive && !isNavRowFocusedRef.current) {
-          accumulateSeek(10000, true);
-          resetControlsTimeout();
-        }
+        if (showControlsRef.current && isNavRowFocusedRef.current) return;
+        if (!isLive) accumulateSeek(ARROW_SEEK_MS, ARROW_SEEK_COMMIT_MS);
+        setShowControls(true);
+        resetControlsTimeout();
       },
       onSelect: () => {
         if (isLockedRef.current) return;
@@ -1776,9 +1929,13 @@ export default function PlayerScreen() {
       if (status.positionMillis !== undefined && !isSeeking.current) {
         handleNormalizedProgress(status.positionMillis, status.durationMillis || durationRef.current);
       }
-      if (status.isPlaying && (status.positionMillis || 0) > 0) {
-        hasStartedPlayingRef.current = true;
-        setHasStartedPlaying(true);
+      if (status.isPlaying) {
+        lastProgressTimeRef.current = Date.now();
+        hasObservedProgressRef.current = true;
+        if ((status.positionMillis || 0) > 0) {
+          hasStartedPlayingRef.current = true;
+          setHasStartedPlaying(true);
+        }
         setIsLoading(false);
       }
       if (status.didJustFinish) {
@@ -1877,18 +2034,15 @@ export default function PlayerScreen() {
 
       // Frame & audio sync
       "--audio-time-stretch",
-      "--drop-late-frames",
-      "--skip-frames",
+      "--clock-jitter=5000",              // Absorb up to 5s PCR timestamp jitter without dropping audio
+      "--clock-synchro=0",               // Avoid aggressive clock sync drops on bursty IPTV feeds
       "--no-stats",
       "--no-video-title-show",
 
       // Live vs VOD seek options
       ...(isLive
         ? [
-            "--clock-jitter=0",
-            "--clock-synchro=0",
             "--no-input-fast-seek",
-            "--no-ts-trust-pcr",
           ]
         : [
             "--input-fast-seek",
@@ -1950,6 +2104,16 @@ export default function PlayerScreen() {
             duration={duration}
             queuePosition={hasQueue ? { index: queueIndex, total: playbackQueue.size } : undefined}
             badges={[
+              // The stream's own resolution and audio language, from the queue
+              // item — what the provider says this episode *is*. Distinct from
+              // `qualityLabel` below, which is the measured network tier and
+              // says nothing about the file, so both are worth showing.
+              ...(queueItem?.videoQuality
+                ? [{ label: queueItem.videoQuality, tone: "muted" as const }]
+                : []),
+              ...(queueItem?.audioLanguage
+                ? [{ label: queueItem.audioLanguage, tone: "muted" as const }]
+                : []),
               ...(qualityLabel ? [{ label: qualityLabel, tone: "muted" as const }] : []),
               ...(playbackSpeed !== 1 ? [{ label: `${playbackSpeed}x`, tone: "warn" as const }] : []),
             ]}
@@ -1972,8 +2136,6 @@ export default function PlayerScreen() {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <View style={S.container} {...panResponder.panHandlers}>
-      <StatusBar hidden />
-
       {/* ── Player: VLC when the native module is available, expo-av otherwise ── */}
       {usingVLC && streamUrl && /^(https?|rtsp|mms):\/\//i.test(streamUrl) ? (
         // @ts-ignore
@@ -1986,14 +2148,9 @@ export default function PlayerScreen() {
           style={S.video}
           source={({
             uri: streamUrl,
-            headers: {
-              "User-Agent": "okhttp/3.12.1",
-              "Accept": "*/*",
-              "Connection": "keep-alive",
-              ...(activePortal?.config?.url
-                ? { Referer: `${String(activePortal.config.url).replace(/\/$/, "")}/c/index.html` }
-                : {}),
-            },
+            // Identity, origin and — on a portal-hosted stream — the mac
+            // cookie the portal re-checks between segments. See streamHeaders.
+            headers: streamHeaders(streamUrl, activePortal),
             initOptions: buildVlcInitOptions(),
           }) as any}
           seek={!isLive ? vlcSeekTarget : undefined}
@@ -2005,7 +2162,10 @@ export default function PlayerScreen() {
           audioTrack={selectedAudioTrack}
           textTrack={selectedTextTrack}
           onLoad={(e: any) => {
-            setIsBuffering(false);
+            if (isBufferingRef.current) {
+              isBufferingRef.current = false;
+              setIsBuffering(false);
+            }
             retryCount.current = 0;
             const durationMs = normalizeVlcTime(e.duration);
             handleLoadCommon(durationMs);
@@ -2021,11 +2181,21 @@ export default function PlayerScreen() {
             if (e.textTracks) setTextTracks(normalizeVlcTracks(e.textTracks));
           }}
           onPlaying={() => {
-            hasStartedPlayingRef.current = true;
-            setHasStartedPlaying(true);
-            setIsPlaying(true);
-            setIsLoading(false);
-            setIsBuffering(false);
+            if (!hasStartedPlayingRef.current) {
+              hasStartedPlayingRef.current = true;
+              setHasStartedPlaying(true);
+            }
+            if (!isPlayingRef.current) {
+              setIsPlaying(true);
+            }
+            if (isLoadingRef.current) {
+              isLoadingRef.current = false;
+              setIsLoading(false);
+            }
+            if (isBufferingRef.current) {
+              isBufferingRef.current = false;
+              setIsBuffering(false);
+            }
             setPlaybackFailed(false);
             stopLiveReconnectLoop();
             lastProgressTimeRef.current = Date.now();
@@ -2043,14 +2213,28 @@ export default function PlayerScreen() {
             const currentMs = normalizeVlcTime(e.currentTime);
             const durationMs = normalizeVlcTime(e.duration);
 
+            lastProgressTimeRef.current = Date.now();
+            hasObservedProgressRef.current = true;
+
             if (currentMs > 0) {
-              hasStartedPlayingRef.current = true;
-              setHasStartedPlaying(true);
-              setIsLoading(false);
-              setIsBuffering(false);
+              if (!hasStartedPlayingRef.current) {
+                hasStartedPlayingRef.current = true;
+                setHasStartedPlaying(true);
+              }
+              if (isLoadingRef.current) {
+                isLoadingRef.current = false;
+                setIsLoading(false);
+              }
+              if (isBufferingRef.current) {
+                isBufferingRef.current = false;
+                setIsBuffering(false);
+              }
             }
 
-            if (durationMs > 0) { durationRef.current = durationMs; setDuration(durationMs); }
+            if (durationMs > 0 && Math.abs(durationRef.current - durationMs) > 1000) {
+              durationRef.current = durationMs;
+              setDuration(durationMs);
+            }
 
             if (isSeeking.current) {
               const target = vlcSeekTargetRef.current;
@@ -2065,14 +2249,14 @@ export default function PlayerScreen() {
 
             if (currentMs !== lastProgressPositionRef.current) {
               lastProgressPositionRef.current = currentMs;
-              lastProgressTimeRef.current = Date.now();
-              if (currentMs > 0) hasObservedProgressRef.current = true;
               bufferingStartedRef.current = null;
-              setIsBuffering(false);
+              if (isBufferingRef.current) {
+                isBufferingRef.current = false;
+                setIsBuffering(false);
+              }
             }
 
             handleNormalizedProgress(currentMs, durationMs);
-            setIsLoading(false);
           }}
           onBuffering={(e: any) => {
             const buffering =
@@ -2112,7 +2296,11 @@ export default function PlayerScreen() {
           key={`expo-${streamUrl}`}
           ref={expoVideoRef}
           style={S.video}
-          source={{ uri: streamUrl }}
+          // The fallback player sent no headers at all: no identity, no
+          // Referer, no keep-alive and no cookie. On a box without the VLC
+          // module that is a different request from the one the portal
+          // authorised — the worst footing to stream from.
+          source={{ uri: streamUrl, headers: streamHeaders(streamUrl, activePortal) }}
           shouldPlay={autoPlay && isPlaying}
           rate={playbackSpeed}
           resizeMode={getExpoResizeMode(ASPECT_RATIOS[aspectRatioIndex].key)}
@@ -2188,7 +2376,7 @@ export default function PlayerScreen() {
               </View>
             ) : (
               <View style={S.vodPosterFallback}>
-                <Ionicons name="film-outline" size={36} color="rgba(255,255,255,0.45)" />
+                <Ionicons name="film-outline" size={ps(3)} color="rgba(255,255,255,0.45)" />
               </View>
             )}
 
@@ -2211,7 +2399,19 @@ export default function PlayerScreen() {
               ) : null}
 
               <View style={S.vodSpinnerRow}>
-                <ActivityIndicator size="small" color="#ffffff" style={S.vodSpinner} />
+                {/* "small", and no style box.
+                    On Android an ActivityIndicator draws at a fixed intrinsic
+                    size for its `size` — "large" is around 48dp — and ignores
+                    width and height in its style. The box here claimed ps(1.0),
+                    about 20dp on a 1080p panel, so the spinner drew nearly
+                    30dp wider than the space reserved for it and sat on top of
+                    the label. The row's `gap` measured the box too, not the
+                    circle, which is why the text ended up under it rather than
+                    beside it.
+                    "small" is ~20dp, which is the line height of the label it
+                    sits next to. Sizing is left to the component so the two can
+                    never disagree again. */}
+                <ActivityIndicator size="small" color="#ffffff" />
                 <Text style={S.vodLoadingStatus}>
                   {isRetrying
                     ? `Connecting… (${retryCount.current}/${maxRetries})`
@@ -2228,7 +2428,7 @@ export default function PlayerScreen() {
       {/* ── Initial loading for Live TV — suppressed for instant channel tuning ── */}
 
       {/* ── Mid-stream buffering indicator (compact center pill) ─────────── */}
-      {!isLive && hasStartedPlaying && (isBuffering || isRetrying) && !isShowingHardFailure && !isNetworkLost && (
+      {!isLive && hasStartedPlaying && (showBufferingPill || isRetrying) && !isShowingHardFailure && !isNetworkLost && (
         <View style={S.midstreamBufferingOverlay} pointerEvents="none">
           <View style={S.midstreamBufferingPill}>
             <ActivityIndicator size="small" color={THEME.colors.primary} />
@@ -2374,7 +2574,7 @@ export default function PlayerScreen() {
                           if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
                           dummyLeftFocusedRef.current = true;
                           setVisualFocus(true);
-                          accumulateSeek(-10000, true);
+                          accumulateSeek(-ARROW_SEEK_MS, ARROW_SEEK_COMMIT_MS);
                           seekBarRef.current?.focus();
                         }}
                         onBlur={() => { dummyLeftFocusedRef.current = false; handleSeekBlur(); }}
@@ -2420,7 +2620,7 @@ export default function PlayerScreen() {
                           if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
                           dummyRightFocusedRef.current = true;
                           setVisualFocus(true);
-                          accumulateSeek(10000, true);
+                          accumulateSeek(ARROW_SEEK_MS, ARROW_SEEK_COMMIT_MS);
                           seekBarRef.current?.focus();
                         }}
                         onBlur={() => { dummyRightFocusedRef.current = false; handleSeekBlur(); }}
@@ -2667,8 +2867,6 @@ function TrackSelectionModal({
         </Text>
       </View>
 
-      <View style={S.modalDivider} />
-
       <ScrollView style={S.modalScroll} showsVerticalScrollIndicator={false}>
         {isVideo && (
           <Focusable
@@ -2766,8 +2964,6 @@ function TrackSelectionModal({
         )}
       </ScrollView>
 
-      <View style={S.modalDivider} />
-
       <Focusable
         ringOnFocus={false}
         hasTVPreferredFocus={options.length === 0 && !isSubtitle}
@@ -2848,7 +3044,6 @@ const S = StyleSheet.create({
     marginTop: 10,
     fontSize: ps(1.1),
     fontWeight: "600",
-    fontFamily: THEME.fonts.medium,
     textAlign: "center",
     paddingHorizontal: 24,
   },
@@ -2864,16 +3059,19 @@ const S = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0, 0, 0, 0.90)",
   },
+  // Scaled up: this is the only thing on screen while a stream connects, so
+  // there is no competition for the space and nothing gained by keeping it
+  // small. The poster keeps its 2:3 ratio.
   vodLoadingCard: {
     flexDirection: "row",
     alignItems: "center",
-    width: ps(27),
-    maxWidth: "85%",
-    paddingHorizontal: ps(1.2),
-    paddingVertical: ps(1.0),
-    borderRadius: ps(0.9),
+    width: ps(35),
+    maxWidth: "88%",
+    paddingHorizontal: ps(1.8),
+    paddingVertical: ps(1.5),
+    borderRadius: ps(1.2),
     backgroundColor: "#000000",
-    gap: ps(1.0),
+    gap: ps(1.5),
     elevation: 20,
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: 8 },
@@ -2881,9 +3079,9 @@ const S = StyleSheet.create({
     shadowRadius: 18,
   },
   vodPosterWrapper: {
-    width: ps(4.8),
-    height: ps(7.2),
-    borderRadius: ps(0.55),
+    width: ps(6.6),
+    height: ps(9.9),
+    borderRadius: ps(0.7),
     overflow: "hidden",
     backgroundColor: "rgba(255, 255, 255, 0.08)",
   },
@@ -2892,59 +3090,56 @@ const S = StyleSheet.create({
     height: "100%",
   },
   vodPosterFallback: {
-    width: ps(4.8),
-    height: ps(7.2),
-    borderRadius: ps(0.55),
+    width: ps(6.6),
+    height: ps(9.9),
+    borderRadius: ps(0.7),
     backgroundColor: "rgba(255, 255, 255, 0.08)",
     alignItems: "center",
     justifyContent: "center",
   },
   vodMetaBlock: {
     flex: 1,
-    gap: ps(0.2),
+    gap: ps(0.3),
   },
   vodBadge: {
     alignSelf: "flex-start",
     backgroundColor: "rgba(255, 255, 255, 0.16)",
-    paddingHorizontal: ps(0.45),
-    paddingVertical: ps(0.16),
-    borderRadius: ps(0.3),
-    marginBottom: ps(0.12),
+    paddingHorizontal: ps(0.6),
+    paddingVertical: ps(0.22),
+    borderRadius: ps(0.4),
+    marginBottom: ps(0.2),
   },
   vodBadgeText: {
     color: "#ffffff",
-    fontSize: ps(0.68),
+    fontSize: ps(0.85),
     fontWeight: "800",
-    letterSpacing: 0.8,
+    letterSpacing: 1,
   },
+  // No fontFamily on any of these: Tenor Sans has no bold cut, so pairing it
+  // with weight 600/800 makes Android synthesise one — smeared, doubled
+  // glyphs. Enlarging the card only makes that more visible. See the note on
+  // THEME.fonts in src/theme/tokens.ts.
   vodLoadingTitle: {
     color: "#ffffff",
-    fontSize: ps(1.18),
+    fontSize: ps(1.55),
     fontWeight: "800",
-    fontFamily: THEME.fonts.bold,
-    lineHeight: ps(1.5),
+    lineHeight: ps(1.95),
   },
   vodLoadingSubtitle: {
     color: "rgba(255, 255, 255, 0.7)",
-    fontSize: ps(0.85),
+    fontSize: ps(1.05),
     fontWeight: "600",
-    fontFamily: THEME.fonts.medium,
   },
   vodSpinnerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: ps(0.6),
-    marginTop: ps(0.6),
-  },
-  vodSpinner: {
-    width: ps(1.0),
-    height: ps(1.0),
+    gap: ps(0.8),
+    marginTop: ps(0.9),
   },
   vodLoadingStatus: {
     color: "rgba(255, 255, 255, 0.8)",
-    fontSize: ps(0.85),
+    fontSize: ps(1.05),
     fontWeight: "600",
-    fontFamily: THEME.fonts.medium,
     letterSpacing: 0.2,
   },
   midstreamBufferingOverlay: {
@@ -2963,7 +3158,6 @@ const S = StyleSheet.create({
     color: "#ffffff",
     fontSize: ps(0.9),
     fontWeight: "600",
-    fontFamily: THEME.fonts.medium,
   },
 
   centerIndicator: {
@@ -3213,14 +3407,12 @@ const S = StyleSheet.create({
   //   • the custom font family was paired with weights the family has no cut
   //     for. See the note on THEME.fonts in src/theme/tokens.ts.
   modalContent: {
-    // The same surface as the detail sheets, so panels over video match.
-    backgroundColor: "rgba(8,9,13,0.97)",
+    // Solid pitch black background for the modal panel.
+    backgroundColor: "#000000",
     width: isTV ? "42%" : "78%",
     maxWidth: ps(34),
     maxHeight: "82%",
     borderRadius: ps(1.4),
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
     overflow: "hidden",
   },
   modalHeader: {
@@ -3231,8 +3423,6 @@ const S = StyleSheet.create({
   },
   modalIconBg: {
     backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
     width: ps(3.4),
     height: ps(3.4),
     borderRadius: ps(1.7),
@@ -3253,7 +3443,7 @@ const S = StyleSheet.create({
     marginTop: ph(0.4),
     textAlign: "center",
   },
-  modalDivider: { height: 1, backgroundColor: "rgba(255,255,255,0.07)", marginHorizontal: pw(2) },
+  modalDivider: { height: 0, backgroundColor: "transparent" },
   modalScroll: { paddingHorizontal: pw(1.6), paddingVertical: ph(1.2) },
   emptyState: { alignItems: "center", paddingVertical: ph(3), gap: ph(1.2) },
   emptyText: {
@@ -3268,17 +3458,14 @@ const S = StyleSheet.create({
     paddingVertical: ph(1.1),
     paddingHorizontal: pw(1.4),
     marginBottom: ph(0.6),
-    borderWidth: 1,
-    borderColor: "transparent",
     backgroundColor: "rgba(255,255,255,0.05)",
   },
   modalOptionSelected: {
     backgroundColor: "rgba(255,255,255,0.12)",
-    borderColor: "rgba(255,255,255,0.3)",
   },
   // Solid white, as everywhere else. Ordered after the selected style at the call
   // sites so focus wins when a row is both.
-  modalOptionFocused: { borderColor: "#fff", backgroundColor: "#fff" },
+  modalOptionFocused: { backgroundColor: "#fff" },
   modalOptionInner: {
     flexDirection: "row",
     alignItems: "center",
@@ -3328,10 +3515,8 @@ const S = StyleSheet.create({
     marginVertical: ph(0.8),
     borderRadius: ps(0.9),
     backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "transparent",
   },
-  modalCloseBtnFocused: { borderColor: "#fff", backgroundColor: "#fff" },
+  modalCloseBtnFocused: { backgroundColor: "#fff" },
   modalCloseBtnText: {
     color: "rgba(255,255,255,0.7)",
     fontSize: ps(1),
@@ -3355,7 +3540,6 @@ const S = StyleSheet.create({
     color: "rgba(255,255,255,0.5)",
     fontSize: ps(0.7),
     fontWeight: "600",
-    fontFamily: THEME.fonts.medium,
   },
   actionLabelBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
   actionLabel: { color: "#fff", fontSize: ps(0.75), fontWeight: "900" },

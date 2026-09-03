@@ -28,6 +28,18 @@ export interface PinPromptProps {
   /** Called after a correct entry, once the success state has been shown. */
   onSuccess?: () => void;
   confirmLabel?: string;
+  /**
+   * Clears the entry whenever this changes.
+   *
+   * Needed for multi-step flows. Changing a PIN asks three questions in a row
+   * — current, new, confirm — and the prompt stays *visible* the whole time,
+   * only its title and message change. Resetting on visibility alone therefore
+   * left the previous step's four digits in place, so "New PIN" opened with a
+   * full entry: the dots were already filled and no further digit registered.
+   *
+   * Callers with one question can leave it unset.
+   */
+  resetKey?: string | number;
 }
 
 const PIN_LENGTH = 4;
@@ -40,11 +52,21 @@ export function PinPrompt({
   onSubmit,
   onCancel,
   onSuccess,
+  resetKey,
 }: PinPromptProps) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const mountedRef = useRef(true);
+  /**
+   * The authoritative digits, mirrored outside React state.
+   *
+   * Two reasons. Auto-submit needs the complete PIN in the same tick the last
+   * digit is pressed, and reading it from `pin` would read the value from
+   * before that press. And a remote can deliver two presses faster than a
+   * re-render, which a closure over `pin` would drop.
+   */
+  const pinRef = useRef("");
 
   useEffect(() => {
     mountedRef.current = true;
@@ -53,15 +75,17 @@ export function PinPrompt({
     };
   }, []);
 
-  // Each opening starts clean — a half-typed PIN left over from last time is
-  // both confusing and a way to leak how many digits were tried.
+  // Each opening — and each step within one opening — starts clean. A
+  // half-typed PIN left over is both confusing and a way to leak how many
+  // digits were tried.
   useEffect(() => {
     if (visible) {
+      pinRef.current = "";
       setPin("");
       setError(null);
       setChecking(false);
     }
-  }, [visible]);
+  }, [visible, resetKey]);
 
   const submit = useCallback(
     async (candidate: string) => {
@@ -80,6 +104,7 @@ export function PinPrompt({
         return;
       }
       setError("Incorrect PIN");
+      pinRef.current = "";
       setPin("");
     },
     [onSubmit, onSuccess]
@@ -88,22 +113,32 @@ export function PinPrompt({
   const pushDigit = useCallback(
     (digit: number) => {
       if (checking) return;
+      if (pinRef.current.length >= PIN_LENGTH) return;
+
+      const next = `${pinRef.current}${digit}`;
+      pinRef.current = next;
       setError(null);
-      setPin((prev) => {
-        if (prev.length >= PIN_LENGTH) return prev;
-        const next = `${prev}${digit}`;
-        // Submitting on the last digit is what makes a D-pad PIN bearable —
-        // hunting for a separate OK button doubles the interaction.
-        if (next.length === PIN_LENGTH) submit(next);
-        return next;
-      });
+      setPin(next);
+
+      // Submitting on the last digit is what makes a D-pad PIN bearable —
+      // hunting for a separate OK button doubles the interaction.
+      //
+      // Called here, after the state write, and NOT from inside a setPin
+      // updater. React runs updater functions during the render phase, so
+      // submitting from in there ran the parent's onSuccess mid-render:
+      // "Cannot update a component (ParentalControlScreen) while rendering a
+      // different component (PinPrompt)". Updaters also have to be pure —
+      // React may call them twice, which would have submitted twice.
+      if (next.length === PIN_LENGTH) submit(next);
     },
     [checking, submit]
   );
 
   const backspace = useCallback(() => {
+    const next = pinRef.current.slice(0, -1);
+    pinRef.current = next;
     setError(null);
-    setPin((prev) => prev.slice(0, -1));
+    setPin(next);
   }, []);
 
   return (

@@ -19,7 +19,7 @@ import { usePortalStore, Category } from "../src/store/portalStore";
 import { hiddenCategories } from "../src/services/hiddenCategories";
 import type { MediaKind } from "../src/services/parentalControl";
 import { CinematicBackground } from "../src/components/CinematicBackground";
-import { THEME, ph, ps, pw } from "../src/theme/tokens";
+import { THEME, ph, ps, pw, TILE_FRAME } from "../src/theme/tokens";
 import { Focusable, FocusGroup } from "../src/tv";
 
 const KINDS: { key: MediaKind; label: string; icon: React.ComponentProps<typeof Ionicons>["name"] }[] = [
@@ -28,7 +28,7 @@ const KINDS: { key: MediaKind; label: string; icon: React.ComponentProps<typeof 
   { key: "series", label: "SERIES", icon: "albums-outline" },
 ];
 
-const ROW_HEIGHT = ph(8);
+const ROW_HEIGHT = ph(9.5);
 
 const CategoryRow = React.memo(
   function CategoryRow({
@@ -154,7 +154,6 @@ export default function CategoriesScreen() {
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
-      <StatusBar hidden />
 
       <View style={S.header}>
         <Text style={S.headerTitle}>Categories</Text>
@@ -266,28 +265,34 @@ const S = StyleSheet.create({
     paddingVertical: ph(1),
     borderRadius: ps(0.9),
     backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "transparent",
+    borderWidth: TILE_FRAME.borderWidth,
+    borderColor: TILE_FRAME.borderColor,
   },
   tabActive: { backgroundColor: "rgba(255,255,255,0.85)" },
   tabFocused: { backgroundColor: "#fff", borderColor: "#fff" },
   tabText: { color: "#fff", fontSize: ps(0.9), fontWeight: "900", letterSpacing: 1 },
 
   listHost: { flex: 1, paddingHorizontal: pw(3) },
-  listContent: { paddingBottom: ph(3) },
+  listContent: { paddingBottom: ph(4), paddingTop: ph(1) },
 
-  rowWrapper: { height: ROW_HEIGHT, justifyContent: "center" },
+  rowWrapper: { height: ROW_HEIGHT, justifyContent: "center", paddingVertical: ph(0.5) },
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: pw(1.4),
-    paddingHorizontal: pw(2),
-    paddingVertical: ph(1.2),
+    paddingHorizontal: pw(2.5),
+    paddingVertical: ph(2),
     borderRadius: ps(0.8),
-    borderWidth: 1,
-    borderColor: "transparent",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    // Resting frame from TILE_FRAME. It rested on a *transparent* border, so a
+    // row had no visible edge at all next to the framed tiles elsewhere.
+    borderWidth: TILE_FRAME.borderWidth,
+    borderColor: TILE_FRAME.borderColor,
+    backgroundColor: TILE_FRAME.backgroundColor,
   },
+  // Focus stays a full white fill rather than TILE_FRAME_FOCUSED: the row's
+  // text and switches invert to black against it (see `onFocus` below and the
+  // dark switch variants), so swapping the fill for a border would leave black
+  // text on a dark row.
   rowFocused: { backgroundColor: "#fff", borderColor: "#fff" },
   rowName: { flex: 1, color: "#fff", fontSize: ps(1.1), fontWeight: "700" },
   rowNameHidden: { color: "rgba(255,255,255,0.35)" },

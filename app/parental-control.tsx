@@ -24,7 +24,7 @@ import {
 } from "../src/services/parentalControl";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import PinPrompt from "../src/components/PinPrompt";
-import { THEME, ph, ps, pw } from "../src/theme/tokens";
+import { THEME, ph, ps, pw, TILE_FRAME } from "../src/theme/tokens";
 import { Focusable, FocusGroup } from "../src/tv";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -249,7 +249,6 @@ export default function ParentalControlScreen() {
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
-      <StatusBar hidden />
 
       <View style={S.header}>
         <Text style={S.headerTitle}>Parental Control</Text>
@@ -328,7 +327,7 @@ export default function ParentalControlScreen() {
           <Row
             icon="eye-off-outline"
             title="Block adult channels automatically"
-            subtitle="Matches XXX, Adult and similar names and categories"
+            subtitle="Matches Adult and similar names and categories"
             on={state.blockAdultKeywords}
             disabled={!state.enabled}
             onPress={() => parentalControl.setBlockAdultKeywords(!state.blockAdultKeywords)}
@@ -358,8 +357,12 @@ export default function ParentalControlScreen() {
         </Text>
       </ScrollView>
 
+      {/* resetKey is the step: changing a PIN asks three questions without the
+          prompt ever closing, and without this the digits from the previous
+          question stayed on screen. */}
       <PinPrompt
         visible={!!pinIntent}
+        resetKey={pinIntent ?? ""}
         title={pinCopy.title}
         message={pinCopy.message}
         onSubmit={handlePinSubmit}
@@ -418,9 +421,10 @@ const S = StyleSheet.create({
   },
   group: {
     borderRadius: ps(1.2),
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    // Matched to TILE_FRAME: was 0.06 / 0.03 against the shared 0.05 / 0.04.
+    backgroundColor: TILE_FRAME.backgroundColor,
+    borderWidth: TILE_FRAME.borderWidth,
+    borderColor: TILE_FRAME.borderColor,
     overflow: "hidden",
   },
 

@@ -52,15 +52,24 @@ export function UpNextCard({
     }
 
     setRemaining(seconds);
+
+    // The countdown is kept outside state so the tick can decide whether to
+    // fire without doing it from inside a setState updater.
+    //
+    // It used to call onPlayNow from within a setRemaining updater, and
+    // React runs updater functions during the render phase — so starting the
+    // next episode happened mid-render, which is the same
+    // "Cannot update a component while rendering a different component"
+    // warning PinPrompt had. Updaters must also be pure, and React may invoke
+    // them twice, which could have advanced two episodes at once.
+    let left = seconds;
     const timer = setInterval(() => {
-      setRemaining((left) => {
-        if (left <= 1) {
-          clearInterval(timer);
-          onPlayNowRef.current();
-          return 0;
-        }
-        return left - 1;
-      });
+      left -= 1;
+      setRemaining(left > 0 ? left : 0);
+      if (left <= 0) {
+        clearInterval(timer);
+        onPlayNowRef.current();
+      }
     }, 1000);
 
     return () => clearInterval(timer);

@@ -91,6 +91,28 @@ export const Focusable = forwardRef<View, FocusableProps>(
     const isFocusTrapped = useIsFocusTrapped();
     const isDisabled = disabled;
 
+    /**
+     * Out of the focus graph: explicitly disabled, or in the background behind
+     * an open overlay.
+     *
+     * The trap was only ever half-connected. `isFocusTrapped` was used for the
+     * restore pulse and to keep background focus out of FocusMemory, but never
+     * reached `focusable`, so every row behind an overlay stayed a live focus
+     * target and Android's focus search walked straight into it — one D-pad
+     * press out of a dialog and you were driving the settings list behind it,
+     * with the dialog still on screen and nothing in it focused. Overlay's own
+     * docblock claims this containment ("FocusTrap marks background Focusables
+     * non-focusable"); this is the line that makes that true.
+     *
+     * `handleFocus` guarding its bookkeeping with `!isFocusTrapped` is the
+     * fossil of the same bug: it defended against background items receiving
+     * focus instead of stopping them from being focusable.
+     *
+     * Items *inside* an overlay are never inert — useIsFocusTrapped returns
+     * false for anything under InsideOverlayContext.
+     */
+    const isInert = disabled || isFocusTrapped;
+
     // Overlay focus controller for locking navigation inside modal
     const overlayController = React.useContext(InsideOverlayContext);
     const idRef = useRef(`focusable-${Math.random().toString(36).substring(2, 9)}`);
@@ -139,7 +161,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
     // user was somewhere else entirely. That is the focus-jumping.
     const didAutoFocusRef = useRef(false);
     React.useEffect(() => {
-      if (!hasTVPreferredFocus || isDisabled) return;
+      if (!hasTVPreferredFocus || isInert) return;
       if (didAutoFocusRef.current) return;
       didAutoFocusRef.current = true;
 
@@ -148,7 +170,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
       if (!focusedRef.current && FocusMemory.focusEpoch === epochAtRequest) {
         nativeRef.current?.focus?.();
       }
-    }, [hasTVPreferredFocus, isDisabled]);
+    }, [hasTVPreferredFocus, isInert]);
 
     // Automatic focus restore pulse when overlay/modal closes
     const wasTrappedRef = useRef(false);
@@ -198,7 +220,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
     }, [onBlur]);
 
     const handlePress = useCallback(() => {
-      if (isDisabled) return;
+      if (isInert) return;
       const now = Date.now();
       // Global press lock: ignore any press across all components if another press occurred within 350ms
       if (now - globalLastPressTime < 350) return;
@@ -218,14 +240,46 @@ export const Focusable = forwardRef<View, FocusableProps>(
       }
 
       onPress?.();
-    }, [isDisabled, isInsideOverlay, screenKey, focusKey, onPress]);
+    }, [isInert, isInsideOverlay, screenKey, focusKey, onPress]);
+
+    /**
+     * Long OK, from the remote.
+     *
+     * `onLongPress` was already handed to the Pressable below, but that only
+     * listens to the touch responder — a remote never drives it, so long press
+     * worked on a phone and did nothing at all on a box.
+     *
+     * The bridge does report it. With `enableKeyDownEvents` false (the
+     * default), holding OK past ~300ms dispatches "longSelect" twice: once on
+     * a repeated ACTION_DOWN, then again on ACTION_UP. Two things make that
+     * safe to wire straight through:
+     *
+     *  - `isKeyPress` pairs the DOWN with the UP, so the handler runs once.
+     *  - while the long press is active, ReactAndroidHWInputDeviceHelper takes
+     *    the KEY_EVENTS_LONG_PRESS_ACTIONS branch and never reaches
+     *    KEY_EVENTS_ACTIONS — so a long press emits **no** "select" at all,
+     *    and cannot also fire onPress.
+     */
+    const handleLongPress = useCallback(() => {
+      if (isInert || !onLongPress) return;
+      const now = Date.now();
+      // Shares the global press lock with handlePress, so a remote that does
+      // report both cannot land a press and a long press on one hold.
+      if (now - globalLastPressTime < 350) return;
+      globalLastPressTime = now;
+      lastPressTimeRef.current = now;
+      onLongPress();
+    }, [isInert, onLongPress]);
 
     useDPad(
       {
         onSelect: handlePress,
+        onLongSelect: handleLongPress,
       },
       {
-        enabled: focused && !isDisabled && Boolean(onPress),
+        // Either handler is reason enough to listen: a tile that only offers a
+        // long press (favourite, context menu) would otherwise never be heard.
+        enabled: focused && !isInert && Boolean(onPress || onLongPress),
         priority: isInsideOverlay ? DPAD_PRIORITY.OVERLAY + 10 : DPAD_PRIORITY.SCREEN,
       }
     );
@@ -245,8 +299,8 @@ export const Focusable = forwardRef<View, FocusableProps>(
       <Pressable
         ref={nativeRef}
         testID={testID}
-        disabled={isDisabled}
-        focusable={!isDisabled}
+        disabled={isInert}
+        focusable={!isInert}
         accessible
         accessibilityRole={accessibilityRole}
         accessibilityLabel={accessibilityLabel}
@@ -259,7 +313,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
         nextFocusRight={effRight}
         onFocus={handleFocus}
         onBlur={handleBlur}
-        onPress={isDisabled ? undefined : handlePress}
+        onPress={isInert ? undefined : handlePress}
         onLongPress={onLongPress}
         style={({ pressed }) => [
           // Reserve the ring's border box up front so gaining focus recolours

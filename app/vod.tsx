@@ -26,7 +26,7 @@ import { portalApi, buildImageUrl } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { cacheManager } from "../src/services/cacheManager";
-import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { THEME, pw, ph, ps, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
@@ -81,22 +81,12 @@ const S = StyleSheet.create({
     flex: 1,
     height: ph(6.5),
   },
-  searchGradient: {
-    flex: 1,
-    borderRadius: 25,
-    padding: 1.5,
-  },
-  searchFocused: {
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.7,
-    shadowRadius: 12,
-    elevation: 12,
-  },
+  searchGradient: { ...TILE_FRAME, flex: 1, borderRadius: 25 },
+  searchGradientFocused: { ...TILE_FRAME_FOCUSED },
   searchInner: {
     flex: 1,
     backgroundColor: "rgba(10, 10, 16, 0.61)",
-    borderRadius: 25 - 1.5,
+    borderRadius: 25 - 1,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: pw(1.6),
@@ -113,29 +103,8 @@ const S = StyleSheet.create({
   body: { flex: 1, flexDirection: "row" },
   gridArea: { flex: 1 },
   list: { padding: pw(1), paddingBottom: ph(10) },
-  cardBorder: {
-    padding: 1,
-    borderRadius: ps(1.4),
-    backgroundColor: THEME.colors.glassBg,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  cardBorderFocused: {
-    padding: 1,
-    borderColor: THEME.colors.glassBorderFocus,
-    backgroundColor: THEME.colors.glassBgFocus,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#fff",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 0,
-      }
-    })
-  },
+  cardBorder: { ...TILE_FRAME },
+  cardBorderFocused: { ...TILE_FRAME_FOCUSED },
   vodItem: { flex: 1, backgroundColor: "transparent", borderRadius: ps(1.1), overflow: "hidden" },
   posterContainer: { flex: 1, backgroundColor: "rgba(255,255,255,0.03)" },
   poster: { width: "100%", height: "100%" },
@@ -366,8 +335,6 @@ const MovieItem = React.memo(function MovieItem({
     onFavoritePress(item);
   }, [onFavoritePress, item]);
 
-
-
   return (
     <View style={{ width: itemWidth, padding: pw(1), overflow: "visible" }}>
       <Focusable
@@ -544,6 +511,22 @@ export default function VODScreen() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  /**
+   * Mirrors the field's own focus, purely for styling.
+   *
+   * The field is a plain D-pad target again — no wrapper, no programmatic
+   * focus. That is not a style choice, it is the only thing that works on a
+   * TV: ReactEditText.requestFocusProgrammatically() shows the keyboard only
+   * `if (isInTouchMode && showSoftInputOnFocus)`, and a D-pad device is never
+   * in touch mode, so every autoFocus and every ref.focus() took the else
+   * branch and called hideSoftKeyboard(). RN says so in a comment there:
+   * "only clicking the input will do that".
+   *
+   * What does work is the path RN actually designed for: the viewer navigates
+   * onto the field, and ReactEditText.onKeyUp toggles isKeyboardOpened on
+   * KEYCODE_DPAD_CENTER — so OK *on the focused field* opens the IME. Nothing
+   * may intercept that press, which is why there is no Focusable wrapper here.
+   */
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchResults, setSearchResults] = useState<VODItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -566,8 +549,6 @@ export default function VODScreen() {
   useEffect(() => () => {
     if (trapTimeoutRef.current) clearTimeout(trapTimeoutRef.current);
   }, []);
-
-
 
   const numColumns = isTV ? 5 : (SCREEN_WIDTH_VAL >= 768 ? 4 : 3);
   const PAGE_SIZE = numColumns * Math.ceil(28 / numColumns);
@@ -1030,8 +1011,6 @@ export default function VODScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ), [favorites.vod, itemWidth, numColumns, handleVodPress, handleVodFocus, handleFavoritePress, resumeVersion, parentalVersion]);
 
-
-
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery);
@@ -1083,18 +1062,26 @@ export default function VODScreen() {
   // Global search memo
   const filteredMovies = useMemo(() => {
     if (debouncedQuery) {
+      // Searching is scoped to whatever the sidebar has selected.
+      //
+      // Both branches ignored the category, so pressing one while a search was
+      // open moved the sidebar highlight and changed nothing else. And
+      // `selectedCategory` was not a dependency, so even a category-aware pool
+      // could not have re-run this.
       if (isXtreamOrM3U) {
-        return allVodCacheRef.current
-          .filter(v => v.name.toLowerCase().includes(debouncedQuery.toLowerCase()))
+        const needle = debouncedQuery.toLowerCase();
+        return filterByCategory(allVodCacheRef.current, selectedCategory, categories)
+          .filter((v) => v.name.toLowerCase().includes(needle))
           .slice(0, 100);
-      } else {
-        return searchResults;
       }
+      // Server-side search: it already matched the query, possibly on fields
+      // this screen never sees, so only the category scope is applied here.
+      return filterByCategory(searchResults, selectedCategory, categories);
     }
 
     // Default: return local display state (category-filtered and paginated)
     return displayVodItems;
-  }, [displayVodItems, debouncedQuery, isXtreamOrM3U, searchResults]);
+  }, [displayVodItems, debouncedQuery, isXtreamOrM3U, searchResults, selectedCategory, categories]);
 
   // Only relevant while the grid has nothing to show; a background refresh must
   // never replace content that is already on screen with a spinner.
@@ -1169,6 +1156,12 @@ export default function VODScreen() {
     index,
   }), [ROW_HEIGHT]);
 
+  const handleCategorySelect = useCallback((catId: string) => {
+    setSelectedCategory(catId);
+    setSearchQuery("");
+    setDebouncedQuery("");
+  }, []);
+
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
       <View
@@ -1177,39 +1170,15 @@ export default function VODScreen() {
         importantForAccessibility={playModalVisible ? "no-hide-descendants" : "auto"}
       >
         <CinematicBackground />
-        <StatusBar hidden />
 
         <View style={S.header}>
           <Text style={S.headerTitle}>Movies</Text>
           <FocusGroup style={S.searchWrapper}>
-            <Focusable
-              disabled={playModalVisible}
-              onPress={() => searchInputRef.current?.focus()}
-              ringOnFocus={false}
-              style={{ flex: 1 }}
-            >
-              {(focused) => (
-                <View style={[S.searchGradient, (focused || searchFocused) && S.searchFocused]}>
-              <LinearGradient
-                colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
-              />
-                {(focused || searchFocused) && (
-                <LinearGradient
-                  colors={[THEME.colors.primary, THEME.colors.secondary]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
-                />
-              )}
-                <View style={[
-                  S.searchInner,
-                  { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
-                  (focused || searchFocused) && { backgroundColor: "#0b0b10" }
-                ]}>
-                  <Ionicons name="search" size={ps(1.1)} color={(focused || searchFocused) ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
+            {/* A real border now, not two stacked gradients faking one — see
+                the matching note in live-tv.tsx. */}
+            <View style={[S.searchGradient, searchFocused && S.searchGradientFocused, { flex: 1 }]}>
+              <View style={[S.searchInner, searchFocused && { backgroundColor: "#0b0b10" }]}>
+                <Ionicons name="search" size={ps(1.1)} color={searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
                 <TextInput
                   ref={searchInputRef}
                   style={S.searchInput}
@@ -1219,13 +1188,10 @@ export default function VODScreen() {
                   onChangeText={setSearchQuery}
                   onFocus={() => setSearchFocused(true)}
                   onBlur={() => setSearchFocused(false)}
-                  editable={!playModalVisible}
-                  focusable={!playModalVisible}
+                  onSubmitEditing={() => setSearchFocused(false)}
                 />
-                </View>
               </View>
-              )}
-            </Focusable>
+            </View>
           </FocusGroup>
           <View style={S.countBadge}>
             <Text style={S.countText}>{busy ? "..." : String(filteredMovies.length)}</Text>
@@ -1237,7 +1203,7 @@ export default function VODScreen() {
             <CategorySidebar
               categories={sidebarCategories}
               selectedId={selectedCategory || "all"}
-              onSelect={setSelectedCategory}
+              onSelect={handleCategorySelect}
               width={SIDEBAR_WIDTH_VAL}
               autoFocusFirst={focusSidebar}
             />

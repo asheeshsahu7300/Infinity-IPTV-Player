@@ -3,6 +3,7 @@ import axios from "axios";
 import { cacheManager, CACHE_TTL } from "./cacheManager";
 import type { MediaMeta, Season } from "../store/portalStore";
 import { cleanMetaText as cleanText, splitMetaList as splitList } from "./metaText";
+import { readEpisodeMedia } from "./episodeMedia";
 import { formatRuntime } from "../utils/duration";
 import { requestManager } from "./requestManager";
 import { Portal } from "../store/portalStore";
@@ -422,19 +423,9 @@ export class XtreamApi {
           seriesMeta,
 
           episodes: epList.map((ep: any) => {
-            const vWidth = Number(ep.info?.video?.width || 0);
-            const vHeight = Number(ep.info?.video?.height || 0);
-            const quality =
-              vHeight >= 2160 || vWidth >= 3840
-                ? "4K UHD"
-                : vHeight >= 1080 || vWidth >= 1920
-                ? "1080p FHD"
-                : vHeight >= 720 || vWidth >= 1280
-                ? "720p HD"
-                : undefined;
-
-            const langRaw = ep.info?.audio?.tags?.language ?? ep.info?.audio?.language;
-            const audioLang = langRaw && typeof langRaw === "string" && langRaw !== "und" ? langRaw.toUpperCase() : undefined;
+            // Shared with the MAG layer's three episode shapes — see the note
+            // at the top of episodeMedia.ts for why this is not inlined.
+            const media = readEpisodeMedia(ep);
 
             return {
               id: ep.id ? ep.id.toString() : String(ep.episode_num),
@@ -454,9 +445,10 @@ export class XtreamApi {
                 formatRuntime(ep.info?.duration_secs, "seconds"),
               rating: cleanText(ep.info?.rating),
               airDate: cleanText(ep.info?.releasedate ?? ep.info?.air_date),
-              still: cleanText(ep.info?.movie_image ?? ep.info?.cover_big ?? ep.info?.still_path),
-              videoQuality: quality,
-              audioLanguage: audioLang,
+              // Xtream sends absolute URLs, so no base to prepend here.
+              still: cleanText(media.still),
+              videoQuality: media.videoQuality,
+              audioLanguage: media.audioLanguage,
             };
           }),
         };

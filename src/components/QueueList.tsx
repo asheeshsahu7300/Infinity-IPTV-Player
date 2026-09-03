@@ -11,9 +11,10 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 
-import { Focusable, FocusGroup } from "../tv";
+import { Focusable, FocusGroup, Overlay } from "../tv";
 import { THEME, ph, ps, pw } from "../theme/tokens";
 import { resumeIndex } from "../services/resumeIndex";
+import { formatRuntime } from "../utils/duration";
 import type { QueueItem } from "../services/playbackQueue";
 
 export interface QueueListProps {
@@ -52,6 +53,14 @@ const QueueRow = React.memo(
       [item?.id, resumeVersion]
     );
     const watched = progress >= WATCHED_THRESHOLD;
+
+    const facts = useMemo(
+      () =>
+        [item.videoQuality, item.audioLanguage, formatRuntime(item.duration)]
+          .filter(Boolean)
+          .join("  ·  ") || undefined,
+      [item.videoQuality, item.audioLanguage, item.duration]
+    );
 
     const handlePress = useCallback(() => onSelect(item, index), [onSelect, item, index]);
 
@@ -110,6 +119,19 @@ const QueueRow = React.memo(
                   numberOfLines={1}
                 >
                   {item.description || item.subtitle}
+                </Text>
+              ) : null}
+
+              {/* Runtime, resolution and audio language, carried through on the
+                  queue item — the player never sees the Episode objects the
+                  details screen worked from. Renders nothing where the portal
+                  supplied none, which is most of them. */}
+              {facts ? (
+                <Text
+                  style={[S.facts, focused && { color: "rgba(0,0,0,0.5)" }]}
+                  numberOfLines={1}
+                >
+                  {facts}
                 </Text>
               ) : null}
 
@@ -193,36 +215,81 @@ export function QueueList({
   if (!visible) return null;
 
   return (
-    <View style={S.panel}>
-      <View style={S.header}>
-        <Text style={S.headerTitle} numberOfLines={2}>
-          {title || "Up Next"}
-        </Text>
-        <View style={S.badge}>
-          <Text style={S.headerCount}>{items.length}</Text>
+    /**
+     * A real Overlay, not a bare absolute panel.
+     *
+     * As a plain View this leaked focus in every direction. Arrow keys still
+     * reached the player's own D-pad handlers, and worse, the player's control
+     * buttons stayed focusable — so navigating out of the list landed on one,
+     * its navRowFocusHandlers.onFocus called resetControlsTimeout(), and the
+     * controls appeared. That is why "focus leaves the list" and "the controls
+     * come up" were the same bug.
+     *
+     * Overlay closes all of it at once: it registers the focus trap (which
+     * makes every background Focusable inert), traps all four directions on
+     * its TVFocusGuideView, chains these rows with nextFocus tags whose ends
+     * pin to themselves, and outranks the player on the D-pad bus
+     * (OVERLAY 100 vs PLAYER 10) so the player stops seeing the keys at all.
+     *
+     * It also has to be Overlay specifically rather than a hand-rolled
+     * FocusTrap.register(): useIsFocusTrapped() tells inside from outside by
+     * InsideOverlayContext, so trapping without providing that context would
+     * have made these rows inert along with everything else.
+     */
+    <Overlay
+      visible={visible}
+      axis="vertical"
+      onClose={onClose}
+      style={S.overlayBackdrop}
+      contentStyle={S.overlayContent}
+    >
+      <View style={S.panel}>
+        <View style={S.header}>
+          <Text style={S.headerTitle} numberOfLines={2}>
+            {title || "Up Next"}
+          </Text>
+          <View style={S.badge}>
+            <Text style={S.headerCount}>{items.length}</Text>
+          </View>
+        </View>
+
+        {/* No autoFocus: it grabs the *first* child, which fought the current
+            episode's hasTVPreferredFocus and left focus on Episode 1 whatever
+            was playing. The row that is playing claims focus on its own. */}
+        <FocusGroup trapLeft trapRight style={S.list}>
+          <ScrollView
+            ref={scrollRef}
+            style={{ flex: 1 }}
+            contentContainerStyle={S.listContent}
+            showsVerticalScrollIndicator={true}
+          >
+            {items.map((item, index) => renderItem({ item, index }))}
+          </ScrollView>
+        </FocusGroup>
+
+        <View style={S.footer}>
+          <Ionicons name="return-down-back" size={ps(1)} color="rgba(255,255,255,0.4)" style={{ marginRight: ps(0.4) }} />
+          <Text style={S.footerHint}>OK to play · BACK to close</Text>
         </View>
       </View>
-
-      <FocusGroup autoFocus trapLeft trapRight style={S.list}>
-        <ScrollView
-          ref={scrollRef}
-          style={{ flex: 1 }}
-          contentContainerStyle={S.listContent}
-          showsVerticalScrollIndicator={true}
-        >
-          {items.map((item, index) => renderItem({ item, index }))}
-        </ScrollView>
-      </FocusGroup>
-
-      <View style={S.footer}>
-        <Ionicons name="return-down-back" size={ps(1)} color="rgba(255,255,255,0.4)" style={{ marginRight: ps(0.4) }} />
-        <Text style={S.footerHint}>OK to play · BACK to close</Text>
-      </View>
-    </View>
+    </Overlay>
   );
 }
 
 const S = StyleSheet.create({
+  // A left-anchored side sheet, not a centred dialog: the overlay's scrim and
+  // centring are turned off and its content box made to fill the screen, so
+  // `panel` below anchors against the whole display exactly as it used to.
+  overlayBackdrop: {
+    backgroundColor: "transparent",
+    alignItems: "stretch",
+    justifyContent: "flex-start",
+  },
+  overlayContent: {
+    ...StyleSheet.absoluteFillObject,
+    maxWidth: "100%",
+    maxHeight: "100%",
+  },
   panel: {
     position: "absolute",
     top: 0,
@@ -327,6 +394,13 @@ const S = StyleSheet.create({
     color: "#ffffff",
     fontSize: ps(1.05),
     fontWeight: "700",
+  },
+  facts: {
+    color: "rgba(255,255,255,0.32)",
+    fontSize: ps(0.78),
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    marginTop: 2,
   },
   description: {
     color: "rgba(255, 255, 255, 0.5)",

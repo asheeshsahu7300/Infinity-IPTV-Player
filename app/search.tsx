@@ -26,7 +26,7 @@ import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
-import { THEME, pw, ph, ps, psRaw, CARD_FRAME, CARD_FRAME_INNER_RADIUS } from "../src/theme/tokens";
+import { THEME, pw, ph, ps, psRaw, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import { playbackQueue } from "../src/services/playbackQueue";
 
@@ -214,11 +214,14 @@ const ContentCard = React.memo(function ContentCard({
                       <Text style={S.placeholderTitle} numberOfLines={2}>
                         {item.name}
                       </Text>
-                      <View style={S.placeholderBadge}>
-                        <Text style={S.placeholderBadgeText}>
-                          {item.year ? `${item.year} • ` : ""}{item.type === "series" ? "SERIES" : "MOVIE"}
-                        </Text>
-                      </View>
+                      {/* Year only. The SERIES/MOVIE half is gone, and with it
+                          the badge on anything that has no year — an empty pill
+                          is worse than no pill. */}
+                      {item.year ? (
+                        <View style={S.placeholderBadge}>
+                          <Text style={S.placeholderBadgeText}>{item.year}</Text>
+                        </View>
+                      ) : null}
                     </View>
                   )}
                   {item.quality ? (
@@ -241,9 +244,14 @@ const ContentCard = React.memo(function ContentCard({
                     <Text style={[S.cardTitle, focused && S.cardTitleFocused]} numberOfLines={1}>
                       {item.name}
                     </Text>
-                    <Text style={S.cardSub} numberOfLines={1}>
-                      {item.year ? `${item.year} • ` : ""}{item.type === "series" ? "SERIES" : "MOVIE"}
-                    </Text>
+                    {/* Year only — see the note on the placeholder badge above.
+                        Rendered conditionally so a card with no year does not
+                        keep a blank line under its title. */}
+                    {item.year ? (
+                      <Text style={S.cardSub} numberOfLines={1}>
+                        {item.year}
+                      </Text>
+                    ) : null}
                   </LinearGradient>
                 ) : null}
               </View>
@@ -354,8 +362,17 @@ const ContentRail = React.memo(function ContentRail({
 
 type ContentFilter = "all" | "live" | "vod" | "series";
 
+/**
+ * No "All" chip.
+ *
+ * "all" is still a real state and still the one the screen starts in — it is
+ * what shows the mixed discovery rails and searches all three types at once
+ * (see the branches on activeFilter below). Only the chip is gone, so the way
+ * back to it is pressing the active chip again rather than a chip of its own.
+ * Dropping the state as well would have made the landing page a single type,
+ * which is a different change from removing a chip.
+ */
 const FILTER_TABS: { id: ContentFilter; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { id: "all", label: "All", icon: "grid-outline" },
   { id: "live", label: "Live TV", icon: "tv-outline" },
   { id: "vod", label: "Movies", icon: "film-outline" },
   { id: "series", label: "Series", icon: "albums-outline" },
@@ -380,15 +397,15 @@ export default function SearchScreen() {
   const [activeFilter, setActiveFilter] = useState<ContentFilter>("all");
   const [results, setResults] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  /**
+   * Mirrors the field's own focus, purely for styling. See the note on the
+   * same state in live-tv.tsx for why the field is a plain D-pad target with
+   * no wrapper and no programmatic focus — on a TV, programmatic focus can
+   * only ever hide the keyboard.
+   */
   const [searchFocused, setSearchFocused] = useState(false);
   const [focusedImage, setFocusedImage] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
-
-  useEffect(() => {
-    if (searchFocused) {
-      inputRef.current?.focus();
-    }
-  }, [searchFocused]);
 
   // VOD Modal
   const [playModalVisible, setPlayModalVisible] = useState(false);
@@ -723,61 +740,35 @@ export default function SearchScreen() {
         {/* Header Bar */}
         <FocusGroup>
           <View style={S.headerRow}>
-            <Focusable
-              hasTVPreferredFocus={!playModalVisible}
-              disabled={playModalVisible}
-              onFocus={() => {
-                // Focus ring on the container only
-              }}
-              onBlur={() => {
-                setSearchFocused(false);
-              }}
-              onPress={() => {
-                // Pressing OK / Enter enables input and opens soft keyboard on the first press
-                setSearchFocused(true);
-                inputRef.current?.focus();
-              }}
-              ringOnFocus={false}
-              style={S.searchBarWrapper}
-            >
-              {(focused) => (
-                <View
-                  style={[
-                    S.searchBarContainer,
-                    (focused || searchFocused) && S.searchBarContainerFocused,
-                  ]}
-                >
-                  <Ionicons
-                    name="search"
-                    size={isTV ? ps(1.4) : ps(1.5)}
-                    color={(focused || searchFocused) ? "#fff" : "rgba(255,255,255,0.4)"}
-                    style={{ marginRight: pw(0.8) }}
-                  />
-                  <TextInput
-                    ref={inputRef}
-                    style={S.searchInput}
-                    placeholder="Search content..."
-                    placeholderTextColor="rgba(255,255,255,0.3)"
-                    value={query}
-                    onChangeText={setQuery}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="search"
-                    showSoftInputOnFocus={true}
-                    onFocus={() => setSearchFocused(true)}
-                    onBlur={() => setSearchFocused(false)}
-                    onSubmitEditing={() => setSearchFocused(false)}
-                    editable={!playModalVisible}
-                    focusable={true}
-                  />
-                  {query.length > 0 && (
-                    <TouchableOpacity onPress={() => setQuery("")} style={{ padding: 6 }}>
-                      <Ionicons name="close-circle" size={isTV ? ps(1.4) : ps(1.5)} color="rgba(255,255,255,0.5)" />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
-            </Focusable>
+            <View style={S.searchBarWrapper}>
+              <View style={[S.searchBarContainer, searchFocused && S.searchBarContainerFocused]}>
+                <Ionicons
+                  name="search"
+                  size={isTV ? ps(1.4) : ps(1.5)}
+                  color={searchFocused ? "#fff" : "rgba(255,255,255,0.4)"}
+                  style={{ marginRight: pw(0.8) }}
+                />
+                <TextInput
+                  ref={inputRef}
+                  style={S.searchInput}
+                  placeholder="Search content..."
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  value={query}
+                  onChangeText={setQuery}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  onSubmitEditing={() => setSearchFocused(false)}
+                />
+                {query.length > 0 && (
+                  <TouchableOpacity onPress={() => setQuery("")} style={{ padding: 6 }}>
+                    <Ionicons name="close-circle" size={isTV ? ps(1.4) : ps(1.5)} color="rgba(255,255,255,0.5)" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
 
             <Focusable
               ringOnFocus={false}
@@ -800,13 +791,25 @@ export default function SearchScreen() {
 
         {/* ── Content Type Filter Tabs (Live TV, VOD, Series) ── */}
         <FocusGroup style={S.filterBar}>
-          {FILTER_TABS.map((tab) => {
+          {FILTER_TABS.map((tab, index) => {
             const isActive = activeFilter === tab.id;
             return (
               <Focusable
                 key={tab.id}
+                // Entry focus for the screen.
+                //
+                // Something has to claim it or Android picks, and left to
+                // itself it picked the apps button at the end of the header.
+                // It cannot be the search field: claiming focus there means
+                // claiming it programmatically, and on a TV that is the one
+                // thing guaranteed to hide the keyboard (see searchFocused).
+                // The first chip is next to the field, so UP reaches it.
+                hasTVPreferredFocus={index === 0 && !playModalVisible}
                 ringOnFocus={false}
-                onPress={() => setActiveFilter(tab.id)}
+                // Pressing the active chip clears back to "all". With no All
+                // chip that is the only route to mixed results, and without it
+                // narrowing would be one-way until the screen was left.
+                onPress={() => setActiveFilter(isActive ? "all" : tab.id)}
                 style={S.filterChipWrapper}
               >
                 {(focused) => (
@@ -1056,8 +1059,8 @@ const S = StyleSheet.create({
     height: isTV ? pw(3.8) : pw(9.5),
     borderRadius: isTV ? pw(1.9) : pw(4.75),
     backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderWidth: TILE_FRAME.borderWidth,
+    borderColor: TILE_FRAME.borderColor,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1083,31 +1086,16 @@ const S = StyleSheet.create({
     height: HEADER_ELEM_HEIGHT,
   },
   searchBarContainer: {
+    ...TILE_FRAME,
     flex: 1,
     borderRadius: isTV ? pw(1.9) : pw(4.75),
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(255,255,255,0.08)",
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: isTV ? pw(1.2) : pw(2.5),
   },
-  searchBarContainerFocused: {
-    borderColor: "rgba(255, 255, 255, 0.45)",
-    borderWidth: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.09)",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#fff",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
+  // Was white-45% against the tiles' white-60%, close enough to look like a
+  // mistake rather than a choice.
+  searchBarContainerFocused: { ...TILE_FRAME_FOCUSED },
   searchInput: {
     flex: 1,
     color: "#fff",
@@ -1136,6 +1124,10 @@ const S = StyleSheet.create({
     paddingVertical: ps(0.48),
     borderRadius: ps(2),
     backgroundColor: "rgba(255, 255, 255, 0.08)",
+    // Had no border at all, so the chips were the one row on this screen with
+    // no edge. Background left as it was — a chip reads as a filled pill.
+    borderWidth: TILE_FRAME.borderWidth,
+    borderColor: TILE_FRAME.borderColor,
   },
   filterChipActive: {
     backgroundColor: "#ffffff",
@@ -1212,29 +1204,18 @@ const S = StyleSheet.create({
   cardWrapper: {
     padding: isTV ? pw(0.4) : pw(0.3),
   },
+  // This screen has its own rail card, separate from ContentCard, and it had
+  // its own border to match: white-10% resting over an opaque black slab, and
+  // a pure #FFFFFF 1.5px edge with an elevation-10 lift on focus. Both now
+  // come from the shared frame, which also brings the translucent wash the
+  // opaque background was standing in for.
   cardBorder: {
+    ...TILE_FRAME,
     flex: 1,
     borderRadius: psRaw(1.5),
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-    backgroundColor: THEME.colors.background,
     overflow: "hidden",
   },
-  cardBorderFocused: {
-    borderColor: "#FFFFFF",
-    borderWidth: 1.5,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#FFFFFF",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.65,
-        shadowRadius: 14,
-      },
-      android: {
-        elevation: 10,
-      },
-    }),
-  },
+  cardBorderFocused: { ...TILE_FRAME_FOCUSED },
   card: {
     flex: 1,
     overflow: "hidden",

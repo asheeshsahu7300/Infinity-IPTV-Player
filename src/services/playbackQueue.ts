@@ -40,6 +40,20 @@ export interface QueueItem {
   episodeNum?: number;
   seasonNum?: number;
   description?: string;
+  /**
+   * The technical attributes, carried through so the player can show them
+   * without going back to the API.
+   *
+   * The queue is the only thing the player is handed — it never sees the
+   * `Episode` objects the details screen worked from. So anything the episode
+   * modal or the banner needs has to travel here, or it simply is not
+   * available once playback starts.
+   */
+  videoQuality?: string;
+  audioLanguage?: string;
+  duration?: string;
+  rating?: string;
+  airDate?: string;
   kind: QueueKind;
 }
 
@@ -87,11 +101,19 @@ export function queueFromEpisodes(
       subtitle,
       seriesName,
       episodeName: isGeneric ? `Episode ${epNum}` : epName,
-      poster,
+      // The episode's own still where the provider has one, falling back to the
+      // series poster. Without this every row in the player's episode list
+      // showed the same artwork.
+      poster: episode.still || poster,
       streamUrl: episode.streamUrl || episode.cmd || seasonCmd || "",
       episodeNum: epNum,
       seasonNum: episode.seasonNum,
       description: episode.description,
+      videoQuality: episode.videoQuality,
+      audioLanguage: episode.audioLanguage,
+      duration: episode.duration,
+      rating: episode.rating,
+      airDate: episode.airDate,
       kind: "episode" as const,
     };
   });
@@ -105,6 +127,8 @@ export function queueFromVod(item: VODItem): QueueItem[] {
       title: item.name,
       subtitle: item.category,
       poster: item.logo,
+      duration: item.duration,
+      rating: item.rating,
       streamUrl: item.streamUrl || "",
       description: item.description,
       kind: "vod" as const,

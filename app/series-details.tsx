@@ -477,14 +477,33 @@ export default function SeriesDetailsScreen() {
     />
   );
 
+  /**
+   * What the hero shows beside the title.
+   *
+   * Episode-level where the provider has it, series-level otherwise. Only
+   * Xtream publishes per-episode stills; on MAG this is always the series
+   * poster, which is why the fallback matters more than the preference.
+   */
+  const heroArtwork = focusedEpisode?.still || params.logo || undefined;
+
   const heroAndSeasons = (
     <>
       {/* --- Header Section --- */}
       <View style={S.heroSection}>
         <View style={S.metaContent}>
+          {/* The focused episode's own still, falling back to the series
+              poster — the same rule the episode sheet and the player's episode
+              list follow. This was the one place still pinned to the series
+              image, so moving along the row updated the title, the facts and
+              the plot beside it while the artwork stayed put. */}
           <View style={S.posterWrapper}>
-            {params.logo ? (
-              <Image source={{ uri: params.logo }} style={S.poster} contentFit="cover" />
+            {heroArtwork ? (
+              <Image
+                source={{ uri: heroArtwork }}
+                style={S.poster}
+                contentFit="cover"
+                transition={140}
+              />
             ) : (
               <View style={[S.poster, S.posterPlaceholder]}>
                 <Ionicons name="tv-outline" size={ps(4)} color="rgba(255,255,255,0.1)" />
@@ -545,9 +564,10 @@ export default function SeriesDetailsScreen() {
               </View>
             )}
 
-            {/* The series' own credits, from get_series_info. The route params
-                only carry what the library grid knew, which is the poster and a
-                one-line blurb. */}
+            {/* Credits come from the series either way — episodes do not carry
+                their own cast — but the synopsis prefers the focused episode's,
+                falling back to the series'. Same rule as the episode sheet and
+                the player's episode list. */}
             <MediaMetaPanel
               meta={{
                 ...seriesMeta,
@@ -555,7 +575,11 @@ export default function SeriesDetailsScreen() {
               }}
               fallbackPlot={params.description}
               plotLines={isTV ? 5 : 4}
-              emptyText="No description available for this content."
+              emptyText={
+                focusedEpisode
+                  ? "No description available for this episode."
+                  : "No description available for this series."
+              }
             />
 
           </View>
@@ -600,7 +624,6 @@ export default function SeriesDetailsScreen() {
         importantForAccessibility={playModalVisible ? "no-hide-descendants" : "auto"}
       >
         <CinematicBackground uri={seriesMeta?.backdrop || params.logo} />
-        <StatusBar hidden />
 
         {/* Single root VirtualizedList — hero + season pills are the header,
           episodes are the data. Avoids the "VirtualizedLists should never be

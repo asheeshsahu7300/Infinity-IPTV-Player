@@ -36,8 +36,12 @@ export const psRaw = (pct: number) => (pw(pct) + ph(pct)) / 2;
 export const CARD_FRAME = {
   borderRadius: psRaw(1.6),
   borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.12)",
-  backgroundColor: "rgba(255,255,255,0.03)",
+  // Matched to TILE_FRAME below. These were 0.12 and 0.03 against the tiles'
+  // 0.05 and 0.04 — a visibly heavier edge on the dashboard and the portals
+  // intro than on every grid the same eye moves between. The radius stays put
+  // for the psRaw reason above.
+  borderColor: "rgba(255, 255, 255, 0.05)",
+  backgroundColor: "rgba(255, 255, 255, 0.04)",
 };
 
 /** Radius for content clipped one pixel inside `CARD_FRAME`, so the corners nest
@@ -118,4 +122,52 @@ export const THEME = {
     medium: FONT_FAMILY,
     bold: FONT_FAMILY,
   }
+};
+
+/**
+ * The tile frame — one definition of the border every tile, field and row wears.
+ *
+ * These are the VOD/Series poster values, because that poster is the frame the
+ * rest of the app is being matched to. They were duplicated across three
+ * screens and had already drifted: Live TV carried a 1.2 radius against the
+ * other two at 1.4. That is the same drift `CARD_FRAME` above was extracted to
+ * stop, one component family later.
+ *
+ * `padding: 1` belongs to the frame rather than to the layout: it holds content
+ * one pixel inside the border so the corners nest, instead of the border
+ * sitting on top of the artwork.
+ *
+ * Spread it, and override `borderRadius` where the shape demands it — the pill
+ * search fields keep their own radius and take only the border treatment.
+ * Always apply `TILE_FRAME` unconditionally and layer `TILE_FRAME_FOCUSED` on
+ * top; the focused half deliberately omits everything the resting half already
+ * establishes.
+ */
+export const TILE_FRAME = {
+  padding: 1,
+  borderRadius: ps(1.4),
+  backgroundColor: THEME.colors.glassBg,
+  borderWidth: 1,
+  borderColor: "rgba(255, 255, 255, 0.05)",
+};
+
+/**
+ * The focused half of `TILE_FRAME`: brighter edge, brighter wash, and on iOS a
+ * white bloom. Android takes no elevation — a lifted tile draws its shadow over
+ * its neighbours in a grid, so the border carries focus there on its own.
+ */
+export const TILE_FRAME_FOCUSED = {
+  borderColor: THEME.colors.glassBorderFocus,
+  backgroundColor: THEME.colors.glassBgFocus,
+  ...Platform.select({
+    ios: {
+      shadowColor: "#fff",
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.6,
+      shadowRadius: 16,
+    },
+    android: {
+      elevation: 0,
+    },
+  }),
 };

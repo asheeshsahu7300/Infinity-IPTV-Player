@@ -25,7 +25,7 @@ import MaskedView from "@react-native-masked-view/masked-view";
 import { Focusable, FocusGroup } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
 // Sized against the un-bumped scale — see psRaw in tokens.ts.
-import { THEME, pw, ph, psRaw as ps, CARD_FRAME } from "../src/theme/tokens";
+import { THEME, pw, ph, psRaw as ps, CARD_FRAME, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
 
 const { width: W } = Dimensions.get("window");
 
@@ -421,13 +421,11 @@ const S = StyleSheet.create({
     paddingBottom: ph(10),
   },
   addBtn: {
+    ...TILE_FRAME,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
     paddingHorizontal: pw(2.5),
     paddingVertical: ph(1.4),
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
     gap: pw(0.8),
     borderRadius: ps(1.5),
   },
@@ -486,36 +484,29 @@ const S = StyleSheet.create({
 
   // ── Portal card ───────────────────────────────────────────────────────────
   portalCard: {
+    ...TILE_FRAME,
     flex: 1,
     borderRadius: ps(2.5),
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
   },
-  portalCardFocused: {
-    borderColor: "rgba(255, 255, 255, 0.9)",
-    borderWidth: 1.5,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#FFFFFF",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.55,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
+  // Was white-90% at 1.5px with an elevation-8 lift. The elevation went with
+  // it deliberately: an elevated view outranks its siblings in Android's draw
+  // order regardless of tree position, and that is what let this card paint
+  // over the Delete Portal dialog and make it look see-through.
+  portalCardFocused: { ...TILE_FRAME_FOCUSED },
   portalCardActive: {
     borderColor: "rgba(255, 255, 255, 0.2)",
   },
-  portalCardActiveFocused: {
-    borderColor: "#FFFFFF",
-    borderWidth: 1.5,
-  },
+  /**
+   * Re-applies the focused frame after the active override.
+   *
+   * `portalCardActive` is layered *after* `portalCardFocused` at the call
+   * site, so on the active card it wins and repaints the resting edge. This
+   * puts focus back on top. It used to put a pure white 1.5px edge back
+   * instead, which meant focusing the active portal looked different from
+   * focusing any other one.
+   */
+  portalCardActiveFocused: { ...TILE_FRAME_FOCUSED },
   portalCardGradient: {
     flex: 1,
     padding: ps(2.6),
@@ -613,14 +604,15 @@ const S = StyleSheet.create({
     borderRadius: ps(1.5),
     overflow: "visible",
   },
+  // Resting frame only. The white fill on focus stays: these are buttons, and
+  // a primary action reading *less* prominent than the card above it would be
+  // the wrong trade.
   deleteBtn: {
+    ...TILE_FRAME,
     height: ph(5.5),
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
     borderRadius: ps(1.5),
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
   },
   deleteBtnFocused: {
     backgroundColor: "#FFFFFF",

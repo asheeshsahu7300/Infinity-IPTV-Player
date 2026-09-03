@@ -6,7 +6,6 @@ import {
   ScrollView,
   Platform,
   Image,
-  TextInput,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,8 +20,8 @@ import { epgService } from '../src/services/epgService';
 import { hiddenCategories } from '../src/services/hiddenCategories';
 import PinPrompt from '../src/components/PinPrompt';
 import { isTV } from '../src/utils/tvUtils';
-import { THEME, pw, ph, psRaw as ps } from '../src/theme/tokens';
-import { Focusable, FocusGroup, FocusMemory, Overlay, useFocusRestore } from '../src/tv';
+import { THEME, pw, ph, psRaw as ps, TILE_FRAME, TILE_FRAME_FOCUSED } from '../src/theme/tokens';
+import { Focusable, FocusGroup, FocusMemory, useFocusRestore } from '../src/tv';
 import { CinematicBackground } from '../src/components/CinematicBackground';
 import { useDialog } from '../src/components/ConfirmDialog';
 
@@ -171,119 +170,6 @@ function SectionLabel({ children }: { children: string }) {
   return <Text style={S.sectionLabel}>{children}</Text>;
 }
 
-// ── Custom EPG Modal ─────────────────────────────────────────────────────────
-
-interface CustomEpgModalProps {
-  visible: boolean;
-  currentUrl: string;
-  onSave: (url: string) => void;
-  onClose: () => void;
-}
-
-function CustomEpgModal({ visible, currentUrl, onSave, onClose }: CustomEpgModalProps) {
-  const [url, setUrl] = useState(currentUrl);
-
-  useEffect(() => {
-    if (visible) setUrl(currentUrl || '');
-  }, [visible, currentUrl]);
-
-  const presets = [
-    { label: 'IPTV-org US', url: 'https://iptv-org.github.io/epg/guides/us.xml' },
-    { label: 'IPTV-org UK', url: 'https://iptv-org.github.io/epg/guides/uk.xml' },
-    { label: 'IPTV-org IN', url: 'https://iptv-org.github.io/epg/guides/in.xml' },
-    { label: 'EPGShare Worldwide', url: 'https://epgshare01.online/epgshare01/epg_ripper_ALL_SOURCES1.xml.gz' },
-  ];
-
-  return (
-    <Overlay visible={visible} onClose={onClose} contentStyle={S.epgModalContent}>
-      <View style={S.epgModalHeader}>
-        <Ionicons name="link-outline" size={ps(2.6)} color="#fff" />
-        <View style={{ flex: 1 }}>
-          <Text style={S.epgModalTitle}>Custom XMLTV EPG Source</Text>
-          <Text style={S.epgModalSubtitle}>
-            Enter an external XMLTV (.xml / .xml.gz) URL to load guide data for your channels.
-          </Text>
-        </View>
-      </View>
-
-      <View style={S.epgInputContainer}>
-        <TextInput
-          style={S.epgInput}
-          value={url}
-          onChangeText={setUrl}
-          placeholder="https://example.com/guide.xml"
-          placeholderTextColor="rgba(255,255,255,0.3)"
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-        />
-      </View>
-
-      <Text style={S.epgPresetsLabel}>POPULAR SOURCES / PRESETS</Text>
-      <View style={S.epgPresetsRow}>
-        {presets.map((p) => (
-          <Focusable
-            key={p.label}
-            ringOnFocus={false}
-            style={S.epgPresetChip}
-            onPress={() => setUrl(p.url)}
-          >
-            {(focused) => (
-              <View style={[S.epgPresetChipInner, focused && S.epgPresetChipInnerFocused]}>
-                <Text style={[S.epgPresetChipText, focused && S.epgPresetChipTextFocused]}>
-                  {p.label}
-                </Text>
-              </View>
-            )}
-          </Focusable>
-        ))}
-      </View>
-
-      <View style={S.epgModalActions}>
-        <Focusable
-          ringOnFocus={false}
-          style={S.epgActionBtn}
-          onPress={() => onSave(url)}
-        >
-          {(focused) => (
-            <View style={[S.epgActionBtnInner, S.epgSaveBtn, focused && S.epgActionBtnFocused]}>
-              <Ionicons name="cloud-download-outline" size={ps(1.8)} color={focused ? '#000' : '#fff'} />
-              <Text style={[S.epgActionBtnText, focused && S.epgActionBtnTextFocused]}>Save & Load Guide</Text>
-            </View>
-          )}
-        </Focusable>
-
-        {!!currentUrl && (
-          <Focusable
-            ringOnFocus={false}
-            style={S.epgActionBtn}
-            onPress={() => onSave('')}
-          >
-            {(focused) => (
-              <View style={[S.epgActionBtnInner, S.epgClearBtn, focused && S.epgActionBtnFocused]}>
-                <Ionicons name="trash-outline" size={ps(1.8)} color={focused ? '#000' : 'rgba(255,255,255,0.7)'} />
-                <Text style={[S.epgActionBtnText, focused && S.epgActionBtnTextFocused]}>Clear Source</Text>
-              </View>
-            )}
-          </Focusable>
-        )}
-
-        <Focusable
-          ringOnFocus={false}
-          style={S.epgActionBtn}
-          onPress={onClose}
-        >
-          {(focused) => (
-            <View style={[S.epgActionBtnInner, focused && S.epgActionBtnFocused]}>
-              <Text style={[S.epgActionBtnText, focused && S.epgActionBtnTextFocused]}>Cancel</Text>
-            </View>
-          )}
-        </Focusable>
-      </View>
-    </Overlay>
-  );
-}
-
 // ── Screen ───────────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
@@ -395,18 +281,6 @@ export default function SettingsScreen() {
     // the next cold start reads as a broken switch.
     const portal = usePortalStore.getState().activePortal;
     if (portal) epgService.loadBulk(portal, { force: true, allowLargeXmltv: next }).catch(() => { });
-  }, []);
-
-  const [showCustomEpgModal, setShowCustomEpgModal] = useState(false);
-
-  const handleSaveCustomEpg = useCallback(async (newUrl: string) => {
-    const clean = newUrl.trim();
-    await stbEnvironment.update({ customEpgUrl: clean });
-    setShowCustomEpgModal(false);
-    const portal = usePortalStore.getState().activePortal;
-    if (portal) {
-      epgService.loadBulk(portal, { force: true, allowLargeXmltv: true }).catch(() => { });
-    }
   }, []);
 
   /**
@@ -658,14 +532,6 @@ export default function SettingsScreen() {
               selected={stb.fullXmltvGuide}
               control={{ kind: 'switch', on: stb.fullXmltvGuide }}
             />
-            <SettingRow
-              icon="link-outline"
-              title="Custom EPG (XMLTV) URL"
-              subtitle={stb.customEpgUrl ? stb.customEpgUrl : 'Load external XMLTV guide from custom or public URL'}
-              focusKey="custom-epg-url"
-              onPress={() => setShowCustomEpgModal(true)}
-              control={{ kind: 'value', text: stb.customEpgUrl ? 'Configured' : 'None' }}
-            />
           </View>
         </View>
 
@@ -776,13 +642,6 @@ export default function SettingsScreen() {
         }}
       />
 
-      <CustomEpgModal
-        visible={showCustomEpgModal}
-        currentUrl={stb.customEpgUrl || ''}
-        onSave={handleSaveCustomEpg}
-        onClose={() => setShowCustomEpgModal(false)}
-      />
-
       {dialogNode}
     </View>
   );
@@ -887,27 +746,36 @@ const S = StyleSheet.create({
   },
 
   // ── Grouped list ──────────────────────────────────────────────────────────
+  // This is the tile on this screen — the thing that legitimately wears the
+  // frame — so it takes the shared values (was 0.07 / 0.03 against 0.05 / 0.04).
   groupedCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    ...TILE_FRAME,
     borderRadius: ps(2.5),
     padding: ps(1),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
   },
   /** The transparent border is reserved up front so gaining focus recolours it
    *  instead of resizing the row and nudging the whole list. */
+  /**
+   * No resting frame, deliberately — the frame belongs to `groupedCard`.
+   *
+   * Every SettingRow lives inside one, so giving the row TILE_FRAME's own
+   * hairline and wash drew a box inside a box: each row read as a raised slab
+   * with its own edge, stacked within the group's edge. The card is the tile
+   * here; the rows are bands inside it.
+   *
+   * The border still has to be *declared* at rest, transparent, so gaining
+   * focus only recolours it instead of adding 1px and reflowing the row —
+   * same trick as Focusable's ringReserved.
+   */
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: ps(2),
     borderRadius: ps(2),
-    borderWidth: 1.5,
+    borderWidth: TILE_FRAME.borderWidth,
     borderColor: 'transparent',
   },
-  rowFocused: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderColor: 'rgba(255,255,255,0.85)',
-  },
+  rowFocused: { ...TILE_FRAME_FOCUSED },
   rowIconBox: {
     width: ps(5.5),
     height: ps(5.5),
@@ -954,23 +822,18 @@ const S = StyleSheet.create({
     borderRadius: ps(2.5),
   },
   tile: {
+    ...TILE_FRAME,
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: ps(2.5),
     paddingHorizontal: ps(2),
     paddingVertical: ps(2),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: pw(1.2),
   },
-  tileFocused: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderColor: 'rgba(255,255,255,0.85)',
-    borderWidth: 1.5,
-    transform: [{ scale: 1.04 }],
-  },
+  // The lift is this tile's own, and stays: it is how a Tools tile reads as
+  // pressable. Only the border and wash now come from the shared frame.
+  tileFocused: { ...TILE_FRAME_FOCUSED, transform: [{ scale: 1.04 }] },
   tileIconBox: {
     width: ps(5.5),
     height: ps(5.5),
@@ -1066,119 +929,4 @@ const S = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // ── EPG Modal ─────────────────────────────────────────────────────────────
-  epgModalContent: {
-    width: isTV ? pw(55) : pw(90),
-    backgroundColor: '#121216',
-    borderRadius: ps(2.5),
-    padding: ps(3.5),
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.12)',
-    gap: ph(1.8),
-  },
-  epgModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: pw(2),
-    marginBottom: ph(0.5),
-  },
-  epgModalTitle: {
-    fontSize: isTV ? ps(1.8) : ps(1.6),
-    fontWeight: '700',
-    color: '#fff',
-  },
-  epgModalSubtitle: {
-    fontSize: isTV ? ps(1.1) : ps(0.95),
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 2,
-  },
-  epgInputContainer: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: ps(1.5),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: pw(2),
-    paddingVertical: ph(0.8),
-  },
-  epgInput: {
-    fontSize: ps(1.3),
-    color: '#fff',
-    minHeight: ph(3.8),
-  },
-  epgPresetsLabel: {
-    fontSize: ps(1.05),
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 1.2,
-    marginTop: ph(0.5),
-  },
-  epgPresetsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: ps(1),
-  },
-  epgPresetChip: {
-    borderRadius: ps(1.2),
-  },
-  epgPresetChipInner: {
-    paddingHorizontal: pw(1.6),
-    paddingVertical: ph(0.8),
-    borderRadius: ps(1.2),
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  epgPresetChipInnerFocused: {
-    backgroundColor: '#fff',
-    borderColor: '#fff',
-  },
-  epgPresetChipText: {
-    fontSize: ps(1.15),
-    color: 'rgba(255,255,255,0.8)',
-    fontWeight: '600',
-  },
-  epgPresetChipTextFocused: {
-    color: '#000',
-  },
-  epgModalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: pw(1.5),
-    marginTop: ph(1.5),
-  },
-  epgActionBtn: {
-    borderRadius: ps(1.5),
-  },
-  epgActionBtnInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: pw(0.8),
-    paddingHorizontal: pw(2.5),
-    paddingVertical: ph(1.2),
-    borderRadius: ps(1.5),
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  epgSaveBtn: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  epgClearBtn: {
-    backgroundColor: 'rgba(255,70,70,0.12)',
-    borderColor: 'rgba(255,70,70,0.25)',
-  },
-  epgActionBtnFocused: {
-    backgroundColor: '#fff',
-    borderColor: '#fff',
-    transform: [{ scale: 1.04 }],
-  },
-  epgActionBtnText: {
-    fontSize: ps(1.25),
-    fontWeight: '700',
-    color: '#fff',
-  },
-  epgActionBtnTextFocused: {
-    color: '#000',
-  },
 });

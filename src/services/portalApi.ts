@@ -4,6 +4,7 @@ import { safeStorage } from "./safeStorage";
 import { cacheManager, CACHE_TTL } from "./cacheManager";
 import { requestManager } from "./requestManager";
 import { cleanMetaText, splitMetaList as splitList } from "./metaText";
+import { readEpisodeMedia } from "./episodeMedia";
 import { formatRuntime } from "../utils/duration";
 import { NetworkActivity } from "./networkActivity";
 import { prewarmDns } from "./dnsResolver";
@@ -261,12 +262,119 @@ export const formatMac = (mac: string) => {
   return pairs ? pairs.join(":") : mac;
 };
 
+/**
+ * The set-top box this client presents itself as to a Stalker/Ministra portal.
+ *
+ * Portals commonly gate on the device model: a generic HTTP client is refused
+ * where a known MAG is let through. Two headers carry the identity — the
+ * browser-style User-Agent the MAG firmware sends, and Stalker's own
+ * `X-User-Agent`, which is the one portal scripts usually read.
+ *
+ * One constant rather than a per-portal setting, because every request has to
+ * agree with the handshake: a token issued to a MAG254 and then used by
+ * something claiming to be a different device is how a portal decides a
+ * session is forged.
+ *
+ * The ver/rev pair is the conventional one Stalker clients send with every
+ * model — it is not MAG254-specific, and no precise revision for this box has
+ * been invented here. Only the model token identifies the device.
+ *
+ * MAG254 because that is what the portal already has on file for this account:
+ * its get_profile reply carries `"stb_type": "MAG254"`. Announcing anything
+ * else would have the headers contradict the portal's own record of the box.
+ * Nothing on that portal enforces it — `strict_stb_type_check` is empty and
+ * `allowed_stb_types` is `[]` — but matching what the portal believes costs
+ * nothing and removes a reason for it to distrust the session.
+ */
+const STB_MODEL = "MAG254";
+const STB_USER_AGENT =
+  "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) " +
+  STB_MODEL +
+  " stbapp ver: 2 rev: 250 Mobile Safari/533.3";
+
+/**
+ * Headers for a *stream* request.
+ *
+ * Deliberately NOT the MAG identity the portal API sends, and that is the
+ * whole point of this being a separate function. A provider CDN is not the
+ * portal: portals gate on being a recognised set-top box, CDNs gate on a
+ * whitelist of clients they have seen behave, and for Android IPTV that
+ * whitelist is okhttp. Announcing a MAG to something that has only ever been
+ * asked for content by okhttp got streams refused outright.
+ *
+ * So okhttp stays here — the value this app has always streamed with — and
+ * MAG254 stays on the portal API calls, where stb_type is what gets checked.
+ *
+ * Four things were tried here and taken back out after streaming stopped: the
+ * MAG User-Agent, an `X-User-Agent` model line, `Origin`, and the mac Cookie.
+ * The reasoning for the cookie was sound — Stalker portals do re-check
+ * sessions between segments — but it was never shown to help, and an
+ * unproven change does not belong on the path that has to work.
+ */
+export function streamHeaders(
+  streamUrl: string,
+  portal: Portal | null | undefined
+): Record<string, string> {
+  const out: Record<string, string> = {
+    "User-Agent": "okhttp/3.12.1",
+    Accept: "*/*",
+    // HLS pulls a segment every few seconds; without this each one pays for a
+    // fresh TCP and TLS handshake.
+    Connection: "keep-alive",
+  };
+
+  const portalUrl = portal?.config?.url;
+  if (!portalUrl) return out;
+
+  try {
+    out.Referer = new URL(String(portalUrl)).origin + "/c/index.html";
+  } catch {
+    // Not an absolute URL — nothing to build a Referer from.
+  }
+
+  return out;
+}
+
+/**
+ * The timezone claimed to the portal, from the device rather than a literal.
+ *
+ * This was hardcoded to "Europe/London". The portal schedules the guide in
+ * whatever zone the box reports, so a box that is not in London was being
+ * handed London times — a guide out by a whole number of hours, with every
+ * programme's start and end shifted and "now" pointing at the wrong show.
+ * It agreed with this account by luck: the profile carries
+ * `default_timezone: "Europe/London"` and `timezone_diff: 0`, while the
+ * profile IP is in the United States.
+ *
+ * Only an IANA name is any use here — the portal parses it as a zone, and
+ * an offset string like "UTC-08:00" is not one. `resolveTimezone()` in
+ * stbEnvironment falls back to exactly that offset form, which is right for
+ * a status screen and wrong for this, so this resolves its own.
+ *
+ * When no IANA name can be had, the old literal stands. Falling back to a
+ * real zone the portal already has on file beats sending it something it
+ * may reject outright.
+ *
+ * Read once, at import: a viewer who changes the system timezone will need
+ * to restart the app for the guide to follow. That is the same restart a
+ * real set-top box needs, and it keeps this off the path of every request.
+ */
+const PORTAL_TIMEZONE: string = (() => {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && (tz === "UTC" || tz.includes("/"))) return tz;
+  } catch {
+    /* Hermes without full ICU */
+  }
+  return "Europe/London";
+})();
+
 const headers = (mac: string, token?: string, url?: string) => {
   const formattedMac = formatMac(mac);
   const cookieParts = [
     `mac=${encodeURIComponent(formattedMac)}`,
     "stb_lang=en",
-    "timezone=Europe/London",
+    "timezone=" + PORTAL_TIMEZONE,
   ];
   if (token) {
     cookieParts.push(`token=${encodeURIComponent(token)}`);
@@ -285,7 +393,9 @@ const headers = (mac: string, token?: string, url?: string) => {
   }
 
   return {
-    "User-Agent": "okhttp/3.12.1",
+    // Was "okhttp/3.12.1" — a generic client, identifying as no device at all.
+    "User-Agent": STB_USER_AGENT,
+    "X-User-Agent": "Model: " + STB_MODEL + "; Link: WiFi",
     "Accept-Encoding": "gzip",
     Accept: "application/json, text/javascript, */*; q=0.01",
     Cookie: cookieParts.join("; "),
@@ -432,10 +542,10 @@ export const buildImageUrl = (base: string, raw?: any): string => {
     .replace(/\/portal\.php$/i, "")
     .replace(/\/c$/i, "");
 
-  // Stale or internal domains hardcoded in provider databases (e.g. webhop.live, starshare.live, localhost)
+  // Stale or internal domains hardcoded in provider databases (e.g. corelink.blog, webhop.live, starshare.live, localhost)
   // that must be rewritten to the user's active portal base URL.
   const rewriteStaleOrigin = (urlStr: string): string => {
-    const STALE_HOSTS = /(?:webhop\.live|starshare\.live|localhost|127\.0\.0\.1)/i;
+    const STALE_HOSTS = /(?:webhop\.live|starshare\.live|corelink\.|corelink\.blog|stalker\.|mag\.local|iptv\.local|localhost|127\.0\.0\.1)/i;
     const urlMatch = urlStr.match(/^(https?:\/\/[^\/]+)(\/.*)?$/i);
     if (urlMatch) {
       const origin = urlMatch[1];
@@ -448,7 +558,11 @@ export const buildImageUrl = (base: string, raw?: any): string => {
   };
 
   // 1. Data URI: already has the data: scheme (e.g. data:image/png;base64,...)
-  if (s.startsWith("data:")) return s;
+  if (s.startsWith("data:")) {
+    // If it's an incomplete / truncated base64 image payload (e.g. < 350 chars), drop it to avoid Glide decode crashes
+    if (s.length < 350) return "";
+    return s;
+  }
 
   // 2. Direct HTTP / HTTPS link: rewrite stale provider hostnames if matched
   if (s.startsWith("http://") || s.startsWith("https://")) {
@@ -467,45 +581,39 @@ export const buildImageUrl = (base: string, raw?: any): string => {
     }
   }
 
-  // 4. Raw base64 image data without the data: prefix
-  // Common magic signatures in base64:
-  // - /9j/ -> JPEG (0xFF, 0xD8, 0xFF)
-  // - iVBORw0KGgo -> PNG (0x89, 0x50, 0x4E, 0x47, ...)
-  // - R0lGOD -> GIF (GIF87a / GIF89a)
-  // - UklGR -> WEBP (RIFF)
-  // - PHN2Zw or PD94bW -> SVG (<svg or <?xml)
-  // - Qk -> BMP (BM)
-  if (s.startsWith("/9j/")) {
-    return `data:image/jpeg;base64,${s}`;
-  }
-  if (s.startsWith("iVBORw0KGgo")) {
-    return `data:image/png;base64,${s}`;
-  }
-  if (s.startsWith("R0lGOD")) {
-    return `data:image/gif;base64,${s}`;
-  }
-  if (s.startsWith("UklGR")) {
-    return `data:image/webp;base64,${s}`;
-  }
-  if (s.startsWith("PHN2Zw") || s.startsWith("PD94bW")) {
-    return `data:image/svg+xml;base64,${s}`;
-  }
-  if (s.startsWith("Qk")) {
-    return `data:image/bmp;base64,${s}`;
-  }
-
-  // Long base64 string without URL slashes or dots (common raw base64 image payload)
-  if (s.length > 80 && /^[A-Za-z0-9+/=\s]+$/.test(s)) {
-    try {
-      const sample = s.replace(/\s+/g, "").slice(0, 32);
-      const decoded = typeof atob === "function" ? atob(sample) : Buffer.from(sample, "base64").toString("binary");
-      if (decoded.startsWith("\x89PNG")) return `data:image/png;base64,${s}`;
-      if (decoded.charCodeAt(0) === 0xff && decoded.charCodeAt(1) === 0xd8) return `data:image/jpeg;base64,${s}`;
-      if (decoded.startsWith("GIF")) return `data:image/gif;base64,${s}`;
-      if (decoded.startsWith("RIFF")) return `data:image/webp;base64,${s}`;
+  // 4. Raw base64 image data without the data: prefix (must have sufficient length to be a complete image)
+  if (s.length >= 350) {
+    if (s.startsWith("/9j/")) {
       return `data:image/jpeg;base64,${s}`;
-    } catch {
-      // not a raw base64 image
+    }
+    if (s.startsWith("iVBORw0KGgo")) {
+      return `data:image/png;base64,${s}`;
+    }
+    if (s.startsWith("R0lGOD")) {
+      return `data:image/gif;base64,${s}`;
+    }
+    if (s.startsWith("UklGR")) {
+      return `data:image/webp;base64,${s}`;
+    }
+    if (s.startsWith("PHN2Zw") || s.startsWith("PD94bW")) {
+      return `data:image/svg+xml;base64,${s}`;
+    }
+    if (s.startsWith("Qk")) {
+      return `data:image/bmp;base64,${s}`;
+    }
+
+    // Long base64 string without URL slashes or dots (common raw base64 image payload)
+    if (s.length > 500 && /^[A-Za-z0-9+/=\s]+$/.test(s)) {
+      try {
+        const sample = s.replace(/\s+/g, "").slice(0, 32);
+        const decoded = typeof atob === "function" ? atob(sample) : Buffer.from(sample, "base64").toString("binary");
+        if (decoded.startsWith("\x89PNG")) return `data:image/png;base64,${s}`;
+        if (decoded.charCodeAt(0) === 0xff && decoded.charCodeAt(1) === 0xd8) return `data:image/jpeg;base64,${s}`;
+        if (decoded.startsWith("GIF")) return `data:image/gif;base64,${s}`;
+        if (decoded.startsWith("RIFF")) return `data:image/webp;base64,${s}`;
+      } catch {
+        // not a raw base64 image
+      }
     }
   }
 
@@ -757,6 +865,49 @@ async function fetchWithRetry(
 }
 
 export const portalApi = {
+  /**
+   * Tells the portal this box is still alive.
+   *
+   * Stalker profiles carry a `watchdog_timeout` (82s on the portal this
+   * was written against) and a `last_watchdog` stamp. A real MAG posts
+   * `type=watchdog&action=get_events` on that period, and portals use it to
+   * decide a session is still in use. A reaped session stops authorising
+   * further HLS segments, so the failure does not look like an auth error at
+   * all — playback simply stalls part-way through a programme and comes back
+   * when you re-tune. That is the symptom this exists to prevent.
+   *
+   * Deliberately not routed through `fetchWithRetry`: that treats an empty
+   * result as a failure worth repeating, and an empty watchdog reply is the
+   * normal one, so every ping would cost two requests.
+   *
+   * Never throws. A missed ping is not worth disturbing playback over, and
+   * the next one is seconds away.
+   */
+  async watchdog(portal: Portal): Promise<void> {
+    if (!portal || portal.type !== "mag") return;
+    try {
+      const refreshed = await refreshToken(portal);
+      const base = safe(refreshed.config.url).replace(/\/$/, "");
+      const url =
+        base +
+        "/portal.php?type=watchdog&action=get_events" +
+        "&init=0&cur_play_type=1&event_active_id=0&JsHttpRequest=1-xml";
+      await axios.get(url, {
+        ...rmAcceptHeader,
+        headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+        timeout: 15000,
+      });
+    } catch {
+      // See above: swallowed on purpose.
+    }
+  },
+
+  watchdogPeriodMs(portal: Portal | null | undefined): number {
+    const raw = Number((portal?.config as any)?.serverInfo?.watchdog_timeout);
+    const seconds = Number.isFinite(raw) && raw > 0 ? raw : 90;
+    return Math.max(30, Math.round(seconds * 0.75)) * 1000;
+  },
+
   async authenticate(portal: Portal) {
     const base = safe(portal.config.url).replace(/\/$/, "");
     const mac = formatMac(portal.config.mac ?? "");
@@ -1238,19 +1389,7 @@ export const portalApi = {
             cover: seasonCover,
             seriesMeta,
             episodes: epList.map((ep: any) => {
-              const vWidth = Number(ep.info?.video?.width || 0);
-              const vHeight = Number(ep.info?.video?.height || 0);
-              const quality =
-                vHeight >= 2160 || vWidth >= 3840
-                  ? "4K UHD"
-                  : vHeight >= 1080 || vWidth >= 1920
-                  ? "1080p FHD"
-                  : vHeight >= 720 || vWidth >= 1280
-                  ? "720p HD"
-                  : undefined;
-              const langRaw = ep.info?.audio?.tags?.language ?? ep.info?.audio?.language;
-              const audioLang = langRaw && typeof langRaw === "string" && langRaw !== "und" ? langRaw.toUpperCase() : undefined;
-              const rawStill = ep.info?.movie_image ?? ep.info?.cover_big ?? ep.info?.still_path ?? ep.screenshot_uri ?? ep.cover ?? ep.pic;
+              const media = readEpisodeMedia(ep);
 
               return {
                 id: String(ep.id ?? `${seriesId}:${seasonNum}-${ep.episode_num}`),
@@ -1265,11 +1404,11 @@ export const portalApi = {
                   formatRuntime(ep.info?.duration_secs, "seconds") ??
                   formatRuntime(ep.time, "minutes") ??
                   formatRuntime(ep.duration),
-                still: rawStill ? buildImageUrl(base, rawStill) : undefined,
+                still: media.still ? buildImageUrl(base, media.still) : undefined,
                 airDate: ep.info?.releasedate ?? ep.info?.air_date ?? ep.air_date ?? ep.added,
                 rating: ep.info?.rating ?? ep.rating,
-                videoQuality: quality,
-                audioLanguage: audioLang,
+                videoQuality: media.videoQuality,
+                audioLanguage: media.audioLanguage,
               };
             }),
           };
@@ -1335,19 +1474,7 @@ export const portalApi = {
             const epNum = Number(
               item.episode_num ?? item.episode ?? item.num ?? idx + 1
             );
-            const vWidth = Number(item.info?.video?.width || 0);
-            const vHeight = Number(item.info?.video?.height || 0);
-            const quality =
-              vHeight >= 2160 || vWidth >= 3840
-                ? "4K UHD"
-                : vHeight >= 1080 || vWidth >= 1920
-                ? "1080p FHD"
-                : vHeight >= 720 || vWidth >= 1280
-                ? "720p HD"
-                : undefined;
-            const langRaw = item.info?.audio?.tags?.language ?? item.info?.audio?.language;
-            const audioLang = langRaw && typeof langRaw === "string" && langRaw !== "und" ? langRaw.toUpperCase() : undefined;
-            const rawStill = item.info?.movie_image ?? item.info?.cover_big ?? item.info?.still_path ?? item.screenshot_uri ?? item.cover ?? item.pic;
+            const media = readEpisodeMedia(item);
 
             return {
               id: String(item.id ?? `${seriesId}:${seasonNum}-${epNum}`),
@@ -1361,29 +1488,20 @@ export const portalApi = {
                 formatRuntime(item.info?.duration_secs, "seconds") ??
                 formatRuntime(item.time, "minutes") ??
                 formatRuntime(item.duration),
-              still: rawStill ? buildImageUrl(base, rawStill) : undefined,
+              still: media.still ? buildImageUrl(base, media.still) : undefined,
               airDate: item.info?.releasedate ?? item.info?.air_date ?? item.air_date ?? item.added,
               rating: item.info?.rating ?? item.rating,
-              videoQuality: quality,
-              audioLanguage: audioLang,
+              videoQuality: media.videoQuality,
+              audioLanguage: media.audioLanguage,
             };
           });
         } else if (s.cmd || s.id) {
           // Individual episode item returned directly
           const epNum = Number(s.episode_num ?? s.episode ?? s.num ?? 1);
-          const rawStill = s.info?.movie_image ?? s.info?.cover_big ?? s.screenshot_uri ?? s.cover ?? s.pic;
-          const vWidth = Number(s.info?.video?.width || 0);
-          const vHeight = Number(s.info?.video?.height || 0);
-          const quality =
-            vHeight >= 2160 || vWidth >= 3840
-              ? "4K UHD"
-              : vHeight >= 1080 || vWidth >= 1920
-              ? "1080p FHD"
-              : vHeight >= 720 || vWidth >= 1280
-              ? "720p HD"
-              : undefined;
-          const langRaw = s.info?.audio?.tags?.language ?? s.info?.audio?.language;
-          const audioLang = langRaw && typeof langRaw === "string" && langRaw !== "und" ? langRaw.toUpperCase() : undefined;
+          // This variant used to omit `info.still_path` from its own copy of the
+          // fallback chain, so an episode returned bare lost its still. One
+          // shared reader now, precisely so the three shapes cannot drift.
+          const media = readEpisodeMedia(s);
 
           episodes = [{
             id: String(s.id ?? `${seriesId}:${seasonNum}-${epNum}`),
@@ -1397,11 +1515,11 @@ export const portalApi = {
               formatRuntime(s.info?.duration_secs, "seconds") ??
               formatRuntime(s.time, "minutes") ??
               formatRuntime(s.duration),
-            still: rawStill ? buildImageUrl(base, rawStill) : undefined,
+            still: media.still ? buildImageUrl(base, media.still) : undefined,
             airDate: s.info?.releasedate ?? s.info?.air_date ?? s.air_date ?? s.added,
             rating: s.info?.rating ?? s.rating,
-            videoQuality: quality,
-            audioLanguage: audioLang,
+            videoQuality: media.videoQuality,
+            audioLanguage: media.audioLanguage,
           }];
         }
 

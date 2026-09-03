@@ -29,7 +29,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { usePortalStore, Channel, EPGProgram } from "../src/store/portalStore";
-import { epgService } from "../src/services/epgService";
+import { epgService, type EpgLoadPhase } from "../src/services/epgService";
 import { parentalControl } from "../src/services/parentalControl";
 import { stbEnvironment } from "../src/services/stbEnvironment";
 import {
@@ -42,6 +42,26 @@ import { CinematicBackground } from "../src/components/CinematicBackground";
 import PinPrompt from "../src/components/PinPrompt";
 import { THEME, ph, ps, pw } from "../src/theme/tokens";
 import { Focusable, FocusGroup } from "../src/tv";
+
+/**
+ * The load phase, in words.
+ *
+ * One flat "Loading guide…" covered a download of several megabytes, a roughly
+ * tenfold inflate and then a sweep over six figures of programmes — forty-odd
+ * seconds of one unchanging line, which is indistinguishable from wedged. The
+ * phases were already reported by the service; this is what reads them.
+ */
+const PHASE_TEXT: Record<EpgLoadPhase, string> = {
+  idle: "Loading guide…",
+  checking: "Checking the guide…",
+  downloading: "Downloading guide…",
+  inflating: "Decompressing guide…",
+  parsing: "Reading programmes…",
+  merging: "Matching channels…",
+  saving: "Saving guide…",
+  done: "Loading guide…",
+  failed: "Loading guide…",
+};
 
 const CHANNEL_PANE_WIDTH = pw(30);
 const CHANNEL_ROW_HEIGHT = ph(11);
@@ -389,11 +409,13 @@ export default function EPGScreen() {
   );
 
   const guideStatus = epgService.status;
+  // Safe to read during render: this screen already re-renders on the
+  // service's own subscription (see epgVersion), which is what drives it.
+  const guideProgress = epgService.loadProgress;
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
-      <StatusBar hidden />
 
       {/* ─── Hero: the focused programme ─── */}
       <View style={S.hero}>
@@ -503,7 +525,12 @@ export default function EPGScreen() {
                 {guideStatus === "loading" ? (
                   <>
                     <ActivityIndicator color={THEME.colors.primary} />
-                    <Text style={S.emptyText}>Loading guide…</Text>
+                    <Text style={S.emptyText}>
+                      {PHASE_TEXT[guideProgress.phase] +
+                        (guideProgress.ratio == null
+                          ? ""
+                          : " " + Math.round(guideProgress.ratio * 100) + "%")}
+                    </Text>
                   </>
                 ) : (
                   <>

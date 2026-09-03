@@ -53,23 +53,23 @@ export const BUFFER_PROFILES: Record<BufferProfile, BufferTuning & { label: stri
   instant: {
     label: "Instant",
     detail: "Fastest channel change. Needs a steady connection.",
-    liveCacheMs: 400,
-    vodCacheMs: 300,
-    stallTimeoutMs: 6000,
+    liveCacheMs: 1000,
+    vodCacheMs: 800,
+    stallTimeoutMs: 10000,
   },
   balanced: {
     label: "Balanced",
-    detail: "Fast zapping with enough buffer to absorb a dropped segment.",
-    liveCacheMs: 1200,
-    vodCacheMs: 800,
-    stallTimeoutMs: 9000,
+    detail: "Fast zapping with enough buffer to absorb minor network variance.",
+    liveCacheMs: 2500,
+    vodCacheMs: 1500,
+    stallTimeoutMs: 14000,
   },
   smooth: {
     label: "Smooth",
     detail: "Deepest buffer. Best on Wi-Fi or a congested line.",
-    liveCacheMs: 3000,
-    vodCacheMs: 2000,
-    stallTimeoutMs: 15000,
+    liveCacheMs: 4000,
+    vodCacheMs: 3000,
+    stallTimeoutMs: 20000,
   },
 };
 
@@ -107,8 +107,6 @@ export interface StbSettings {
    * empty links need to be played through the portal host as a proxy.
    */
   sameHostStreamProxy: boolean;
-  /** Custom external XMLTV EPG source URL (e.g. iptv-org, epgshare, or provider XMLTV). */
-  customEpgUrl: string;
 }
 
 const DEFAULTS: StbSettings = {
@@ -122,7 +120,6 @@ const DEFAULTS: StbSettings = {
   resumeLastChannel: true,
   hardwareAcceleration: true,
   sameHostStreamProxy: false,
-  customEpgUrl: "",
 };
 
 type Listener = (settings: StbSettings) => void;
@@ -174,6 +171,40 @@ class StbEnvironmentImpl {
 
   get buffer(): BufferTuning {
     return BUFFER_PROFILES[this.settings.bufferProfile] ?? BUFFER_PROFILES.balanced;
+  }
+
+  /**
+   * Resolves active buffer tuning adaptively from user preferences and portal
+   * server capabilities (e.g. MAG hls_fast_start, playback_buffer_size).
+   */
+  getBufferTuning(portal?: Portal | null): BufferTuning {
+    const baseTuning = BUFFER_PROFILES[this.settings.bufferProfile] ?? BUFFER_PROFILES.balanced;
+    const serverInfo = (portal?.config as any)?.serverInfo;
+
+    if (serverInfo && portal?.type === "mag") {
+      const serverBufSec = Number(serverInfo.playback_buffer_size);
+
+      if (this.settings.bufferProfile === "instant") {
+        return {
+          liveCacheMs: 800,
+          vodCacheMs: 500,
+          stallTimeoutMs: 10000,
+        };
+      }
+
+      if (this.settings.bufferProfile === "balanced") {
+        const liveMs = Number.isFinite(serverBufSec) && serverBufSec > 0
+          ? Math.min(2500, Math.max(1200, Math.round(serverBufSec * 150)))
+          : 1500;
+        return {
+          liveCacheMs: liveMs,
+          vodCacheMs: 1000,
+          stallTimeoutMs: 12000,
+        };
+      }
+    }
+
+    return baseTuning;
   }
 
   subscribe(listener: Listener): () => void {
@@ -348,7 +379,7 @@ export function applySameHostStreamProxy(
 
   if (!target) return "";
 
-  const isKnownStale = /(localhost|127\.0\.0\.1|webhop\.live|starshare\.live)/i.test(target);
+  const isKnownStale = /(localhost|127\.0\.0\.1|webhop\.live|starshare\.live|corelink\.|corelink\.blog|stalker\.|mag\.local|iptv\.local)/i.test(target);
   if (!isEnabled && !isKnownStale) {
     return target;
   }

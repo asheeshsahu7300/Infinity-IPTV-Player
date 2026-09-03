@@ -121,7 +121,6 @@ export default function SpeedTestScreen() {
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
-      <StatusBar hidden />
 
       <View style={S.header}>
         <Text style={S.headerTitle}>Connection Test</Text>

@@ -27,7 +27,7 @@ import { useDialog } from "../src/components/ConfirmDialog";
 import { useNetworkActivity } from "../src/services/networkActivity";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 // This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
-import { THEME, pw, ph, psRaw as ps, CARD_FRAME, CARD_FRAME_INNER_RADIUS } from "../src/theme/tokens";
+import { THEME, pw, ph, psRaw as ps, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
 
 const RAIL_H_PAD = pw(isTV ? 5 : 4);
 
@@ -635,27 +635,13 @@ const S = StyleSheet.create({
     minHeight: ph(42),
   },
   cardBorder: {
+    ...TILE_FRAME,
     flex: 1,
-    padding: 1,
-    ...CARD_FRAME,
+    borderRadius: CARD_FRAME.borderRadius,
   },
-  cardBorderFocused: {
-    borderColor: "#FFFFFF",
-    borderWidth: 1
-    ,
-    backgroundColor: "transparent",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#fff",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.85,
-        shadowRadius: 18,
-      },
-      android: {
-        elevation: 14,
-      },
-    }),
-  },
+  // Was a pure #FFFFFF edge over a transparent fill with an elevation-14 lift
+  // — the heaviest focus treatment in the app, on the first cards anyone sees.
+  cardBorderFocused: { ...TILE_FRAME_FOCUSED },
   browseCardInner: {
     flex: 1,
     backgroundColor: THEME.colors.background,

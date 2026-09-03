@@ -20,12 +20,12 @@
 // disagree about which of those the guide is keyed by.
 // ─────────────────────────────────────────────────────────────────────────────
 import axios from "axios";
+import pako from "pako";
 
 import { cacheManager, CACHE_TTL } from "./cacheManager";
 import { portalApi } from "./portalApi";
 import { XtreamApi } from "./xtreamApi";
 import { M3UApi } from "./m3uApi";
-import { stbEnvironment } from "./stbEnvironment";
 import type { Channel, EPGProgram, Portal } from "../store/portalStore";
 
 // ── Tunables ────────────────────────────────────────────────────────────────
@@ -47,6 +47,30 @@ const NEGATIVE_TTL_MS = 10 * 60 * 1000;
 const MAX_PREFETCH_QUEUE = 32;
 /** Bulk guides are refreshed no more often than this. */
 const BULK_MIN_INTERVAL_MS = 15 * 60 * 1000;
+/**
+ * How long a cached guide stays usable.
+ *
+ * Six hours rather than the 30 minutes the per-channel cache uses: the window
+ * this keeps is ±30h wide, so a six-hour-old copy still covers everything
+ * anyone is looking at, and re-parsing forty thousand programmes to refresh it
+ * is far more expensive than the staleness costs.
+ */
+const BULK_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+/**
+ * Target size for one piece of the cached guide.
+ *
+ * Kept well under Android's ~2 MB SQLite cursor window, which is the ceiling
+ * on the AsyncStorage fallback — see persistIndex.
+ */
+const BULK_CACHE_CHUNK_BYTES = 1024 * 1024;
+/**
+ * How long to wait before retrying a guide that failed.
+ *
+ * Shorter than the success interval on purpose — see the note in loadBulk.
+ * A portal with genuinely no guide therefore costs one request every few
+ * minutes at worst, and only while a screen is actually asking for one.
+ */
+const BULK_RETRY_INTERVAL_MS = 3 * 60 * 1000;
 /** XMLTV larger than this is skipped unless the user opts into a full guide. */
 const XMLTV_SOFT_LIMIT_BYTES = 24 * 1024 * 1024;
 
@@ -73,13 +97,24 @@ type Listener = () => void;
 export function normalizeChannelName(name: string): string {
   return String(name || "")
     .toLowerCase()
-    // Leading provider/country tag: "UK:", "US |", "[FR]".
+    // Leading provider/country tag: "UK:", "US |", "[FR]", "IN - ".
     //
-    // A hyphen is deliberately NOT a valid separator here. It used to be, and
-    // it silently destroyed real names: "SUN-TV" and "STAR-TV" both matched
-    // `[a-z]{2,3}` + "-" and normalised to "tv", so they shared a key and got
-    // each other's schedule. Provider tags in the wild use ":" or "|".
-    .replace(/^\s*[\[(]?[a-z]{2,3}[\])]?\s*[:|]\s*/i, "")
+    // A hyphen counts only when whitespace follows it, and that lookahead is
+    // load-bearing in both directions.
+    //
+    // Without it, a guide whose display names are shaped "IN - ASIANET
+    // MOVIES" matches nothing at all: the tag survives and "in" is welded onto
+    // the front of every key. Measured 0/11 against a real channel list
+    // before, 7/16 after. (The measurement came from a third-party national
+    // guide, back when one could be configured; providers tag their own names
+    // the same way, so the rule still earns its place.)
+    //
+    // But a bare hyphen cannot be a separator either. It used to be, and it
+    // destroyed real names: "SUN-TV" and "STAR-TV" both matched `[a-z]{2,3}`
+    // plus "-" and normalised to "tv", so they shared a key and got each
+    // other's schedule. The lookahead keeps both cases right — checked against
+    // SUN-TV, STAR-TV, MTV-Hits, E-Entertainment and A-One, none of which move.
+    .replace(/^\s*[\[(]?[a-z]{2,3}[\])]?\s*(?:[:|]|-(?=\s))\s*/i, "")
     .replace(/\b(fhd|uhd|hd|sd|4k|hevc|h265|h264|raw|backup|vip)\b/g, " ")
     .replace(/[^a-z0-9]+/g, "")
     .trim();
@@ -123,7 +158,54 @@ function decodeBase64(input: string): string {
     if (c4 >= 0) bytes.push(((c3 & 3) << 6) | c4);
   }
 
-  // Manual UTF-8 decode — TextDecoder is not guaranteed on Hermes.
+  return utf8Decode(bytes);
+}
+
+/**
+ * Gunzips without holding the JS thread for the whole file.
+ *
+ * `pako.inflate(bytes, { to: "string" })` is one unbroken block of work. On a
+ * 3.9 MB guide that inflates to 60 MB it measured 848 ms on a desktop, so ten
+ * to twenty times that on a TV box — which is the frozen "Loading guide…"
+ * screen, before the parser has even started.
+ *
+ * Pushing 256 KB at a time through pako's streaming inflater does the same work
+ * in the same order but yields between blocks: measured at a 71 ms worst block
+ * for byte-identical output. The peak memory is unchanged — the whole string
+ * still exists at the end — this only stops it arriving in one stall.
+ */
+async function inflateInChunks(
+  bytes: Uint8Array,
+  onProgress?: (ratio: number) => void
+): Promise<string> {
+  const CHUNK = 256 * 1024;
+  const inflator = new pako.Inflate({ to: "string" });
+
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const end = Math.min(i + CHUNK, bytes.length);
+    inflator.push(bytes.subarray(i, end), end >= bytes.length);
+    if (inflator.err) {
+      console.warn("[EPG] gunzip failed:", inflator.msg || inflator.err);
+      return "";
+    }
+    await new Promise((r) => setTimeout(r, 0));
+    // Compressed bytes consumed, not output produced. Output is what the
+    // caller cannot know in advance, and this is the ~10x expansion step, so
+    // reporting input is both cheap and the only honest denominator.
+    onProgress?.(end / bytes.length);
+  }
+
+  return typeof inflator.result === "string" ? inflator.result : "";
+}
+
+/**
+ * Bytes → string, by hand.
+ *
+ * `TextDecoder` is not guaranteed on Hermes, so it cannot be used here. Shared
+ * by the base64 decoder above and the XMLTV archive reader below, which both
+ * end up holding raw bytes.
+ */
+function utf8Decode(bytes: ArrayLike<number>): string {
   let out = "";
   for (let i = 0; i < bytes.length;) {
     const b = bytes[i];
@@ -239,6 +321,60 @@ function sortAndTrim(list: EPGProgram[]): EPGProgram[] {
   return out.slice(start, start + MAX_PROGRAMS_PER_CHANNEL);
 }
 
+// ── Load progress ───────────────────────────────────────────────────────────
+
+/**
+ * Which part of a bulk load is running.
+ *
+ * A guide load is not one operation, it is five with wildly different costs:
+ * a 3 MB download, a 38 MB inflate, a sweep over ~114,000 programmes, the
+ * channel-key merge, and a six-chunk write. Reporting them separately is the
+ * point — "Loading guide..." for forty seconds is what made this look hung,
+ * because nothing on screen distinguished working from wedged.
+ */
+export type EpgLoadPhase =
+  | "idle"
+  | "checking"
+  | "downloading"
+  | "inflating"
+  | "parsing"
+  | "merging"
+  | "saving"
+  | "done"
+  | "failed";
+
+export interface EpgLoadProgress {
+  phase: EpgLoadPhase;
+  /**
+   * How far through the *current phase*, 0..1 — or null when the total is not
+   * knowable, which happens whenever a server omits content-length.
+   *
+   * Deliberately per-phase rather than overall: the phases cannot be weighed
+   * against each other until the file has been read, so any single blended
+   * number would be invented. Callers that want one bar can estimate from the
+   * phase; callers that want the truth show the phase name.
+   */
+  ratio: number | null;
+  /** Channels with programmes so far. */
+  channels: number;
+  /** Programmes kept so far — after the ±30h window filter, not raw. */
+  programmes: number;
+  /** Bytes downloaded so far, and the total when the server declared one. */
+  bytes: number;
+  totalBytes: number | null;
+  /** Only set when phase is "failed". */
+  error?: string;
+}
+
+const IDLE_PROGRESS: EpgLoadProgress = {
+  phase: "idle",
+  ratio: null,
+  channels: 0,
+  programmes: 0,
+  bytes: 0,
+  totalBytes: null,
+};
+
 // ── The service ─────────────────────────────────────────────────────────────
 
 class EpgServiceImpl {
@@ -251,6 +387,7 @@ class EpgServiceImpl {
   private bulkState: "idle" | "loading" | "done" | "unavailable" = "idle";
   private lastBulkAt = 0;
   private bulkPromise: Promise<void> | null = null;
+  private progress: EpgLoadProgress = IDLE_PROGRESS;
 
   /** Channels already asked about, so a miss is not retried in a loop. */
   private negative = new Map<string, number>();
@@ -308,6 +445,35 @@ class EpgServiceImpl {
 
   get status(): "idle" | "loading" | "done" | "unavailable" {
     return this.bulkState;
+  }
+
+  /** Where the current (or last) bulk load got to. See EpgLoadProgress. */
+  get loadProgress(): EpgLoadProgress {
+    return this.progress;
+  }
+
+  get channelCount(): number {
+    return this.index.size;
+  }
+
+  /** Walks the index, so for summaries rather than for every render. */
+  get programmeCount(): number {
+    let n = 0;
+    this.index.forEach((list) => {
+      n += list.length;
+    });
+    return n;
+  }
+
+  /**
+   * Progress rides the existing listener channel, which is debounced at 120 ms
+   * — about eight updates a second. That matters: the parse loop reports every
+   * 400 programmes, so an uncoalesced emit would cost hundreds of renders and
+   * make the load slower than the stall it is reporting on.
+   */
+  private setProgress(next: Partial<EpgLoadProgress>) {
+    this.progress = { ...this.progress, ...next };
+    this.emit();
   }
 
   private lookup(channel: Pick<Channel, "id" | "name" | "epgId">): EPGProgram[] | null {
@@ -428,14 +594,56 @@ class EpgServiceImpl {
   ): Promise<void> {
     if (!portal) return;
     this.reset(portal.id);
-    if (this.bulkPromise) return this.bulkPromise;
+
+    // Single-flighted, except when forced.
+    //
+    // Returning the in-flight promise for a forced load looked right and was
+    // wrong: Live TV kicks off a load on mount, so when someone then saved a
+    // new XMLTV URL in Settings, the save adopted that already-running load —
+    // which had read the *old* source before the save happened. It resolved,
+    // the dialog reported success, and none of the newly chosen guide had been
+    // fetched. A forced load waits the old one out and then does its own.
+    if (this.bulkPromise) {
+      if (!opts.force) return this.bulkPromise;
+      await this.bulkPromise.catch(() => {});
+    }
     if (!opts.force) {
-      if (this.bulkState === "unavailable") return;
+      // "unavailable" means back off, not give up.
+      //
+      // This used to return unconditionally, so a single failed load disabled
+      // the guide for the rest of the session: every later mount of Live TV or
+      // the EPG screen bailed here, and only a portal switch or re-saving the
+      // source in Settings could clear it. A failure is usually transient — a
+      // dropped request, a portal hiccup, a source that was briefly 502 — and
+      // far more likely to heal than a successful load is to go stale, so it
+      // gets a shorter cooldown than "done" rather than a permanent one.
+      if (
+        this.bulkState === "unavailable" &&
+        Date.now() - this.lastBulkAt < BULK_RETRY_INTERVAL_MS
+      ) {
+        return;
+      }
       if (this.bulkState === "done" && Date.now() - this.lastBulkAt < BULK_MIN_INTERVAL_MS) return;
     }
 
+    // Show what was cached first, then decide whether to refresh.
+    //
+    // Restoring is near-instant and gives every screen real data immediately;
+    // a refresh behind it is invisible. Without this the choice was between a
+    // blank guide and a ten-second stall on every launch.
+    if (this.index.size === 0) {
+      const savedAt = await this.restoreIndex(portal.id);
+      if (savedAt > 0) {
+        this.bulkState = "done";
+        this.lastBulkAt = savedAt;
+        this.emit();
+        // Fresh enough to leave alone — the network is not touched at all.
+        if (!opts.force && Date.now() - savedAt < BULK_MIN_INTERVAL_MS) return;
+      }
+    }
+
     this.bulkState = "loading";
-    this.emit();
+    this.setProgress({ ...IDLE_PROGRESS, phase: "checking" });
 
     // Captured, because a portal switch mid-fetch resets everything: without
     // this the old portal's result would land on the new portal's state and
@@ -445,17 +653,15 @@ class EpgServiceImpl {
     this.bulkPromise = (async () => {
       try {
         let loaded = false;
-        // 1. If custom XMLTV EPG URL is configured, load it first
-        const customUrl = (portal.config as any)?.customEpgUrl || stbEnvironment.snapshot?.customEpgUrl;
-        if (customUrl && typeof customUrl === "string" && customUrl.startsWith("http")) {
-          const customLoaded = await this.loadXmltv(
-            customUrl,
-            opts.allowLargeXmltv === true || stbEnvironment.snapshot?.fullXmltvGuide === true
-          );
-          if (customLoaded) loaded = true;
-        }
 
-        // 2. Load portal's native bulk EPG
+        // The guide comes from the portal, and only from the portal.
+        //
+        // There was a custom XMLTV URL setting here that loaded a third-party
+        // guide first and merged the portal's own on top. It is gone: matching
+        // a stranger's channel names against a provider's channel list only
+        // ever managed about half of them, and half a guide attached to the
+        // wrong rows is worse than no guide, because nothing on screen tells
+        // you which half you are looking at.
         if (portal.type === "mag") {
           const magLoaded = await this.loadMagBulk(portal);
           if (magLoaded) loaded = true;
@@ -470,9 +676,25 @@ class EpgServiceImpl {
         if (this.portalId !== forPortal) return;
         this.lastBulkAt = Date.now();
         this.bulkState = loaded ? "done" : "unavailable";
+        if (loaded) await this.persistIndex(forPortal);
+
+        this.setProgress({
+          phase: loaded ? "done" : "failed",
+          ratio: 1,
+          channels: this.index.size,
+          programmes: this.programmeCount,
+          error: loaded
+            ? undefined
+            : "No programmes were found. Check the URL is an XMLTV file and is reachable.",
+        });
       } catch (e) {
         console.warn("[EPG] bulk load failed:", (e as any)?.message || e);
         if (this.portalId === forPortal) this.bulkState = "unavailable";
+        this.setProgress({
+          phase: "failed",
+          ratio: null,
+          error: (e as any)?.message || "The guide could not be loaded.",
+        });
       } finally {
         if (this.portalId === forPortal) this.bulkPromise = null;
         this.emit();
@@ -532,6 +754,8 @@ class EpgServiceImpl {
   private async loadXmltv(url: string, allowLarge: boolean): Promise<boolean> {
     if (!url) return false;
 
+    this.setProgress({ phase: "checking", ratio: null });
+
     // Only skip if the server explicitly reports content-length > limit
     if (!allowLarge) {
       try {
@@ -549,15 +773,72 @@ class EpgServiceImpl {
     let xml: string;
     try {
       const maxBytes = allowLarge ? 64 * 1024 * 1024 : XMLTV_SOFT_LIMIT_BYTES;
-      const res = await axios.get<string>(url, {
-        timeout: 60000,
-        responseType: "text",
-        maxContentLength: maxBytes,
-        maxBodyLength: maxBytes,
-        transformResponse: [(d) => d],
-        headers: { "User-Agent": "okhttp/3.12.1", "Accept-Encoding": "gzip" },
-      });
-      xml = typeof res.data === "string" ? res.data : "";
+
+      // A gzipped *file* is not the same thing as a gzipped *response*.
+      //
+      // `Accept-Encoding: gzip` covers transport compression, where the server
+      // compresses an .xml body and the HTTP stack transparently inflates it.
+      // It does nothing for a URL that ends .xml.gz, which is a gzip archive
+      // served as application/gzip — reading that as text produces mojibake and
+      // the parser then finds zero programmes and reports "no guide", silently.
+      // Providers serve xmltv.php this way often enough to matter.
+      //
+      // So a .gz URL is fetched as bytes and inflated explicitly.
+      const isArchive = /\.gz(\?|$)/i.test(url);
+
+      // Reported per byte where the server declares a length.
+      //
+      // Not every one does, and RN's XHR does not reliably deliver incremental
+      // progress for an arraybuffer response — hence a null ratio rather than
+      // a fabricated number. The phase alone still earns its place: it is what
+      // separates "downloading" from "wedged".
+      const onDownloadProgress = (e: { loaded?: number; total?: number }) => {
+        const total = e.total && e.total > 0 ? e.total : null;
+        const loaded = e.loaded || 0;
+        this.setProgress({
+          phase: "downloading",
+          ratio: total ? Math.min(1, loaded / total) : null,
+          bytes: loaded,
+          totalBytes: total,
+        });
+      };
+
+      this.setProgress({ phase: "downloading", ratio: null, bytes: 0, totalBytes: null });
+
+      if (isArchive) {
+        const res = await axios.get<ArrayBuffer>(url, {
+          timeout: 90000,
+          responseType: "arraybuffer",
+          maxContentLength: maxBytes,
+          maxBodyLength: maxBytes,
+          headers: { "User-Agent": "okhttp/3.12.1" },
+          onDownloadProgress,
+        });
+        const bytes = new Uint8Array(res.data as ArrayBuffer);
+        // Some servers send .gz already inflated by the transport layer, in
+        // which case the body is plain XML and has no gzip magic number.
+        const isGzip = bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+        // utf8Decode rather than TextDecoder — see the note on that helper.
+        if (isGzip) {
+          this.setProgress({ phase: "inflating", ratio: 0 });
+          xml = await inflateInChunks(bytes, (ratio) =>
+            this.setProgress({ phase: "inflating", ratio })
+          );
+        } else {
+          xml = utf8Decode(bytes);
+        }
+      } else {
+        const res = await axios.get<string>(url, {
+          timeout: 60000,
+          responseType: "text",
+          maxContentLength: maxBytes,
+          maxBodyLength: maxBytes,
+          transformResponse: [(d) => d],
+          headers: { "User-Agent": "okhttp/3.12.1", "Accept-Encoding": "gzip" },
+          onDownloadProgress,
+        });
+        xml = typeof res.data === "string" ? res.data : "";
+      }
     } catch (e) {
       console.warn("[EPG] XMLTV fetch failed:", (e as any)?.message || e);
       return false;
@@ -581,7 +862,18 @@ class EpgServiceImpl {
 
     // 1. Fast parse <channel> tags
     let chPos = 0;
+    let chSeen = 0;
     while ((chPos = xml.indexOf("<channel", chPos)) !== -1) {
+      // A national guide carries well over a thousand of these, each costing a
+      // slice and two regexes. Without a yield the JS thread is held for the
+      // whole sweep before the programme loop even starts.
+      if (++chSeen % 250 === 0) {
+        await new Promise((r) => setTimeout(r, 0));
+        // No ratio here: <channel> tags cluster at the head of the file, so a
+        // position-based fraction would read as 2% and then sit there.
+        this.setProgress({ phase: "parsing", ratio: null, channels: displayNames.size });
+      }
+
       const chEnd = xml.indexOf("</channel>", chPos);
       if (chEnd === -1) break;
       const block = xml.slice(chPos, chEnd + 10);
@@ -616,8 +908,29 @@ class EpgServiceImpl {
         continue;
       }
 
+      // Yield on *iterations*, before any of the per-programme work.
+      //
+      // The counter used to sit at the bottom of the loop, past the window
+      // filter's `continue`, so only kept programmes advanced it. A national
+      // guide is ~114,000 programmes of which the ±30h window keeps maybe an
+      // eighth — so roughly a hundred thousand iterations ran without ever
+      // reaching the yield, and each gap between yields was thousands of
+      // slices and regexes over a 60 MB string. That is the frozen
+      // "Loading guide…" screen.
+      if (++count % 400 === 0) {
+        await new Promise((r) => setTimeout(r, 0));
+        // pPos is the offset of the tag being read, so this is a genuine
+        // fraction of the file — the one phase that can honestly report one.
+        this.setProgress({
+          phase: "parsing",
+          ratio: xml.length > 0 ? Math.min(1, pPos / xml.length) : null,
+          channels: byChannel.size,
+          programmes: kept,
+        });
+      }
+
       const openTag = xml.slice(pPos, tagClose + 1);
-      const body = xml.slice(tagClose + 1, pEnd);
+      const bodyStart = tagClose + 1;
       pPos = pEnd + 12;
 
       const startAttr = /\bstart\s*=\s*"([^"]*)"/i.exec(openTag);
@@ -629,6 +942,11 @@ class EpgServiceImpl {
       if (start < minStart || start > maxStart) continue;
       const end = parseXmltvTime(stopAttr[1]);
       if (!(end > start)) continue;
+
+      // Sliced only now that the programme is known to be inside the window.
+      // Doing it up front allocated a substring for every one of the ~100,000
+      // programmes that get discarded, purely to throw it away.
+      const body = xml.slice(bodyStart, pEnd);
 
       const titleM = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(body);
       const descM = /<desc[^>]*>([\s\S]*?)<\/desc>/i.exec(body);
@@ -648,15 +966,16 @@ class EpgServiceImpl {
       if (list) list.push(program);
       else byChannel.set(key, [program]);
       kept++;
-
-      count++;
-      // Yield to JS event loop every 800 programmes so UI remains 60fps smooth
-      if (count % 800 === 0) {
-        await new Promise((r) => setTimeout(r, 0));
-      }
     }
 
     if (kept === 0) return 0;
+
+    this.setProgress({
+      phase: "merging",
+      ratio: null,
+      channels: byChannel.size,
+      programmes: kept,
+    });
 
     byChannel.forEach((list, cid) => {
       const keys = [`x:${cid}`, `id:${cid}`];
@@ -778,6 +1097,124 @@ class EpgServiceImpl {
       const next = this.queue.pop();
       if (!next) return;
       next.run();
+    }
+  }
+
+  // ── Persistence ───────────────────────────────────────────────────────────
+  //
+  // Only the *per-channel* short EPG was ever cached. The bulk index — the one
+  // that costs a 2.8 MB download, a 38 MB inflate and forty thousand parsed
+  // programmes — lived in memory alone, so every cold start paid for it again
+  // and every screen read "No guide data" until it finished. That is why the
+  // guide only ever seemed to appear right after Save & Load Guide: that is the
+  // one moment someone sits and waits for it.
+  //
+  // What gets written is the already-trimmed index: the ±30h window and the
+  // 64-programmes-per-channel cap are applied before this, so it is a fraction
+  // of the source file rather than a copy of it.
+
+  private bulkCacheKey(portalId: string): string {
+    // Keyed on the portal alone now that the portal is the only source. The
+    // old keys carried a source segment and simply go unread, expiring on the
+    // 6h TTL rather than needing a migration.
+    return "epg:bulk:" + portalId;
+  }
+
+  /**
+   * Writes the index in ~1 MB pieces rather than one blob.
+   *
+   * Measured, the trimmed India guide serialises to 4.21 MB. That is fine for
+   * MMKV but not for the AsyncStorage fallback: Android's SQLite cursor window
+   * is around 2 MB, so a single write that size is rejected — and it would be
+   * rejected precisely on the devices running the fallback, which are the ones
+   * that have not been natively rebuilt yet.
+   *
+   * Chunks are filled by serialised length rather than by a fixed channel
+   * count, so a guide with long descriptions splits into more pieces instead of
+   * overflowing. Same approach as portalPersistence.
+   */
+  private async persistIndex(portalId: string): Promise<void> {
+    try {
+      const base = this.bulkCacheKey(portalId);
+      const chunks: [string, EPGProgram[]][][] = [];
+      let current: [string, EPGProgram[]][] = [];
+      let currentBytes = 0;
+
+      this.index.forEach((programs, key) => {
+        const entry: [string, EPGProgram[]] = [key, programs];
+        const bytes = JSON.stringify(entry).length;
+        if (current.length > 0 && currentBytes + bytes > BULK_CACHE_CHUNK_BYTES) {
+          chunks.push(current);
+          current = [];
+          currentBytes = 0;
+        }
+        current.push(entry);
+        currentBytes += bytes;
+      });
+      if (current.length) chunks.push(current);
+      if (chunks.length === 0) return;
+
+      // Pieces first, then the manifest — so a write that dies half way leaves
+      // a manifest pointing at nothing rather than at a partial guide.
+      for (let i = 0; i < chunks.length; i++) {
+        this.setProgress({
+          phase: "saving",
+          ratio: chunks.length ? i / chunks.length : null,
+        });
+        await cacheManager.set(`${base}:${i}`, chunks[i], BULK_CACHE_TTL_MS);
+      }
+      await cacheManager.set(
+        base,
+        { savedAt: Date.now(), chunks: chunks.length },
+        BULK_CACHE_TTL_MS
+      );
+    } catch (e) {
+      // A guide that cannot be cached still works for this session.
+      console.warn("[EPG] could not cache the guide:", (e as any)?.message || e);
+    }
+  }
+
+  /**
+   * Rebuilds the index from disk. Returns when it was written, or 0.
+   *
+   * Deliberately does not touch `keyOwner` or `poisoned`: those exist to catch
+   * two channels colliding on one key *while merging*, and the stored index is
+   * already the resolved outcome of that.
+   */
+  private async restoreIndex(portalId: string): Promise<number> {
+    try {
+      const base = this.bulkCacheKey(portalId);
+      const manifest = await cacheManager.get<{ savedAt: number; chunks: number }>(base);
+      if (!manifest?.chunks) return 0;
+
+      // Programmes that have already finished are dead weight — dropped on the
+      // way in rather than letting a stale cache pad the index.
+      const cutoff = Date.now() - WINDOW_PAST_MS;
+      let restored = 0;
+
+      for (let i = 0; i < manifest.chunks; i++) {
+        const chunk = await cacheManager.get<[string, EPGProgram[]][]>(`${base}:${i}`);
+        // A missing piece means the write was interrupted or a chunk expired
+        // separately. Half a guide filed under real keys is worse than none, so
+        // the whole restore is abandoned.
+        if (!chunk) {
+          this.index.clear();
+          return 0;
+        }
+        for (const [key, programs] of chunk) {
+          const live = programs.filter((p) => p && p.end > cutoff);
+          if (live.length) {
+            this.index.set(key, live);
+            restored += live.length;
+          }
+        }
+        // Rebuilding several megabytes of objects is not free either.
+        await new Promise((r) => setTimeout(r, 0));
+      }
+
+      return restored > 0 ? manifest.savedAt : 0;
+    } catch {
+      return 0;
     }
   }
 

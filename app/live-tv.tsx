@@ -26,7 +26,7 @@ import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { StreamManager } from "../src/services/StreamManager";
 import { cacheManager } from "../src/services/cacheManager";
-import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { THEME, pw, ph, ps, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import CategorySidebar from "../src/components/CategorySidebar";
@@ -100,8 +100,6 @@ const ChannelCard = React.memo(function ChannelCard({
     [item.id, epgVersion]
   );
 
-
-
   return (
     <View style={{ width: itemWidth, padding: pw(0.6) }}>
       <Focusable
@@ -121,31 +119,29 @@ const ChannelCard = React.memo(function ChannelCard({
               S.cardBorder,
               { height: Math.floor(itemWidth / 0.85) },
               focused && S.cardBorderFocused,
-              focused && { transform: [{ scale: 1.06 }], backgroundColor: "#fff", borderColor: "#fff", borderWidth: 1 }
+              focused && { transform: [{ scale: 1.06 }] }
             ]}
           >
+            {/* The gradient no longer goes transparent on focus.
+                It had to before, because the wrapper turned solid white and
+                the card's whole content inverted to black against it. Focus is
+                the shared TILE_FRAME edge now — the same one the VOD and
+                Series posters use — so the card keeps its own colours and
+                every one of those inversions is gone with it. */}
             <LinearGradient
-              colors={
-                focused
-                  ? ["transparent", "transparent"] // Background is handled by wrapper when focused
-                  : ["rgba(255,255,255,0.05)", "rgba(255,255,255,0.01)"]
-              }
-              style={[
-                S.card,
-                focused && { backgroundColor: "transparent" },
-                { overflow: "hidden" }
-              ]}
+              colors={["rgba(255,255,255,0.05)", "rgba(255,255,255,0.01)"]}
+              style={[S.card, { overflow: "hidden" }]}
             >
               {/* Channel number — what the numeric tuner dials. */}
               {channelNumber ? (
-                <View style={[S.cardNumber, focused && S.cardNumberFocused]}>
-                  <Text style={[S.cardNumberText, focused && { color: "#000" }]}>{channelNumber}</Text>
+                <View style={S.cardNumber}>
+                  <Text style={S.cardNumberText}>{channelNumber}</Text>
                 </View>
               ) : null}
 
               {locked ? (
                 <View style={S.cardLock}>
-                  <Ionicons name="lock-closed" size={ps(0.85)} color={focused ? "#000" : "#fff"} />
+                  <Ionicons name="lock-closed" size={ps(0.85)} color="#fff" />
                 </View>
               ) : null}
 
@@ -157,30 +153,26 @@ const ChannelCard = React.memo(function ChannelCard({
                 )}
               </View>
               <View style={S.cardInfo}>
-                <Text style={[S.cardTitle, focused && { color: "#000" }]} numberOfLines={1}>{item.name}</Text>
+                <Text style={S.cardTitle} numberOfLines={1}>{item.name}</Text>
 
                 {/* What is on now, with how far through it is. The category is
                     only worth the line when there is no guide to show. */}
                 {nowNext.now ? (
                   <>
-                    <Text
-                      style={[S.cardNow, focused && { color: "rgba(0,0,0,0.75)" }]}
-                      numberOfLines={1}
-                    >
+                    <Text style={S.cardNow} numberOfLines={1}>
                       {nowNext.now.title}
                     </Text>
-                    <View style={[S.cardProgressTrack, focused && { backgroundColor: "rgba(0,0,0,0.15)" }]}>
+                    <View style={S.cardProgressTrack}>
                       <View
                         style={[
                           S.cardProgressFill,
-                          focused && { backgroundColor: "#000" },
                           { width: `${Math.round(nowNext.progress * 100)}%` },
                         ]}
                       />
                     </View>
                   </>
                 ) : item.category ? (
-                  <Text style={[S.cardCategory, focused && { color: "rgba(0,0,0,0.6)" }]} numberOfLines={1}>{item.category}</Text>
+                  <Text style={S.cardCategory} numberOfLines={1}>{item.category}</Text>
                 ) : null}
               </View>
             </LinearGradient>
@@ -291,8 +283,6 @@ export default function LiveTVScreen() {
   useEffect(() => () => {
     if (trapTimeoutRef.current) clearTimeout(trapTimeoutRef.current);
   }, []);
-
-
 
   // The guide, the lock and the box settings are all read synchronously later
   // on, so they are warmed once here rather than awaited at each use site.
@@ -902,8 +892,23 @@ export default function LiveTVScreen() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  /**
+   * Mirrors the field's own focus, purely for styling.
+   *
+   * The field is a plain D-pad target again — no wrapper, no programmatic
+   * focus. That is not a style preference, it is the only thing that works on
+   * a TV: ReactEditText.requestFocusProgrammatically() raises the keyboard
+   * only `if (isInTouchMode && showSoftInputOnFocus)`, and a D-pad device is
+   * never in touch mode — so every autoFocus and every ref.focus() took the
+   * else branch and called hideSoftKeyboard(). RN says as much in a comment
+   * right there: "only clicking the input will do that".
+   *
+   * What works is the path RN designed for: the viewer navigates onto the
+   * field, and ReactEditText.onKeyUp toggles isKeyboardOpened on
+   * KEYCODE_DPAD_CENTER — so OK *on the focused field* opens the IME. Nothing
+   * may intercept that press, which is why there is no Focusable wrapper.
+   */
   const [searchFocused, setSearchFocused] = useState(false);
-
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -919,15 +924,32 @@ export default function LiveTVScreen() {
     const isXtreamOrM3U = activePortal?.type === "xtream" || activePortal?.type === "m3u";
 
     if (debouncedQuery) {
+      const needle = debouncedQuery.toLowerCase();
+
+      // Searching is scoped to whatever the sidebar has selected.
+      //
+      // This used to search allChannelsCacheRef — the portal's entire library
+      // — so pressing a category while a search was open moved the sidebar
+      // highlight and changed nothing else: the results were global and stayed
+      // global. Two things were wrong and both had to be fixed: the pool
+      // ignored the category, and `selectedCategory` was not a dependency, so
+      // even a category-aware pool could not have re-run this. A ref would not
+      // have worked either, for the same reason.
       if (isXtreamOrM3U) {
-        return allChannelsCacheRef.current
-          .filter(c => c.name.toLowerCase().includes(debouncedQuery.toLowerCase()))
+        return filterByCategory(allChannelsCacheRef.current, selectedCategory, storeCategories)
+          .filter((c) => c.name.toLowerCase().includes(needle))
           .slice(0, 100);
       }
+
+      // MAG has no full list in memory, so this searches what is loaded — and
+      // that is already the selected category. Previously this branch fell
+      // through and returned the category unfiltered, so on a MAG portal
+      // typing in the search box did nothing at all.
+      return displayChannels.filter((c) => c.name.toLowerCase().includes(needle));
     }
 
     return displayChannels;
-  }, [displayChannels, debouncedQuery, activePortal?.type]);
+  }, [displayChannels, debouncedQuery, activePortal?.type, selectedCategory, storeCategories]);
 
   const chunkedChannels = useMemo(() => {
     const chunks = [];
@@ -1034,59 +1056,47 @@ export default function LiveTVScreen() {
     [focusedChannel, focusedNumber]
   );
 
+  const handleCategorySelect = useCallback((catId: string) => {
+    setSelectedCategory(catId);
+    setSearchQuery("");
+    setDebouncedQuery("");
+  }, []);
+
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
-      <StatusBar hidden />
 
       {/* ─── Header ─── */}
       <View style={S.header}>
         <Text style={S.headerTitle}>Live TV</Text>
 
         <FocusGroup style={S.searchWrapper}>
-          <Focusable
-            onPress={() => searchInputRef.current?.focus()}
-            ringOnFocus={false}
-            style={{ flex: 1 }}
-          >
-            {(focused) => (
-              <View style={[S.searchGradient, (focused || searchFocused) && S.searchFocused]}>
-                <LinearGradient
-                  colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
-                />
-                {(focused || searchFocused) && (
-                  <LinearGradient
-                    colors={[THEME.colors.primary, THEME.colors.secondary]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
-                  />
-                )}
-                <View style={[
-                  S.searchInner,
-                  { borderRadius: (focused || searchFocused) ? 25 - 1.5 : 25 },
-                  (focused || searchFocused) && { backgroundColor: "#0b0b10" }
-                ]}>
-                  <Ionicons name="search" size={ps(1.1)} color={(focused || searchFocused) ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
-                  <TextInput
-                    ref={searchInputRef}
-                    style={S.searchInput}
-                    placeholder="Search channels..."
-                    placeholderTextColor="rgba(255,255,255,0.2)"
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    onFocus={() => setSearchFocused(true)}
-                    onBlur={() => setSearchFocused(false)}
-                  />
-                </View>
-              </View>
-            )}
-          </Focusable>
+          {/* No wrapper around this field, deliberately — see the note on
+              searchFocused above. Anything that intercepts the OK press stops the
+              keyboard from ever opening on a TV.
+
+              The border is a real one rather than two stacked gradients faking it:
+              the ring used to be `padding: 1.5` on this view with a gradient filling
+              it, which is why the field never matched the tiles around it. */}
+          <View style={[S.searchGradient, searchFocused && S.searchGradientFocused, { flex: 1 }]}>
+            <View style={[S.searchInner, searchFocused && { backgroundColor: "#0b0b10" }]}>
+              <Ionicons name="search" size={ps(1.1)} color={searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
+              <TextInput
+                ref={searchInputRef}
+                style={S.searchInput}
+                placeholder="Search channels..."
+                placeholderTextColor="rgba(255,255,255,0.2)"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
+                onSubmitEditing={() => setSearchFocused(false)}
+              />
+            </View>
+          </View>
         </FocusGroup>
 
         {/* No on-screen number pad and no guide button.
@@ -1110,7 +1120,7 @@ export default function LiveTVScreen() {
           <CategorySidebar
             categories={sidebarCategories}
             selectedId={selectedCategory || "all"}
-            onSelect={setSelectedCategory}
+            onSelect={handleCategorySelect}
             width={SIDEBAR_WIDTH}
             autoFocusFirst={focusSidebar}
           />
@@ -1285,22 +1295,12 @@ const S = StyleSheet.create({
     flex: 1,
     height: ph(6.5),
   },
-  searchGradient: {
-    flex: 1,
-    borderRadius: 25,
-    padding: 1.5,
-  },
-  searchFocused: {
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.7,
-    shadowRadius: 12,
-    elevation: 12,
-  },
+  searchGradient: { ...TILE_FRAME, flex: 1, borderRadius: 25 },
+  searchGradientFocused: { ...TILE_FRAME_FOCUSED },
   searchInner: {
     flex: 1,
     backgroundColor: "rgba(10, 10, 16, 0.61)",
-    borderRadius: 25 - 1.5,
+    borderRadius: 25 - 1,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: pw(1.6),
@@ -1369,29 +1369,8 @@ const S = StyleSheet.create({
   cardWrapper: {
     aspectRatio: 0.85,
   },
-  cardBorder: {
-    flex: 1,
-    padding: 1,
-    borderRadius: ps(1.2),
-    backgroundColor: THEME.colors.glassBg,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  cardBorderFocused: {
-    borderColor: THEME.colors.glassBorderFocus,
-    backgroundColor: THEME.colors.glassBgFocus,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#fff",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 0,
-      }
-    })
-  },
+  cardBorder: { ...TILE_FRAME, flex: 1 },
+  cardBorderFocused: { ...TILE_FRAME_FOCUSED },
   card: {
     flex: 1,
     backgroundColor: "transparent",
@@ -1461,7 +1440,6 @@ const S = StyleSheet.create({
     alignItems: "center",
     zIndex: 2,
   },
-  cardNumberFocused: { backgroundColor: "rgba(0,0,0,0.12)" },
   cardNumberText: {
     color: "#fff",
     fontSize: ps(0.7),

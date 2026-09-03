@@ -1,28 +1,30 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // safeStorage — key/value storage that survives its backend being unavailable.
 //
-// MMKV is the fast path and what this normally runs on. Since react-native-mmkv
-// v4 it is built on Nitro modules, which means it needs native code compiled
-// into the app: a JS-only update that adds or upgrades MMKV will throw on a
-// binary that predates it, with "The native NitroModules Turbo/Native-Module
-// could not be found".
+// MMKV is the fast path and what this normally runs on. Since
+// react-native-mmkv v4 it is built on Nitro modules, which means it needs
+// native code compiled into the app: a JS-only update that adds or upgrades
+// MMKV throws on a binary that predates it, with "Failed to get NitroModules:
+// The native NitroModules Turbo/Native-Module could not be found".
 //
 // That throw happens while `react-native-mmkv` is being *imported*, not when
-// its factory is called — so a static `import` of it cannot be guarded. It took
-// the whole app down at boot, because the store imports this module and every
-// screen imports the store. Hence the `require` below: a lazy load is the only
+// its factory is called — so a static `import` of it cannot be guarded. The
+// try/catch below used to sit around `createMMKV()` with the import hoisted
+// above it, which meant the guard could never fire: one missing native module
+// took the whole app down at boot, because the store imports this file and
+// every screen imports the store. Hence the `require`: a lazy load is the only
 // kind this file can actually catch.
 //
-// When MMKV is unavailable the fallback is AsyncStorage rather than a Map. Both
-// keep the app running, but AsyncStorage keeps the data too — it needs no new
-// architecture, it is already what portals are stored in, so it is known to
-// work on any binary that can run this bundle at all. An in-memory fallback
-// looks fine for one session and quietly loses every portal, PIN and resume
-// point on restart, which is a worse failure than the crash it replaces.
+// When MMKV is unavailable the fallback is AsyncStorage rather than a Map.
+// Both keep the app running; AsyncStorage keeps the data too. It needs no new
+// architecture and is already what portals are stored in, so it works on any
+// binary that can run this bundle at all. An in-memory fallback looks fine for
+// one session and quietly loses every portal and setting on restart, which is
+// a worse failure than the crash it replaces.
 // ─────────────────────────────────────────────────────────────────────────────
 import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
 
-/** The subset of MMKV this module uses. Sync, as MMKV is. */
+/** The subset of MMKV this module uses. Synchronous, as MMKV is. */
 interface SyncBackend {
   set: (key: string, value: string) => void;
   getString: (key: string) => string | undefined;
@@ -35,8 +37,6 @@ interface SyncBackend {
 /** The uniform shape the public API is written against. */
 interface Backend {
   name: "mmkv" | "async-storage";
-  /** True when writes outlive the process. Both backends persist. */
-  persistent: boolean;
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<void>;
   remove(key: string): Promise<void>;
@@ -50,7 +50,6 @@ interface Backend {
 function mmkvBackend(instance: SyncBackend): Backend {
   return {
     name: "mmkv",
-    persistent: true,
     async get(key) {
       const value = instance.getString(key);
       return value !== undefined ? value : null;
@@ -85,15 +84,13 @@ function mmkvBackend(instance: SyncBackend): Backend {
 function asyncStorageBackend(): Backend {
   return {
     name: "async-storage",
-    persistent: true,
     get: (key) => ReactNativeAsyncStorage.getItem(key),
     set: (key, value) => ReactNativeAsyncStorage.setItem(key, value),
     remove: (key) => ReactNativeAsyncStorage.removeItem(key),
     multiGet: (keys) => ReactNativeAsyncStorage.multiGet(keys),
     multiSet: (pairs) => ReactNativeAsyncStorage.multiSet(pairs),
     multiRemove: (keys) => ReactNativeAsyncStorage.multiRemove(keys),
-    // AsyncStorage hands back a readonly array; the callers here expect a
-    // plain one they can filter.
+    // AsyncStorage hands back a readonly array; callers here filter it.
     allKeys: async () => Array.from(await ReactNativeAsyncStorage.getAllKeys()),
     clearAll: () => ReactNativeAsyncStorage.clear(),
   };
@@ -119,9 +116,8 @@ function selectBackend(): Backend {
 
 const backend = selectBackend();
 
-/** Which store is in use, for diagnostics such as the System Info screen. */
+/** Which store is in use, for diagnostics. */
 export const storageBackend = backend.name;
-export const isStoragePersistent = backend.persistent;
 
 export const safeStorage = {
   async setItem(key: string, value: string): Promise<boolean> {

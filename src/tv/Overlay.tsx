@@ -191,7 +191,7 @@ export function Overlay({
 
   return (
     <TVFocusGuideView
-      style={StyleSheet.absoluteFillObject}
+      style={styles.root}
       autoFocus
       destinations={destinations}
       trapFocusUp={trapFocus && visible}
@@ -220,13 +220,34 @@ export function Overlay({
 }
 
 const styles = StyleSheet.create({
+  /**
+   * The stacking order has to live on the *outermost* node, not the backdrop.
+   *
+   * It used to sit on the backdrop, which is this view's only child, so it
+   * ranked against no siblings and did nothing, while this view competed with
+   * the screen's content at elevation 0. On Android elevation outranks
+   * declaration order, and Fabric flattens layout-only wrappers away, so an
+   * elevated card several levels deep inside a screen ends up a direct sibling
+   * of this overlay. A portal card at elevation 8 therefore drew *above* the
+   * dialog, and because that card is near-transparent glass
+   * (rgba(255,255,255,0.03)) carrying opaque white text, the dialog showed
+   * through it while the card's own name and buttons landed on top of the
+   * dialog's message. It read as a see-through dialog, but nothing was
+   * transparent that should not have been: it was painted in the wrong order.
+   *
+   * 30 clears the highest elevation used anywhere in the app (20). zIndex
+   * covers iOS and web, where elevation means nothing.
+   */
+  root: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    elevation: 30,
+  },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.85)",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 9999,
-    elevation: 30,
   },
   content: {
     maxWidth: "92%",
