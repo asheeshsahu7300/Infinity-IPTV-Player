@@ -9,7 +9,7 @@ export interface NextFocusTags {
 }
 
 /** Direction the overlay's focusable items are laid out in. */
-export type OverlayAxis = "vertical" | "horizontal";
+export type OverlayAxis = "vertical" | "horizontal" | "grid" | "grid-3" | "none";
 
 export interface OverlayFocusController {
   registerItem: (id: string, ref: React.RefObject<View>) => () => void;
@@ -111,13 +111,36 @@ export function useOverlayFocusController(axis: OverlayAxis = "vertical"): Overl
 
       getNextFocus(id: string): NextFocusTags {
         const list = itemsRef.current;
-        if (list.length === 0) return {};
+        if (list.length === 0 || axis === "none") return {};
 
         const index = list.findIndex((it) => it.id === id);
         if (index === -1) return {};
 
         const selfTag = findNodeHandle(list[index].ref.current) ?? undefined;
         if (!selfTag) return {};
+
+        if (axis === "grid" || axis === "grid-3") {
+          const cols = 3;
+          const total = list.length;
+          const col = index % cols;
+
+          const upIndex = index - cols;
+          const downIndex = index + cols;
+          const leftIndex = col > 0 ? index - 1 : -1;
+          const rightIndex = col < cols - 1 && index + 1 < total ? index + 1 : -1;
+
+          const upTag = upIndex >= 0 ? (findNodeHandle(list[upIndex].ref.current) ?? selfTag) : selfTag;
+          const downTag = downIndex < total ? (findNodeHandle(list[downIndex].ref.current) ?? selfTag) : selfTag;
+          const leftTag = leftIndex >= 0 ? (findNodeHandle(list[leftIndex].ref.current) ?? selfTag) : selfTag;
+          const rightTag = rightIndex >= 0 ? (findNodeHandle(list[rightIndex].ref.current) ?? selfTag) : selfTag;
+
+          return {
+            nextFocusUp: upTag,
+            nextFocusDown: downTag,
+            nextFocusLeft: leftTag,
+            nextFocusRight: rightTag,
+          };
+        }
 
         const prevTag =
           index > 0 ? (findNodeHandle(list[index - 1].ref.current) ?? selfTag) : selfTag;

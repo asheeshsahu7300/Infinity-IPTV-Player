@@ -10,7 +10,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { Focusable, FocusGroup, Overlay } from "../tv";
+import { Focusable, Overlay } from "../tv";
 import { THEME, ph, ps, pw } from "../theme/tokens";
 
 export interface PinPromptProps {
@@ -43,7 +43,34 @@ export interface PinPromptProps {
 }
 
 const PIN_LENGTH = 4;
-const KEYS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+type KeypadItem =
+  | { key: string; type: "digit"; value: number; label: string }
+  | { key: string; type: "cancel"; label: string }
+  | { key: string; type: "backspace"; label: string };
+
+const KEYPAD_ROWS: KeypadItem[][] = [
+  [
+    { key: "1", type: "digit", value: 1, label: "Digit 1" },
+    { key: "2", type: "digit", value: 2, label: "Digit 2" },
+    { key: "3", type: "digit", value: 3, label: "Digit 3" },
+  ],
+  [
+    { key: "4", type: "digit", value: 4, label: "Digit 4" },
+    { key: "5", type: "digit", value: 5, label: "Digit 5" },
+    { key: "6", type: "digit", value: 6, label: "Digit 6" },
+  ],
+  [
+    { key: "7", type: "digit", value: 7, label: "Digit 7" },
+    { key: "8", type: "digit", value: 8, label: "Digit 8" },
+    { key: "9", type: "digit", value: 9, label: "Digit 9" },
+  ],
+  [
+    { key: "cancel", type: "cancel", label: "Cancel" },
+    { key: "0", type: "digit", value: 0, label: "Digit 0" },
+    { key: "backspace", type: "backspace", label: "Delete last digit" },
+  ],
+];
 
 export function PinPrompt({
   visible,
@@ -122,13 +149,6 @@ export function PinPrompt({
 
       // Submitting on the last digit is what makes a D-pad PIN bearable —
       // hunting for a separate OK button doubles the interaction.
-      //
-      // Called here, after the state write, and NOT from inside a setPin
-      // updater. React runs updater functions during the render phase, so
-      // submitting from in there ran the parent's onSuccess mid-render:
-      // "Cannot update a component (ParentalControlScreen) while rendering a
-      // different component (PinPrompt)". Updaters also have to be pure —
-      // React may call them twice, which would have submitted twice.
       if (next.length === PIN_LENGTH) submit(next);
     },
     [checking, submit]
@@ -142,7 +162,7 @@ export function PinPrompt({
   }, []);
 
   return (
-    <Overlay visible={visible} onClose={onCancel} contentStyle={S.content}>
+    <Overlay visible={visible} onClose={onCancel} contentStyle={S.content} axis="grid">
       <View style={S.header}>
         <View style={S.lockBadge}>
           <Ionicons name="lock-closed" size={ps(1.8)} color="#000" />
@@ -160,64 +180,47 @@ export function PinPrompt({
 
       <Text style={[S.error, !error && S.errorHidden]}>{error ?? " "}</Text>
 
-      {/* ── Keypad ── */}
-      <FocusGroup style={S.grid}>
-        {KEYS.map((digit, index) => (
-          <Focusable
-            key={digit}
-            ringOnFocus={false}
-            hasTVPreferredFocus={index === 0}
-            onPress={() => pushDigit(digit)}
-            style={S.keyWrapper}
-            accessibilityLabel={`Digit ${digit}`}
-          >
-            {(focused) => (
-              <View style={[S.key, focused && S.keyFocused]}>
-                <Text style={[S.keyText, focused && S.keyTextFocused]}>{digit}</Text>
-              </View>
-            )}
-          </Focusable>
+      {/* ── Keypad (3x4 2D Grid) ── */}
+      <View style={S.grid}>
+        {KEYPAD_ROWS.map((row, rowIdx) => (
+          <View key={rowIdx} style={S.row}>
+            {row.map((item, colIdx) => (
+              <Focusable
+                key={item.key}
+                ringOnFocus={false}
+                hasTVPreferredFocus={rowIdx === 0 && colIdx === 0}
+                onPress={() => {
+                  if (item.type === "digit") pushDigit(item.value);
+                  else if (item.type === "cancel") onCancel();
+                  else if (item.type === "backspace") backspace();
+                }}
+                style={S.keyWrapper}
+                accessibilityLabel={item.label}
+              >
+                {(focused) => (
+                  <View style={[S.key, focused && S.keyFocused]}>
+                    {item.type === "digit" ? (
+                      <Text style={[S.keyText, focused && S.keyTextFocused]}>{item.value}</Text>
+                    ) : item.type === "cancel" ? (
+                      <Ionicons
+                        name="close"
+                        size={ps(1.4)}
+                        color={focused ? "#000" : "rgba(255,255,255,0.75)"}
+                      />
+                    ) : (
+                      <Ionicons
+                        name="backspace-outline"
+                        size={ps(1.4)}
+                        color={focused ? "#000" : "rgba(255,255,255,0.75)"}
+                      />
+                    )}
+                  </View>
+                )}
+              </Focusable>
+            ))}
+          </View>
         ))}
-
-        <Focusable
-          ringOnFocus={false}
-          onPress={onCancel}
-          style={S.keyWrapper}
-          accessibilityLabel="Cancel"
-        >
-          {(focused) => (
-            <View style={[S.key, focused && S.keyFocused]}>
-              <Ionicons name="close" size={ps(1.4)} color={focused ? "#000" : "rgba(255,255,255,0.75)"} />
-            </View>
-          )}
-        </Focusable>
-
-        <Focusable
-          ringOnFocus={false}
-          onPress={() => pushDigit(0)}
-          style={S.keyWrapper}
-          accessibilityLabel="Digit 0"
-        >
-          {(focused) => (
-            <View style={[S.key, focused && S.keyFocused]}>
-              <Text style={[S.keyText, focused && S.keyTextFocused]}>0</Text>
-            </View>
-          )}
-        </Focusable>
-
-        <Focusable
-          ringOnFocus={false}
-          onPress={backspace}
-          style={S.keyWrapper}
-          accessibilityLabel="Delete last digit"
-        >
-          {(focused) => (
-            <View style={[S.key, focused && S.keyFocused]}>
-              <Ionicons name="backspace-outline" size={ps(1.4)} color={focused ? "#000" : "rgba(255,255,255,0.75)"} />
-            </View>
-          )}
-        </Focusable>
-      </FocusGroup>
+      </View>
     </Overlay>
   );
 }
@@ -271,13 +274,16 @@ const S = StyleSheet.create({
   errorHidden: { opacity: 0 },
 
   grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+    flexDirection: "column",
     width: ps(16),
-    justifyContent: "center",
     marginTop: ph(0.6),
   },
-  keyWrapper: { width: "33.33%", padding: ps(0.28) },
+  row: {
+    flexDirection: "row",
+    justifyContent: "center",
+    width: "100%",
+  },
+  keyWrapper: { flex: 1, padding: ps(0.28) },
   key: {
     height: ps(3.4),
     borderRadius: ps(0.7),
