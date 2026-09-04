@@ -21,6 +21,7 @@ interface CategorySidebarProps {
   categories: Category[];
   selectedId: string;
   onSelect: (id: string) => void;
+  onFocus?: (id: string) => void;
   width?: number;
   autoFocusFirst?: boolean;
 }
@@ -104,23 +105,32 @@ const CategoryItem = React.memo(function CategoryItem({
   isActive,
   hasTVPreferredFocus,
   onSelect,
+  onFocus,
   index,
 }: {
   item: Category;
   isActive: boolean;
   hasTVPreferredFocus?: boolean;
   onSelect: (id: string) => void;
+  onFocus?: (id: string) => void;
   index: number;
 }) {
   const handleSelect = useCallback(() => {
     onSelect(item.id);
   }, [onSelect, item.id]);
 
+  const handleFocus = useCallback(() => {
+    onFocus?.(item.id);
+  }, [onFocus, item.id]);
+
   return (
     <View style={[S.itemWrapper, { overflow: "visible" }]}>
       <Focusable
+        screenKey="category-sidebar"
+        focusKey={String(item.id)}
         hasTVPreferredFocus={hasTVPreferredFocus}
         onPress={handleSelect}
+        onFocus={handleFocus}
         ringOnFocus={false}
         style={{ overflow: "visible" }}
       >
@@ -155,9 +165,11 @@ const CategoryItem = React.memo(function CategoryItem({
 }, (prevProps, nextProps) => {
   return (
     prevProps.item.id === nextProps.item.id &&
+    prevProps.item.name === nextProps.item.name &&
     prevProps.isActive === nextProps.isActive &&
     prevProps.hasTVPreferredFocus === nextProps.hasTVPreferredFocus &&
-    prevProps.index === nextProps.index
+    prevProps.index === nextProps.index &&
+    prevProps.onFocus === nextProps.onFocus
   );
 });
 
@@ -165,6 +177,7 @@ export default function CategorySidebar({
   categories,
   selectedId,
   onSelect,
+  onFocus,
   width = 240,
   autoFocusFirst = false,
 }: CategorySidebarProps) {
@@ -232,10 +245,11 @@ export default function CategorySidebar({
         isActive={selectedId === item.id}
         hasTVPreferredFocus={index === preferredIndex}
         onSelect={onSelect}
+        onFocus={onFocus}
         index={index}
       />
     ),
-    [selectedId, preferredIndex, onSelect]
+    [selectedId, preferredIndex, onSelect, onFocus]
   );
 
   return (
@@ -252,9 +266,9 @@ export default function CategorySidebar({
           showsVerticalScrollIndicator={false}
           contentContainerStyle={S.listContent}
           removeClippedSubviews={false}
-          initialNumToRender={20}
-          maxToRenderPerBatch={10}
-          windowSize={5}
+          initialNumToRender={12}
+          maxToRenderPerBatch={8}
+          windowSize={3}
           updateCellsBatchingPeriod={50}
           keyboardShouldPersistTaps="always"
           getItemLayout={(_, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}

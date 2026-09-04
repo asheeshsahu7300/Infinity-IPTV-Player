@@ -643,11 +643,11 @@ export default function SeriesDetailsScreen() {
               key={`ep-grid-${numColumns}-${selectedSeasonId}`}
               ListHeaderComponent={heroAndSeasons}
               contentContainerStyle={[S.epListContent, { paddingBottom: ph(10) }]}
-              removeClippedSubviews={Platform.OS === "android" && !isTV}
-              initialNumToRender={numColumns * 3}
-              maxToRenderPerBatch={numColumns * 2}
-              windowSize={5}
-              updateCellsBatchingPeriod={50}
+              removeClippedSubviews={Platform.OS === "android"}
+              initialNumToRender={numColumns * 2}
+              maxToRenderPerBatch={numColumns}
+              windowSize={3}
+              updateCellsBatchingPeriod={30}
               showsVerticalScrollIndicator={false}
               ListEmptyComponent={
                 <View style={{ alignItems: "center", justifyContent: "center", paddingTop: ph(5), opacity: 0.3 }}>

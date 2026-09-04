@@ -131,13 +131,23 @@ function detectNetworkQuality(type: string | null, effectiveType?: string | null
  */
 function calcNetworkCacheMs(quality: NetworkQuality, isLive: boolean, is4K: boolean): number {
   let base: number;
-  switch (quality) {
-    case "fast": base = isLive ? 1200 : 600; break;
-    case "medium": base = isLive ? 1800 : 1000; break;
-    case "slow": base = isLive ? 2500 : 1500; break;
-    default: base = isLive ? 1500 : 800; break;
+  if (isLive) {
+    switch (quality) {
+      case "fast": base = 800; break;
+      case "medium": base = 1000; break;
+      case "slow": base = 2000; break;
+      default: base = 1000; break;
+    }
+  } else {
+    // Fast start for VOD / Series on-demand playback
+    switch (quality) {
+      case "fast": base = 500; break;
+      case "medium": base = 700; break;
+      case "slow": base = 1200; break;
+      default: base = 700; break;
+    }
   }
-  return is4K ? Math.round(base * 1.25) : base;
+  return is4K ? Math.round(base * 1.5) : base;
 }
 
 /**
@@ -486,7 +496,6 @@ export default function PlayerScreen() {
    */
   const hasObservedProgressRef = useRef(false);
   const stallCountRef = useRef(0);
-  const stallWindowStartRef = useRef(Date.now());
   const brightnessPermissionRequestInProgress = useRef(false);
 
   const targetSeekPosition = useRef<number | null>(null);
@@ -584,7 +593,7 @@ export default function PlayerScreen() {
           // @ts-ignore
           vlcPlayerRef.current.pause?.();
         }
-      } catch {}
+      } catch { }
       safeStorage.removeItem("resume_player_state").catch(() => { });
       if (stablePlaybackTimerRef.current) clearTimeout(stablePlaybackTimerRef.current);
       if (liveReconnectIntervalRef.current) clearInterval(liveReconnectIntervalRef.current);
@@ -702,7 +711,6 @@ export default function PlayerScreen() {
         bufferingTimeoutRef.current = null;
       }
       setIsBuffering(false);
-      lastProgressTimeRef.current = Date.now();
       return;
     }
     if (buffering) {
@@ -721,162 +729,78 @@ export default function PlayerScreen() {
       bufferingStartedRef.current = null;
       setIsBuffering(false);
       setIsLoading(false);
-      // Advance stall clock — player is actively receiving data again
-      lastProgressTimeRef.current = Date.now();
     }
-    // `isLive` is read above, so it has to be a dependency. With an empty array
-    // this closed over whatever it was on first render — harmless while a
-    // player only ever shows one kind of content, and wrong the moment a live
-    // channel and a VOD share a mounted player.
   }, [isLive]);
 
-  // ── Portal watchdog ───────────────────────────────────────────────────────
-  //
-  // Distinct from the stall watchdog below: that one watches the picture,
-  // this one keeps the *session* alive. Stalker portals publish a
-  // `watchdog_timeout` and expect the box to check in on it; left unheard
-  // from, the portal eventually reaps the session and stops authorising
-  // further HLS segments. Nothing reports an auth failure — playback just
-  // stalls part-way through and recovers on a re-tune, which is why this
-  // reads as a buffering problem rather than a session one.
-  //
-  // Tied to having a stream rather than to being un-paused: a paused VOD
-  // still has to be able to resume, and that needs the session.
-  useEffect(() => {
-    if (!activePortal || activePortal.type !== "mag" || !streamUrl) return;
-
-    const period = portalApi.watchdogPeriodMs(activePortal);
-    // No ping on mount: create_link has only just spoken to the portal, so
-    // the session is as fresh as it gets. The first one is due a period in.
-    const id = setInterval(() => {
-      // Read the portal fresh rather than closing over it. A ping refreshes
-      // the token, which replaces the store object — so depending on that
-      // object would restart this timer on every tick, and a period longer
-      // than the gap between store writes would mean it never fired at all.
-      const current = usePortalStore.getState().activePortal;
-      if (current?.type === "mag") portalApi.watchdog(current).catch(() => { });
-    }, period);
-
-    return () => clearInterval(id);
-    // Keyed on the portal identity, not the object: see above.
-  }, [activePortal?.id, activePortal?.type, streamUrl]);
-
   /**
-   * Drives the buffering pill from whether the picture is moving.
+   * Unified Stall Watchdog & Adaptive Buffer Booster (Runs for BOTH Live and VOD)
    *
-   * It used to be driven by `isBuffering`, which comes from VLC's
-   * onBuffering events, and those turned out to be a poor proxy: VLC reports
-   * a buffer filling while frames continue to arrive perfectly well, and
-   * does not reliably send a closing event when it is done. The result was
-   * "Buffering..." pinned over playing video.
-   *
-   * `lastProgressTimeRef` is the honest signal and was already being kept
-   * current by every progress event, buffering change and reconnect — the
-   * same clock the stall watchdog below reads.
+   * 1. Detects frozen playback (e.g. silent TCP disconnects, relay hiccups, packet starvation).
+   * 2. Toggles buffering UI pill when frozen for > PILL_AFTER_STALL_MS.
+   * 3. When freeze duration exceeds the profile's stallTimeoutMs (6–15s):
+   *    - Increments stallCountRef
+   *    - Deepens bufferBoostRef (1.0 → 1.5 → 2.0 → max 3.0)
+   *    - Bumps bufferGeneration to reconstruct VLC with deeper cache
+   *    - Triggers silent retry/reconnect via handleSilentRetry
    */
   useEffect(() => {
-    if (isLive) {
-      if (showBufferingPillRef.current) {
-        showBufferingPillRef.current = false;
-        setShowBufferingPill(false);
-      }
-      return;
-    }
-
     const id = setInterval(() => {
       if (!mountedRef.current) return;
 
-      // Paused is not stalled, and neither is seeking or a stream that has
-      // not begun. Reconnecting has its own message, so leave it alone.
-      if (!isPlayingRef.current || isSeeking.current || isRetryingRef.current) {
+      // Paused is not stalled, and neither is seeking, scrubbing, or already retrying
+      if (
+        !isPlayingRef.current ||
+        isSeeking.current ||
+        isScrubbing.current ||
+        isRetryingRef.current ||
+        liveReconnectMode
+      ) {
         if (showBufferingPillRef.current) {
           showBufferingPillRef.current = false;
           setShowBufferingPill(false);
         }
         return;
       }
+
+      // Stream must have started and seen initial progress before diagnosing a stall
       if (!hasStartedPlayingRef.current || !hasObservedProgressRef.current) return;
 
       const frozenFor = Date.now() - lastProgressTimeRef.current;
-      const shouldShow = frozenFor > PILL_AFTER_STALL_MS;
-      if (showBufferingPillRef.current !== shouldShow) {
-        showBufferingPillRef.current = shouldShow;
-        setShowBufferingPill(shouldShow);
+
+      // 1. Buffering Pill (VOD UI only — live channels display reconnect indicator on info bar)
+      if (!isLive) {
+        const shouldShow = frozenFor > PILL_AFTER_STALL_MS;
+        if (showBufferingPillRef.current !== shouldShow) {
+          showBufferingPillRef.current = shouldShow;
+          setShowBufferingPill(shouldShow);
+        }
+      }
+
+      // 2. Watchdog Recovery Trigger
+      const tuning = bufferTuningRef.current;
+      const stallTimeoutMs = tuning?.stallTimeoutMs || (isLive ? 8000 : 10000);
+
+      if (frozenFor > stallTimeoutMs) {
+        console.warn(
+          `[Watchdog] ${isLive ? "Live stream" : "VOD stream"} stalled for ${Math.round(
+            frozenFor / 1000
+          )}s (timeout: ${Math.round(stallTimeoutMs / 1000)}s). Escalating buffer & reconnecting.`
+        );
+
+        stallCountRef.current += 1;
+        // Deepen buffer: 1.0 -> 1.5 -> 2.0 -> 2.5 -> max 3.0
+        bufferBoostRef.current = Math.min(3.0, Number((bufferBoostRef.current + 0.5).toFixed(1)));
+
+        // Reset progress timer so watchdog doesn't immediately double-fire while reconnecting
+        lastProgressTimeRef.current = Date.now();
+
+        // Trigger silent reconnect (which bumps bufferGeneration atomically along with the new URL)
+        handleSilentRetryRef.current();
       }
     }, 400);
 
     return () => clearInterval(id);
-  }, [isLive]);
-
-  // ── Stall watchdog ────────────────────────────────────────────────────────
-  //
-  // The single biggest cause of "it just froze" on an IPTV box. VLC does not
-  // reliably report a dead socket: onError and onStopped cover a stream that
-  // ends, but a provider that quietly stops sending data leaves the player
-  // sitting on a full decoder with no callback of any kind. Progress simply
-  // stops advancing, and without something watching for that the picture is
-  // frozen until the viewer presses a button.
-  //
-  // Both stall clocks were already being kept up to date — every progress
-  // event, every buffering change, every reconnect touches lastProgressTimeRef
-  // — but nothing ever read them. This is the reader.
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!mountedRef.current) return;
-      // Paused, seeking, already reconnecting, or offline: not a stall, and
-      // firing a reconnect in any of those states makes things worse.
-      if (!isPlayingRef.current || isSeeking.current) return;
-      if (isRetryingRef.current || isNetworkLostRef.current) return;
-      if (!hasStartedPlayingRef.current || !hasObservedProgressRef.current) return;
-
-      const since = Date.now() - lastProgressTimeRef.current;
-      // The timeout has to clear the buffer depth, or the watchdog fires while
-      // the player is legitimately filling a deep cache after a zap.
-      if (since < bufferTuningRef.current.stallTimeoutMs) return;
-
-      // Reset the clock first: the reconnect is asynchronous and this must not
-      // fire again on the next tick while it is still in flight.
-      lastProgressTimeRef.current = Date.now();
-
-      // A film or episode sitting still at its own end has not stalled — it has
-      // finished. Plenty of IPTV VOD streams never emit a clean end-of-media
-      // event and simply stop delivering, so without this the watchdog would
-      // reconnect at the end of every episode and restart it, which is also
-      // exactly what stopped auto-advance from ever being reached.
-      if (!isLive && durationRef.current > 0) {
-        const remaining = durationRef.current - positionRef.current;
-        if (remaining <= END_OF_MEDIA_MS) {
-          console.log("[Player] stopped at the end — treating as finished");
-          setIsPlaying(false);
-          handleReachedEndRef.current();
-          return;
-        }
-      }
-
-      const now = Date.now();
-      if (now - stallWindowStartRef.current > 60000) {
-        stallWindowStartRef.current = now;
-        stallCountRef.current = 0;
-      }
-      stallCountRef.current += 1;
-
-      // Three stalls in a minute means the current buffer is not deep enough
-      // for this line. Deepen it and remount, rather than reconnecting into
-      // the same conditions over and over.
-      if (stallCountRef.current >= 3 && bufferBoostRef.current < 3) {
-        bufferBoostRef.current += 1;
-        stallCountRef.current = 0;
-        console.log(`[Player] repeated stalls — raising buffer to ${bufferBoostRef.current}x`);
-        setBufferGeneration((g) => g + 1);
-        return;
-      }
-
-      console.log(`[Player] no progress for ${since}ms — reconnecting`);
-      handleSilentRetryRef.current();
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
+  }, [isLive, liveReconnectMode]);
 
   // ── Controls auto-hide ────────────────────────────────────────────────────
   const resetControlsTimeout = useCallback(() => {
@@ -1571,6 +1495,8 @@ export default function PlayerScreen() {
         setVlcSeekTarget(undefined);
         setIsBuffering(false);
         setIsLoading(true);
+        // Force VLC remount with updated cache depth / fresh connection
+        setBufferGeneration((prev) => prev + 1);
         setStreamUrl(applySameHostStreamProxy(result.url, activePortal, activeCmdRef.current));
         stopLiveReconnectLoop();
       } else {
@@ -1637,6 +1563,7 @@ export default function PlayerScreen() {
       retryCount.current = 0;
       isRetryingRef.current = false;
       stallCountRef.current = 0;
+      bufferBoostRef.current = 1;
       hasStartedPlayingRef.current = false;
       setHasStartedPlaying(false);
       hasObservedProgressRef.current = false;
@@ -1749,6 +1676,7 @@ export default function PlayerScreen() {
       retryCount.current = 0;
       isRetryingRef.current = false;
       stallCountRef.current = 0;
+      bufferBoostRef.current = 1;
       hasStartedPlayingRef.current = false;
       setHasStartedPlaying(false);
       hasObservedProgressRef.current = false;
@@ -2005,48 +1933,41 @@ export default function PlayerScreen() {
       is4K,
       bufferBoostRef.current
     );
+    const effectiveCache = isLive
+      ? Math.max(cache, is4K ? 2500 : 1000)
+      : Math.max(cache, is4K ? 1500 : 800);
     const hardwareDecode = stbEnvironment.snapshot.hardwareAcceleration !== false;
-    // Dropping the deblocking filter buys decode latency at the cost of visible
-    // artefacts, which is a trade only the "Instant" profile actually asked for.
-    const instantProfile = stbEnvironment.snapshot.bufferProfile === "instant";
 
     return [
-      `--network-caching=${cache}`,
-      `--live-caching=${cache}`,
-      `--file-caching=${isLive ? cache : Math.round(cache * 0.75)}`,
-      `--sout-mux-caching=${cache}`,
+      `--network-caching=${effectiveCache}`,
+      `--live-caching=${isLive ? effectiveCache : 0}`,
+      `--file-caching=${isLive ? effectiveCache : 800}`,
+      `--sout-mux-caching=${isLive ? effectiveCache : 0}`,
 
-      // Instant connection & DNS
-      "--ipv4",                           // Immediate IPv4 resolution
-      "--http-reconnect",                 // Reconnect without tearing the input down
-      "--http-continuous",                // Keep-alive TCP pipeline
-      "--http-user-agent=okhttp/3.12.1",
+      // Connection & Transport
+      "--http-reconnect",
       "--rtsp-tcp",
-      "--no-sub-autodetect-file",         // Skip local sub scanning for a faster start
+      "--no-sub-autodetect-file",
+      "--no-spu",
 
-      // Decode
+      // Hardware & Codec decode (native MediaCodec Direct Rendering for 4K HEVC/H.264)
       ...(hardwareDecode
-        ? ["--codec=mediacodec,avcodec", "--avcodec-hw=any"]
-        : ["--codec=avcodec", "--avcodec-hw=none"]),
-      "--avcodec-fast",
-      "--avcodec-threads=0",
-      ...(instantProfile ? ["--avcodec-skiploopfilter=4"] : []),
+        ? [
+            "--codec=mediacodec_ndk,mediacodec_jni,all",
+            "--avcodec-hw=any",
+            "--mediacodec-dr=1",
+            "--mediacodec-audio=0",
+          ]
+        : ["--codec=all", "--avcodec-hw=none"]),
+      "--avcodec-threads=0",              // Auto-detect optimal thread count for CPU
 
-      // Frame & audio sync
+      // Frame & audio sync: prevent audio underruns and video desync
       "--audio-time-stretch",
-      "--clock-jitter=5000",              // Absorb up to 5s PCR timestamp jitter without dropping audio
-      "--clock-synchro=0",               // Avoid aggressive clock sync drops on bursty IPTV feeds
+      "--drop-late-frames",
+      "--skip-frames",
+      "--no-osd",
       "--no-stats",
       "--no-video-title-show",
-
-      // Live vs VOD seek options
-      ...(isLive
-        ? [
-            "--no-input-fast-seek",
-          ]
-        : [
-            "--input-fast-seek",
-          ]),
     ];
   };
 
@@ -2213,9 +2134,6 @@ export default function PlayerScreen() {
             const currentMs = normalizeVlcTime(e.currentTime);
             const durationMs = normalizeVlcTime(e.duration);
 
-            lastProgressTimeRef.current = Date.now();
-            hasObservedProgressRef.current = true;
-
             if (currentMs > 0) {
               if (!hasStartedPlayingRef.current) {
                 hasStartedPlayingRef.current = true;
@@ -2249,6 +2167,8 @@ export default function PlayerScreen() {
 
             if (currentMs !== lastProgressPositionRef.current) {
               lastProgressPositionRef.current = currentMs;
+              lastProgressTimeRef.current = Date.now();
+              hasObservedProgressRef.current = true;
               bufferingStartedRef.current = null;
               if (isBufferingRef.current) {
                 isBufferingRef.current = false;
@@ -2310,7 +2230,7 @@ export default function PlayerScreen() {
       )}
 
       {/* TV: invisible focusable overlay to catch OK press when controls are hidden */}
-      {!showControls && !showQueueList && !showZapList && (
+      {!showControls && !showQueueList && !showZapList && !upNext && !pinTarget && (
         <Focusable
           hasTVPreferredFocus
           style={StyleSheet.absoluteFill}
@@ -2482,7 +2402,7 @@ export default function PlayerScreen() {
       )}
 
       {/* ── Controls overlay ─────────────────────────────────────────────── */}
-      {showControls && (
+      {showControls && !upNext && (
         <FocusGroup style={S.controlsOverlay}>
           {/* No header.
               Its only content was the title, which the banner at the foot of
@@ -2852,6 +2772,11 @@ function TrackSelectionModal({
   visible, title, icon, options, selected, onSelect, onClose,
   isSubtitle = false, isVideo = false,
 }: any) {
+  const hasSelectedTrack = options.some((track: any, idx: number) => {
+    const id = typeof track === "object" ? (track.id ?? track.index ?? idx) : idx;
+    return selected !== undefined && selected === id;
+  });
+
   return (
     <Overlay visible={visible} onClose={onClose} contentStyle={S.modalContent}>
       <View style={S.modalHeader}>
@@ -2871,7 +2796,7 @@ function TrackSelectionModal({
         {isVideo && (
           <Focusable
             ringOnFocus={false}
-            hasTVPreferredFocus={isVideo && selected === undefined}
+            hasTVPreferredFocus={selected === undefined || !hasSelectedTrack}
             style={[S.modalOption, selected === undefined && S.modalOptionSelected]}
             focusStyle={S.modalOptionFocused}
             onPress={() => onSelect(undefined)}
@@ -2908,10 +2833,14 @@ function TrackSelectionModal({
             const trackName = typeof track === "object"
               ? (track.title || track.language || track.name || `Track ${index + 1}`)
               : track;
+            const preferThisFocus = isVideo
+              ? isSelected
+              : (hasSelectedTrack ? isSelected : index === 0);
+
             return (
               <Focusable
                 key={index}
-                hasTVPreferredFocus={index === 0}
+                hasTVPreferredFocus={preferThisFocus}
                 ringOnFocus={false}
                 style={[S.modalOption, isSelected && S.modalOptionSelected]}
                 focusStyle={S.modalOptionFocused}
@@ -2938,7 +2867,7 @@ function TrackSelectionModal({
         {isSubtitle && (
           <Focusable
             ringOnFocus={false}
-            hasTVPreferredFocus={isSubtitle && options.length === 0}
+            hasTVPreferredFocus={selected === -1 || (options.length === 0 && !hasSelectedTrack)}
             style={[S.modalOption, selected === -1 && S.modalOptionSelected]}
             focusStyle={S.modalOptionFocused}
             onPress={() => onSelect(-1)}

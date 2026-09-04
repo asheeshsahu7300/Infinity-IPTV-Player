@@ -462,16 +462,19 @@ export class XtreamApi {
   // ============================================================
   // STREAM URL HELPERS
   // ============================================================
-  builditvUrl(streamId: string) {
-    return `${this.config.url}/itv/${this.config.username}/${this.config.password}/${streamId}.m3u8`;
+  builditvUrl(streamId: string | number, ext: string = "ts") {
+    const base = this.config.url.replace(/\/+$/, "");
+    return `${base}/live/${this.config.username}/${this.config.password}/${streamId}.${ext || "ts"}`;
   }
 
-  buildMovieUrl(streamId: string, ext: string = "mp4") {
-    return `${this.config.url}/movie/${this.config.username}/${this.config.password}/${streamId}.${ext}`;
+  buildMovieUrl(streamId: string | number, ext: string = "mp4") {
+    const base = this.config.url.replace(/\/+$/, "");
+    return `${base}/movie/${this.config.username}/${this.config.password}/${streamId}.${ext || "mp4"}`;
   }
 
-  buildSeriesUrl(streamId: string, ext: string = "mp4") {
-    return `${this.config.url}/series/${this.config.username}/${this.config.password}/${streamId}.${ext}`;
+  buildSeriesUrl(streamId: string | number, ext: string = "mp4") {
+    const base = this.config.url.replace(/\/+$/, "");
+    return `${base}/series/${this.config.username}/${this.config.password}/${streamId}.${ext || "mp4"}`;
   }
 
   // ============================================================

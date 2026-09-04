@@ -15,6 +15,7 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useIsFocused } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 
@@ -24,7 +25,7 @@ import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
-import { Focusable, FocusGroup, Overlay } from "../src/tv";
+import { Focusable, FocusGroup, Overlay, useIsFocusTrapped } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
 import { THEME, pw, ph, ps, psRaw, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
@@ -384,6 +385,8 @@ const FILTER_TABS: { id: ContentFilter; label: string; icon: keyof typeof Ionico
 export default function SearchScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isScreenFocused = useIsFocused();
+  const isFocusTrapped = useIsFocusTrapped();
   const { notify, node: dialogNode } = useDialog();
 
   const activePortal = usePortalStore((s) => s.activePortal);
@@ -757,6 +760,8 @@ export default function SearchScreen() {
                   onChangeText={setQuery}
                   autoCapitalize="none"
                   autoCorrect={false}
+                  focusable={isScreenFocused && !isFocusTrapped && !playModalVisible}
+                  editable={isScreenFocused && !isFocusTrapped && !playModalVisible}
                   returnKeyType="search"
                   onFocus={() => setSearchFocused(true)}
                   onBlur={() => setSearchFocused(false)}

@@ -181,9 +181,18 @@ export const Focusable = forwardRef<View, FocusableProps>(
         wasTrappedRef.current = true;
       } else if (wasTrappedRef.current) {
         wasTrappedRef.current = false;
-        const isLastFocusedByMemory = Boolean(screenKey && focusKey && FocusMemory.get(screenKey) === focusKey);
-        const isLastFocusedByRef = Boolean(lastFocusedRef.current && lastFocusedRef.current === nativeRef.current);
-        if (isLastFocusedByMemory || isLastFocusedByRef) {
+        const lastScreen = FocusMemory.getLastActiveScreen();
+        const isLastFocusedByMemory = Boolean(
+          screenKey &&
+          focusKey &&
+          lastScreen === screenKey &&
+          FocusMemory.get(screenKey) === focusKey
+        );
+        const isLastFocusedByRef = Boolean(
+          lastFocusedRef.current &&
+          lastFocusedRef.current === nativeRef.current
+        );
+        if (isLastFocusedByRef || isLastFocusedByMemory) {
           setRestorePulse(true);
           const timer = setTimeout(() => setRestorePulse(false), 400);
           return () => clearTimeout(timer);

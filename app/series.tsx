@@ -12,11 +12,13 @@ import {
   FlatList,
   Platform,
   InteractionManager,
+  BackHandler,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useIsFocused } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 
@@ -32,7 +34,7 @@ import CategorySidebar from "../src/components/CategorySidebar";
 import { AppBootManager } from "../src/services/AppBootManager";
 import { filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
 import { useNetworkActivity } from "../src/services/networkActivity";
-import { Focusable, FocusGroup, FocusMemory, useInitialFocusPulse } from "../src/tv";
+import { Focusable, FocusGroup, FocusMemory, useInitialFocusPulse, useIsFocusTrapped } from "../src/tv";
 import { hiddenCategories } from "../src/services/hiddenCategories";
 import { parentalControl } from "../src/services/parentalControl";
 
@@ -93,7 +95,7 @@ const S = StyleSheet.create({
   countText: { color: THEME.colors.primary, fontSize: ps(1), fontWeight: "800" },
   body: { flex: 1, flexDirection: "row" },
   gridArea: { flex: 1 },
-  list: { padding: pw(1), paddingBottom: ph(10) },
+  list: { paddingHorizontal: pw(1), paddingTop: 0, paddingBottom: ph(10) },
   cardBorder: { ...TILE_FRAME },
   cardBorderFocused: { ...TILE_FRAME_FOCUSED },
   seriesItem: { flex: 1, backgroundColor: "transparent", borderRadius: ps(1.1), overflow: "hidden" },
@@ -202,7 +204,7 @@ const SeriesItem = React.memo(function SeriesItem({
             <View style={S.seriesItem}>
               <View style={S.posterContainer}>
                 {item.logo ? (
-                  <Image source={{ uri: item.logo }} style={S.poster} contentFit="cover" cachePolicy="memory-disk" />
+                  <Image source={{ uri: item.logo }} recyclingKey={item.logo} style={S.poster} contentFit="cover" cachePolicy="memory-disk" />
                 ) : (
                   <View style={S.posterPlaceholder}>
                     <Ionicons name="tv-outline" size={ps(3)} color="rgba(255,255,255,0.15)" />
@@ -257,8 +259,82 @@ const SeriesItem = React.memo(function SeriesItem({
     prevProps.item.id === nextProps.item.id &&
     prevProps.isFocusedItem === nextProps.isFocusedItem &&
     prevProps.isFavorite === nextProps.isFavorite &&
-    prevProps.itemWidth === nextProps.itemWidth
+    prevProps.itemWidth === nextProps.itemWidth &&
+    prevProps.locked === nextProps.locked
   );
+});
+
+// ─────────────────────────────────────────────
+// Memoized Series Row (Prevents re-rendering all rows on focus change)
+// ─────────────────────────────────────────────
+interface SeriesRowProps {
+  row: { id: string; items: Series[] };
+  rowIndex: number;
+  numColumns: number;
+  itemWidth: number;
+  focusedId: string;
+  isSidebarFocused: boolean;
+  onPress: (item: Series) => void;
+  onFocus: (item: Series, index?: number) => void;
+  onFavoritePress: (item: Series) => void;
+  favorites: string[];
+  parentalVersion: number;
+}
+
+const SeriesRow = React.memo(function SeriesRow({
+  row,
+  rowIndex,
+  numColumns,
+  itemWidth,
+  focusedId,
+  isSidebarFocused,
+  onPress,
+  onFocus,
+  onFavoritePress,
+  favorites,
+}: SeriesRowProps) {
+  return (
+    <View style={{ flexDirection: "row" }}>
+      {row.items.map((seriesItem, colIndex) => {
+        const itemIndex = rowIndex * numColumns + colIndex;
+        const id = String(seriesItem.id);
+        const isTargetFocus = false;
+
+        return (
+          <SeriesItem
+            key={seriesItem.id}
+            item={seriesItem}
+            index={itemIndex}
+            onPress={onPress}
+            onFocus={onFocus}
+            onFavoritePress={onFavoritePress}
+            isFavorite={favorites.includes(seriesItem.id)}
+            itemWidth={itemWidth}
+            isFocusedItem={isTargetFocus}
+            locked={parentalControl.isRestricted("series", seriesItem)}
+          />
+        );
+      })}
+    </View>
+  );
+}, (prev, next) => {
+  if (prev.row !== next.row) return false;
+  if (prev.itemWidth !== next.itemWidth) return false;
+  if (prev.parentalVersion !== next.parentalVersion) return false;
+  if (prev.favorites !== next.favorites) {
+    const hasFavChange = next.row.items.some(
+      (s) => prev.favorites.includes(s.id) !== next.favorites.includes(s.id)
+    );
+    if (hasFavChange) return false;
+  }
+  const wasFocused = next.row.items.some((s) => String(s.id) === prev.focusedId);
+  const isFocused = next.row.items.some((s) => String(s.id) === next.focusedId);
+  if (wasFocused || isFocused) {
+    if (prev.focusedId !== next.focusedId || prev.isSidebarFocused !== next.isSidebarFocused) {
+      return false;
+    }
+  }
+  return true;
 });
 
 // ─────────────────────────────────────────────
@@ -319,6 +395,8 @@ const pickDescription = (v: any) => {
 export default function SeriesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isScreenFocused = useIsFocused();
+  const isFocusTrapped = useIsFocusTrapped();
 
   const safeGoBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -391,6 +469,7 @@ export default function SeriesScreen() {
   const trapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track last focused Series id so we can restore focus after refresh
   const focusedIdRef = useRef<string>("");
+  const isSidebarFocusedRef = useRef(true);
   const flatListRef = useRef<FlatList>(null);
   const trapFocusBriefly = useCallback(() => {
     setTrappingFocus(true);
@@ -487,30 +566,27 @@ export default function SeriesScreen() {
     prevCategoryIdRef.current = selectedCategory;
     setIsLoading(true);
     setPage(1);
-    FocusMemory.forget(SCREEN_KEY);
     focusedIdRef.current = "";
+    isSidebarFocusedRef.current = true;
+    FocusMemory.set("category-sidebar", selectedCategory);
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
 
-    const timer = setTimeout(() => {
-      if (activePortal.type === "xtream" || activePortal.type === "m3u") {
-        if (allSeriesCacheRef.current.length > 0) {
-          const filtered = filterByCategory(allSeriesCacheRef.current, selectedCategory, categories);
-          fullListRef.current = filtered;
-          const sliced = filtered.slice(0, PAGE_SIZE);
-          setDisplaySeries(sliced);
-          setHasMore(filtered.length > sliced.length);
-          setIsLoading(false);
-        } else {
-          setHasMore(true);
-          loadSeries(selectedCategory, 1, true);
-        }
+    if (activePortal.type === "xtream" || activePortal.type === "m3u") {
+      if (allSeriesCacheRef.current.length > 0) {
+        const filtered = filterByCategory(allSeriesCacheRef.current, selectedCategory, categories);
+        fullListRef.current = filtered;
+        const sliced = filtered.slice(0, PAGE_SIZE);
+        setDisplaySeries(sliced);
+        setHasMore(filtered.length > sliced.length);
+        setIsLoading(false);
       } else {
         setHasMore(true);
         loadSeries(selectedCategory, 1, true);
       }
-    }, 50);
-
-    return () => clearTimeout(timer);
+    } else {
+      setHasMore(true);
+      loadSeries(selectedCategory, 1, true);
+    }
   }, [selectedCategory, activePortal?.id]);
 
   const selectedSeriesCategoryRef = useRef(selectedCategory);
@@ -672,8 +748,12 @@ export default function SeriesScreen() {
   const handleLoadMoreRef = useRef<() => void>(() => { });
 
   const handleSeriesFocus = useCallback((item: Series, index?: number) => {
-    updateCinematicBackground(item.logo || null);
     focusedIdRef.current = String(item.id);
+    isSidebarFocusedRef.current = false;
+
+    InteractionManager.runAfterInteractions(() => {
+      updateCinematicBackground(item.logo || null);
+    });
 
     // Deferred: committing new cells while the native focus engine is still
     // resolving the key press is what makes focus land on the wrong tile.
@@ -701,29 +781,25 @@ export default function SeriesScreen() {
     toggleFavorite("series", item.id);
   }, [toggleFavorite]);
 
-  const renderRow = useCallback(({ item: row, index: rowIndex }: { item: { id: string; items: Series[] }; index: number }) => (
-    <FocusGroup style={{ flexDirection: "row" }}>
-      {row.items.map((seriesItem, colIndex) => {
-        const itemIndex = rowIndex * numColumns + colIndex;
-        return (
-          <SeriesItem
-            key={seriesItem.id}
-            item={seriesItem}
-            index={itemIndex}
-            onPress={handleSeriesPress}
-            onFocus={handleSeriesFocus}
-            onFavoritePress={handleFavoritePress}
-            isFavorite={favorites.series.includes(seriesItem.id)}
-            itemWidth={itemWidth}
-            locked={parentalControl.isRestricted("series", seriesItem)}
-          />
-        );
-      })}
-    </FocusGroup>
-    // parentalVersion is read through parentalControl rather than passed, so it
-    // has to be a dependency or a toggled lock leaves a stale padlock on screen.
+  const renderRow = useCallback(
+    ({ item: row, index: rowIndex }: { item: { id: string; items: Series[] }; index: number }) => (
+      <SeriesRow
+        row={row}
+        rowIndex={rowIndex}
+        numColumns={numColumns}
+        itemWidth={itemWidth}
+        focusedId={focusedIdRef.current}
+        isSidebarFocused={isSidebarFocusedRef.current}
+        onPress={handleSeriesPress}
+        onFocus={handleSeriesFocus}
+        onFavoritePress={handleFavoritePress}
+        favorites={favorites.series}
+        parentalVersion={parentalVersion}
+      />
+    ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [favorites.series, itemWidth, numColumns, handleSeriesPress, handleSeriesFocus, handleFavoritePress, parentalVersion]);
+    [favorites.series, itemWidth, numColumns, handleSeriesPress, handleSeriesFocus, handleFavoritePress, parentalVersion]
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -820,15 +896,17 @@ export default function SeriesScreen() {
   const chunkedSeries = useMemo(() => {
     const chunks = [];
     for (let i = 0; i < filteredSeries.length; i += numColumns) {
+      const slice = filteredSeries.slice(i, i + numColumns);
+      const rowKey = slice[0]?.id ? `r-${slice[0].id}` : `row-${i}`;
       chunks.push({
-        id: `row-${i}`,
-        items: filteredSeries.slice(i, i + numColumns),
+        id: rowKey,
+        items: slice,
       });
     }
     return chunks;
   }, [filteredSeries, numColumns]);
 
-  const ROW_HEIGHT = itemWidth * 1.5 + pw(1);
+  const ROW_HEIGHT = Math.round(itemWidth * 1.5 + pw(1) * 2);
   // No leading pad: FlatList already accounts for contentContainerStyle padding,
   // so adding it here made scrollToIndex land one pad short of the target row.
   const getItemLayout = useCallback((_: any, index: number) => ({
@@ -860,10 +938,28 @@ export default function SeriesScreen() {
   const searchInputRef = useRef<TextInput>(null);
 
   const handleCategorySelect = useCallback((catId: string) => {
+    isSidebarFocusedRef.current = false;
+    focusedIdRef.current = "";
+    FocusMemory.set("category-sidebar", catId);
     setSelectedCategory(catId);
     setSearchQuery("");
     setDebouncedQuery("");
   }, []);
+
+  const handleCategoryFocus = useCallback(() => {
+    isSidebarFocusedRef.current = true;
+  }, []);
+
+  // Back button handler: Directly return to dashboard
+  useEffect(() => {
+    const handleBack = () => {
+      safeGoBack();
+      return true;
+    };
+
+    const sub = BackHandler.addEventListener("hardwareBackPress", handleBack);
+    return () => sub.remove();
+  }, [safeGoBack]);
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
@@ -887,7 +983,15 @@ export default function SeriesScreen() {
                 placeholderTextColor="rgba(255,255,255,0.2)"
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                onFocus={() => setSearchFocused(true)}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus={false}
+                focusable={isScreenFocused && !isFocusTrapped}
+                editable={isScreenFocused && !isFocusTrapped}
+                importantForAutofill="no"
+                textContentType="none"
+                returnKeyType="search"
+                onFocus={() => { setSearchFocused(true); isSidebarFocusedRef.current = false; }}
                 onBlur={() => setSearchFocused(false)}
                 onSubmitEditing={() => setSearchFocused(false)}
               />
@@ -905,26 +1009,27 @@ export default function SeriesScreen() {
             categories={sidebarCategories}
             selectedId={selectedCategory || "all"}
             onSelect={handleCategorySelect}
+            onFocus={handleCategoryFocus}
             width={SIDEBAR_WIDTH_VAL}
             autoFocusFirst={focusSidebar}
           />
         </FocusGroup>
-        <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapUp={trappingFocus}>
-          <FlatList
-            ref={flatListRef}
+          <View style={S.gridArea}>
+            <FlatList
+              ref={flatListRef}
             data={chunkedSeries}
             renderItem={renderRow}
             keyExtractor={(item) => item.id}
             getItemLayout={getItemLayout}
             contentContainerStyle={[S.list, (isLoading || chunkedSeries.length === 0) && { flexGrow: 1 }]}
-            removeClippedSubviews={Platform.OS === "android" && !isTV}
+            removeClippedSubviews={false}
             extraData={filteredSeries.length}
-            initialNumToRender={isTV ? 8 : 6}
-            maxToRenderPerBatch={isTV ? 6 : 4}
-            windowSize={5}
+            initialNumToRender={isTV ? 4 : 4}
+            maxToRenderPerBatch={isTV ? 2 : 2}
+            windowSize={3}
             updateCellsBatchingPeriod={50}
             onEndReached={handleLoadMore}
-            onEndReachedThreshold={1.5}
+            onEndReachedThreshold={0.5}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
             ListEmptyComponent={
               busy ? (
@@ -969,7 +1074,7 @@ export default function SeriesScreen() {
               ) : null
             }
           />
-        </FocusGroup>
+        </View>
       </View>
     </View>
   );

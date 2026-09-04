@@ -107,77 +107,6 @@ function epgTimeToMs(v: any): number {
   return isNaN(parsed) ? 0 : parsed;
 }
 
-// Try converting a .ts segment URL to a plausible .m3u8 playlist URL by
-// generating candidates and probing them with HEAD requests. Returns the
-// first candidate that responds with a 2xx and looks like an HLS playlist.
-async function tryConvertToM3U8(candidateUrl: string): Promise<string | null> {
-  try {
-    if (!/^https?:\/\//i.test(candidateUrl)) return null;
-
-    // If it's already m3u8, return as-is
-    if (/\.m3u8(\?|$)/i.test(candidateUrl)) return candidateUrl;
-
-    const urlObj = new URL(candidateUrl);
-    const path = urlObj.pathname;
-
-    const candidates: string[] = [];
-
-    // 1) replace .ts => .m3u8
-    candidates.push(candidateUrl.replace(/\.ts(\?|$)/i, ".m3u8$1"));
-
-    // 2) replace last segment with index.m3u8
-    const parts = path.split("/");
-    parts[parts.length - 1] = "index.m3u8";
-    urlObj.pathname = parts.join("/");
-    candidates.push(urlObj.toString());
-
-    // 3) append index.m3u8 in same folder
-    const folder = path.replace(/\/[^/]*$/, "/");
-    urlObj.pathname = folder + "index.m3u8";
-    candidates.push(urlObj.toString());
-
-    // 4) try adding .m3u8 as query param (some providers expect ?format=m3u8)
-    candidates.push(candidateUrl + (urlObj.search ? "&" : "?") + "format=m3u8");
-
-    const probeCandidate = async (c: string): Promise<string> => {
-      try {
-        const head = await axios.head(c, { timeout: 3000 });
-        const ct = String(head.headers["content-type"] || "").toLowerCase();
-        if (
-          head.status >= 200 &&
-          head.status < 300 &&
-          (ct.includes("mpegurl") ||
-            ct.includes("vnd.apple.mpegurl") ||
-            ct.includes("text/plain") ||
-            ct.includes("application/vnd.apple.mpegurl"))
-        ) {
-          return c;
-        }
-      } catch (e) {
-        // ignore and try GET fallback
-      }
-
-      const res = await axios.get(c, {
-        timeout: 3000,
-        responseType: "text",
-        headers: { Range: "bytes=0-512" },
-      });
-      const data = String(res.data || "");
-      if (/^#EXTM3U/m.test(data) || data.includes("EXTINF") || data.includes("#EXT-X-")) {
-        return c;
-      }
-      throw new Error("Not valid m3u8");
-    };
-
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000));
-    const probePromise = Promise.any(candidates.map((c) => probeCandidate(c))).catch(() => null);
-
-    return await Promise.race([probePromise, timeoutPromise]);
-  } catch (e) {
-    // ignore
-  }
-  return null;
-}
 
 // ─── Redirect resolution ──────────────────────────────────────────────────────
 // Some Stalker/Xtream/M3U backends return a URL that itself 301/302-redirects
@@ -315,24 +244,10 @@ export function streamHeaders(
   streamUrl: string,
   portal: Portal | null | undefined
 ): Record<string, string> {
-  const out: Record<string, string> = {
+  return {
     "User-Agent": "okhttp/3.12.1",
     Accept: "*/*",
-    // HLS pulls a segment every few seconds; without this each one pays for a
-    // fresh TCP and TLS handshake.
-    Connection: "keep-alive",
   };
-
-  const portalUrl = portal?.config?.url;
-  if (!portalUrl) return out;
-
-  try {
-    out.Referer = new URL(String(portalUrl)).origin + "/c/index.html";
-  } catch {
-    // Not an absolute URL — nothing to build a Referer from.
-  }
-
-  return out;
 }
 
 /**
@@ -961,7 +876,6 @@ export const portalApi = {
 
     const handshakeData = handshake?.data?.js ?? {};
     const profileData = profile?.data?.js ?? {};
-    console.log(handshakeData, profileData)
     // Parse explicit epoch timestamp if present (expiresAt or expiry), else calculate from lifetime
     const rawEpoch = Number(
       handshakeData.expiresAt ??

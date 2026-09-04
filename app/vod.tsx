@@ -12,11 +12,13 @@ import {
   TextInput,
   Linking,  FlatList,
   InteractionManager,
+  BackHandler,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useIsFocused } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import * as IntentLauncher from "expo-intent-launcher";
@@ -34,7 +36,7 @@ import CategorySidebar from "../src/components/CategorySidebar";
 import { AppBootManager } from "../src/services/AppBootManager";
 import { filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
 import { useNetworkActivity } from "../src/services/networkActivity";
-import { Focusable, FocusGroup, Overlay, FocusMemory, useInitialFocusPulse } from "../src/tv";
+import { Focusable, FocusGroup, Overlay, FocusMemory, useInitialFocusPulse, useIsFocusTrapped } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
 import { parentalControl } from "../src/services/parentalControl";
 import { hiddenCategories } from "../src/services/hiddenCategories";
@@ -102,7 +104,7 @@ const S = StyleSheet.create({
   countText: { color: THEME.colors.primary, fontSize: ps(1), fontWeight: "800" },
   body: { flex: 1, flexDirection: "row" },
   gridArea: { flex: 1 },
-  list: { padding: pw(1), paddingBottom: ph(10) },
+  list: { paddingHorizontal: pw(1), paddingTop: 0, paddingBottom: ph(10) },
   cardBorder: { ...TILE_FRAME },
   cardBorderFocused: { ...TILE_FRAME_FOCUSED },
   vodItem: { flex: 1, backgroundColor: "transparent", borderRadius: ps(1.1), overflow: "hidden" },
@@ -362,7 +364,7 @@ const MovieItem = React.memo(function MovieItem({
             <View style={S.vodItem}>
               <View style={S.posterContainer}>
                 {item.logo ? (
-                  <Image source={{ uri: item.logo }} style={S.poster} contentFit="cover" cachePolicy="memory-disk" />
+                  <Image source={{ uri: item.logo }} recyclingKey={item.logo} style={S.poster} contentFit="cover" cachePolicy="memory-disk" />
                 ) : (
                   <View style={S.posterPlaceholder}>
                     <MaterialCommunityIcons name="movie-outline" size={ps(3)} color="rgba(255,255,255,0.15)" />
@@ -419,8 +421,87 @@ const MovieItem = React.memo(function MovieItem({
     prevProps.item.id === nextProps.item.id &&
     prevProps.isFocusedItem === nextProps.isFocusedItem &&
     prevProps.isFavorite === nextProps.isFavorite &&
-    prevProps.itemWidth === nextProps.itemWidth
+    prevProps.itemWidth === nextProps.itemWidth &&
+    prevProps.locked === nextProps.locked &&
+    prevProps.resumeVersion === nextProps.resumeVersion
   );
+});
+
+// ─────────────────────────────────────────────
+// Memoized Movie Row (Prevents re-rendering all rows on focus change)
+// ─────────────────────────────────────────────
+interface MovieRowProps {
+  row: { id: string; items: VODItem[] };
+  rowIndex: number;
+  numColumns: number;
+  itemWidth: number;
+  focusedId: string;
+  isSidebarFocused: boolean;
+  onPress: (item: VODItem) => void;
+  onFocus: (item: VODItem, index?: number) => void;
+  onFavoritePress: (item: VODItem) => void;
+  favorites: string[];
+  resumeVersion: number;
+  parentalVersion: number;
+}
+
+const MovieRow = React.memo(function MovieRow({
+  row,
+  rowIndex,
+  numColumns,
+  itemWidth,
+  focusedId,
+  isSidebarFocused,
+  onPress,
+  onFocus,
+  onFavoritePress,
+  favorites,
+  resumeVersion,
+}: MovieRowProps) {
+  return (
+    <View style={{ flexDirection: "row" }}>
+      {row.items.map((movie, colIndex) => {
+        const itemIndex = rowIndex * numColumns + colIndex;
+        const id = String(movie.id);
+        const isTargetFocus = false;
+
+        return (
+          <MovieItem
+            key={movie.id}
+            item={movie}
+            index={itemIndex}
+            onPress={onPress}
+            onFocus={onFocus}
+            onFavoritePress={onFavoritePress}
+            isFavorite={favorites.includes(movie.id)}
+            itemWidth={itemWidth}
+            isFocusedItem={isTargetFocus}
+            locked={parentalControl.isRestricted("vod", movie)}
+            resumeVersion={resumeVersion}
+          />
+        );
+      })}
+    </View>
+  );
+}, (prev, next) => {
+  if (prev.row !== next.row) return false;
+  if (prev.itemWidth !== next.itemWidth) return false;
+  if (prev.resumeVersion !== next.resumeVersion) return false;
+  if (prev.parentalVersion !== next.parentalVersion) return false;
+  if (prev.favorites !== next.favorites) {
+    const hasFavChange = next.row.items.some(
+      (m) => prev.favorites.includes(m.id) !== next.favorites.includes(m.id)
+    );
+    if (hasFavChange) return false;
+  }
+  const wasFocused = next.row.items.some((m) => String(m.id) === prev.focusedId);
+  const isFocused = next.row.items.some((m) => String(m.id) === next.focusedId);
+  if (wasFocused || isFocused) {
+    if (prev.focusedId !== next.focusedId || prev.isSidebarFocused !== next.isSidebarFocused) {
+      return false;
+    }
+  }
+  return true;
 });
 
 // ─────────────────────────────────────────────
@@ -481,6 +562,8 @@ const pickDescription = (v: any) => {
 export default function VODScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isScreenFocused = useIsFocused();
+  const isFocusTrapped = useIsFocusTrapped();
   // Errors surface through an in-tree overlay — Alert.alert does not
   // reliably appear on an Android TV release build.
   const { notify, node: dialogNode } = useDialog();
@@ -605,6 +688,7 @@ export default function VODScreen() {
   const prevCategoryIdRef = useRef<string | undefined>(undefined);
   // Track last focused VOD id so we can restore focus after refresh
   const focusedIdRef = useRef<string>("");
+  const isSidebarFocusedRef = useRef(true);
   const flatListRef = useRef<FlatList>(null);
 
   const loadCategories = useCallback(async (force = false) => {
@@ -675,32 +759,29 @@ export default function VODScreen() {
     prevCategoryIdRef.current = selectedCategory;
     setIsLoading(true);
     setPage(1);
-    FocusMemory.forget(SCREEN_KEY);
     focusedIdRef.current = "";
+    isSidebarFocusedRef.current = true;
+    FocusMemory.set("category-sidebar", selectedCategory);
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
     const cat = selectedCategory;
 
-    const timer = setTimeout(() => {
-      if (activePortal?.type === "m3u" || activePortal?.type === "xtream") {
-        if (allVodCacheRef.current.length > 0) {
-          const filtered = filterByCategory(allVodCacheRef.current, cat, categories);
-          fullListRef.current = filtered;
-          const sliced = filtered.slice(0, PAGE_SIZE);
-          setDisplayVodItems(sliced);
-          setHasMore(filtered.length > sliced.length);
-          setIsLoading(false);
-          restoreFocusPosition(sliced);
-        } else {
-          setHasMore(true);
-          loadVodItems(selectedCategory, 1, true);
-        }
+    if (activePortal?.type === "m3u" || activePortal?.type === "xtream") {
+      if (allVodCacheRef.current.length > 0) {
+        const filtered = filterByCategory(allVodCacheRef.current, cat, categories);
+        fullListRef.current = filtered;
+        const sliced = filtered.slice(0, PAGE_SIZE);
+        setDisplayVodItems(sliced);
+        setHasMore(filtered.length > sliced.length);
+        setIsLoading(false);
+        restoreFocusPosition(sliced);
       } else {
         setHasMore(true);
         loadVodItems(selectedCategory, 1, true);
       }
-    }, 50);
-
-    return () => clearTimeout(timer);
+    } else {
+      setHasMore(true);
+      loadVodItems(selectedCategory, 1, true);
+    }
   }, [selectedCategory, activePortal?.id]);
 
   const vodRequestIdRef = useRef(0);
@@ -873,8 +954,12 @@ export default function VODScreen() {
   const handleLoadMoreRef = useRef<() => void>(() => {});
 
   const handleVodFocus = useCallback((vod: VODItem, index?: number) => {
-    updateCinematicBackground(vod.logo || null);
     focusedIdRef.current = String(vod.id);
+    isSidebarFocusedRef.current = false;
+
+    InteractionManager.runAfterInteractions(() => {
+      updateCinematicBackground(vod.logo || null);
+    });
 
     // Deferred: committing new cells while the native focus engine is still
     // resolving the key press is what makes focus land on the wrong tile.
@@ -986,30 +1071,26 @@ export default function VODScreen() {
     startPlayback(streamUrl, isExternal, titleSnapshot, contentIdSnapshot);
   };
 
-  const renderRow = useCallback(({ item: row, index: rowIndex }: { item: { id: string; items: VODItem[] }; index: number }) => (
-    <FocusGroup style={{ flexDirection: "row" }}>
-      {row.items.map((movie, colIndex) => {
-        const itemIndex = rowIndex * numColumns + colIndex;
-        return (
-          <MovieItem
-            key={movie.id}
-            item={movie}
-            index={itemIndex}
-            onPress={handleVodPress}
-            onFocus={handleVodFocus}
-            onFavoritePress={handleFavoritePress}
-            isFavorite={favorites.vod.includes(movie.id)}
-            itemWidth={itemWidth}
-            locked={parentalControl.isRestricted("vod", movie)}
-            resumeVersion={resumeVersion}
-          />
-        );
-      })}
-    </FocusGroup>
-    // parentalVersion is read through parentalControl rather than passed, so it
-    // has to be a dependency or a toggled lock leaves a stale padlock on screen.
+  const renderRow = useCallback(
+    ({ item: row, index: rowIndex }: { item: { id: string; items: VODItem[] }; index: number }) => (
+      <MovieRow
+        row={row}
+        rowIndex={rowIndex}
+        numColumns={numColumns}
+        itemWidth={itemWidth}
+        focusedId={focusedIdRef.current}
+        isSidebarFocused={isSidebarFocusedRef.current}
+        onPress={handleVodPress}
+        onFocus={handleVodFocus}
+        onFavoritePress={handleFavoritePress}
+        favorites={favorites.vod}
+        resumeVersion={resumeVersion}
+        parentalVersion={parentalVersion}
+      />
+    ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [favorites.vod, itemWidth, numColumns, handleVodPress, handleVodFocus, handleFavoritePress, resumeVersion, parentalVersion]);
+    [numColumns, itemWidth, handleVodPress, handleVodFocus, handleFavoritePress, favorites.vod, resumeVersion, parentalVersion]
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1090,9 +1171,11 @@ export default function VODScreen() {
   const chunkedMovies = useMemo(() => {
     const chunks = [];
     for (let i = 0; i < filteredMovies.length; i += numColumns) {
+      const slice = filteredMovies.slice(i, i + numColumns);
+      const rowKey = slice[0]?.id ? `r-${slice[0].id}` : `row-${i}`;
       chunks.push({
-        id: `row-${i}`,
-        items: filteredMovies.slice(i, i + numColumns),
+        id: rowKey,
+        items: slice,
       });
     }
     return chunks;
@@ -1147,7 +1230,7 @@ export default function VODScreen() {
   // `hasTVPreferredFocus`, so the user moves right into the grid deliberately.
   const focusSidebar = useInitialFocusPulse(sidebarCategories.length > 0);
 
-  const ROW_HEIGHT = itemWidth * 1.5 + pw(1);
+  const ROW_HEIGHT = Math.round(itemWidth * 1.5 + pw(1) * 2);
   // No leading pad: FlatList already accounts for contentContainerStyle padding,
   // so adding it here made scrollToIndex land one pad short of the target row.
   const getItemLayout = useCallback((_: any, index: number) => ({
@@ -1157,10 +1240,36 @@ export default function VODScreen() {
   }), [ROW_HEIGHT]);
 
   const handleCategorySelect = useCallback((catId: string) => {
+    isSidebarFocusedRef.current = false;
+    focusedIdRef.current = "";
+    FocusMemory.set("category-sidebar", catId);
     setSelectedCategory(catId);
     setSearchQuery("");
     setDebouncedQuery("");
   }, []);
+
+  const handleCategoryFocus = useCallback(() => {
+    isSidebarFocusedRef.current = true;
+  }, []);
+
+  // Back button handler: Directly return to dashboard
+  useEffect(() => {
+    const handleBack = () => {
+      if (playModalVisible) {
+        setPlayModalVisible(false);
+        return true;
+      }
+      if (pinTarget) {
+        setPinTarget(null);
+        return true;
+      }
+      safeGoBack();
+      return true;
+    };
+
+    const sub = BackHandler.addEventListener("hardwareBackPress", handleBack);
+    return () => sub.remove();
+  }, [playModalVisible, pinTarget, safeGoBack]);
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
@@ -1186,7 +1295,15 @@ export default function VODScreen() {
                   placeholderTextColor="rgba(255,255,255,0.2)"
                   value={searchQuery}
                   onChangeText={setSearchQuery}
-                  onFocus={() => setSearchFocused(true)}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoFocus={false}
+                  focusable={isScreenFocused && !isFocusTrapped && !playModalVisible && !pinTarget}
+                  editable={isScreenFocused && !isFocusTrapped && !playModalVisible && !pinTarget}
+                  importantForAutofill="no"
+                  textContentType="none"
+                  returnKeyType="search"
+                  onFocus={() => { setSearchFocused(true); isSidebarFocusedRef.current = false; }}
                   onBlur={() => setSearchFocused(false)}
                   onSubmitEditing={() => setSearchFocused(false)}
                 />
@@ -1204,11 +1321,12 @@ export default function VODScreen() {
               categories={sidebarCategories}
               selectedId={selectedCategory || "all"}
               onSelect={handleCategorySelect}
+              onFocus={handleCategoryFocus}
               width={SIDEBAR_WIDTH_VAL}
               autoFocusFirst={focusSidebar}
             />
           </FocusGroup>
-          <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapUp={trappingFocus}>
+          <View style={S.gridArea}>
             <FlatList
               ref={flatListRef}
               data={chunkedMovies}
@@ -1216,14 +1334,14 @@ export default function VODScreen() {
               keyExtractor={(item) => item.id}
               getItemLayout={getItemLayout}
               contentContainerStyle={[S.list, (isLoading || chunkedMovies.length === 0) && { flexGrow: 1 }]}
-              removeClippedSubviews={Platform.OS === "android" && !isTV}
+              removeClippedSubviews={false}
               extraData={filteredMovies.length}
-              initialNumToRender={isTV ? 8 : 6}
-              maxToRenderPerBatch={isTV ? 6 : 4}
-              windowSize={5}
+              initialNumToRender={isTV ? 4 : 4}
+              maxToRenderPerBatch={isTV ? 2 : 2}
+              windowSize={3}
               updateCellsBatchingPeriod={50}
               onEndReached={handleLoadMore}
-              onEndReachedThreshold={1.5}
+              onEndReachedThreshold={0.5}
               refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
               ListEmptyComponent={
                 busy ? (
@@ -1268,7 +1386,7 @@ export default function VODScreen() {
                 ) : null
               }
             />
-          </FocusGroup>
+          </View>
         </View>
       </View>
 

@@ -110,12 +110,12 @@ export function UpNextCard({
             <View style={[S.fill, { width: `${Math.round(progress * 100)}%` }]} />
           </View>
 
-          <FocusGroup style={S.actions}>
+          <FocusGroup style={S.actions} trapDown trapUp trapLeft trapRight>
             {/* Cancel takes focus: playing already happens on its own, so the
                 button worth having under the cursor is the one that stops it. */}
             <Focusable
               ringOnFocus={false}
-              hasTVPreferredFocus
+              hasTVPreferredFocus={true}
               onPress={onCancel}
               style={S.actionWrapper}
               accessibilityLabel="Stay on this episode"

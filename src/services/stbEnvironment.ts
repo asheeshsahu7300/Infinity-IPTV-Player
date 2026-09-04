@@ -53,22 +53,22 @@ export const BUFFER_PROFILES: Record<BufferProfile, BufferTuning & { label: stri
   instant: {
     label: "Instant",
     detail: "Fastest channel change. Needs a steady connection.",
-    liveCacheMs: 1000,
-    vodCacheMs: 800,
+    liveCacheMs: 600,
+    vodCacheMs: 500,
     stallTimeoutMs: 10000,
   },
   balanced: {
     label: "Balanced",
     detail: "Fast zapping with enough buffer to absorb minor network variance.",
-    liveCacheMs: 2500,
-    vodCacheMs: 1500,
+    liveCacheMs: 1000,
+    vodCacheMs: 800,
     stallTimeoutMs: 14000,
   },
   smooth: {
     label: "Smooth",
     detail: "Deepest buffer. Best on Wi-Fi or a congested line.",
-    liveCacheMs: 4000,
-    vodCacheMs: 3000,
+    liveCacheMs: 2500,
+    vodCacheMs: 2000,
     stallTimeoutMs: 20000,
   },
 };

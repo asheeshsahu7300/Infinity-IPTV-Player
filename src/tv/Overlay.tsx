@@ -63,20 +63,6 @@ export function Overlay({
   const [render, setRender] = React.useState(visible);
   const overlayController = useOverlayFocusController(axis);
   const reduceMotion = useReducedMotion();
-  const contentRef = React.useRef<View>(null);
-  const [destinations, setDestinations] = React.useState<any[]>([]);
-
-  React.useEffect(() => {
-    if (visible && contentRef.current) {
-      const handle = findNodeHandle(contentRef.current);
-      if (handle) {
-        setDestinations([handle]);
-      }
-    } else {
-      setDestinations([]);
-    }
-  }, [visible]);
-
   // Hardware back button handler
   React.useEffect(() => {
     if (!visible || !closeOnBack) return;
@@ -192,8 +178,6 @@ export function Overlay({
   return (
     <TVFocusGuideView
       style={styles.root}
-      autoFocus
-      destinations={destinations}
       trapFocusUp={trapFocus && visible}
       trapFocusDown={trapFocus && visible}
       trapFocusLeft={trapFocus && visible}
@@ -210,7 +194,7 @@ export function Overlay({
           }}
         />
         <InsideOverlayContext.Provider value={overlayController}>
-          <View ref={contentRef} style={[styles.content, contentStyle]}>
+          <View style={[styles.content, contentStyle]}>
             {children}
           </View>
         </InsideOverlayContext.Provider>

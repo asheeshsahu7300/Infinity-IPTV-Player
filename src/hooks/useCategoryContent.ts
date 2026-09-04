@@ -37,11 +37,25 @@ export function filterByCategory<T extends CategorizedItem>(
   if (isAllCategory(categoryId)) return items;
 
   const target = String(categoryId);
-  const match = categories.find((c) => String(c.id) === target);
-  const matchName = match?.name.toLowerCase();
+  const rawTarget = target.includes(":") ? target.split(":")[1] : target;
+  const match = categories.find(
+    (c) => String(c.id) === target || String(c.id) === rawTarget || String(c.id).split(":")[1] === rawTarget
+  );
+  const matchName = match?.name?.toLowerCase();
 
   return items.filter((item) => {
-    if (String(item.categoryId ?? "") === target) return true;
+    const itemCatId = String(item.categoryId ?? "");
+    const rawItemCatId = itemCatId.includes(":") ? itemCatId.split(":")[1] : itemCatId;
+
+    if (
+      itemCatId === target ||
+      itemCatId === rawTarget ||
+      rawItemCatId === target ||
+      (rawTarget && rawItemCatId === rawTarget)
+    ) {
+      return true;
+    }
+
     if (matchName && item.category?.toLowerCase() === matchName) return true;
     return false;
   });

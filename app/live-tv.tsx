@@ -12,11 +12,13 @@ import {
   FlatList,
   Platform,
   InteractionManager,
+  BackHandler,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useIsFocused } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 
@@ -30,7 +32,7 @@ import { THEME, pw, ph, ps, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/
 import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import CategorySidebar from "../src/components/CategorySidebar";
-import { Focusable, FocusGroup, FocusMemory, STB_PRIORITY, useInitialFocusPulse, useStbKeys } from "../src/tv";
+import { Focusable, FocusGroup, FocusMemory, STB_PRIORITY, useInitialFocusPulse, useStbKeys, useIsFocusTrapped } from "../src/tv";
 import { useNetworkActivity } from "../src/services/networkActivity";
 import { AppBootManager } from "../src/services/AppBootManager";
 import { filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
@@ -63,7 +65,6 @@ const ChannelCard = React.memo(function ChannelCard({
   itemWidth,
   channelNumber,
   locked,
-  epgVersion,
 }: {
   item: Channel;
   index?: number;
@@ -74,13 +75,6 @@ const ChannelCard = React.memo(function ChannelCard({
   itemWidth: number;
   channelNumber?: number;
   locked?: boolean;
-  /**
-   * Bumped by the screen whenever the guide index changes. The card reads
-   * now/next synchronously below rather than subscribing: a hundred tiles each
-   * holding their own EPG subscription is a hundred listeners firing on every
-   * guide update, for data one shared read already has.
-   */
-  epgVersion: number;
 }) {
   const handlePress = useCallback(() => {
     onPress(item);
@@ -93,12 +87,6 @@ const ChannelCard = React.memo(function ChannelCard({
   const handleLongPress = useCallback(() => {
     onLongPress?.(item);
   }, [onLongPress, item]);
-
-  const nowNext: NowNext = useMemo(
-    () => epgService.nowNext(item),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [item.id, epgVersion]
-  );
 
   return (
     <View style={{ width: itemWidth, padding: pw(0.6) }}>
@@ -122,17 +110,10 @@ const ChannelCard = React.memo(function ChannelCard({
               focused && { transform: [{ scale: 1.06 }] }
             ]}
           >
-            {/* The gradient no longer goes transparent on focus.
-                It had to before, because the wrapper turned solid white and
-                the card's whole content inverted to black against it. Focus is
-                the shared TILE_FRAME edge now — the same one the VOD and
-                Series posters use — so the card keeps its own colours and
-                every one of those inversions is gone with it. */}
             <LinearGradient
               colors={["rgba(255,255,255,0.05)", "rgba(255,255,255,0.01)"]}
               style={[S.card, { overflow: "hidden" }]}
             >
-              {/* Channel number — what the numeric tuner dials. */}
               {channelNumber ? (
                 <View style={S.cardNumber}>
                   <Text style={S.cardNumberText}>{channelNumber}</Text>
@@ -147,31 +128,14 @@ const ChannelCard = React.memo(function ChannelCard({
 
               <View style={S.cardLogoWrapper}>
                 {item.logo ? (
-                  <Image source={{ uri: item.logo }} style={S.cardLogo} contentFit="contain" cachePolicy="memory-disk" />
+                  <Image source={{ uri: item.logo }} recyclingKey={item.logo} style={S.cardLogo} contentFit="contain" cachePolicy="memory-disk" />
                 ) : (
                   <Ionicons name="tv-outline" size={ps(2)} color="rgba(255,255,255,0.15)" />
                 )}
               </View>
               <View style={S.cardInfo}>
                 <Text style={S.cardTitle} numberOfLines={1}>{item.name}</Text>
-
-                {/* What is on now, with how far through it is. The category is
-                    only worth the line when there is no guide to show. */}
-                {nowNext.now ? (
-                  <>
-                    <Text style={S.cardNow} numberOfLines={1}>
-                      {nowNext.now.title}
-                    </Text>
-                    <View style={S.cardProgressTrack}>
-                      <View
-                        style={[
-                          S.cardProgressFill,
-                          { width: `${Math.round(nowNext.progress * 100)}%` },
-                        ]}
-                      />
-                    </View>
-                  </>
-                ) : item.category ? (
+                {item.category ? (
                   <Text style={S.cardCategory} numberOfLines={1}>{item.category}</Text>
                 ) : null}
               </View>
@@ -187,9 +151,79 @@ const ChannelCard = React.memo(function ChannelCard({
     prevProps.isFocusedItem === nextProps.isFocusedItem &&
     prevProps.itemWidth === nextProps.itemWidth &&
     prevProps.channelNumber === nextProps.channelNumber &&
-    prevProps.locked === nextProps.locked &&
-    prevProps.epgVersion === nextProps.epgVersion
+    prevProps.locked === nextProps.locked
   );
+});
+
+// ─────────────────────────────────────────────
+// Memoized Channel Row (Prevents re-rendering all rows on focus change)
+// ─────────────────────────────────────────────
+interface ChannelRowProps {
+  row: { id: string; items: Channel[] };
+  rowIndex: number;
+  numColumns: number;
+  itemWidth: number;
+  focusedId: string;
+  isSidebarFocused: boolean;
+  tunedFocusId: string | null;
+  onPress: (item: Channel) => void;
+  onLongPress: (item: Channel) => void;
+  onFocus: (item: Channel, index?: number) => void;
+  channelNumbers: Map<string, number>;
+  parentalVersion: number;
+}
+
+const ChannelRow = React.memo(function ChannelRow({
+  row,
+  rowIndex,
+  numColumns,
+  itemWidth,
+  focusedId,
+  isSidebarFocused,
+  tunedFocusId,
+  onPress,
+  onLongPress,
+  onFocus,
+  channelNumbers,
+}: ChannelRowProps) {
+  return (
+    <View style={S.gridRow}>
+      {row.items.map((channel, colIndex) => {
+        const itemIndex = rowIndex * numColumns + colIndex;
+        const id = String(channel.id);
+        const isTargetFocus = tunedFocusId === id;
+
+        return (
+          <ChannelCard
+            key={channel.id}
+            item={channel}
+            index={itemIndex}
+            itemWidth={itemWidth}
+            channelNumber={channel.num && channel.num > 0 ? channel.num : channelNumbers.get(id)}
+            locked={parentalControl.isChannelRestricted(channel)}
+            isFocusedItem={isTargetFocus}
+            onPress={onPress}
+            onLongPress={onLongPress}
+            onFocus={onFocus}
+          />
+        );
+      })}
+    </View>
+  );
+}, (prev, next) => {
+  if (prev.row !== next.row) return false;
+  if (prev.itemWidth !== next.itemWidth) return false;
+  if (prev.parentalVersion !== next.parentalVersion) return false;
+  if (prev.tunedFocusId !== next.tunedFocusId) return false;
+
+  const wasFocused = next.row.items.some((c) => String(c.id) === prev.focusedId);
+  const isFocused = next.row.items.some((c) => String(c.id) === next.focusedId);
+  if (wasFocused || isFocused) {
+    if (prev.focusedId !== next.focusedId || prev.isSidebarFocused !== next.isSidebarFocused) {
+      return false;
+    }
+  }
+  return true;
 });
 
 // ─────────────────────────────────────────────
@@ -198,6 +232,8 @@ const ChannelCard = React.memo(function ChannelCard({
 export default function LiveTVScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isScreenFocused = useIsFocused();
+  const isFocusTrapped = useIsFocusTrapped();
 
   const safeGoBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -245,6 +281,7 @@ export default function LiveTVScreen() {
   const searchInputRef = useRef<TextInput>(null);
   // Track last focused channel id so we can restore focus after refresh
   const focusedIdRef = useRef<string>("");
+  const isSidebarFocusedRef = useRef(true);
   const flatListRef = useRef<FlatList>(null);
 
   // ── Set-top-box layer ─────────────────────────────────────────────────────
@@ -555,37 +592,33 @@ export default function LiveTVScreen() {
     setPage(1);
     prevCategoryIdRef.current = selectedCategory;
     focusedIdRef.current = "";
-    // A remembered tile from the previous category is not in the new list.
-    FocusMemory.forget(SCREEN_KEY);
+    isSidebarFocusedRef.current = true;
+    FocusMemory.set("category-sidebar", selectedCategory);
     // Focus stays in the sidebar on a category switch, so nothing else scrolls
     // the grid back up — do it here, or the new category renders half-scrolled
     // at wherever the previous one was left.
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
 
-    const timer = setTimeout(() => {
-      if (activePortal.type === "xtream" || activePortal.type === "m3u") {
-        if (allChannelsCacheRef.current.length > 0) {
-          const filtered = filterByCategory(
-            allChannelsCacheRef.current,
-            selectedCategory,
-            storeCategories
-          );
-          fullListRef.current = filtered;
-          const sliced = filtered.slice(0, PAGE_SIZE);
-          setDisplayChannels(sliced);
-          setHasMore(filtered.length > sliced.length);
-          setIsLoading(false);
-        } else {
-          setHasMore(true);
-          loadChannels(selectedCategory, 1, true);
-        }
+    if (activePortal.type === "xtream" || activePortal.type === "m3u") {
+      if (allChannelsCacheRef.current.length > 0) {
+        const filtered = filterByCategory(
+          allChannelsCacheRef.current,
+          selectedCategory,
+          storeCategories
+        );
+        fullListRef.current = filtered;
+        const sliced = filtered.slice(0, PAGE_SIZE);
+        setDisplayChannels(sliced);
+        setHasMore(filtered.length > sliced.length);
+        setIsLoading(false);
       } else {
         setHasMore(true);
         loadChannels(selectedCategory, 1, true);
       }
-    }, 50);
-
-    return () => clearTimeout(timer);
+    } else {
+      setHasMore(true);
+      loadChannels(selectedCategory, 1, true);
+    }
   }, [selectedCategory]);
 
   /**
@@ -693,26 +726,33 @@ export default function LiveTVScreen() {
 
   const totalCountRef = useRef(0);
   const onEndReachedRef = useRef<() => void>(() => { });
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const focusedChannelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleChannelFocus = useCallback((channel: Channel, index?: number) => {
-    updateCinematicBackground(channel.logo || null);
     focusedIdRef.current = String(channel.id);
-    setFocusedChannel(channel);
+    isSidebarFocusedRef.current = false;
     // The pulse has done its job once the tile it named actually has focus.
     setTunedFocusId((prev) => (prev === String(channel.id) ? null : prev));
 
-    // Warm the guide around the cursor rather than for the whole list: on
-    // Xtream each channel is its own request, and prefetching ten thousand of
-    // them would be a denial-of-service against the provider.
-    //
-    // Read live rather than captured — this callback deliberately keeps empty
-    // deps so the grid is not rebuilt on every focus change, and a captured
-    // portal would still be null from the first render.
-    const portal = usePortalStore.getState().activePortal;
-    if (portal && index !== undefined) {
-      const source = fullListRef.current.length ? fullListRef.current : displayChannelsRef.current;
-      epgService.prefetch(portal, source.slice(Math.max(0, index - 4), index + 12));
-    }
+    if (focusedChannelTimerRef.current) clearTimeout(focusedChannelTimerRef.current);
+    focusedChannelTimerRef.current = setTimeout(() => {
+      setFocusedChannel(channel);
+    }, 80);
+
+    InteractionManager.runAfterInteractions(() => {
+      updateCinematicBackground(channel.logo || null);
+    });
+
+    // Debounce prefetching so rapid D-pad moves don't saturate network / JS thread
+    if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current);
+    prefetchTimerRef.current = setTimeout(() => {
+      const portal = usePortalStore.getState().activePortal;
+      if (portal && index !== undefined) {
+        const source = fullListRef.current.length ? fullListRef.current : displayChannelsRef.current;
+        epgService.prefetch(portal, source.slice(Math.max(0, index - 4), index + 12));
+      }
+    }, 250);
 
     // Growing the list synchronously inside a focus handler makes React commit
     // new cells while the native focus engine is still resolving the key press,
@@ -727,13 +767,14 @@ export default function LiveTVScreen() {
     if (!focusedIdRef.current || !flatListRef.current) return;
     const idx = list.findIndex(c => String(c.id) === focusedIdRef.current);
     if (idx > 0) {
+      const rowIndex = Math.floor(idx / numColumns);
       setTimeout(() => {
         try {
-          flatListRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.3 });
+          flatListRef.current?.scrollToIndex({ index: rowIndex, animated: false, viewPosition: 0.3 });
         } catch { /* ignore if out of range */ }
       }, 120);
     }
-  }, []);
+  }, [numColumns]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -791,7 +832,7 @@ export default function LiveTVScreen() {
       return storeChannels;
     }
     return displayChannels;
-  }, [storeChannels, displayChannels]);
+  }, [storeChannels.length, displayChannels.length]);
 
   const channelNumbers = useMemo(
     () => buildChannelNumbers(allChannelsPool),
@@ -888,6 +929,26 @@ export default function LiveTVScreen() {
     { enabled: !pinTarget, priority: STB_PRIORITY.SCREEN }
   );
 
+  // Back button handler: Directly return to dashboard
+  useEffect(() => {
+    const handleBack = () => {
+      if (pinTarget || lockTarget) {
+        setPinTarget(null);
+        setLockTarget(null);
+        return true;
+      }
+      if (tuner.entry) {
+        tuner.cancel();
+        return true;
+      }
+      safeGoBack();
+      return true;
+    };
+
+    const sub = BackHandler.addEventListener("hardwareBackPress", handleBack);
+    return () => sub.remove();
+  }, [pinTarget, lockTarget, tuner, safeGoBack]);
+
   const tunerName = tuner.entry ? numberToChannel.get(Number(tuner.entry))?.name ?? null : null;
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -954,9 +1015,11 @@ export default function LiveTVScreen() {
   const chunkedChannels = useMemo(() => {
     const chunks = [];
     for (let i = 0; i < filteredChannels.length; i += numColumns) {
+      const slice = filteredChannels.slice(i, i + numColumns);
+      const rowKey = slice[0]?.id ? `r-${slice[0].id}` : `row-${i}`;
       chunks.push({
-        id: `row-${i}`,
-        items: filteredChannels.slice(i, i + numColumns),
+        id: rowKey,
+        items: slice,
       });
     }
     return chunks;
@@ -1015,32 +1078,23 @@ export default function LiveTVScreen() {
 
   const renderRow = useCallback(
     ({ item: row, index: rowIndex }: { item: { id: string; items: Channel[] }; index: number }) => (
-      <FocusGroup style={S.gridRow}>
-        {row.items.map((channel, colIndex) => {
-          const itemIndex = rowIndex * numColumns + colIndex;
-          const id = String(channel.id);
-          return (
-            <ChannelCard
-              key={channel.id}
-              item={channel}
-              index={itemIndex}
-              itemWidth={itemWidth}
-              channelNumber={channel.num && channel.num > 0 ? channel.num : channelNumbers.get(id)}
-              locked={parentalControl.isChannelRestricted(channel)}
-              epgVersion={epgVersion}
-              isFocusedItem={tunedFocusId === id}
-              onPress={handleChannelPress}
-              onLongPress={handleChannelLongPress}
-              onFocus={handleChannelFocus}
-            />
-          );
-        })}
-      </FocusGroup>
+      <ChannelRow
+        row={row}
+        rowIndex={rowIndex}
+        numColumns={numColumns}
+        itemWidth={itemWidth}
+        focusedId={focusedIdRef.current}
+        isSidebarFocused={isSidebarFocusedRef.current}
+        tunedFocusId={tunedFocusId}
+        onPress={handleChannelPress}
+        onLongPress={handleChannelLongPress}
+        onFocus={handleChannelFocus}
+        channelNumbers={channelNumbers}
+        parentalVersion={parentalVersion}
+      />
     ),
-    // parentalVersion is read through parentalControl rather than passed, so it
-    // has to be a dependency or toggling a lock leaves stale padlocks on screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [itemWidth, numColumns, handleChannelPress, handleChannelLongPress, handleChannelFocus, channelNumbers, epgVersion, tunedFocusId, parentalVersion]
+    [itemWidth, numColumns, handleChannelPress, handleChannelLongPress, handleChannelFocus, channelNumbers, tunedFocusId, parentalVersion]
   );
 
   // The info bar tracks the cursor. Passing the portal opts this one channel
@@ -1057,9 +1111,16 @@ export default function LiveTVScreen() {
   );
 
   const handleCategorySelect = useCallback((catId: string) => {
+    isSidebarFocusedRef.current = false;
+    focusedIdRef.current = "";
+    FocusMemory.set("category-sidebar", catId);
     setSelectedCategory(catId);
     setSearchQuery("");
     setDebouncedQuery("");
+  }, []);
+
+  const handleCategoryFocus = useCallback(() => {
+    isSidebarFocusedRef.current = true;
   }, []);
 
   return (
@@ -1090,8 +1151,13 @@ export default function LiveTVScreen() {
                 onChangeText={setSearchQuery}
                 autoCapitalize="none"
                 autoCorrect={false}
+                autoFocus={false}
+                focusable={isScreenFocused && !isFocusTrapped && !pinTarget && !lockTarget}
+                editable={isScreenFocused && !isFocusTrapped && !pinTarget && !lockTarget}
+                importantForAutofill="no"
+                textContentType="none"
                 returnKeyType="search"
-                onFocus={() => setSearchFocused(true)}
+                onFocus={() => { setSearchFocused(true); isSidebarFocusedRef.current = false; }}
                 onBlur={() => setSearchFocused(false)}
                 onSubmitEditing={() => setSearchFocused(false)}
               />
@@ -1121,25 +1187,26 @@ export default function LiveTVScreen() {
             categories={sidebarCategories}
             selectedId={selectedCategory || "all"}
             onSelect={handleCategorySelect}
+            onFocus={handleCategoryFocus}
             width={SIDEBAR_WIDTH}
             autoFocusFirst={focusSidebar}
           />
         </FocusGroup>
 
         {/* Right channel grid */}
-        <FocusGroup style={S.gridArea} trapLeft={trappingFocus} trapUp={trappingFocus}>
+        <View style={S.gridArea}>
           <FlatList
             data={chunkedChannels}
             keyExtractor={(item) => item.id}
             getItemLayout={getItemLayout}
             onEndReached={onEndReached}
             onEndReachedThreshold={0.5}
-            removeClippedSubviews={Platform.OS === "android" && !isTV}
+            removeClippedSubviews={false}
             contentContainerStyle={[S.gridContent, (isLoading || chunkedChannels.length === 0) && { flexGrow: 1 }]}
             extraData={filteredChannels.length}
-            initialNumToRender={isTV ? 8 : 6}
-            maxToRenderPerBatch={isTV ? 6 : 4}
-            windowSize={5}
+            initialNumToRender={isTV ? 4 : 4}
+            maxToRenderPerBatch={isTV ? 2 : 2}
+            windowSize={3}
             updateCellsBatchingPeriod={50}
             ref={flatListRef}
             renderItem={renderRow}
@@ -1195,7 +1262,7 @@ export default function LiveTVScreen() {
               />
             }
           />
-        </FocusGroup>
+        </View>
       </View>
 
       {/* ─── STB channel banner ─── */}
@@ -1359,7 +1426,8 @@ const S = StyleSheet.create({
 
   // ── Cards ──
   gridContent: {
-    padding: pw(1.5),
+    paddingHorizontal: pw(1.5),
+    paddingTop: 0,
     paddingBottom: ph(4),
   },
   gridRow: {
