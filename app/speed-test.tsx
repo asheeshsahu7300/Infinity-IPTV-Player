@@ -10,8 +10,7 @@
 // that would help, rather than leaving the viewer to find that setting.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { usePortalStore } from "../src/store/portalStore";
@@ -24,8 +23,12 @@ import {
 } from "../src/services/speedTest";
 import { BUFFER_PROFILES, stbEnvironment } from "../src/services/stbEnvironment";
 import { CinematicBackground } from "../src/components/CinematicBackground";
-import { THEME, ph, ps, pw } from "../src/theme/tokens";
+import { THEME, ph, psRaw as ps, pw } from "../src/theme/tokens";
 import { Focusable, FocusGroup } from "../src/tv";
+import { AlertCircle, RefreshCw, SlidersHorizontal , LucideIcon} from 'lucide-react-native';
+import { DynamicIcon } from '../src/components/DynamicIcon';
+import { Text } from '../src/components/Text';
+
 
 const GRADE_COLOR: Record<string, string> = {
   excellent: "#4ade80",
@@ -40,14 +43,14 @@ function Stat({
   value,
   hint,
 }: {
-  icon: React.ComponentProps<typeof Ionicons>["name"];
+  icon: string;
   label: string;
   value: string;
   hint?: string;
 }) {
   return (
     <View style={S.stat}>
-      <Ionicons name={icon} size={ps(1.6)} color="rgba(255,255,255,0.35)" />
+      <DynamicIcon name={icon} size={ps(1.6)} color="rgba(255,255,255,0.35)" />
       <Text style={S.statLabel}>{label}</Text>
       <Text style={S.statValue}>{value}</Text>
       {hint ? <Text style={S.statHint}>{hint}</Text> : null}
@@ -208,7 +211,7 @@ export default function SpeedTestScreen() {
 
         {error ? (
           <View style={S.errorBox}>
-            <Ionicons name="alert-circle-outline" size={ps(1.6)} color="#f87171" />
+            <AlertCircle size={ps(1.6)} color="#f87171" />
             <Text style={S.errorText}>{error}</Text>
           </View>
         ) : null}
@@ -228,7 +231,7 @@ export default function SpeedTestScreen() {
                 {running ? (
                   <ActivityIndicator size="small" color={focused ? "#000" : "#fff"} />
                 ) : (
-                  <Ionicons name="refresh" size={ps(1.4)} color={focused ? "#000" : "#fff"} />
+                  <RefreshCw size={ps(1.4)} color={focused ? "#000" : "#fff"} />
                 )}
                 <Text style={[S.actionText, focused && S.actionTextFocused]}>
                   {running ? "TESTING…" : "RUN AGAIN"}
@@ -248,7 +251,7 @@ export default function SpeedTestScreen() {
             >
               {(focused) => (
                 <View style={[S.action, focused && S.actionFocused]}>
-                  <Ionicons name="options-outline" size={ps(1.4)} color={focused ? "#000" : "#fff"} />
+                  <SlidersHorizontal size={ps(1.4)} color={focused ? "#000" : "#fff"} />
                   <Text style={[S.actionText, focused && S.actionTextFocused]}>
                     USE SMOOTH BUFFER
                   </Text>
@@ -269,11 +272,15 @@ export default function SpeedTestScreen() {
 const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: THEME.colors.background },
 
-  header: { paddingHorizontal: pw(4), paddingTop: ph(2) },
-  headerTitle: { color: "#fff", fontSize: ps(2), fontWeight: "900" },
-  headerSubtitle: { color: THEME.colors.textDim, fontSize: ps(1), marginTop: ph(0.4) },
+  header: {
+    paddingHorizontal: pw(8),
+    paddingTop: ph(5),
+    paddingBottom: ph(1),
+  },
+  headerTitle: { color: "#fff", fontSize: ps(2.2), fontWeight: "900", letterSpacing: 0.5 },
+  headerSubtitle: { color: THEME.colors.textDim, fontSize: ps(1.1), marginTop: ph(0.6) },
 
-  scroll: { paddingHorizontal: pw(4), paddingBottom: ph(6), gap: ph(2.4) },
+  scroll: { paddingHorizontal: pw(8), paddingBottom: ph(8), gap: ph(2.4) },
 
   headline: { alignItems: "center", paddingTop: ph(3), gap: ph(0.6) },
   headlineValue: {

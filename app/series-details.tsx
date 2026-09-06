@@ -1,19 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,  Linking,
-  Platform,
-  TouchableOpacity,
-  Dimensions,
-  StatusBar,
-  ActivityIndicator,
-  FlatList,
-} from "react-native";
+import { View, StyleSheet, ScrollView, Linking, Platform, TouchableOpacity, Dimensions, StatusBar, ActivityIndicator, FlatList } from 'react-native';
 import { Image } from "expo-image";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -24,7 +12,6 @@ import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
-import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
@@ -37,6 +24,9 @@ import MetaFacts from "../src/components/MetaFacts";
 import { mergeMeta } from "../src/services/metaText";
 import { formatRuntime } from "../src/utils/duration";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
+import { Check, ExternalLink, Library, Play, Star, Tv, MonitorOff, X , PlayCircle} from 'lucide-react-native';
+import { Text } from '../src/components/Text';
+
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -45,6 +35,17 @@ const cleanMeta = (s?: string | null) => {
   const lower = s.trim().toLowerCase();
   if (lower === "n/a" || lower === "na" || lower === "null" || lower === "undefined" || lower === "0") return "";
   return s.trim();
+};
+
+const formatRating = (val?: string | number | null) => {
+  if (!val) return "";
+  const s = String(val).trim();
+  const lower = s.toLowerCase();
+  if (lower === "0" || lower === "0.0" || lower === "null" || lower === "undefined" || lower === "n/a") return "";
+  const num = parseFloat(s);
+  return !isNaN(num) && num > 0
+    ? (Number.isInteger(num) ? num.toFixed(1) : String(Math.round(num * 10) / 10))
+    : s;
 };
 
 // ─────────────────────────────────────────────
@@ -101,10 +102,10 @@ const EpisodeTile = React.memo(function EpisodeTile({
     epName.toLowerCase() === `${epNum}`.toLowerCase();
 
   const titleText = isGeneric ? `Episode ${epNum}` : epName;
-  const subtitleText = [runtime, airDate].filter(Boolean).join(" · ") || (isGeneric ? "" : `Episode ${epNum}`);
+  const posterHeight = Math.round((itemWidth - 10) * 1.45);
 
   return (
-    <View style={{ width: itemWidth, padding: pw(0.8), overflow: "visible" }}>
+    <View style={[S.episodeItemWrapper, { width: itemWidth }]}>
       <Focusable
         onPress={onPress}
         onFocus={() => onFocus?.(item)}
@@ -113,73 +114,57 @@ const EpisodeTile = React.memo(function EpisodeTile({
         accessibilityLabel={titleText}
       >
         {(focused) => (
-          <View
-            style={[
-              S.cardBorder,
-              { height: Math.round(itemWidth * 1.45) },
-              focused && S.cardBorderFocused,
-              focused && { transform: [{ scale: 1.06 }] },
-            ]}
-          >
-            <View style={S.vodItem}>
-              <View style={S.posterContainer}>
-                {artwork ? (
-                  <Image
-                    source={{ uri: artwork }}
-                    style={S.poster}
-                    contentFit="cover"
-                    cachePolicy="memory-disk"
-                  />
-                ) : (
-                  <View style={S.posterPlaceholder}>
-                    <Ionicons name="tv-outline" size={ps(3)} color="rgba(255,255,255,0.15)" />
-                  </View>
-                )}
-
-                <View style={S.epNumBadge}>
-                  <Text style={S.epNumBadgeText}>{`E${epNum}`}</Text>
+          <View style={[S.episodeCardContainer, focused && S.episodeCardContainerFocused]}>
+            <View
+              style={[
+                S.posterFrame,
+                { height: posterHeight },
+                focused && S.posterFrameFocused,
+              ]}
+            >
+              {artwork ? (
+                <Image
+                  source={{ uri: artwork }}
+                  style={S.posterImage}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  transition={200}
+                />
+              ) : (
+                <View style={[StyleSheet.absoluteFillObject, S.posterFallback]}>
+                  <Tv size={ps(3.5)} color="rgba(255,255,255,0.32)" />
                 </View>
+              )}
 
-                {watched ? (
-                  <View style={S.epWatchedBadge}>
-                    <Ionicons name="checkmark" size={ps(0.9)} color="#fff" />
-                  </View>
-                ) : null}
-
-                {progress > 0 && !watched ? (
-                  <View style={S.resumeTrack}>
-                    <View style={[S.resumeFill, { width: `${Math.round(progress * 100)}%` }]} />
-                  </View>
-                ) : null}
+              <View style={S.epNumBadge}>
+                <Text style={S.epNumBadgeText}>{`E${epNum}`}</Text>
               </View>
 
-              <LinearGradient
-                colors={
-                  focused
-                    ? ["transparent", "rgba(0,0,0,0.65)", "rgba(0,0,0,0.96)"]
-                    : ["transparent", "rgba(0,0,0,0.5)", "rgba(0,0,0,0.9)"]
-                }
-                style={S.cardContent}
-              >
-                <Text style={S.vodTitle} numberOfLines={1}>{titleText}</Text>
-                {(subtitleText || rating) ? (
-                  <View style={S.metaRow}>
-                    {subtitleText ? (
-                      <Text style={S.vodMetaText} numberOfLines={1}>
-                        {subtitleText}
-                      </Text>
-                    ) : null}
-                    {subtitleText && rating ? <View style={S.metaDot} /> : null}
-                    {rating ? (
-                      <View style={S.ratingWrapper}>
-                        <Ionicons name="star" size={ps(0.7)} color="#FFD700" style={{ marginRight: 2 }} />
-                        <Text style={S.ratingText}>{rating}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                ) : null}
-              </LinearGradient>
+              {watched ? (
+                <View style={S.epWatchedBadge}>
+                  <Check size={ps(1.0)} color="#ffffff" />
+                </View>
+              ) : null}
+
+              {progress > 0 && !watched ? (
+                <View style={S.resumeBar}>
+                  <View style={[S.resumeProgress, { width: `${Math.round(progress * 100)}%` }]} />
+                </View>
+              ) : null}
+
+              {rating ? (
+                <View style={S.cornerRatingBadge}>
+                  <Text style={S.cornerRatingText}>{rating}</Text>
+                </View>
+              ) : null}
             </View>
+
+            <Text
+              style={[S.episodeTitleText, focused && S.episodeTitleTextFocused]}
+              numberOfLines={1}
+            >
+              {titleText}
+            </Text>
           </View>
         )}
       </Focusable>
@@ -455,7 +440,7 @@ export default function SeriesDetailsScreen() {
 
   const currentSeason = seasons.find((s) => s.id === selectedSeasonId);
   const isFavorite = favorites.series.includes(params.id || "");
-  const numColumns = isTV ? 7 : 3;
+  const numColumns = 7;
 
   const CARD_SPACING = 12;
   const GRID_H_PADDING = pw(4) * 2;
@@ -506,7 +491,7 @@ export default function SeriesDetailsScreen() {
               />
             ) : (
               <View style={[S.poster, S.posterPlaceholder]}>
-                <Ionicons name="tv-outline" size={ps(4)} color="rgba(255,255,255,0.1)" />
+                <Tv size={ps(4)} color="rgba(255,255,255,0.1)" />
               </View>
             )}
           </View>
@@ -514,55 +499,32 @@ export default function SeriesDetailsScreen() {
           <View style={S.infoArea}>
             <Text style={S.title}>{params.name}</Text>
 
-            {focusedEpisode ? (
-              <View style={S.focusedEpBanner}>
-                <Text style={S.focusedEpTitle} numberOfLines={1}>
-                  {`S${currentSeason?.seasonNumber || 1}:E${focusedEpisode.episodeNum || 1} · ${focusedEpisode.name || `Episode ${focusedEpisode.episodeNum}`}`}
-                </Text>
-                <View style={S.badgesRow}>
-                  <MetaFacts
-                    facts={[
-                      { icon: "star", iconColor: "#fbbf24", text: focusedEpisode.rating || params.rating },
-                      { text: focusedEpisode.videoQuality },
-                      { text: focusedEpisode.audioLanguage },
-                      { text: formatRuntime(focusedEpisode.duration) },
-                      { text: focusedEpisode.airDate },
-                      (() => {
-                        const seen = resumeIndex.progressFor(`episode:${params.id}:${focusedEpisode.id}`);
-                        return seen > 0
-                          ? {
-                              icon: "play-circle-outline" as const,
-                              iconColor: "#4ade80",
-                              text: `${Math.round(seen * 100)}% watched`,
-                              tone: "accent" as const,
-                            }
-                          : null;
-                      })(),
-                    ]}
-                  />
-                </View>
-              </View>
-            ) : (
-              <View style={S.badgesRow}>
-                <MetaFacts
-                  facts={[
-                    { icon: "star", iconColor: "#fbbf24", text: params.rating },
-                    { text: params.year || seriesMeta?.releaseDate?.slice(0, 4) },
-                    {
-                      text: seasons.length
-                        ? `${seasons.length} ${seasons.length === 1 ? "Season" : "Seasons"}`
-                        : null,
-                    },
-                    {
-                      text: episodeCount
-                        ? `${episodeCount} ${episodeCount === 1 ? "Episode" : "Episodes"}`
-                        : null,
-                    },
-                    { text: seriesMeta?.country },
-                  ]}
-                />
-              </View>
-            )}
+            <View style={S.badgesRow}>
+              {(() => {
+                const r = formatRating(focusedEpisode?.rating || params.rating);
+                return r ? (
+                  <View style={S.ratingBadge}>
+                    <Text style={S.ratingBadgeText}>{r}</Text>
+                  </View>
+                ) : null;
+              })()}
+              <MetaFacts
+                facts={[
+                  { text: params.year || seriesMeta?.releaseDate?.slice(0, 4) },
+                  {
+                    text: seasons.length
+                      ? `${seasons.length} ${seasons.length === 1 ? "Season" : "Seasons"}`
+                      : null,
+                  },
+                  {
+                    text: episodeCount
+                      ? `${episodeCount} ${episodeCount === 1 ? "Episode" : "Episodes"}`
+                      : null,
+                  },
+                  { text: seriesMeta?.country },
+                ]}
+              />
+            </View>
 
             {/* Credits come from the series either way — episodes do not carry
                 their own cast — but the synopsis prefers the focused episode's,
@@ -574,7 +536,7 @@ export default function SeriesDetailsScreen() {
                 plot: focusedEpisode?.description || seriesMeta?.plot,
               }}
               fallbackPlot={params.description}
-              plotLines={isTV ? 5 : 4}
+              plotLines={5}
               emptyText={
                 focusedEpisode
                   ? "No description available for this episode."
@@ -651,7 +613,7 @@ export default function SeriesDetailsScreen() {
               showsVerticalScrollIndicator={false}
               ListEmptyComponent={
                 <View style={{ alignItems: "center", justifyContent: "center", paddingTop: ph(5), opacity: 0.3 }}>
-                  <MaterialCommunityIcons name="television-off" size={ps(4)} color="#fff" />
+                  <MonitorOff size={ps(4)} color="#fff" />
                   <Text style={{ color: "#fff", fontSize: ps(1.2), marginTop: 10 }}>No Episodes Available</Text>
                 </View>
               }
@@ -680,7 +642,7 @@ export default function SeriesDetailsScreen() {
             colors={['rgba(10,12,18,0.78)', 'rgba(8,8,12,0.96)', '#08080a']}
             style={StyleSheet.absoluteFillObject}
           />
-          <View style={[isTV ? S.modalTVContent : null, S.modalBody]}>
+          <View style={[S.modalTVContent, S.modalBody]}>
             {/* Poster / Episode Still thumbnail */}
             <View style={S.modalPosterWrapper}>
               {(selectedEpisode?.still || params.logo) ? (
@@ -692,9 +654,19 @@ export default function SeriesDetailsScreen() {
                 />
               ) : (
                 <View style={S.modalPosterFallback}>
-                  <Ionicons name="albums-outline" size={ps(3.2)} color="rgba(255,255,255,0.3)" />
+                  <Library size={ps(3.2)} color="rgba(255,255,255,0.3)" />
                 </View>
               )}
+              {(selectedEpisode?.rating || params.rating) && parseFloat(String(selectedEpisode?.rating || params.rating)) > 0 ? (
+                <View style={S.cornerRatingBadge}>
+                  <Text style={S.cornerRatingText}>
+                    {(() => {
+                      const num = parseFloat(String(selectedEpisode?.rating || params.rating));
+                      return Number.isInteger(num) ? num.toFixed(1) : String(Math.round(num * 10) / 10);
+                    })()}
+                  </Text>
+                </View>
+              ) : null}
             </View>
 
             {/* Details */}
@@ -708,13 +680,19 @@ export default function SeriesDetailsScreen() {
                 {selectedEpisode?.name || `Episode ${selectedEpisode?.episodeNum || ""}`}
               </Text>
               <View style={S.modalMetaRow}>
+                {(() => {
+                  const formatted = formatRating(selectedEpisode?.rating || params.rating);
+                  return formatted ? (
+                    <>
+                      <View style={S.modalRatingBadge}>
+                        <Text style={S.modalRatingBadgeText}>{formatted}</Text>
+                      </View>
+                      <Text style={S.modalMetaDot}>·</Text>
+                    </>
+                  ) : null;
+                })()}
                 <MetaFacts
                   facts={[
-                    {
-                      icon: "star",
-                      iconColor: "#FFD700",
-                      text: selectedEpisode?.rating || params.rating,
-                    },
                     { text: selectedEpisode?.videoQuality },
                     { text: selectedEpisode?.audioLanguage },
                     { text: formatRuntime(selectedEpisode?.duration) },
@@ -742,7 +720,7 @@ export default function SeriesDetailsScreen() {
                   plot: selectedEpisode?.description || seriesMeta?.plot,
                 }}
                 fallbackPlot={params.description}
-                plotLines={isTV ? 5 : 3}
+                plotLines={5}
                 emptyText="No description available for this episode."
               />
             </View>
@@ -756,11 +734,9 @@ export default function SeriesDetailsScreen() {
                 style={S.modalBtnWrapper}
               >
                 {(focused) => (
-                  <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                    <View style={S.modalBtnPrimaryInner}>
-                      <Ionicons name="play" size={ps(1.1)} color="#000" />
-                      <Text style={S.modalBtnPrimaryText}>WATCH NOW</Text>
-                    </View>
+                  <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
+                    <Play size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                    <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>WATCH NOW</Text>
                   </View>
                 )}
               </Focusable>
@@ -770,11 +746,9 @@ export default function SeriesDetailsScreen() {
                 style={S.modalBtnWrapper}
               >
                 {(focused) => (
-                  <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                    <View style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
-                      <Ionicons name="open-outline" size={ps(1.1)} color={focused ? "#000" : "#fff"} />
-                      <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>EXTERNAL PLAYER</Text>
-                    </View>
+                  <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
+                    <ExternalLink size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                    <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>EXTERNAL PLAYER</Text>
                   </View>
                 )}
               </Focusable>
@@ -784,11 +758,9 @@ export default function SeriesDetailsScreen() {
                 style={S.modalBtnWrapper}
               >
                 {(focused) => (
-                  <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                    <View style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
-                      <Ionicons name="close" size={ps(1.1)} color={focused ? "#000" : "#fff"} />
-                      <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>CLOSE</Text>
-                    </View>
+                  <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
+                    <X size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                    <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>CLOSE</Text>
                   </View>
                 )}
               </Focusable>
@@ -818,14 +790,34 @@ const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: THEME.colors.background },
   heroSection: { padding: pw(4), marginBottom: ph(2) },
   backBtn: { width: ps(3.5), height: ps(3.5), borderRadius: 20, backgroundColor: "rgba(255,255,255,0.05)", alignItems: "center", justifyContent: "center", marginBottom: ph(3) },
-  metaContent: { flexDirection: isTV ? "row" : "column", alignItems: isTV ? "flex-start" : "center", gap: pw(4) },
-  posterWrapper: { width: isTV ? pw(18) : pw(45), aspectRatio: 2 / 3, borderRadius: 20, overflow: "hidden", elevation: 20, shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 20 },
+  metaContent: { flexDirection: "row", alignItems: "flex-end", gap: pw(4) },
+  posterWrapper: { width: pw(18), aspectRatio: 2 / 3, borderRadius: 20, overflow: "hidden", elevation: 20, shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 20 },
   poster: { ...StyleSheet.absoluteFillObject },
   posterPlaceholder: { backgroundColor: "#1a1a20", alignItems: "center", justifyContent: "center" },
-  infoArea: { flex: 1, paddingTop: isTV ? ph(2) : 0 },
-  title: { color: "#fff", fontSize: ps(2.2), fontWeight: "900", marginBottom: ph(1.5), textAlign: isTV ? "left" : "center" },
-  badgesRow: { flexDirection: "row", gap: 10, marginBottom: ph(2.5), justifyContent: isTV ? "flex-start" : "center" },
-  description: { color: "rgba(255,255,255,0.45)", fontSize: ps(1.15), lineHeight: ps(1.8), marginBottom: ph(4), textAlign: isTV ? "left" : "center" },
+  infoArea: { flex: 1, justifyContent: "flex-end", paddingBottom: ph(0.8) },
+  title: { color: "#fff", fontSize: ps(2.2), fontWeight: "900", marginBottom: ph(1.5), textAlign: "left" },
+  badgesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: ph(2.5),
+    justifyContent: "flex-start",
+  },
+  ratingBadge: {
+    backgroundColor: "#F5F5F5",
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ratingBadgeText: {
+    color: "#000000",
+    fontSize: ps(0.85),
+    fontWeight: "900",
+    letterSpacing: 0.2,
+  },
+  description: { color: "rgba(255,255,255,0.45)", fontSize: ps(1.15), lineHeight: ps(1.8), marginBottom: ph(4), textAlign: "left" },
   favoriteBtnInner: {
     flexDirection: "row",
     alignItems: "center",
@@ -899,116 +891,91 @@ const S = StyleSheet.create({
   epListContent: { paddingBottom: ph(5), paddingHorizontal: pw(4) },
 
   // ── Episode tile: styled identically to VOD Movie tile ──
-  cardBorder: {
-    borderRadius: ps(1.1),
+  episodeItemWrapper: {
+    paddingHorizontal: 5,
+    paddingTop: 4,
+    paddingBottom: 4,
     overflow: "visible",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
   },
-  cardBorderFocused: {
-    padding: 1,
-    borderColor: THEME.colors.glassBorderFocus,
-    backgroundColor: THEME.colors.glassBgFocus,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#fff",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 0,
-      }
-    })
+  episodeCardContainer: {
+    borderRadius: 16,
+    overflow: "visible",
   },
-  vodItem: { flex: 1, backgroundColor: "transparent", borderRadius: ps(1.1), overflow: "hidden" },
-  posterContainer: { flex: 1, backgroundColor: "rgba(255,255,255,0.03)" },
-  cardContent: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
+  episodeCardContainerFocused: {},
+  posterFrame: {
     width: "100%",
-    paddingHorizontal: ps(0.65),
-    paddingBottom: ps(0.45),
-    paddingTop: ps(1.2),
-    borderBottomLeftRadius: ps(1.1),
-    borderBottomRightRadius: ps(1.1),
+    borderRadius: 16,
     overflow: "hidden",
-    justifyContent: "flex-end",
+    backgroundColor: "#17181c",
+    borderWidth: 1,
+    borderColor: "transparent",
   },
-  vodTitle: {
-    color: "#fff",
+  posterFrameFocused: {
+    borderColor: "#ffffff",
+    borderWidth: 1,
+    transform: [{ scale: 1.03 }],
+    elevation: 12,
+  },
+  posterImage: { width: "100%", height: "100%" },
+  posterFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#17181c",
+  },
+  episodeTitleText: {
+    color: "rgba(255,255,255,0.75)",
     fontSize: ps(0.92),
     fontWeight: "700",
-    textShadowColor: "rgba(0, 0, 0, 0.95)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    marginTop: 8,
+    lineHeight: 20,
   },
-  metaRow: { flexDirection: "row", alignItems: "center", marginTop: 2 },
-  vodMetaText: { color: "rgba(255,255,255,0.7)", fontSize: ps(0.78), fontWeight: "600" },
-  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.4)", marginHorizontal: 5 },
-  ratingWrapper: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255, 215, 0, 0.15)", paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
-  ratingText: { color: "#FFD700", fontSize: ps(0.75), fontWeight: "800", marginLeft: 2 },
+  episodeTitleTextFocused: {
+    color: "#ffffff",
+    fontWeight: "900",
+  },
+  epNumBadge: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    borderRadius: 7,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+  },
+  epNumBadgeText: {
+    color: "#FFFFFF",
+    fontSize: ps(0.8),
+    fontWeight: "800",
+    letterSpacing: 0.2,
+  },
   epWatchedBadge: {
     position: "absolute",
     top: 8,
     right: 8,
-    width: ps(1.8),
-    height: ps(1.8),
-    borderRadius: ps(0.9),
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    borderRadius: 12,
+    padding: 5,
   },
-  epNumBadge: {
-    position: "absolute",
-    top: 6,
-    left: 6,
-    paddingHorizontal: ps(0.5),
-    paddingVertical: ps(0.2),
-    borderRadius: ps(0.4),
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
-    borderWidth: 0.5,
-    borderColor: "rgba(255, 255, 255, 0.2)",
-  },
-  epNumBadgeText: {
-    color: "#fff",
-    fontSize: ps(0.7),
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  focusedEpBanner: {
-    marginTop: ph(0.5),
-    marginBottom: ph(0.5),
-  },
-  focusedEpTitle: {
-    color: "#fff",
-    fontSize: ps(1.2),
-    fontWeight: "700",
-    letterSpacing: 0.3,
-  },
-  resumeTrack: {
+  resumeBar: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    height: 3,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    height: 3.5,
+    backgroundColor: "rgba(0,0,0,0.6)",
   },
-  resumeFill: { height: "100%", backgroundColor: "#e50914" },
+  resumeProgress: { height: "100%", backgroundColor: "#F5F5F5" },
 
   // Modal Styles
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "center", alignItems: "center" },
-  modalContainer: { width: isTV ? ps(65) : "92%", borderRadius: 24, padding: ps(2), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
+  modalContainer: { width: ps(65), borderRadius: 24, padding: ps(2), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
   modalSurface: {
     width: '100%',
     borderTopLeftRadius: ps(2),
     borderTopRightRadius: ps(2),
     overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255, 255, 255, 0.2)",
-    borderBottomWidth: 0,
+    borderWidth: 0,
     backgroundColor: 'rgba(10, 12, 18, 0.95)',
   },
   modalBody: {
@@ -1019,12 +986,12 @@ const S = StyleSheet.create({
     alignItems: "center",
   },
   modalPosterWrapper: {
-    width: isTV ? pw(11) : pw(22),
+    width: pw(11),
     aspectRatio: 2 / 3,
     borderRadius: ps(0.8),
     overflow: "hidden",
     backgroundColor: "rgba(255, 255, 255, 0.05)",
-    marginRight: isTV ? pw(2) : pw(3),
+    marginRight: pw(2),
   },
   modalPosterImg: {
     width: "100%",
@@ -1036,6 +1003,23 @@ const S = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "rgba(255, 255, 255, 0.05)",
+  },
+  cornerRatingBadge: {
+    position: "absolute",
+    bottom: 6,
+    right: 6,
+    backgroundColor: "rgba(0, 0, 0, 0.78)",
+    borderWidth: 0,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 7,
+    elevation: 4,
+  },
+  cornerRatingText: {
+    color: "#FFFFFF",
+    fontSize: ps(0.85),
+    fontWeight: "900",
+    letterSpacing: 0.2,
   },
   modalTypeBadge: {
     alignSelf: "flex-start",
@@ -1075,51 +1059,60 @@ const S = StyleSheet.create({
     marginBottom: ps(0.4),
     flexWrap: "wrap",
   },
+  modalRatingBadge: {
+    backgroundColor: "#F5F5F5",
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalRatingBadgeText: {
+    color: "#000000",
+    fontSize: ps(0.85),
+    fontWeight: "900",
+    letterSpacing: 0.2,
+  },
+  modalMetaDot: {
+    color: "rgba(255,255,255,0.28)",
+    fontSize: ps(1.05),
+    fontWeight: "700",
+    marginHorizontal: pw(0.8),
+  },
   modalBtnWrapper: {
-    borderRadius: ps(0.6),
+    borderRadius: 10,
     overflow: "visible",
     width: "100%",
   },
-  modalBtnBorder: {
-    padding: 1,
-    borderRadius: ps(0.6),
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
-  },
-  modalBtnBorderFocused: {
-    borderColor: "#FFFFFF",
-    backgroundColor: "#FFFFFF",
-  },
-  modalBtnPrimaryInner: {
+  modalBtnPill: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: ps(0.4),
-    paddingVertical: ps(0.7),
-    paddingHorizontal: ps(1.2),
-    borderRadius: ps(0.5),
-    backgroundColor: "#FFFFFF",
+    gap: ps(0.6),
+    paddingVertical: ps(0.95),
+    paddingHorizontal: ps(1.5),
+    borderRadius: 10,
+    borderWidth: 0,
+    borderColor: "transparent",
+    backgroundColor: "#17181c",
   },
-  modalBtnSecondaryInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: ps(0.4),
-    paddingVertical: ps(0.7),
-    paddingHorizontal: ps(1.2),
-    borderRadius: ps(0.5),
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  modalBtnPillFocused: {
+    backgroundColor: "#F5F5F5",
+    borderColor: "transparent",
+    borderWidth: 0,
+    elevation: 8,
+    transform: [{ scale: 1.05 }],
   },
-  modalBtnPrimaryText: {
-    color: "#000000",
-    fontSize: ps(0.88),
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  modalBtnSecondaryText: {
+  modalBtnText: {
     color: "#FFFFFF",
-    fontSize: ps(0.88),
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    fontSize: ps(1.0),
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  modalBtnTextFocused: {
+    color: "#000000",
+    fontSize: ps(1.0),
+    fontWeight: "900",
+    letterSpacing: 0.3,
   },
 });

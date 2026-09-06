@@ -1,14 +1,16 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-
 import { CinematicBackground } from '../src/components/CinematicBackground';
 import { ph, psRaw as ps, pw, THEME } from '../src/theme/tokens';
 import { useDPad } from '../src/tv';
 import { isTV } from '../src/utils/tvUtils';
+import { MessageCircle, ShieldCheck } from 'lucide-react-native';
+import { DynamicIcon } from '../src/components/DynamicIcon';
+import { Text } from '../src/components/Text';
 
-type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+type IconName = any;
 
 const LAST_UPDATED = 'August 2026';
 const SUPPORT_EMAIL = 'infinity.apps.support@gmail.com';
@@ -74,7 +76,7 @@ function PolicySection({ section, first }: { section: Section; first: boolean })
     <View style={[S.section, first && S.sectionFirst]}>
       <View style={S.sectionHeader}>
         <View style={S.sectionIcon}>
-          <Ionicons name={section.icon} size={ps(1.6)} color="rgba(255,255,255,0.85)" />
+          <DynamicIcon name={section.icon} size={ps(1.6)} color="rgba(255,255,255,0.85)" />
         </View>
         <Text style={S.sectionTitle}>{section.title}</Text>
       </View>
@@ -104,7 +106,7 @@ function ContactSection() {
     <View style={S.section}>
       <View style={S.sectionHeader}>
         <View style={S.sectionIcon}>
-          <Ionicons name="chatbubble-ellipses-outline" size={ps(1.6)} color="rgba(255,255,255,0.85)" />
+          <MessageCircle size={ps(1.6)} color="rgba(255,255,255,0.85)" />
         </View>
         <Text style={S.sectionTitle}>Contact</Text>
       </View>
@@ -114,7 +116,7 @@ function ContactSection() {
       <View style={S.contactRows}>
         {CONTACT_ROWS.map((row) => (
           <View key={row.label} style={S.contactRow}>
-            <Ionicons name={row.icon} size={ps(1.5)} color="rgba(255,255,255,0.4)" />
+            <DynamicIcon name={row.icon} size={ps(1.5)} color="rgba(255,255,255,0.4)" />
             <View style={S.contactRowText}>
               <Text style={S.contactLabel}>{row.label}</Text>
               <Text style={S.contactValue} numberOfLines={1}>
@@ -178,15 +180,8 @@ export default function PrivacyPolicyScreen() {
       <CinematicBackground />
 
       <View style={S.header}>
-        <View style={S.headerText}>
-          <Text style={S.headerTitle}>Privacy Policy</Text>
-          <Text style={S.headerSubtitle}>Infinity IPTV Player</Text>
-        </View>
-
-        <View style={S.updatedPill}>
-          <Ionicons name="time-outline" size={ps(1.2)} color="rgba(255,255,255,0.6)" />
-          <Text style={S.updatedText}>Updated {LAST_UPDATED}</Text>
-        </View>
+        <Text style={S.headerTitle}>Privacy Policy</Text>
+        <Text style={S.headerSubtitle}>Infinity IPTV Player · Updated {LAST_UPDATED}</Text>
       </View>
 
       <View style={S.scrollArea} onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}>
@@ -202,7 +197,7 @@ export default function PrivacyPolicyScreen() {
           {/* Summary hero */}
           <View style={S.hero}>
             <View style={S.heroBadge}>
-              <Ionicons name="shield-checkmark" size={ps(3)} color="#fff" />
+              <ShieldCheck size={ps(3)} color="#fff" />
             </View>
             <View style={S.heroText}>
               <Text style={S.heroTitle}>Your data stays on your device</Text>
@@ -233,45 +228,20 @@ const S = StyleSheet.create({
 
   // ── Header ────────────────────────────────────────────────────────────────
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: pw(6),
-    paddingTop: ph(2),
+    paddingHorizontal: pw(8),
+    paddingTop: ph(5),
     paddingBottom: ph(2),
-    gap: pw(2),
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-  },
-  headerText: {
-    flex: 1,
   },
   headerTitle: {
-    fontSize: isTV ? ps(1.8) : ps(1.5),
+    fontSize: ps(2.6),
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: '900',
     letterSpacing: 0.5,
   },
   headerSubtitle: {
-    fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 1,
-    marginTop: 2,
-  },
-  updatedPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: pw(0.6),
-    paddingHorizontal: pw(1.4),
-    paddingVertical: ph(0.8),
-    borderRadius: ps(2),
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  updatedText: {
-    fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: 'rgba(255,255,255,0.6)',
-    fontWeight: '600',
+    fontSize: ps(1.1),
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: ph(0.6),
   },
 
   // ── Scroll area ───────────────────────────────────────────────────────────
@@ -282,8 +252,8 @@ const S = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: pw(6),
-    paddingTop: ph(3),
+    paddingHorizontal: pw(8),
+    paddingTop: ph(2),
     paddingBottom: ph(8),
   },
 
@@ -293,21 +263,21 @@ const S = StyleSheet.create({
     alignItems: isTV ? 'flex-start' : 'stretch',
     gap: isTV ? pw(2.5) : ph(2),
     padding: ps(3),
-    borderRadius: ps(2.5),
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.09)',
+    borderRadius: 18,
+    backgroundColor: '#17181c',
+    borderWidth: 0,
+    borderColor: 'transparent',
     marginBottom: ph(3),
   },
   heroBadge: {
     width: ps(7),
     height: ps(7),
-    borderRadius: ps(3.5),
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 0,
+    borderColor: 'transparent',
   },
   heroText: {
     flex: 1,
@@ -327,10 +297,10 @@ const S = StyleSheet.create({
   /** One surface holding every section, with hairlines between them instead of
    *  a box around each. Sections are separated, not boxed. */
   document: {
-    borderRadius: ps(2),
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 18,
+    backgroundColor: '#17181c',
+    borderWidth: 0,
+    borderColor: 'transparent',
     paddingHorizontal: ps(3),
   },
   section: {
@@ -358,7 +328,7 @@ const S = StyleSheet.create({
   sectionTitle: {
     flex: 1,
     fontSize: isTV ? ps(1.6) : ps(1.4),
-    color: THEME.colors.primary,
+    color: '#FFFFFF',
     fontWeight: '700',
     letterSpacing: 0.3,
   },

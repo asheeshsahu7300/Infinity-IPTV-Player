@@ -14,14 +14,18 @@
 // supplies all of them and a dangling separator looks like a bug.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, View } from 'react-native';
+
 
 import { ph, ps, pw } from "../theme/tokens";
 
+import { DynamicIcon } from "./DynamicIcon";
+import { Text } from './Text';
+
+
 export interface MetaFact {
   /** Shown before the text. Only worth it where the glyph reads faster. */
-  icon?: React.ComponentProps<typeof Ionicons>["name"];
+  icon?: string;
   iconColor?: string;
   text?: string | number | null;
   /** Highlights one fact — a resume position, say. */
@@ -61,7 +65,7 @@ export const MetaFacts = React.memo(function MetaFacts({ facts, compact }: MetaF
               one never gets a leading dot and the last never a trailing one. */}
           {i > 0 ? <Text style={S.separator}>·</Text> : null}
           {fact.icon ? (
-            <Ionicons
+            <DynamicIcon
               name={fact.icon}
               size={ps(1.05)}
               color={fact.iconColor ?? "rgba(255,255,255,0.55)"}

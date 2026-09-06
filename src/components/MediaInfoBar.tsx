@@ -11,13 +11,15 @@
 // clock all become elapsed, remaining, episode and poster.
 // ─────────────────────────────────────────────────────────────────────────────
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from 'react-native';
 import { Image } from "expo-image";
-import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { THEME, ph, ps, pw } from "../theme/tokens";
 import type { QueueItem } from "../services/playbackQueue";
+import { Film } from 'lucide-react-native';
+import { Text } from './Text';
+
 
 export interface MediaInfoBarProps {
   item: QueueItem | null | undefined;
@@ -98,7 +100,7 @@ export const MediaInfoBar = React.memo(function MediaInfoBar({
               transition={120}
             />
           ) : (
-            <Ionicons name="film-outline" size={ps(1.8)} color="rgba(255,255,255,0.25)" />
+            <Film size={ps(1.8)} color="rgba(255,255,255,0.25)" />
           )}
         </View>
 
@@ -190,8 +192,10 @@ const S = StyleSheet.create({
   posterBox: {
     width: ps(6.4),
     height: ps(9.6),
-    borderRadius: ps(0.6),
+    borderRadius: 14,
     backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.18)",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -204,10 +208,12 @@ const S = StyleSheet.create({
   subtitle: { color: "rgba(255,255,255,0.5)", fontSize: ps(1), fontWeight: "600" },
 
   badge: {
-    paddingHorizontal: pw(0.7),
-    paddingVertical: ph(0.25),
-    borderRadius: 4,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    paddingHorizontal: pw(0.8),
+    paddingVertical: ph(0.35),
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
   },
   badgeWarn: { backgroundColor: "rgba(255,204,0,0.2)" },
   badgeText: { color: "#fff", fontSize: ps(0.7), fontWeight: "900", letterSpacing: 0.8 },
@@ -226,7 +232,7 @@ const S = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.16)",
     overflow: "hidden",
   },
-  progressFill: { height: "100%", backgroundColor: THEME.colors.primary },
+  progressFill: { height: "100%", backgroundColor: "#F5F5F5" },
 
   remaining: { color: "rgba(255,255,255,0.42)", fontSize: ps(0.85), fontWeight: "600" },
   nextLine: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.85), fontWeight: "600", flexShrink: 1 },

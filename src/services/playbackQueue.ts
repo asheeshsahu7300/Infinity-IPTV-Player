@@ -54,6 +54,7 @@ export interface QueueItem {
   duration?: string;
   rating?: string;
   airDate?: string;
+  hasStill?: boolean;
   kind: QueueKind;
 }
 
@@ -114,6 +115,7 @@ export function queueFromEpisodes(
       duration: episode.duration,
       rating: episode.rating,
       airDate: episode.airDate,
+      hasStill: !!episode.still,
       kind: "episode" as const,
     };
   });
@@ -131,6 +133,7 @@ export function queueFromVod(item: VODItem): QueueItem[] {
       rating: item.rating,
       streamUrl: item.streamUrl || "",
       description: item.description,
+      hasStill: false,
       kind: "vod" as const,
     },
   ];

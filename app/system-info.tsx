@@ -7,10 +7,9 @@
 // from a sofa, and everything is copyable in one press rather than transcribed.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useState } from "react";
-import { ScrollView, StatusBar, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StatusBar, StyleSheet, View } from 'react-native';
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import NetInfo from "@react-native-community/netinfo";
 
@@ -26,6 +25,10 @@ import { parentalControl } from "../src/services/parentalControl";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { THEME, ph, ps, pw } from "../src/theme/tokens";
 import { Focusable, FocusGroup } from "../src/tv";
+import { Gauge } from 'lucide-react-native';
+import { DynamicIcon } from '../src/components/DynamicIcon';
+import { Text } from '../src/components/Text';
+
 
 interface Field {
   label: string;
@@ -194,7 +197,7 @@ export default function SystemInfoScreen() {
           >
             {(focused) => (
               <View style={[S.action, focused && S.actionFocused]}>
-                <Ionicons
+                <DynamicIcon
                   name={copied ? "checkmark" : "copy-outline"}
                   size={ps(1.4)}
                   color={focused ? "#000" : "#fff"}
@@ -214,7 +217,7 @@ export default function SystemInfoScreen() {
           >
             {(focused) => (
               <View style={[S.action, focused && S.actionFocused]}>
-                <Ionicons name="speedometer-outline" size={ps(1.4)} color={focused ? "#000" : "#fff"} />
+                <Gauge size={ps(1.4)} color={focused ? "#000" : "#fff"} />
                 <Text style={[S.actionText, focused && S.actionTextFocused]}>SPEED TEST</Text>
               </View>
             )}

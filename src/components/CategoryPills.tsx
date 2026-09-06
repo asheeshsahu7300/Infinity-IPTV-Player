@@ -1,7 +1,9 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { View, TouchableOpacity, Text, StyleSheet, FlatList, Animated } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, FlatList, Animated } from 'react-native';
 import { Category } from '../store/portalStore';
 import { THEME } from '../theme/tokens';
+import { Text } from './Text';
+
 
 interface CategoryPillsProps {
   categories: Category[];

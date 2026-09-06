@@ -10,9 +10,8 @@
 // open settings menu, some want the reverse.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ScrollView, StatusBar, StyleSheet, Text, View } from "react-native";
+import { BackHandler, ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { usePortalStore } from "../src/store/portalStore";
@@ -22,15 +21,28 @@ import {
   parentalControl,
   ParentalState,
 } from "../src/services/parentalControl";
+import { safeBack } from "../src/services/safeNavigation";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import PinPrompt from "../src/components/PinPrompt";
-import { THEME, ph, ps, pw, TILE_FRAME } from "../src/theme/tokens";
+import { THEME, ph, psRaw as ps, pw } from "../src/theme/tokens";
 import { Focusable, FocusGroup } from "../src/tv";
+import {
+  CheckCircle,
+  ChevronRight,
+  Info,
+  ShieldCheck,
+  TriangleAlert,
+  Unlock,
+} from "lucide-react-native";
+import { DynamicIcon } from "../src/components/DynamicIcon";
+import { Text } from "../src/components/Text";
 
-type IconName = React.ComponentProps<typeof Ionicons>["name"];
+type IconName = string;
 
 /** What the PIN prompt is currently being asked for. */
 type PinIntent = "enter" | "change-current" | "change-new" | "change-confirm" | null;
+
+const SCREEN_KEY = "parental-control";
 
 function Row({
   icon,
@@ -41,6 +53,8 @@ function Row({
   preferred,
   disabled,
   danger,
+  badge,
+  focusKey,
 }: {
   icon: IconName;
   title: string;
@@ -50,6 +64,8 @@ function Row({
   preferred?: boolean;
   disabled?: boolean;
   danger?: boolean;
+  badge?: string;
+  focusKey?: string;
 }) {
   return (
     <Focusable
@@ -58,6 +74,8 @@ function Row({
       disabled={disabled}
       hasTVPreferredFocus={preferred}
       style={S.rowWrapper}
+      focusKey={focusKey}
+      screenKey={SCREEN_KEY}
       accessibilityLabel={title}
       accessibilityHint={subtitle}
       accessibilityRole={on === undefined ? "button" : "switch"}
@@ -65,44 +83,77 @@ function Row({
     >
       {(focused) => (
         <View style={[S.row, focused && S.rowFocused, disabled && S.rowDisabled]}>
-          <View style={[S.rowIcon, focused && S.rowIconFocused]}>
-            <Ionicons
+          <View
+            style={[
+              S.iconBadge,
+              focused && S.iconBadgeFocused,
+              danger && !focused && S.iconBadgeDanger,
+              danger && focused && S.iconBadgeDangerFocused,
+            ]}
+          >
+            <DynamicIcon
               name={icon}
-              size={ps(1.8)}
-              color={focused ? "#000" : danger ? "#f87171" : "#fff"}
+              size={ps(2.2)}
+              color={
+                focused
+                  ? danger
+                    ? "#dc2626"
+                    : "#0E0F14"
+                  : danger
+                    ? "#f87171"
+                    : "#ffffff"
+              }
             />
           </View>
           <View style={S.rowText}>
-            <Text style={[S.rowTitle, focused && S.onFocus, danger && !focused && { color: "#f87171" }]}>
+            <Text
+              style={[
+                S.rowTitle,
+                focused && S.rowTitleFocused,
+                danger && !focused && { color: "#f87171" },
+                danger && focused && { color: "#dc2626" },
+              ]}
+            >
               {title}
             </Text>
-            <Text style={[S.rowSubtitle, focused && { color: "rgba(0,0,0,0.6)" }]} numberOfLines={2}>
+            <Text
+              style={[S.rowSubtitle, focused && S.rowSubtitleFocused]}
+              numberOfLines={2}
+            >
               {subtitle}
             </Text>
           </View>
           {on === undefined ? (
-            <Ionicons
-              name="chevron-forward"
-              size={ps(1.6)}
-              color={focused ? "#000" : "rgba(255,255,255,0.3)"}
-            />
+            badge ? (
+              <View style={[S.badgePill, focused && S.badgePillFocused]}>
+                <Text style={[S.badgePillText, focused && S.badgePillTextFocused]}>
+                  {badge}
+                </Text>
+                <ChevronRight
+                  size={ps(1.8)}
+                  color={focused ? "#0E0F14" : "rgba(255,255,255,0.4)"}
+                />
+              </View>
+            ) : (
+              <ChevronRight
+                size={ps(2)}
+                color={focused ? "#0E0F14" : "rgba(255,255,255,0.35)"}
+              />
+            )
           ) : (
-            // Focused rows are white, so the off state and the knob both need
-            // dark equivalents — a 14%-white track with a white knob on a white
-            // row is a control you cannot see. Same fix as the categories
-            // screen. The focused styles come last so they win.
             <View
               style={[
                 S.switchTrack,
+                focused && S.switchTrackFocused,
                 on && S.switchTrackOn,
-                focused && !on && S.switchTrackFocused,
+                on && focused && S.switchTrackOnFocused,
               ]}
             >
               <View
                 style={[
                   S.switchKnob,
+                  focused && S.switchKnobFocused,
                   on && S.switchKnobOn,
-                  focused && !on && S.switchKnobFocused,
                 ]}
               />
             </View>
@@ -131,8 +182,9 @@ export default function ParentalControlScreen() {
     parentalControl.load().then((s) => {
       setState({ ...s });
       // The gate only applies when the lock is on *and* set to cover settings.
-      setUnlocked(!parentalControl.requiresPin("settings"));
-      if (parentalControl.requiresPin("settings")) setPinIntent("enter");
+      const needsGate = parentalControl.requiresPin("settings");
+      setUnlocked(!needsGate);
+      if (needsGate) setPinIntent("enter");
     });
     return parentalControl.subscribe((s) => setState({ ...s }));
   }, []);
@@ -145,14 +197,11 @@ export default function ParentalControlScreen() {
   const lockedCount = state?.lockedItemIds.length ?? 0;
   const autoLockedCount = useMemo(() => {
     if (!state?.blockAdultKeywords) return 0;
-    // Counted across all three libraries rather than listed: the point is to
-    // show the keyword sweep is doing something, not to enumerate what it hit.
     const live = channels.filter((c) => parentalControl.isRestricted("live", c)).length;
     const movies = vodItems.filter((v) => parentalControl.isRestricted("vod", v)).length;
     const shows = series.filter((s) => parentalControl.isRestricted("series", s)).length;
     return Math.max(0, live + movies + shows - lockedCount);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channels, vodItems, series, state?.blockAdultKeywords, state?.lockedItemIds, lockedCount]);
+  }, [channels, vodItems, series, state?.blockAdultKeywords, lockedCount]);
 
   // ── PIN flow ──────────────────────────────────────────────────────────────
 
@@ -168,8 +217,6 @@ export default function ParentalControlScreen() {
           return true;
 
         case "change-new":
-          // Any four digits are acceptable as a new PIN; the confirm step is
-          // what catches a mistyped one.
           setPendingPin((current) => `${current}|${pin}`);
           return true;
 
@@ -201,7 +248,7 @@ export default function ParentalControlScreen() {
       case "change-confirm":
         setPinIntent(null);
         setPendingPin("");
-        flash("PIN changed.");
+        flash("PIN successfully updated.");
         break;
       default:
         setPinIntent(null);
@@ -212,21 +259,43 @@ export default function ParentalControlScreen() {
     const wasGate = pinIntent === "enter";
     setPinIntent(null);
     setPendingPin("");
-    // Backing out of the gate means leaving — staying would show the settings
-    // the PIN was protecting.
-    if (wasGate) router.back();
-  }, [pinIntent, router]);
+    if (wasGate) safeBack();
+  }, [pinIntent]);
+
+  // Register hardware back press handler
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (pinIntent) {
+        handlePinCancel();
+        return true;
+      }
+      return safeBack();
+    });
+    return () => sub.remove();
+  }, [pinIntent, handlePinCancel]);
 
   const pinCopy = useMemo(() => {
     switch (pinIntent) {
       case "enter":
-        return { title: "Parental Control", message: "Enter your PIN to change these settings." };
+        return {
+          title: "Parental Security",
+          message: "Enter your four-digit PIN to access parental settings.",
+        };
       case "change-current":
-        return { title: "Current PIN", message: "Enter your current PIN to continue." };
+        return {
+          title: "Current PIN",
+          message: "Enter your current PIN to authenticate.",
+        };
       case "change-new":
-        return { title: "New PIN", message: "Choose a new four-digit PIN." };
+        return {
+          title: "New PIN",
+          message: "Choose a new four-digit PIN.",
+        };
       case "change-confirm":
-        return { title: "Confirm PIN", message: "Enter the new PIN once more." };
+        return {
+          title: "Confirm New PIN",
+          message: "Re-enter the new PIN to confirm.",
+        };
       default:
         return { title: "Enter PIN", message: "" };
     }
@@ -250,116 +319,241 @@ export default function ParentalControlScreen() {
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
 
+      {/* ── Header ── */}
       <View style={S.header}>
-        <Text style={S.headerTitle}>Parental Control</Text>
-        <Text style={S.headerSubtitle}>
-          {state.enabled
-            ? `Locked: ${lockedCount} item${lockedCount === 1 ? "" : "s"}${autoLockedCount > 0 ? ` + ${autoLockedCount} matched by keyword` : ""}`
-            : "The lock is currently off"}
-        </Text>
-      </View>
-
-      {parentalControl.isDefaultPin && state.enabled ? (
-        <View style={S.warning}>
-          <Ionicons name="warning-outline" size={ps(1.4)} color="#fbbf24" />
-          <Text style={S.warningText}>
-            Still using the default PIN ({DEFAULT_PIN}). Change it below.
+        <View style={S.headerTitles}>
+          <Text style={S.headerTitle}>Parental Control</Text>
+          <Text style={S.headerSubtitle}>
+            {state.enabled
+              ? `Active security · ${lockedCount} manually locked${
+                  autoLockedCount > 0 ? ` + ${autoLockedCount} keyword matched` : ""
+                }`
+              : "Parental lock is currently turned off"}
           </Text>
         </View>
-      ) : null}
 
-      {notice ? (
-        <View style={S.notice}>
-          <Ionicons name="checkmark-circle-outline" size={ps(1.4)} color="#4ade80" />
-          <Text style={S.noticeText}>{notice}</Text>
+        {/* Protection Status Badge */}
+        {state.enabled ? (
+          <View style={S.statusBadge}>
+            <View style={S.statusDotActive} />
+            <ShieldCheck size={ps(1.6)} color="#4ade80" />
+            <Text style={S.statusBadgeTextActive}>PROTECTED</Text>
+          </View>
+        ) : (
+          <View style={[S.statusBadge, S.statusBadgeInactive]}>
+            <View style={S.statusDotInactive} />
+            <Unlock size={ps(1.6)} color="rgba(255,255,255,0.4)" />
+            <Text style={S.statusBadgeTextInactive}>UNPROTECTED</Text>
+          </View>
+        )}
+      </View>
+
+      {/* ── System Overview Stats ── */}
+      <View style={S.statsRow}>
+        <View style={S.statCard}>
+          <Text style={S.statLabel}>System State</Text>
+          <Text
+            style={[
+              S.statValue,
+              { color: state.enabled ? "#4ade80" : "rgba(255,255,255,0.5)" },
+            ]}
+          >
+            {state.enabled ? "Active" : "Disabled"}
+          </Text>
+        </View>
+        <View style={S.statCard}>
+          <Text style={S.statLabel}>Manually Locked</Text>
+          <Text style={S.statValue}>
+            {lockedCount} {lockedCount === 1 ? "Item" : "Items"}
+          </Text>
+        </View>
+        <View style={S.statCard}>
+          <Text style={S.statLabel}>Adult Keyword Filter</Text>
+          <Text
+            style={[
+              S.statValue,
+              { color: state.blockAdultKeywords ? "#60a5fa" : "rgba(255,255,255,0.5)" },
+            ]}
+          >
+            {state.blockAdultKeywords
+              ? autoLockedCount > 0
+                ? `${autoLockedCount} Filtered`
+                : "Active"
+              : "Off"}
+          </Text>
+        </View>
+        <View style={S.statCard}>
+          <Text style={S.statLabel}>PIN Mode</Text>
+          <Text
+            style={[
+              S.statValue,
+              { color: parentalControl.isDefaultPin ? "#fbbf24" : "#4ade80" },
+            ]}
+          >
+            {parentalControl.isDefaultPin ? "Factory (0000)" : "Custom PIN"}
+          </Text>
+        </View>
+      </View>
+
+      {/* ── Default PIN Warning Banner ── */}
+      {parentalControl.isDefaultPin && state.enabled ? (
+        <View style={S.warningCard}>
+          <View style={S.warningIconBox}>
+            <TriangleAlert size={ps(2.2)} color="#fbbf24" />
+          </View>
+          <View style={S.warningContent}>
+            <Text style={S.warningTitle}>Default Factory PIN in Use ({DEFAULT_PIN})</Text>
+            <Text style={S.warningText}>
+              Your lock is active with the default factory PIN. Anyone can bypass restrictions.
+              Please update to a personal 4-digit PIN.
+            </Text>
+          </View>
+          <Focusable
+            ringOnFocus={false}
+            onPress={() => setPinIntent("change-current")}
+            style={S.warningBtnWrapper}
+            focusKey="pc-fix-pin-btn"
+            screenKey={SCREEN_KEY}
+            accessibilityLabel="Change default PIN"
+            accessibilityRole="button"
+          >
+            {(focused) => (
+              <View style={[S.warningBtn, focused && S.warningBtnFocused]}>
+                <Text
+                  style={[S.warningBtnText, focused && S.warningBtnTextFocused]}
+                >
+                  Change PIN
+                </Text>
+              </View>
+            )}
+          </Focusable>
         </View>
       ) : null}
 
-      <ScrollView contentContainerStyle={S.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={S.sectionLabel}>LOCK</Text>
-        <FocusGroup style={S.group}>
-          <Row
-            icon="lock-closed-outline"
-            title="Parental Lock"
-            subtitle="Require a PIN for the content selected below"
-            on={state.enabled}
-            preferred={unlocked}
-            onPress={() => parentalControl.setEnabled(!state.enabled)}
-          />
-          <Row
-            icon="key-outline"
-            title="Change PIN"
-            subtitle="Four digits. The factory PIN is 0000."
-            onPress={() => setPinIntent("change-current")}
-          />
-        </FocusGroup>
+      {/* ── Notice Toast ── */}
+      {notice ? (
+        <View style={S.noticeBanner}>
+          <CheckCircle size={ps(1.8)} color="#4ade80" />
+          <Text style={S.noticeBannerText}>{notice}</Text>
+        </View>
+      ) : null}
 
-        <Text style={S.sectionLabel}>WHAT THE PIN GUARDS</Text>
-        <FocusGroup style={S.group}>
-          <Row
-            icon="play-circle-outline"
-            title="Watching locked channels"
-            subtitle="A PIN is asked for before a locked channel plays"
-            on={state.scopes.playback}
-            disabled={!state.enabled}
-            onPress={() => toggleScope("playback")}
-          />
-          <Row
-            icon="settings-outline"
-            title="Opening this menu"
-            subtitle="Stops the lock being switched off by whoever it is for"
-            on={state.scopes.settings}
-            disabled={!state.enabled}
-            onPress={() => toggleScope("settings")}
-          />
-          <Row
-            icon="server-outline"
-            title="Adding or changing portals"
-            subtitle="Stops an unfiltered playlist being added around the lock"
-            on={state.scopes.portals}
-            disabled={!state.enabled}
-            onPress={() => toggleScope("portals")}
-          />
-        </FocusGroup>
+      <ScrollView
+        contentContainerStyle={S.scroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Section 1: Security Master */}
+        <View style={S.rootSection}>
+          <Text style={S.sectionLabel}>SECURITY & MASTER LOCK</Text>
+          <FocusGroup style={S.group}>
+            <Row
+              icon="lock-closed-outline"
+              title="Parental Lock"
+              subtitle="Require a PIN for all protected content and selected scopes"
+              on={state.enabled}
+              preferred={unlocked}
+              focusKey="pc-master-lock"
+              onPress={() => parentalControl.setEnabled(!state.enabled)}
+            />
+            <Row
+              icon="key-outline"
+              title="Change PIN"
+              subtitle="Four-digit security code used to unlock channels and menus"
+              badge={parentalControl.isDefaultPin ? "Factory (0000)" : "Custom PIN"}
+              focusKey="pc-change-pin"
+              onPress={() => setPinIntent("change-current")}
+            />
+          </FocusGroup>
+        </View>
 
-        <Text style={S.sectionLabel}>WHAT IS LOCKED</Text>
-        <FocusGroup style={S.group}>
-          <Row
-            icon="eye-off-outline"
-            title="Block adult channels automatically"
-            subtitle="Matches Adult and similar names and categories"
-            on={state.blockAdultKeywords}
-            disabled={!state.enabled}
-            onPress={() => parentalControl.setBlockAdultKeywords(!state.blockAdultKeywords)}
-          />
-          <Row
-            icon="list-outline"
-            title={`Manually locked items (${lockedCount})`}
-            subtitle="Long-press a channel, movie or series to lock or unlock it"
-            onPress={() => router.push("/live-tv")}
-          />
-          <Row
-            icon="trash-outline"
-            title="Clear all manual locks"
-            subtitle="Removes every channel and category you locked by hand"
-            danger
-            disabled={parentalControl.manualLockCount === 0}
-            onPress={async () => {
-              await parentalControl.clearAllLocks();
-              flash("Manual locks cleared.");
-            }}
-          />
-        </FocusGroup>
+        {/* Section 2: Scopes */}
+        <View style={S.rootSection}>
+          <Text style={S.sectionLabel}>WHAT THE PIN GUARDS</Text>
+          <FocusGroup style={S.group}>
+            <Row
+              icon="play-circle-outline"
+              title="Watching Locked Channels"
+              subtitle="Prompt for PIN before playing restricted live channels, movies, or series"
+              on={state.scopes.playback}
+              disabled={!state.enabled}
+              focusKey="pc-guard-playback"
+              onPress={() => toggleScope("playback")}
+            />
+            <Row
+              icon="settings-outline"
+              title="Opening Settings & Parental Menus"
+              subtitle="Stops the lock or system settings being altered without the PIN"
+              on={state.scopes.settings}
+              disabled={!state.enabled}
+              focusKey="pc-guard-settings"
+              onPress={() => toggleScope("settings")}
+            />
+            <Row
+              icon="server-outline"
+              title="Adding or Modifying Portals"
+              subtitle="Stops external or unmoderated playlists from being configured around the lock"
+              on={state.scopes.portals}
+              disabled={!state.enabled}
+              focusKey="pc-guard-portals"
+              onPress={() => toggleScope("portals")}
+            />
+          </FocusGroup>
+        </View>
 
-        <Text style={S.footnote}>
-          A correct PIN unlocks playback for 15 minutes, so a run of channel changes is not
-          interrupted. Leaving the player relocks it.
-        </Text>
+        {/* Section 3: Restrictions */}
+        <View style={S.rootSection}>
+          <Text style={S.sectionLabel}>CONTENT RESTRICTIONS</Text>
+          <FocusGroup style={S.group}>
+            <Row
+              icon="eye-off-outline"
+              title="Block Adult Channels Automatically"
+              subtitle="Automatically filters titles matching adult keywords and adult categories"
+              badge={autoLockedCount > 0 ? `${autoLockedCount} detected` : undefined}
+              on={state.blockAdultKeywords}
+              disabled={!state.enabled}
+              focusKey="pc-block-adult"
+              onPress={() =>
+                parentalControl.setBlockAdultKeywords(!state.blockAdultKeywords)
+              }
+            />
+            <Row
+              icon="list-outline"
+              title="Manage Locked Items"
+              subtitle="Long-press any channel, movie or series in Live TV / Movies to lock or unlock it"
+              badge={`${lockedCount} locked`}
+              focusKey="pc-manage-locks"
+              onPress={() => router.push("/live-tv")}
+            />
+            <Row
+              icon="trash-outline"
+              title="Clear All Manual Locks"
+              subtitle="Remove locks from every channel, movie and category you flagged by hand"
+              danger
+              disabled={parentalControl.manualLockCount === 0}
+              focusKey="pc-clear-locks"
+              onPress={async () => {
+                await parentalControl.clearAllLocks();
+                flash("All manual locks cleared.");
+              }}
+            />
+          </FocusGroup>
+        </View>
+
+        {/* Info Footnote Card */}
+        <View style={S.infoCard}>
+          <Info size={ps(2)} color="#93c5fd" style={S.infoCardIcon} />
+          <View style={S.infoCardContent}>
+            <Text style={S.infoCardTitle}>PIN Session Memory</Text>
+            <Text style={S.infoCardText}>
+              Entering a correct PIN unlocks playback for 15 minutes to allow uninterrupted
+              channel zapping. Exiting the player relocks all protected content immediately.
+            </Text>
+          </View>
+        </View>
       </ScrollView>
 
-      {/* resetKey is the step: changing a PIN asks three questions without the
-          prompt ever closing, and without this the digits from the previous
-          question stayed on screen. */}
+      {/* PIN Prompt Modal */}
       <PinPrompt
         visible={!!pinIntent}
         resetKey={pinIntent ?? ""}
@@ -374,109 +568,358 @@ export default function ParentalControlScreen() {
 }
 
 const S = StyleSheet.create({
-  container: { flex: 1, backgroundColor: THEME.colors.background },
+  container: {
+    flex: 1,
+    backgroundColor: THEME.colors.background,
+  },
 
-  header: { paddingHorizontal: pw(4), paddingTop: ph(2), paddingBottom: ph(1) },
-  headerTitle: { color: "#fff", fontSize: ps(2), fontWeight: "900" },
-  headerSubtitle: { color: THEME.colors.textDim, fontSize: ps(1), marginTop: ph(0.4) },
-
-  warning: {
+  // ── Header ────────────────────────────────────────────────────────────────
+  header: {
+    paddingHorizontal: pw(8),
+    paddingTop: ph(5.5),
+    paddingBottom: ph(3.5),
     flexDirection: "row",
     alignItems: "center",
-    gap: pw(1),
-    marginHorizontal: pw(4),
-    marginBottom: ph(1),
-    paddingHorizontal: pw(1.5),
-    paddingVertical: ph(1),
-    borderRadius: ps(0.9),
-    backgroundColor: "rgba(251,191,36,0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(251,191,36,0.28)",
+    justifyContent: "space-between",
   },
-  warningText: { color: "#fcd34d", fontSize: ps(0.95), flex: 1 },
-
-  notice: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: pw(1),
-    marginHorizontal: pw(4),
-    marginBottom: ph(1),
-    paddingHorizontal: pw(1.5),
-    paddingVertical: ph(1),
-    borderRadius: ps(0.9),
-    backgroundColor: "rgba(74,222,128,0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(74,222,128,0.25)",
+  headerTitles: {
+    flex: 1,
   },
-  noticeText: { color: "#86efac", fontSize: ps(0.95), flex: 1 },
-
-  scroll: { paddingHorizontal: pw(4), paddingBottom: ph(6) },
-  sectionLabel: {
-    color: "rgba(255,255,255,0.32)",
-    fontSize: ps(0.85),
+  headerTitle: {
+    color: "#FFFFFF",
+    fontSize: ps(2.6),
     fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  headerSubtitle: {
+    color: "rgba(255, 255, 255, 0.55)",
+    fontSize: ps(1.15),
+    marginTop: ph(0.8),
+  },
+
+  // ── Status Badge ──────────────────────────────────────────────────────────
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: pw(0.8),
+    paddingHorizontal: pw(1.6),
+    paddingVertical: ph(0.9),
+    borderRadius: ps(1.2),
+    backgroundColor: "rgba(74, 222, 128, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(74, 222, 128, 0.3)",
+  },
+  statusBadgeInactive: {
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
+  },
+  statusBadgeTextActive: {
+    color: "#4ade80",
+    fontSize: ps(1.1),
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  statusBadgeTextInactive: {
+    color: "rgba(255, 255, 255, 0.5)",
+    fontSize: ps(1.1),
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  statusDotActive: {
+    width: ps(0.8),
+    height: ps(0.8),
+    borderRadius: ps(0.4),
+    backgroundColor: "#4ade80",
+  },
+  statusDotInactive: {
+    width: ps(0.8),
+    height: ps(0.8),
+    borderRadius: ps(0.4),
+    backgroundColor: "rgba(255, 255, 255, 0.4)",
+  },
+
+  // ── Stats Summary Row ─────────────────────────────────────────────────────
+  statsRow: {
+    flexDirection: "row",
+    gap: pw(1.5),
+    paddingHorizontal: pw(8),
+    marginBottom: ph(3.5),
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: "#17181c",
+    borderRadius: ps(1.4),
+    paddingHorizontal: pw(1.8),
+    paddingVertical: ph(1.8),
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+  },
+  statLabel: {
+    color: "rgba(255, 255, 255, 0.45)",
+    fontSize: ps(0.88),
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  statValue: {
+    color: "#FFFFFF",
+    fontSize: ps(1.4),
+    fontWeight: "800",
+    marginTop: ph(0.6),
+  },
+
+  // ── Warning & Notice ──────────────────────────────────────────────────────
+  warningCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: pw(1.8),
+    marginHorizontal: pw(8),
+    marginBottom: ph(3.5),
+    paddingHorizontal: pw(2),
+    paddingVertical: ph(1.6),
+    borderRadius: ps(1.6),
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.35)",
+  },
+  warningIconBox: {
+    width: ps(3.8),
+    height: ps(3.8),
+    borderRadius: ps(1.9),
+    backgroundColor: "rgba(245, 158, 11, 0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  warningContent: {
+    flex: 1,
+  },
+  warningTitle: {
+    color: "#fbbf24",
+    fontSize: ps(1.3),
+    fontWeight: "800",
+  },
+  warningText: {
+    color: "rgba(251, 191, 36, 0.85)",
+    fontSize: ps(1.05),
+    marginTop: ph(0.3),
+    lineHeight: ps(1.45),
+  },
+  warningBtnWrapper: {},
+  warningBtn: {
+    paddingHorizontal: pw(1.8),
+    paddingVertical: ph(1.1),
+    borderRadius: ps(1),
+    backgroundColor: "#fbbf24",
+  },
+  warningBtnFocused: {
+    backgroundColor: "#FFFFFF",
+    transform: [{ scale: 1.05 }],
+  },
+  warningBtnText: {
+    color: "#0E0F14",
+    fontSize: ps(1.15),
+    fontWeight: "900",
+  },
+  warningBtnTextFocused: {
+    color: "#0E0F14",
+  },
+
+  noticeBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: pw(1.2),
+    marginHorizontal: pw(8),
+    marginBottom: ph(3.5),
+    paddingHorizontal: pw(2),
+    paddingVertical: ph(1.4),
+    borderRadius: ps(1.4),
+    backgroundColor: "rgba(74, 222, 128, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(74, 222, 128, 0.35)",
+  },
+  noticeBannerText: {
+    color: "#86efac",
+    fontSize: ps(1.2),
+    fontWeight: "700",
+    flex: 1,
+  },
+
+  // ── Scroll & Content ──────────────────────────────────────────────────────
+  scroll: {
+    paddingHorizontal: pw(8),
+    paddingBottom: ph(8),
+  },
+  rootSection: {
+    marginBottom: ph(4.5),
+  },
+  sectionLabel: {
+    fontSize: ps(1.35),
+    fontWeight: "900",
+    color: "rgba(255, 255, 255, 0.65)",
     letterSpacing: 2,
-    marginTop: ph(2),
-    marginBottom: ph(0.8),
+    marginBottom: ph(1.6),
+    paddingLeft: pw(0.5),
   },
   group: {
-    borderRadius: ps(1.2),
-    // Matched to TILE_FRAME: was 0.06 / 0.03 against the shared 0.05 / 0.04.
-    backgroundColor: TILE_FRAME.backgroundColor,
-    borderWidth: TILE_FRAME.borderWidth,
-    borderColor: TILE_FRAME.borderColor,
+    borderRadius: 18,
+    padding: ps(0.8),
+    backgroundColor: "#17181c",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
     overflow: "hidden",
   },
 
-  rowWrapper: {},
+  // ── Rows ──────────────────────────────────────────────────────────────────
+  rowWrapper: {
+    marginBottom: ph(0.4),
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: pw(1.5),
+    gap: pw(1.8),
     paddingHorizontal: pw(2),
-    paddingVertical: ph(1.6),
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.04)",
+    paddingVertical: ph(2),
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "transparent",
+    backgroundColor: "transparent",
   },
-  rowFocused: { backgroundColor: "#fff" },
-  rowDisabled: { opacity: 0.4 },
-  rowIcon: {
-    width: ps(3.2),
-    height: ps(3.2),
-    borderRadius: ps(1.6),
+  rowFocused: {
+    backgroundColor: "#F5F5F5",
+    borderColor: "#FFFFFF",
+  },
+  rowDisabled: {
+    opacity: 0.38,
+  },
+  iconBadge: {
+    width: ps(4.2),
+    height: ps(4.2),
+    borderRadius: ps(1.2),
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.07)",
   },
-  rowIconFocused: { backgroundColor: "rgba(0,0,0,0.08)" },
-  rowText: { flex: 1, gap: 2 },
-  rowTitle: { color: "#fff", fontSize: ps(1.15), fontWeight: "700" },
-  rowSubtitle: { color: "rgba(255,255,255,0.4)", fontSize: ps(0.9) },
-  onFocus: { color: "#000" },
-
-  switchTrack: {
-    width: ps(3.2),
-    height: ps(1.7),
-    borderRadius: ps(0.85),
-    backgroundColor: "rgba(255,255,255,0.14)",
-    padding: 2,
-    justifyContent: "center",
+  iconBadgeFocused: {
+    backgroundColor: "rgba(0, 0, 0, 0.08)",
   },
-  switchTrackOn: { backgroundColor: "#4ade80" },
-  switchTrackFocused: { backgroundColor: "rgba(0,0,0,0.16)" },
-  switchKnobFocused: { backgroundColor: "#0E0F14" },
-  switchKnob: {
-    width: ps(1.3),
-    height: ps(1.3),
-    borderRadius: ps(0.65),
-    backgroundColor: "#fff",
+  iconBadgeDanger: {
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
   },
-  switchKnobOn: { alignSelf: "flex-end", backgroundColor: "#0E0F14" },
-
-  footnote: {
-    color: "rgba(255,255,255,0.28)",
-    fontSize: ps(0.9),
-    marginTop: ph(2.5),
+  iconBadgeDangerFocused: {
+    backgroundColor: "rgba(220, 38, 38, 0.15)",
+  },
+  rowText: {
+    flex: 1,
+    paddingRight: pw(1),
+  },
+  rowTitle: {
+    fontSize: ps(1.45),
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+  rowTitleFocused: {
+    color: "#0E0F14",
+    fontWeight: "900",
+  },
+  rowSubtitle: {
+    fontSize: ps(1.1),
+    color: "rgba(255, 255, 255, 0.55)",
+    marginTop: 3,
     lineHeight: ps(1.5),
+  },
+  rowSubtitleFocused: {
+    color: "rgba(0, 0, 0, 0.65)",
+  },
+
+  badgePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: pw(0.6),
+    paddingHorizontal: pw(1.2),
+    paddingVertical: ph(0.6),
+    borderRadius: ps(0.8),
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  badgePillFocused: {
+    backgroundColor: "rgba(0, 0, 0, 0.08)",
+  },
+  badgePillText: {
+    color: "rgba(255, 255, 255, 0.8)",
+    fontSize: ps(1.05),
+    fontWeight: "700",
+  },
+  badgePillTextFocused: {
+    color: "#0E0F14",
+    fontWeight: "800",
+  },
+
+  // ── Switch ────────────────────────────────────────────────────────────────
+  switchTrack: {
+    width: pw(4.2),
+    height: ph(3.2),
+    minWidth: ps(3.8),
+    borderRadius: ps(1.6),
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    padding: 2,
+  },
+  switchTrackFocused: {
+    backgroundColor: "rgba(0, 0, 0, 0.15)",
+    borderColor: "rgba(0, 0, 0, 0.3)",
+  },
+  switchTrackOn: {
+    backgroundColor: "#4ADE80",
+    borderColor: "#4ADE80",
+  },
+  switchTrackOnFocused: {
+    backgroundColor: "#22c55e",
+    borderColor: "#22c55e",
+  },
+  switchKnob: {
+    width: ps(1.6),
+    height: ps(1.6),
+    borderRadius: ps(0.8),
+    backgroundColor: "rgba(255, 255, 255, 0.6)",
+  },
+  switchKnobFocused: {
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  switchKnobOn: {
+    alignSelf: "flex-end",
+    backgroundColor: "#0E0F14",
+  },
+
+  // ── Info Footnote Card ────────────────────────────────────────────────────
+  infoCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: pw(1.6),
+    backgroundColor: "rgba(59, 130, 246, 0.08)",
+    borderRadius: ps(1.6),
+    borderWidth: 1,
+    borderColor: "rgba(59, 130, 246, 0.2)",
+    paddingHorizontal: pw(2),
+    paddingVertical: ph(1.8),
+    marginTop: ph(1),
+    marginBottom: ph(6),
+  },
+  infoCardIcon: {
+    marginTop: ph(0.2),
+  },
+  infoCardContent: {
+    flex: 1,
+  },
+  infoCardTitle: {
+    color: "#93c5fd",
+    fontSize: ps(1.2),
+    fontWeight: "800",
+  },
+  infoCardText: {
+    color: "rgba(147, 197, 253, 0.85)",
+    fontSize: ps(1.05),
+    lineHeight: ps(1.5),
+    marginTop: ph(0.3),
   },
 });

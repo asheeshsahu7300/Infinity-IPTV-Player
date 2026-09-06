@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useNavigationContainerRef } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { useFonts } from "expo-font";
+
 import {
   StyleSheet,
   AppState,
@@ -12,10 +12,19 @@ import {
   Animated,
   Image as RNImage,
   View,
+  BackHandler,
 } from "react-native";
 import * as Linking from "expo-linking";
 import { LinearGradient } from "expo-linear-gradient";
-import { TenorSans_400Regular } from "@expo-google-fonts/tenor-sans";
+import { 
+  useFonts,
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+  Inter_900Black 
+} from "@expo-google-fonts/inter";
 import { Audio } from "expo-av";
 
 import ErrorBoundary from "../src/components/ErrorBoundary";
@@ -29,12 +38,13 @@ import { PlaybackState } from "../src/services/PlaybackState";
 import { isTV } from "../src/utils/tvUtils";
 import { THEME, ps, ph, pw } from "../src/theme/tokens";
 import { safeStorage } from "../src/services/safeStorage";
+import { setSafeNavigationRef, safeBack } from "../src/services/safeNavigation";
 
 // Inject CSS for Web to guarantee the font loads exactly as requested
-if (Platform.OS === "web" && typeof document !== "undefined" && !document.getElementById("tenor-sans-font")) {
+if (Platform.OS === "web" && typeof document !== "undefined" && !document.getElementById("inter-font")) {
   const style = document.createElement("style");
-  style.id = "tenor-sans-font";
-  style.textContent = `@import url('https://fonts.googleapis.com/css2?family=Tenor+Sans&display=swap');`;
+  style.id = "inter-font";
+  style.textContent = `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');`;
   document.head.append(style);
 }
 
@@ -88,10 +98,34 @@ export default function RootLayout() {
   const isHydrated = usePortalStore((s) => s.isHydrated);
   const overscanPadding = usePortalStore((s) => s.overscanPadding);
   const router = useRouter();
+  const navigationRef = useNavigationContainerRef();
+
+  // Keep safeNavigation reference in sync with root navigation container
+  useEffect(() => {
+    if (navigationRef) {
+      setSafeNavigationRef(navigationRef);
+    }
+  }, [navigationRef]);
+
+  // Global remote hardware BackHandler:
+  // Catches any unhandled back press and pops to the previous DISTINCT screen,
+  // preventing navigating back to the same screen or looping through duplicate history.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      return safeBack();
+    });
+    return () => sub.remove();
+  }, []);
 
   // Load premium Google TV fonts
   const [fontsLoaded] = useFonts({
-    "Tenor Sans": TenorSans_400Regular,
+    Inter: Inter_400Regular,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+    Inter_900Black,
   });
 
   // Check for external player resume state after process death
@@ -255,7 +289,7 @@ export default function RootLayout() {
                 <Stack.Screen name="portals" />
                 <Stack.Screen name="add-portal" />
                 <Stack.Screen name="dashboard" />
-                <Stack.Screen name="live-tv" />
+                <Stack.Screen name="live-tv" options={{ contentStyle: { backgroundColor: "#000000" } }} />
                 <Stack.Screen name="vod" />
                 <Stack.Screen name="series" />
                 <Stack.Screen name="series-details" />

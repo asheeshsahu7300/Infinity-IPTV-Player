@@ -14,17 +14,9 @@
 // src/services/epgService.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, Image as RNImage, StatusBar, StyleSheet, View } from 'react-native';
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -40,8 +32,11 @@ import {
 import { StreamManager } from "../src/services/StreamManager";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import PinPrompt from "../src/components/PinPrompt";
-import { THEME, ph, ps, pw } from "../src/theme/tokens";
+import { THEME, ph, psRaw as ps, pw } from "../src/theme/tokens";
 import { Focusable, FocusGroup } from "../src/tv";
+import { Calendar, Lock, Tv } from 'lucide-react-native';
+import { Text } from '../src/components/Text';
+
 
 /**
  * The load phase, in words.
@@ -65,7 +60,7 @@ const PHASE_TEXT: Record<EpgLoadPhase, string> = {
 
 const CHANNEL_PANE_WIDTH = pw(30);
 const CHANNEL_ROW_HEIGHT = ph(11);
-const PROGRAM_ROW_HEIGHT = ph(11);
+const PROGRAM_ROW_HEIGHT = ph(14);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rows
@@ -81,6 +76,7 @@ const ChannelRow = React.memo(
     onFocusChannel,
     onPlay,
     epgVersion,
+    index,
   }: {
     channel: Channel;
     number?: number;
@@ -102,44 +98,36 @@ const ChannelRow = React.memo(
       <Focusable
         ringOnFocus={false}
         hasTVPreferredFocus={preferFocus}
-        onFocus={() => onFocusChannel(channel, -1)}
+        onFocus={() => onFocusChannel(channel, index)}
         onPress={() => onPlay(channel)}
         style={S.channelRowWrapper}
         accessibilityLabel={`${channel.name}${nowNext.now ? `, now ${nowNext.now.title}` : ""}`}
       >
         {(focused) => (
           <View style={[S.channelRow, isSelected && S.channelRowSelected, focused && S.channelRowFocused]}>
-            <Text style={[S.channelNumber, focused && S.textOnFocus]}>{number ?? "—"}</Text>
+            <Text style={[
+              S.channelNumber,
+              focused ? { color: "#000000" } : isSelected && S.textOnActive,
+            ]}>{number ?? ""}</Text>
 
             <View style={S.channelLogo}>
               {locked ? (
-                <Ionicons name="lock-closed" size={ps(1.1)} color={focused ? "#000" : "rgba(255,255,255,0.5)"} />
+                <Lock size={ps(1.4)}
+                  color={focused ? "#000000" : isSelected ? "#111" : "rgba(255,255,255,0.6)"} />
               ) : channel.logo ? (
                 <Image source={{ uri: channel.logo }} style={S.channelLogoImage} contentFit="contain" cachePolicy="memory-disk" />
               ) : (
-                <Ionicons name="tv-outline" size={ps(1.1)} color={focused ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.2)"} />
+                <Tv size={ps(1.4)}
+                  color={focused ? "#000000" : isSelected ? "#111" : "rgba(255,255,255,0.2)"} />
               )}
             </View>
 
-            <View style={S.channelText}>
-              <Text style={[S.channelName, focused && S.textOnFocus]} numberOfLines={1}>
-                {channel.name}
-              </Text>
-              <Text style={[S.channelNow, focused && { color: "rgba(0,0,0,0.6)" }]} numberOfLines={1}>
-                {nowNext.now ? nowNext.now.title : "No guide data"}
-              </Text>
-              {nowNext.now ? (
-                <View style={[S.miniTrack, focused && { backgroundColor: "rgba(0,0,0,0.18)" }]}>
-                  <View
-                    style={[
-                      S.miniFill,
-                      focused && { backgroundColor: "#000" },
-                      { width: `${Math.round(nowNext.progress * 100)}%` },
-                    ]}
-                  />
-                </View>
-              ) : null}
-            </View>
+            <Text style={[
+              S.channelName,
+              (focused || isSelected) && S.textOnActive
+            ]} numberOfLines={1}>
+              {channel.name}
+            </Text>
           </View>
         )}
       </Focusable>
@@ -185,7 +173,7 @@ const ProgramRow = React.memo(function ProgramRow({
       {(focused) => (
         <View style={[S.programRow, isNow && S.programRowNow, focused && S.programRowFocused]}>
           <View style={S.programTimeCol}>
-            <Text style={[S.programTime, focused && S.textOnFocus, isPast && !focused && S.dimmed]}>
+            <Text style={[S.programTime, focused ? { color: "#000000" } : isPast && S.dimmed]}>
               {stbEnvironment.formatClock(program.start)}
             </Text>
             <Text style={[S.programEnd, focused && { color: "rgba(0,0,0,0.5)" }]}>
@@ -195,12 +183,12 @@ const ProgramRow = React.memo(function ProgramRow({
 
           <View style={S.programBody}>
             <View style={S.programTitleRow}>
-              <Text style={[S.programTitle, focused && S.textOnFocus, isPast && !focused && S.dimmed]} numberOfLines={1}>
+              <Text style={[S.programTitle, focused ? { color: "#000000" } : isPast && S.dimmed]} numberOfLines={1}>
                 {program.title}
               </Text>
               {isNow ? (
-                <View style={[S.nowBadge, focused && { backgroundColor: "#000" }]}>
-                  <Text style={S.nowBadgeText}>ON NOW</Text>
+                <View style={[S.nowBadge, focused && { backgroundColor: "#000000" }]}>
+                  <Text style={[S.nowBadgeText, focused && { color: "#FFFFFF" }]}>ON NOW</Text>
                 </View>
               ) : null}
             </View>
@@ -210,11 +198,11 @@ const ProgramRow = React.memo(function ProgramRow({
               </Text>
             ) : null}
             {isNow ? (
-              <View style={[S.miniTrack, focused && { backgroundColor: "rgba(0,0,0,0.18)" }]}>
+              <View style={[S.miniTrack, focused && { backgroundColor: "rgba(0,0,0,0.15)" }]}>
                 <View
                   style={[
                     S.miniFill,
-                    focused && { backgroundColor: "#000" },
+                    focused && { backgroundColor: "#000000" },
                     { width: `${Math.round(progress * 100)}%` },
                   ]}
                 />
@@ -245,8 +233,10 @@ export default function EPGScreen() {
   const [pinTarget, setPinTarget] = useState<Channel | null>(null);
   const [loadingChannelId, setLoadingChannelId] = useState<string | null>(null);
 
+  const channelListRef = useRef<FlatList<Channel>>(null);
   const programListRef = useRef<FlatList<EPGProgram>>(null);
   const selectedIdRef = useRef<string | null>(null);
+  const channelScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
@@ -287,9 +277,23 @@ export default function EPGScreen() {
       selectedIdRef.current = String(channel.id);
       setSelectedChannel(channel);
 
+      // Auto-scroll channel list to keep focused item at the top — same
+      // pattern as CategorySidebar's scrollToOffset.
+      const at = channels.findIndex((c) => String(c.id) === String(channel.id));
+      if (at >= 0) {
+        if (channelScrollTimeoutRef.current) clearTimeout(channelScrollTimeoutRef.current);
+        channelScrollTimeoutRef.current = setTimeout(() => {
+          try {
+            channelListRef.current?.scrollToOffset({
+              offset: at * CHANNEL_ROW_HEIGHT,
+              animated: true,
+            });
+          } catch { /* ignore */ }
+        }, 16);
+      }
+
       const portal = usePortalStore.getState().activePortal;
       if (!portal) return;
-      const at = channels.findIndex((c) => String(c.id) === String(channel.id));
       epgService.ensureChannel(portal, channel).catch(() => { });
       if (at >= 0) epgService.prefetch(portal, channels.slice(at + 1, at + 8));
     },
@@ -417,57 +421,18 @@ export default function EPGScreen() {
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
 
-      {/* ─── Hero: the focused programme ─── */}
-      <View style={S.hero}>
-        <View style={S.heroText}>
-          <Text style={S.heroEyebrow} numberOfLines={1}>
-            {selectedChannel
-              ? `${selectedChannel.num && selectedChannel.num > 0
-                ? selectedChannel.num
-                : channelNumbers.get(String(selectedChannel.id)) ?? "—"}  ·  ${selectedChannel.name}`
-              : "TV GUIDE"}
-          </Text>
-          <Text style={S.heroTitle} numberOfLines={1}>
-            {selectedProgram?.title ?? "No programme information"}
-          </Text>
-          {selectedProgram ? (
-            <Text style={S.heroTime}>
-              {stbEnvironment.formatClock(selectedProgram.start)} –{" "}
-              {stbEnvironment.formatClock(selectedProgram.end)}
-              {"   ·   "}
-              {Math.max(1, Math.round((selectedProgram.end - selectedProgram.start) / 60000))} min
-            </Text>
-          ) : null}
-          <Text style={S.heroDesc} numberOfLines={3}>
-            {selectedProgram?.description?.trim() ||
-              "No description available for this programme."}
-          </Text>
-        </View>
-
-        <View style={S.heroArt}>
-          {selectedChannel?.logo ? (
-            <Image
-              source={{ uri: selectedChannel.logo }}
-              style={S.heroLogo}
-              contentFit="contain"
-              cachePolicy="memory-disk"
-            />
-          ) : (
-            <Ionicons name="tv-outline" size={ps(3)} color="rgba(255,255,255,0.12)" />
-          )}
-          <LinearGradient
-            colors={["transparent", "rgba(0,0,0,0.4)"]}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
-        </View>
+      {/* ─── Header ─── */}
+      <View style={S.header}>
+        <Text style={S.headerTitle}>TV Guide</Text>
       </View>
+
 
       {/* ─── Panes ─── */}
       <View style={S.panes}>
         <FocusGroup style={{ width: CHANNEL_PANE_WIDTH }}>
           <Text style={S.paneLabel}>CHANNELS</Text>
           <FlatList
+            ref={channelListRef}
             data={channels}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderChannel}
@@ -481,7 +446,15 @@ export default function EPGScreen() {
             windowSize={5}
             removeClippedSubviews={false}
             showsVerticalScrollIndicator={false}
+            decelerationRate="fast"
             contentContainerStyle={S.paneContent}
+            onScrollToIndexFailed={(info) => {
+              setTimeout(() => {
+                try {
+                  channelListRef.current?.scrollToIndex({ index: info.index, animated: false });
+                } catch { /* ignore */ }
+              }, 80);
+            }}
             ListEmptyComponent={
               <View style={S.empty}>
                 <ActivityIndicator color={THEME.colors.primary} />
@@ -534,7 +507,7 @@ export default function EPGScreen() {
                   </>
                 ) : (
                   <>
-                    <Ionicons name="calendar-outline" size={ps(3)} color="rgba(255,255,255,0.1)" />
+                    <Calendar size={ps(3)} color="rgba(255,255,255,0.1)" />
                     <Text style={S.emptyTitle}>No guide for this channel</Text>
                     <Text style={S.emptyText}>
                       {guideStatus === "unavailable"
@@ -549,16 +522,7 @@ export default function EPGScreen() {
         </FocusGroup>
       </View>
 
-      {/* ─── Footer hints ─── */}
-      <View style={S.footer}>
-        <Text style={S.footerHint}>OK to watch  ·  BACK to close</Text>
-        {loadingChannelId ? (
-          <View style={S.footerBusy}>
-            <ActivityIndicator size="small" color={THEME.colors.primary} />
-            <Text style={S.footerHint}>Opening channel…</Text>
-          </View>
-        ) : null}
-      </View>
+
 
       <PinPrompt
         visible={!!pinTarget}
@@ -581,20 +545,38 @@ export default function EPGScreen() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const S = StyleSheet.create({
-  container: { flex: 1, backgroundColor: THEME.colors.background },
+  container: { flex: 1, backgroundColor: "#000000" },
+
+  // ── Header ──
+  header: {
+    paddingHorizontal: pw(3),
+    paddingTop: ph(3),
+    paddingBottom: ph(1.5),
+  },
+  headerTitle: {
+    color: "#FFFFFF",
+    fontSize: ps(2.2),
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  headerSubtitle: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: ps(1.1),
+    marginTop: ph(0.6),
+  },
 
   // ── Hero ──
   hero: {
     flexDirection: "row",
-    paddingHorizontal: pw(3),
-    paddingTop: ph(2),
+    paddingHorizontal: pw(8),
+    paddingTop: ph(1),
     paddingBottom: ph(1.5),
     gap: pw(3),
   },
   heroText: { flex: 1, justifyContent: "center" },
   heroEyebrow: {
     color: THEME.colors.textDim,
-    fontSize: ps(1),
+    fontSize: ps(1.1),
     fontWeight: "900",
     letterSpacing: 1.5,
     marginBottom: ph(0.6),
@@ -602,25 +584,25 @@ const S = StyleSheet.create({
   heroTitle: { color: "#fff", fontSize: ps(2.2), fontWeight: "900" },
   heroTime: {
     color: THEME.colors.textMuted,
-    fontSize: ps(1.05),
+    fontSize: ps(1.12),
     fontWeight: "700",
     marginTop: ph(0.5),
     fontVariant: ["tabular-nums"],
   },
   heroDesc: {
     color: THEME.colors.textDim,
-    fontSize: ps(1),
-    lineHeight: ps(1.6),
+    fontSize: ps(1.1),
+    lineHeight: ps(1.7),
     marginTop: ph(0.8),
     maxWidth: pw(52),
   },
   heroArt: {
     width: pw(16),
     height: ph(14),
-    borderRadius: ps(1.2),
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderRadius: 18,
+    backgroundColor: "#17181c",
+    borderWidth: 0,
+    borderColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -628,85 +610,95 @@ const S = StyleSheet.create({
   heroLogo: { width: "72%", height: "72%" },
 
   // ── Panes ──
-  panes: { flex: 1, flexDirection: "row", paddingHorizontal: pw(2), gap: pw(1.5) },
+  panes: { flex: 1, flexDirection: "row", paddingHorizontal: pw(2), gap: pw(4) },
   schedulePane: { flex: 1 },
   paneLabel: {
-    color: "rgba(255,255,255,0.35)",
-    fontSize: ps(0.85),
+    color: "rgba(255,255,255,0.65)",
+    fontSize: ps(1.45),
     fontWeight: "900",
-    letterSpacing: 2,
-    paddingHorizontal: pw(1),
-    paddingBottom: ph(0.8),
+    letterSpacing: 2.5,
+    paddingHorizontal: pw(0.5),
+    paddingBottom: ph(1.4),
   },
   paneContent: { paddingBottom: ph(4) },
 
   // ── Channel rows ──
-  channelRowWrapper: { height: CHANNEL_ROW_HEIGHT, justifyContent: "center", paddingHorizontal: pw(0.5) },
+  channelRowWrapper: { height: CHANNEL_ROW_HEIGHT, justifyContent: "center", paddingHorizontal: pw(0.5), paddingVertical: ph(0.5) },
   channelRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: pw(1),
-    paddingHorizontal: pw(1),
-    paddingVertical: ph(1),
-    borderRadius: ps(0.9),
-    borderWidth: 1,
+    gap: pw(1.5),
+    paddingHorizontal: pw(2),
+    paddingVertical: ph(1.8),
+    borderRadius: 18,
+    borderWidth: 0,
     borderColor: "transparent",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: "#17181c",
   },
-  channelRowSelected: { backgroundColor: "rgba(255,255,255,0.09)" },
-  channelRowFocused: { backgroundColor: "#fff", borderColor: "#fff" },
+  channelRowSelected: {
+    backgroundColor: "#22232a",
+    borderColor: "transparent",
+    borderWidth: 0,
+  },
+  channelRowFocused: {
+    backgroundColor: "#F5F5F5",
+    borderColor: "transparent",
+    borderWidth: 0,
+    elevation: 8,
+  },
   channelNumber: {
     minWidth: ps(2.2),
-    color: "rgba(255,255,255,0.4)",
-    fontSize: ps(1),
+    color: "rgba(255,255,255,0.5)",
+    fontSize: ps(1.2),
     fontWeight: "900",
     fontVariant: ["tabular-nums"],
   },
-  channelLogo: { width: ps(2.8), height: ps(2), alignItems: "center", justifyContent: "center" },
+  channelLogo: { width: ps(4.5), height: ps(3.4), alignItems: "center", justifyContent: "center" },
   channelLogoImage: { width: "100%", height: "100%" },
-  channelText: { flex: 1, gap: 2 },
-  channelName: { color: "#fff", fontSize: ps(1.05), fontWeight: "700" },
-  channelNow: { color: "rgba(255,255,255,0.4)", fontSize: ps(0.85), fontWeight: "600" },
+  channelText: { flex: 1 },
+  channelName: { color: "#FFFFFF", fontSize: ps(1.6), fontWeight: "800", letterSpacing: 0.2 },
+  channelNow: { color: "rgba(255,255,255,0.5)", fontSize: ps(1), fontWeight: "600" },
+  textOnActive: { color: "#000000" },
 
   // ── Programme rows ──
-  programRowWrapper: { height: PROGRAM_ROW_HEIGHT, justifyContent: "center", paddingHorizontal: pw(0.5) },
+  programRowWrapper: { height: PROGRAM_ROW_HEIGHT, justifyContent: "center", paddingHorizontal: pw(0.5), paddingVertical: ph(0.6) },
   programRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: pw(1.5),
-    paddingHorizontal: pw(1.4),
-    paddingVertical: ph(1),
-    borderRadius: ps(0.9),
-    borderWidth: 1,
+    gap: pw(2.5),
+    paddingHorizontal: pw(2.5),
+    paddingVertical: ph(2.8),
+    borderRadius: 18,
+    borderWidth: 0,
     borderColor: "transparent",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: "#17181c",
   },
-  programRowNow: { backgroundColor: "rgba(255,255,255,0.08)" },
-  programRowFocused: { backgroundColor: "#fff", borderColor: "#fff" },
-  programTimeCol: { alignItems: "flex-start", minWidth: ps(4) },
+  programRowNow: { backgroundColor: "#22232a" },
+  programRowFocused: { backgroundColor: "#F5F5F5", borderColor: "transparent", borderWidth: 0 },
+  programTimeCol: { alignItems: "flex-start", minWidth: ps(5.5) },
   programTime: {
     color: "#fff",
-    fontSize: ps(1.05),
+    fontSize: ps(1.5),
     fontWeight: "800",
     fontVariant: ["tabular-nums"],
   },
   programEnd: {
-    color: "rgba(255,255,255,0.32)",
-    fontSize: ps(0.82),
+    color: "rgba(255,255,255,0.4)",
+    fontSize: ps(1.12),
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
-  programBody: { flex: 1, gap: 2 },
+  programBody: { flex: 1, gap: 5 },
   programTitleRow: { flexDirection: "row", alignItems: "center", gap: pw(0.8) },
-  programTitle: { color: "#fff", fontSize: ps(1.1), fontWeight: "700", flexShrink: 1 },
-  programDesc: { color: "rgba(255,255,255,0.38)", fontSize: ps(0.85) },
+  programTitle: { color: "#fff", fontSize: ps(1.5), fontWeight: "700", flexShrink: 1 },
+  programDesc: { color: "rgba(255,255,255,0.5)", fontSize: ps(1.12) },
   nowBadge: {
     backgroundColor: "rgba(255,255,255,0.9)",
-    paddingHorizontal: pw(0.6),
-    paddingVertical: 1,
-    borderRadius: 3,
+    paddingHorizontal: pw(0.8),
+    paddingVertical: 2,
+    borderRadius: 4,
   },
-  nowBadgeText: { color: "#000", fontSize: ps(0.62), fontWeight: "900", letterSpacing: 0.8 },
+  nowBadgeText: { color: "#000", fontSize: ps(0.85), fontWeight: "900", letterSpacing: 0.8 },
 
   // ── Shared ──
   textOnFocus: { color: "#000" },
@@ -721,19 +713,19 @@ const S = StyleSheet.create({
   miniFill: { height: "100%", backgroundColor: "#fff" },
 
   empty: { alignItems: "center", justifyContent: "center", paddingVertical: ph(10), gap: ph(1) },
-  emptyTitle: { color: "rgba(255,255,255,0.45)", fontSize: ps(1.2), fontWeight: "700" },
-  emptyText: { color: "rgba(255,255,255,0.25)", fontSize: ps(0.95), textAlign: "center", maxWidth: pw(30) },
+  emptyTitle: { color: "rgba(255,255,255,0.45)", fontSize: ps(1.5), fontWeight: "700" },
+  emptyText: { color: "rgba(255,255,255,0.3)", fontSize: ps(1.1), textAlign: "center", maxWidth: pw(30) },
 
   footer: {
     flexDirection: "row",
     alignItems: "center",
     gap: pw(2),
-    paddingHorizontal: pw(3),
+    paddingHorizontal: pw(8),
     paddingVertical: ph(1.2),
   },
   footerHint: {
-    color: "rgba(255,255,255,0.3)",
-    fontSize: ps(0.85),
+    color: "rgba(255,255,255,0.35)",
+    fontSize: ps(1),
     fontWeight: "700",
     letterSpacing: 0.5,
   },

@@ -1,7 +1,9 @@
 import React, { Component, ReactNode } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { THEME } from '../theme/tokens';
+import { RefreshCw, TriangleAlert } from 'lucide-react-native';
+import { Text } from './Text';
+
 
 interface Props {
   children?: ReactNode;
@@ -72,7 +74,7 @@ export default class ErrorBoundary extends Component<Props, State> {
       return (
         <View style={styles.container}>
           <View style={styles.content}>
-            <Ionicons name="warning" size={64} color="#ef4444" />
+            <TriangleAlert size={64} color="#ef4444" />
             <Text style={styles.title}>Oops! Something went wrong</Text>
             <Text style={styles.subtitle}>
               The app encountered an unexpected error
@@ -85,7 +87,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               </View>
             )}
             <TouchableOpacity style={styles.button} onPress={this.handleReset}>
-              <Ionicons name="refresh" size={20} color="#fff" />
+              <RefreshCw size={20} color="#fff" />
               <Text style={[styles.buttonText, { marginLeft: 8 }]}>Try Again</Text>
             </TouchableOpacity>
           </View>

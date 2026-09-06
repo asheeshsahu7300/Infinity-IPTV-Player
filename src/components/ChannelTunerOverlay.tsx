@@ -10,9 +10,11 @@
 // the remote is the keypad and this readout is the only UI the tuner needs.
 // ─────────────────────────────────────────────────────────────────────────────
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from 'react-native';
 
 import { THEME, ph, ps, pw } from "../theme/tokens";
+import { Text } from './Text';
+
 
 export interface ChannelTunerReadoutProps {
   /** Digits typed so far. Null hides the readout entirely. */

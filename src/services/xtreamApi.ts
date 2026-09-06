@@ -95,11 +95,17 @@ export class XtreamApi {
       });
 
       const rawData = Array.isArray(res.data) ? res.data : [];
-      const categories = rawData.map((c: any) => ({
-        id: `live:${c.category_id}`,
-        name: c.category_name,
-        type: "live",
-      }));
+      const categories = rawData
+        .filter((c: any) => {
+          const lower = String(c.category_name ?? "").trim().toLowerCase();
+          const id = String(c.category_id ?? "").trim().toLowerCase();
+          return lower !== "all" && lower !== "all channels" && lower !== "all live" && id !== "all" && id !== "*";
+        })
+        .map((c: any) => ({
+          id: `live:${c.category_id}`,
+          name: c.category_name,
+          type: "live",
+        }));
 
       if (categories.length > 0) {
         await cacheManager.set(cacheKey, categories, CACHE_TTL.CATEGORIES);
@@ -180,11 +186,17 @@ export class XtreamApi {
       });
 
       const rawData = Array.isArray(res.data) ? res.data : [];
-      const categories = rawData.map((c: any) => ({
-        id: `vod:${c.category_id}`,
-        name: c.category_name,
-        type: "vod",
-      }));
+      const categories = rawData
+        .filter((c: any) => {
+          const lower = String(c.category_name ?? "").trim().toLowerCase();
+          const id = String(c.category_id ?? "").trim().toLowerCase();
+          return lower !== "all" && lower !== "all movies" && lower !== "all vod" && id !== "all" && id !== "*";
+        })
+        .map((c: any) => ({
+          id: `vod:${c.category_id}`,
+          name: c.category_name,
+          type: "vod",
+        }));
 
       if (categories.length > 0) {
         await cacheManager.set(cacheKey, categories, CACHE_TTL.CATEGORIES);
@@ -270,11 +282,17 @@ export class XtreamApi {
       });
 
       const rawData = Array.isArray(res.data) ? res.data : [];
-      const categories = rawData.map((c: any) => ({
-        id: `series:${c.category_id}`,
-        name: c.category_name,
-        type: "series",
-      }));
+      const categories = rawData
+        .filter((c: any) => {
+          const lower = String(c.category_name ?? "").trim().toLowerCase();
+          const id = String(c.category_id ?? "").trim().toLowerCase();
+          return lower !== "all" && lower !== "all series" && id !== "all" && id !== "*";
+        })
+        .map((c: any) => ({
+          id: `series:${c.category_id}`,
+          name: c.category_name,
+          type: "series",
+        }));
 
       if (categories.length > 0) {
         await cacheManager.set(cacheKey, categories, CACHE_TTL.CATEGORIES);

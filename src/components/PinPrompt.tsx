@@ -7,11 +7,13 @@
 // changing one, because the second is just the first asked three times.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-
+import { StyleSheet, View } from 'react-native';
 import { Focusable, Overlay } from "../tv";
 import { THEME, ph, ps, pw } from "../theme/tokens";
+import { Lock, X } from 'lucide-react-native';
+import { DynamicIcon } from '../components/DynamicIcon';
+import { Text } from './Text';
+
 
 export interface PinPromptProps {
   visible: boolean;
@@ -165,7 +167,7 @@ export function PinPrompt({
     <Overlay visible={visible} onClose={onCancel} contentStyle={S.content} axis="grid">
       <View style={S.header}>
         <View style={S.lockBadge}>
-          <Ionicons name="lock-closed" size={ps(1.8)} color="#000" />
+          <Lock size={ps(2.6)} color="rgba(255,255,255,0.75)" />
         </View>
         <Text style={S.title}>{title}</Text>
         <Text style={S.message}>{message}</Text>
@@ -202,14 +204,13 @@ export function PinPrompt({
                     {item.type === "digit" ? (
                       <Text style={[S.keyText, focused && S.keyTextFocused]}>{item.value}</Text>
                     ) : item.type === "cancel" ? (
-                      <Ionicons
-                        name="close"
+                      <X
                         size={ps(1.4)}
                         color={focused ? "#000" : "rgba(255,255,255,0.75)"}
                       />
                     ) : (
-                      <Ionicons
-                        name="backspace-outline"
+                      <DynamicIcon
+                        name="delete"
                         size={ps(1.4)}
                         color={focused ? "#000" : "rgba(255,255,255,0.75)"}
                       />
@@ -227,37 +228,33 @@ export function PinPrompt({
 
 const S = StyleSheet.create({
   content: {
-    width: ps(26),
-    padding: pw(2.5),
-    borderRadius: ps(1.6),
-    backgroundColor: "#0E0F14",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    width: ps(30),
+    paddingHorizontal: pw(3),
+    paddingVertical: ph(3),
+    borderRadius: 18,
+    backgroundColor: "#17181c",
+    borderWidth: 0,
+    borderColor: "transparent",
     alignItems: "center",
   },
-  header: { alignItems: "center", gap: ph(0.6) },
+  header: { alignItems: "center", gap: ph(0.8) },
   lockBadge: {
-    width: ps(3.4),
-    height: ps(3.4),
-    borderRadius: ps(1.7),
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: ph(0.6),
+    marginBottom: ph(1),
   },
-  title: { color: "#fff", fontSize: ps(1.5), fontWeight: "900", letterSpacing: 0.5 },
+  title: { color: "#fff", fontSize: ps(2), fontWeight: "900", letterSpacing: 0.5 },
   message: {
     color: THEME.colors.textMuted,
-    fontSize: ps(1),
+    fontSize: ps(1.1),
     textAlign: "center",
-    maxWidth: ps(20),
+    maxWidth: ps(22),
+    lineHeight: ps(1.7),
   },
 
-  dots: { flexDirection: "row", gap: pw(1.2), marginTop: ph(1.6) },
+  dots: { flexDirection: "row", gap: pw(1.6), marginTop: ph(2.2), marginBottom: ph(0.4) },
   dot: {
-    width: ps(1),
-    height: ps(1),
-    borderRadius: ps(0.5),
+    width: ps(1.2),
+    height: ps(1.2),
+    borderRadius: ps(0.6),
     backgroundColor: "rgba(255,255,255,0.16)",
   },
   dotFilled: { backgroundColor: "#fff" },
@@ -265,36 +262,38 @@ const S = StyleSheet.create({
 
   error: {
     color: "#ff6b6b",
-    fontSize: ps(0.9),
+    fontSize: ps(1),
     fontWeight: "700",
     marginTop: ph(0.8),
-    height: ps(1.4),
+    height: ps(1.5),
   },
   // Kept in the layout so the keypad does not jump when an error appears.
   errorHidden: { opacity: 0 },
 
   grid: {
     flexDirection: "column",
-    width: ps(16),
-    marginTop: ph(0.6),
+    width: ps(20),
+    marginTop: ph(1),
+    gap: ps(0.28),
   },
   row: {
     flexDirection: "row",
     justifyContent: "center",
     width: "100%",
+    gap: ps(0.28),
   },
-  keyWrapper: { flex: 1, padding: ps(0.28) },
+  keyWrapper: { flex: 1 },
   key: {
-    height: ps(3.4),
-    borderRadius: ps(0.7),
-    backgroundColor: "rgba(255,255,255,0.07)",
+    height: ps(4),
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.06)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
+    borderWidth: 0,
     borderColor: "transparent",
   },
-  keyFocused: { backgroundColor: "#fff", borderColor: "#fff", transform: [{ scale: 1.06 }] },
-  keyText: { color: "#fff", fontSize: ps(1.6), fontWeight: "800" },
+  keyFocused: { backgroundColor: "#fff", borderColor: "transparent", borderWidth: 0 },
+  keyText: { color: "#fff", fontSize: ps(1.8), fontWeight: "800" },
   keyTextFocused: { color: "#000" },
 });
 

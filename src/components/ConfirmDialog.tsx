@@ -1,12 +1,15 @@
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+
 
 import { Focusable, Overlay } from "../tv";
 import { ph, psRaw as ps, pw } from "../theme/tokens";
 import { isTV } from "../utils/tvUtils";
 
-type IconName = React.ComponentProps<typeof Ionicons>["name"];
+import { HelpCircle, AlertCircle, CheckCircle, LucideIcon } from "lucide-react-native";
+import { Text } from './Text';
+import { DynamicIcon } from "./DynamicIcon";
+
 
 export type DialogTone = "neutral" | "danger" | "success";
 
@@ -31,17 +34,17 @@ const TONES: Record<DialogTone, { accent: string; badge: string; fill: string; f
   success: { accent: "#FFFFFF", badge: "rgba(255,255,255,0.08)", fill: "#FFFFFF", fillText: "#000000" },
 };
 
-const DEFAULT_ICON: Record<DialogTone, IconName> = {
-  neutral: "help-circle-outline",
-  danger: "alert-circle-outline",
-  success: "checkmark-circle-outline",
+const DEFAULT_ICON: Record<DialogTone, LucideIcon> = {
+  neutral: HelpCircle,
+  danger: AlertCircle,
+  success: CheckCircle,
 };
 
 export interface ConfirmDialogProps {
   visible: boolean;
   title: string;
   message?: string;
-  icon?: IconName;
+  icon?: string | any;
   tone?: DialogTone;
   confirmLabel?: string;
   cancelLabel?: string;
@@ -141,6 +144,8 @@ export function ConfirmDialog({
   // Destructive dialogs open on Cancel so a stray OK press cannot wipe data.
   const preferCancel = !acknowledgeOnly && tone === "danger";
 
+  const iconToRender = icon ?? DEFAULT_ICON[tone];
+
   return (
     <Overlay
       visible={visible}
@@ -151,7 +156,7 @@ export function ConfirmDialog({
     >
       <View key={dialogKey ?? title} style={S.card}>
         <View style={[S.badge, { backgroundColor: t.badge, borderColor: t.accent + "33" }]}>
-          <Ionicons name={icon ?? DEFAULT_ICON[tone]} size={ps(3)} color={t.accent} />
+          <DynamicIcon name={iconToRender} size={ps(3)} color={t.accent} />
         </View>
 
         <Text style={S.title}>{title}</Text>
@@ -190,7 +195,7 @@ export interface DialogRequest {
   id?: string;
   title: string;
   message?: string;
-  icon?: IconName;
+  icon?: string | any;
   tone?: DialogTone;
   confirmLabel?: string;
   cancelLabel?: string;

@@ -1,26 +1,9 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Dimensions,
-  StatusBar,
-  TextInput,
-  RefreshControl,
-  FlatList,
-  Platform,
-  InteractionManager,
-  BackHandler,
-} from "react-native";
+import { View, StyleSheet, ActivityIndicator, Dimensions, FlatList, Platform, InteractionManager, BackHandler, Pressable , TextInput as RNTextInput} from 'react-native';
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
-import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
 
 import { usePortalStore, Channel, Category } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
@@ -28,32 +11,303 @@ import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { StreamManager } from "../src/services/StreamManager";
 import { cacheManager } from "../src/services/cacheManager";
-import { THEME, pw, ph, ps, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
-import { isTV } from "../src/utils/tvUtils";
-import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
+import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import CategorySidebar from "../src/components/CategorySidebar";
 import { Focusable, FocusGroup, FocusMemory, STB_PRIORITY, useInitialFocusPulse, useStbKeys, useIsFocusTrapped } from "../src/tv";
 import { useNetworkActivity } from "../src/services/networkActivity";
 import { AppBootManager } from "../src/services/AppBootManager";
 import { filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
-import { epgService, NowNext } from "../src/services/epgService";
+import { epgService } from "../src/services/epgService";
 import { parentalControl } from "../src/services/parentalControl";
 import { hiddenCategories } from "../src/services/hiddenCategories";
 import { stbEnvironment } from "../src/services/stbEnvironment";
+import { safeBack } from "../src/services/safeNavigation";
 import { buildChannelNumbers, liveChannelSession, withChannelNumbers } from "../src/services/liveChannelSession";
 import { useChannelTuner } from "../src/hooks/useChannelTuner";
-import { useNowNext } from "../src/hooks/useNowNext";
-import ChannelInfoBar from "../src/components/ChannelInfoBar";
 import { ChannelTunerReadout } from "../src/components/ChannelTunerOverlay";
 import PinPrompt from "../src/components/PinPrompt";
+import { Info, Lock, RefreshCw, Search, Tv, X } from 'lucide-react-native';
+import { DynamicIcon } from '../src/components/DynamicIcon';
+import { Text } from '../src/components/Text';
+import { TextInput } from '../src/components/TextInput';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+
+const { width: SCREEN_WIDTH_VAL, height: SCREEN_HEIGHT_VAL } = Dimensions.get("window");
 
 /** Namespace for this screen's focus memory. */
 const SCREEN_KEY = "live-tv";
+const VISIBLE_ROWS = 3;
 
 // ─────────────────────────────────────────────
-// Channel Card — single Focusable, no per-item TVEventHandler
+// Styles Defined at Top
+// ─────────────────────────────────────────────
+const S = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#000000",
+  },
+
+  // ── Header ──
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: pw(3),
+    height: 56,
+  },
+  headerCenterTitleWrapper: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    pointerEvents: "none",
+  },
+  headerTitle: {
+    color: "#FFFFFF",
+    fontSize: ps(1.6),
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  searchBtnWrapper: {
+    borderRadius: 24,
+    overflow: "hidden",
+  },
+  searchCircleBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#17181c",
+    borderWidth: 0,
+    borderColor: "transparent",
+    overflow: "hidden",
+  },
+  searchCircleBtnFocused: {
+    borderRadius: 22,
+    backgroundColor: "#F5F5F5",
+    borderColor: "transparent",
+    borderWidth: 0,
+    transform: [{ scale: 1.12 }],
+    overflow: "hidden",
+  },
+  searchOpenBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#17181c",
+    borderRadius: 22,
+    paddingHorizontal: pw(1.4),
+    height: 44,
+    width: pw(36),
+    borderWidth: 0,
+    borderColor: "transparent",
+  },
+  searchInput: {
+    flex: 1,
+    color: "#FFFFFF",
+    fontSize: ps(1.15),
+    fontWeight: "600",
+    paddingVertical: 0,
+    textAlignVertical: "center",
+  },
+
+  // ── Body ──
+  body: {
+    flexDirection: "row",
+    marginTop: 10,
+  },
+  gridArea: {
+    flex: 1,
+    overflow: "hidden",
+  },
+
+  // ── Cards ──
+  gridContent: {
+    paddingHorizontal: pw(1.2),
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  gridRow: {
+    flexDirection: "row",
+    overflow: "visible",
+  },
+  cardWrapper: {
+    paddingHorizontal: 5,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  cardBorder: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "transparent",
+    backgroundColor: "#17181c",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardBorderFocused: {
+    borderColor: "#ffffff",
+    borderWidth: 1,
+    transform: [{ scale: 1.03 }],
+    elevation: 12,
+  },
+  cardLogoWrapper: {
+    width: "75%",
+    flex: 1,
+    maxHeight: "62%",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: ph(0.2),
+  },
+  cardLogo: {
+    width: "100%",
+    height: "100%",
+  },
+  cardFallback: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+    borderRadius: 8,
+  },
+  cardInfo: {
+    alignItems: "center",
+    width: "100%",
+    paddingHorizontal: 6,
+    paddingBottom: 6,
+  },
+  cardTitle: {
+    color: "#FFFFFF",
+    fontSize: ps(0.9),
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  cardTitleFocused: {
+    fontWeight: "900",
+  },
+  cardCategory: {
+    color: "#B8B8B8",
+    fontSize: ps(0.72),
+    fontWeight: "600",
+    textAlign: "center",
+    marginTop: 2,
+  },
+  cardNumber: {
+    position: "absolute",
+    top: ps(0.4),
+    left: ps(0.4),
+    minWidth: ps(1.6),
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    alignItems: "center",
+    zIndex: 2,
+  },
+  cardNumberText: {
+    color: "#FFFFFF",
+    fontSize: ps(0.7),
+    fontWeight: "900",
+    fontVariant: ["tabular-nums"],
+  },
+  cardLock: {
+    position: "absolute",
+    top: ps(0.4),
+    right: ps(0.4),
+    zIndex: 2,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    borderRadius: 4,
+    padding: 2,
+  },
+
+  // ── States ──
+  loadingCenter: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: ph(2),
+  },
+  loadingText: {
+    color: "#B8B8B8",
+    fontSize: ps(1),
+    fontWeight: "600",
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingTop: ph(8),
+    gap: ph(1.2),
+  },
+  emptyTitle: {
+    color: "#FFFFFF",
+    fontSize: ps(1.4),
+    fontWeight: "800",
+  },
+  emptySubtitle: {
+    color: "#B8B8B8",
+    fontSize: ps(1.05),
+  },
+  retryBtn: {
+    marginTop: ph(2),
+    borderRadius: 16,
+    overflow: "visible",
+  },
+  retryInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: pw(0.8),
+    paddingHorizontal: pw(2.5),
+    paddingVertical: ph(1.2),
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    backgroundColor: "#161613CC",
+  },
+  retryInnerFocused: {
+    backgroundColor: "#F9F4EA",
+    borderColor: "#FFC857",
+    elevation: 8,
+  },
+  retryText: {
+    color: "#FFFFFF",
+    fontSize: ps(1.05),
+    fontWeight: "800",
+    marginLeft: pw(0.6),
+  },
+
+  // ── Notice ──
+  notice: {
+    position: "absolute",
+    top: ph(10),
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: pw(0.8),
+    paddingHorizontal: pw(2),
+    paddingVertical: ph(1),
+    borderRadius: ps(1),
+    backgroundColor: "rgba(21, 21, 18, 0.95)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.16)",
+    maxWidth: pw(60),
+    zIndex: 70,
+  },
+  noticeText: {
+    color: "#FFFFFF",
+    fontSize: ps(1),
+    fontWeight: "700",
+  },
+});
+
+// ─────────────────────────────────────────────
+// Channel Card — single Focusable
 // ─────────────────────────────────────────────
 const ChannelCard = React.memo(function ChannelCard({
   item,
@@ -63,8 +317,10 @@ const ChannelCard = React.memo(function ChannelCard({
   onFocus,
   isFocusedItem,
   itemWidth,
+  cardHeight,
   channelNumber,
   locked,
+  trapFocusDown,
 }: {
   item: Channel;
   index?: number;
@@ -73,9 +329,17 @@ const ChannelCard = React.memo(function ChannelCard({
   onFocus?: (item: Channel, index?: number) => void;
   isFocusedItem?: boolean;
   itemWidth: number;
+  cardHeight: number;
   channelNumber?: number;
   locked?: boolean;
+  trapFocusDown?: boolean;
 }) {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [item.logo]);
+
   const handlePress = useCallback(() => {
     onPress(item);
   }, [onPress, item]);
@@ -89,14 +353,14 @@ const ChannelCard = React.memo(function ChannelCard({
   }, [onLongPress, item]);
 
   return (
-    <View style={{ width: itemWidth, padding: pw(0.6) }}>
+    <View style={[S.cardWrapper, { width: itemWidth }]}>
       <Focusable
         onPress={handlePress}
         onLongPress={handleLongPress}
         onFocus={handleFocus}
         hasTVPreferredFocus={isFocusedItem}
+        trapFocusDown={trapFocusDown}
         ringOnFocus={false}
-        style={S.cardWrapper}
         screenKey={SCREEN_KEY}
         focusKey={String(item.id)}
         accessibilityLabel={item.category ? `${item.name}, ${item.category}` : item.name}
@@ -105,41 +369,53 @@ const ChannelCard = React.memo(function ChannelCard({
           <View
             style={[
               S.cardBorder,
-              { height: Math.floor(itemWidth / 0.85) },
+              { height: cardHeight, width: itemWidth - 10 },
               focused && S.cardBorderFocused,
-              focused && { transform: [{ scale: 1.06 }] }
             ]}
           >
-            <LinearGradient
-              colors={["rgba(255,255,255,0.05)", "rgba(255,255,255,0.01)"]}
-              style={[S.card, { overflow: "hidden" }]}
-            >
-              {channelNumber ? (
-                <View style={S.cardNumber}>
-                  <Text style={S.cardNumberText}>{channelNumber}</Text>
-                </View>
-              ) : null}
-
-              {locked ? (
-                <View style={S.cardLock}>
-                  <Ionicons name="lock-closed" size={ps(0.85)} color="#fff" />
-                </View>
-              ) : null}
-
-              <View style={S.cardLogoWrapper}>
-                {item.logo ? (
-                  <Image source={{ uri: item.logo }} recyclingKey={item.logo} style={S.cardLogo} contentFit="contain" cachePolicy="memory-disk" />
-                ) : (
-                  <Ionicons name="tv-outline" size={ps(2)} color="rgba(255,255,255,0.15)" />
-                )}
+            {channelNumber ? (
+              <View style={S.cardNumber}>
+                <Text style={S.cardNumberText}>{channelNumber}</Text>
               </View>
-              <View style={S.cardInfo}>
-                <Text style={S.cardTitle} numberOfLines={1}>{item.name}</Text>
-                {item.category ? (
-                  <Text style={S.cardCategory} numberOfLines={1}>{item.category}</Text>
-                ) : null}
+            ) : null}
+
+            {locked ? (
+              <View style={S.cardLock}>
+                <Lock size={ps(0.85)} color="#ffffff" />
               </View>
-            </LinearGradient>
+            ) : null}
+
+            <View style={S.cardLogoWrapper}>
+              {item.logo && !imgError ? (
+                <Image
+                  source={{ uri: item.logo }}
+                  recyclingKey={item.logo}
+                  style={S.cardLogo}
+                  contentFit="contain"
+                  cachePolicy="memory-disk"
+                  transition={200}
+                  onError={() => setImgError(true)}
+                />
+              ) : (
+                <View style={S.cardFallback}>
+                  <Tv size={ps(2.5)} color="rgba(255,255,255,0.28)" />
+                </View>
+              )}
+            </View>
+
+            <View style={S.cardInfo}>
+              <Text
+                style={[S.cardTitle, focused && S.cardTitleFocused]}
+                numberOfLines={1}
+              >
+                {item.name}
+              </Text>
+              {item.category ? (
+                <Text style={S.cardCategory} numberOfLines={1}>
+                  {item.category}
+                </Text>
+              ) : null}
+            </View>
           </View>
         )}
       </Focusable>
@@ -148,21 +424,28 @@ const ChannelCard = React.memo(function ChannelCard({
 }, (prevProps, nextProps) => {
   return (
     prevProps.item.id === nextProps.item.id &&
+    prevProps.item.logo === nextProps.item.logo &&
+    prevProps.item.name === nextProps.item.name &&
     prevProps.isFocusedItem === nextProps.isFocusedItem &&
     prevProps.itemWidth === nextProps.itemWidth &&
+    prevProps.cardHeight === nextProps.cardHeight &&
     prevProps.channelNumber === nextProps.channelNumber &&
-    prevProps.locked === nextProps.locked
+    prevProps.locked === nextProps.locked &&
+    prevProps.trapFocusDown === nextProps.trapFocusDown
   );
 });
 
 // ─────────────────────────────────────────────
-// Memoized Channel Row (Prevents re-rendering all rows on focus change)
+// Memoized Channel Row
 // ─────────────────────────────────────────────
 interface ChannelRowProps {
   row: { id: string; items: Channel[] };
   rowIndex: number;
+  totalRows: number;
   numColumns: number;
   itemWidth: number;
+  cardHeight: number;
+  rowHeight: number;
   focusedId: string;
   isSidebarFocused: boolean;
   tunedFocusId: string | null;
@@ -176,8 +459,11 @@ interface ChannelRowProps {
 const ChannelRow = React.memo(function ChannelRow({
   row,
   rowIndex,
+  totalRows,
   numColumns,
   itemWidth,
+  cardHeight,
+  rowHeight,
   focusedId,
   isSidebarFocused,
   tunedFocusId,
@@ -186,8 +472,10 @@ const ChannelRow = React.memo(function ChannelRow({
   onFocus,
   channelNumbers,
 }: ChannelRowProps) {
+  const isLastRow = rowIndex >= totalRows - 1;
+
   return (
-    <View style={S.gridRow}>
+    <View style={[S.gridRow, { height: rowHeight }]}>
       {row.items.map((channel, colIndex) => {
         const itemIndex = rowIndex * numColumns + colIndex;
         const id = String(channel.id);
@@ -199,9 +487,11 @@ const ChannelRow = React.memo(function ChannelRow({
             item={channel}
             index={itemIndex}
             itemWidth={itemWidth}
+            cardHeight={cardHeight}
             channelNumber={channel.num && channel.num > 0 ? channel.num : channelNumbers.get(id)}
             locked={parentalControl.isChannelRestricted(channel)}
             isFocusedItem={isTargetFocus}
+            trapFocusDown={isLastRow}
             onPress={onPress}
             onLongPress={onLongPress}
             onFocus={onFocus}
@@ -212,7 +502,11 @@ const ChannelRow = React.memo(function ChannelRow({
   );
 }, (prev, next) => {
   if (prev.row !== next.row) return false;
+  if (prev.rowIndex !== next.rowIndex) return false;
+  if (prev.totalRows !== next.totalRows) return false;
   if (prev.itemWidth !== next.itemWidth) return false;
+  if (prev.cardHeight !== next.cardHeight) return false;
+  if (prev.rowHeight !== next.rowHeight) return false;
   if (prev.parentalVersion !== next.parentalVersion) return false;
   if (prev.tunedFocusId !== next.tunedFocusId) return false;
 
@@ -236,23 +530,17 @@ export default function LiveTVScreen() {
   const isFocusTrapped = useIsFocusTrapped();
 
   const safeGoBack = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.replace("/dashboard");
-  }, [router]);
+    safeBack();
+  }, []);
 
-  // Per-field selectors. Destructuring the whole store re-rendered this entire
-  // screen — grid included — on every unrelated store write, and a background
-  // refresh performs several in a row. That is the navigation stutter.
   const storeChannels = usePortalStore((s) => s.channels);
   const storeCategories = usePortalStore((s) => s.categories);
   const activePortal = usePortalStore((s) => s.activePortal);
   const setChannels = usePortalStore((s) => s.setChannels);
   const setCategories = usePortalStore((s) => s.setCategories);
 
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [displayChannels, setDisplayChannels] = useState<Channel[]>([]);
-  // Read inside async loaders so appending a page never depends on a stale
-  // closure — and so pagination doesn't have to round-trip through the store.
   const displayChannelsRef = useRef<Channel[]>([]);
   displayChannelsRef.current = displayChannels;
   const selectedCategoryRef = useRef(selectedCategory);
@@ -260,56 +548,77 @@ export default function LiveTVScreen() {
 
   const [isLoading, setIsLoading] = useState(storeChannels.length === 0);
   const [refreshing, setRefreshing] = useState(false);
-  // True while *any* portal request is in flight, including ones this screen did
-  // not start — the boot sync, the periodic refresh, the empty-body retry. An
-  // empty grid should read as "loading" whenever something is still fetching.
   const syncing = useNetworkActivity();
-  // An empty response is a load failure, not "this portal has no channels".
-  // Conflating them showed "No Channels Found" for what was actually a stale
-  // session token, and the user had no way to tell the difference.
   const [loadFailed, setLoadFailed] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  // While appending more rows, FlatList briefly detaches the focused cell
-  // during reconciliation. The native focus engine then falls back to the
-  // nearest focusable ancestor — i.e. the sidebar, which sits to the left in
-  // the row layout. We trap leftward focus for ~600ms so focus stays inside
-  // the grid until the new cells settle.
+
   const [trappingFocus, setTrappingFocus] = useState(false);
   const trapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchInputRef = useRef<TextInput>(null);
-  // Track last focused channel id so we can restore focus after refresh
+  const searchInputRef = useRef<RNTextInput>(null);
   const focusedIdRef = useRef<string>("");
   const isSidebarFocusedRef = useRef(true);
   const flatListRef = useRef<FlatList>(null);
+  const currentGridTopRowRef = useRef(0);
+  const gridScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasInitializedCategoryRef = useRef(false);
 
-  // ── Set-top-box layer ─────────────────────────────────────────────────────
-  // Bumped whenever the guide index changes, so tiles re-read now/next without
-  // each holding a subscription of its own. See ChannelCard.
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchQueryRef = useRef("");
+  searchQueryRef.current = searchQuery;
+
+  const commitSearch = useCallback((overrideText?: string) => {
+    const candidate = (typeof overrideText === "string" && overrideText.trim().length > 0)
+      ? overrideText
+      : (searchQueryRef.current || searchQuery);
+    const q = (candidate || "").trim();
+    console.log(`[LiveTV] commitSearch called with: "${q}"`);
+    setDebouncedQuery(q);
+    if (!q) {
+      setIsSearchOpen(false);
+    }
+  }, [searchQuery]);
+
+  // Sizing: 3 Rows full viewport height
+  const numColumns = 5;
+  const SIDEBAR_WIDTH_VAL = 240;
+  const GRID_H_PADDING = pw(1.2) * 2;
+  const itemWidth = Math.floor(
+    (SCREEN_WIDTH_VAL - SIDEBAR_WIDTH_VAL - GRID_H_PADDING) / numColumns
+  );
+
+  const HEADER_HEIGHT_VAL = 56;
+  const BODY_MARGIN_TOP = 10;
+  const GRID_V_PADDING = 16;
+  const AVAILABLE_VIEWPORT_HEIGHT =
+    SCREEN_HEIGHT_VAL - insets.top - insets.bottom - HEADER_HEIGHT_VAL - BODY_MARGIN_TOP - GRID_V_PADDING;
+  const ROW_HEIGHT = Math.floor(AVAILABLE_VIEWPORT_HEIGHT / VISIBLE_ROWS);
+  const EXACT_GRID_HEIGHT = ROW_HEIGHT * VISIBLE_ROWS + GRID_V_PADDING;
+  const cardHeight = Math.floor(ROW_HEIGHT - 12);
+
+  const PAGE_SIZE = numColumns * Math.ceil(28 / numColumns);
+
+  // STB layer
   const [epgVersion, setEpgVersion] = useState(0);
-  // The channel the info bar is describing — whatever the cursor is on.
   const [focusedChannel, setFocusedChannel] = useState<Channel | null>(null);
-  // Set by the numeric tuner so the matched tile claims focus on next render.
   const [tunedFocusId, setTunedFocusId] = useState<string | null>(null);
-  // Channel waiting behind the parental PIN; playback resumes once it is right.
   const [pinTarget, setPinTarget] = useState<Channel | null>(null);
-  // Distinct from pinTarget: that one plays a channel after the PIN, this one
-  // changes its lock state. Conflating them would have a mistyped long-press
-  // start playback.
   const [lockTarget, setLockTarget] = useState<Channel | null>(null);
   const [parentalVersion, setParentalVersion] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
-  /** Bumped when the hidden-category set changes, to rebuild the sidebar. */
   const [hiddenVersion, setHiddenVersion] = useState(0);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /**
-   * Reached through a ref because the numeric tuner is built above the press
-   * handler but has to call it. Assigned where that handler is defined.
-   */
   const handleChannelPressRef = useRef<(channel: Channel) => void>(() => { });
-  // Rebuilt on every render, read from callbacks that must stay stable.
   const numberedListRef = useRef<(list: Channel[]) => Channel[]>((l) => l);
+
+  const xtreamApiRef = useRef<XtreamApi | null>(null);
+  const allChannelsCacheRef = useRef<Channel[]>([]);
+  const fullListRef = useRef<Channel[]>([]);
+  const prevCategoryIdRef = useRef<string | undefined>(undefined);
 
   const trapFocusBriefly = useCallback(() => {
     setTrappingFocus(true);
@@ -319,10 +628,11 @@ export default function LiveTVScreen() {
 
   useEffect(() => () => {
     if (trapTimeoutRef.current) clearTimeout(trapTimeoutRef.current);
+    if (gridScrollTimeoutRef.current) clearTimeout(gridScrollTimeoutRef.current);
+    if (focusedChannelTimerRef.current) clearTimeout(focusedChannelTimerRef.current);
+    if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current);
   }, []);
 
-  // The guide, the lock and the box settings are all read synchronously later
-  // on, so they are warmed once here rather than awaited at each use site.
   useEffect(() => {
     const unsubscribeEpg = epgService.subscribe(() => setEpgVersion((v) => v + 1));
     const unsubscribeLock = parentalControl.subscribe(() => setParentalVersion((v) => v + 1));
@@ -339,13 +649,8 @@ export default function LiveTVScreen() {
     };
   }, []);
 
-  // Pull whatever guide the portal serves in one go. Single-flighted and
-  // rate-limited inside the service, so re-entering the screen costs nothing.
   useEffect(() => {
     if (!activePortal) return;
-    // A zap list belongs to the portal it came from. Carrying one across a
-    // portal switch would have the player tuning to channels that no longer
-    // exist, so it is dropped before the new guide is fetched.
     liveChannelSession.clear();
     epgService
       .loadBulk(activePortal, { allowLargeXmltv: stbEnvironment.snapshot.fullXmltvGuide })
@@ -356,17 +661,6 @@ export default function LiveTVScreen() {
     () => (storeCategories || []).filter(c => c.type === "live"),
     [storeCategories]
   );
-
-  const numColumns = isTV ? 5 : (SCREEN_WIDTH >= 1024 ? 5 : (SCREEN_WIDTH >= 768 ? 4 : 3));
-  const PAGE_SIZE = numColumns * Math.ceil(28 / numColumns);
-
-  const xtreamApiRef = useRef<XtreamApi | null>(null);
-  // Raw, unfiltered cache (Xtream / M3U).
-  const allChannelsCacheRef = useRef<Channel[]>([]);
-  // The current category's full filtered list — store/FlatList only see the
-  // first N pages of this.
-  const fullListRef = useRef<Channel[]>([]);
-  const prevCategoryIdRef = useRef<string | undefined>(undefined);
 
   const loadCategories = useCallback(async (force = false) => {
     const portal = usePortalStore.getState().activePortal;
@@ -387,7 +681,6 @@ export default function LiveTVScreen() {
         cats = (await portalApi.getLiveCategories(portal)) || [];
       }
 
-      // Fallback: If API returned empty categories, try deriving categories from cached/store Channel items
       if (cats.length === 0 && allChannelsCacheRef.current.length > 0) {
         const seen = new Set<string>();
         cats = [];
@@ -405,7 +698,6 @@ export default function LiveTVScreen() {
         }
       }
 
-      // Read live state at call-time to avoid stale closure wiping non-live categories
       const currentCategories = usePortalStore.getState().categories || [];
       const others = currentCategories.filter(c => c.type !== "live");
       if (cats.length > 0) {
@@ -416,9 +708,6 @@ export default function LiveTVScreen() {
     }
   }, [setCategories]);
 
-  // ── Fetch the complete channel list (Xtream / M3U) ──
-  // Both portal types serve everything in one request, so the whole list is
-  // fetched once and every category view is a slice of it.
   const fetchAllChannels = useCallback(async (): Promise<Channel[]> => {
     if (!activePortal) return [];
     let all: Channel[] = [];
@@ -440,13 +729,10 @@ export default function LiveTVScreen() {
       all = (await xtreamApiRef.current!.getitvChannels(undefined, 1, 100000)) || [];
     }
 
-    // The store holds the complete channel list, never a page of it — search and
-    // EPG read it, and it is what gets persisted for the next cold start.
     if (all.length > 0) setChannels(all, activePortal.id);
     return all;
   }, [activePortal, setChannels]);
 
-  /** Refresh the full list without blocking what is already on screen. */
   const fetchAllChannelsInBackground = useCallback(() => {
     InteractionManager.runAfterInteractions(() => {
       fetchAllChannels()
@@ -457,12 +743,6 @@ export default function LiveTVScreen() {
     });
   }, [fetchAllChannels]);
 
-  // Marks the screen as failed-to-load and asks the portal to resync once.
-  //
-  // The resync path performs a fresh handshake and retries endpoints that answer
-  // 200-with-an-empty-body, so it recovers from the stale-token case that a plain
-  // fetch silently reads as "this portal has nothing". When it lands, the
-  // adoption hook below picks the content up without the user navigating away.
   const resyncRequestedRef = useRef(false);
   const reportLoadFailure = useCallback(() => {
     setLoadFailed(true);
@@ -480,7 +760,6 @@ export default function LiveTVScreen() {
     setPage(1);
   }, []);
 
-  // Pick up channels that reach the store after this screen mounted.
   useAdoptStoreContent<Channel>({
     storeItems: storeChannels,
     cacheRef: allChannelsCacheRef,
@@ -493,7 +772,6 @@ export default function LiveTVScreen() {
     onAdopt: applyAdopted,
   });
 
-  // ── Load Channels (mirrors VOD/Series pattern) ──
   const loadChannels = useCallback(async (
     categoryId?: string,
     pageNum: number = 1,
@@ -511,10 +789,6 @@ export default function LiveTVScreen() {
       if (activePortal.type === "m3u" || activePortal.type === "xtream") {
         if (allChannelsCacheRef.current.length === 0) {
           if (storeChannels.length > 0) {
-            // Cache hit: render from it and let the refresh happen in the
-            // background. This branch used to await the network even with a full
-            // store, so opening Live TV always paid for a 100k-item download
-            // before drawing a single tile.
             allChannelsCacheRef.current = storeChannels;
             fetchAllChannelsInBackground();
           } else {
@@ -522,9 +796,6 @@ export default function LiveTVScreen() {
             if (fetched.length > 0) {
               allChannelsCacheRef.current = fetched;
             } else {
-              // Empty response and nothing cached. Report it as a failure and
-              // let the portal sync retry with a fresh session — it detects the
-              // empty-body case that a bare fetch reads as "no content".
               reportLoadFailure();
               return;
             }
@@ -542,7 +813,6 @@ export default function LiveTVScreen() {
         const fresh = (await portalApi.getLiveChannels(activePortal, cat, pageNum)) || [];
         const current = reset ? [] : displayChannelsRef.current;
         if (reset) {
-          // A failed/empty refresh should never blank a screen that already has data.
           list = fresh.length > 0 || displayChannelsRef.current.length === 0
             ? fresh
             : displayChannelsRef.current;
@@ -561,7 +831,6 @@ export default function LiveTVScreen() {
       setLoadFailed(false);
       setDisplayChannels(list);
       setPage(pageNum);
-      // Restore scroll position after a reset-load so focus doesn't snap to top
       if (reset) restoreFocusPosition(list);
     } catch (err) {
       console.warn("Live TV Data Fetch Error:", err);
@@ -575,6 +844,7 @@ export default function LiveTVScreen() {
   // Initial load
   useEffect(() => {
     if (!activePortal) { router.replace("/"); return; }
+    hasInitializedCategoryRef.current = false;
     if (activePortal.type === "xtream") {
       xtreamApiRef.current = new XtreamApi({
         url: activePortal.config.url,
@@ -585,18 +855,17 @@ export default function LiveTVScreen() {
     loadCategories();
   }, [activePortal?.id]);
 
-  // Category change — Xtream/M3U slice the cached full list; MAG hits the API.
+  // Category change
   useEffect(() => {
-    if (!activePortal || prevCategoryIdRef.current === selectedCategory) return;
+    if (!activePortal || prevCategoryIdRef.current === selectedCategory || !selectedCategory) return;
     setIsLoading(true);
     setPage(1);
     prevCategoryIdRef.current = selectedCategory;
     focusedIdRef.current = "";
+    currentGridTopRowRef.current = 0;
     isSidebarFocusedRef.current = true;
     FocusMemory.set("category-sidebar", selectedCategory);
-    // Focus stays in the sidebar on a category switch, so nothing else scrolls
-    // the grid back up — do it here, or the new category renders half-scrolled
-    // at wherever the previous one was left.
+    if (gridScrollTimeoutRef.current) clearTimeout(gridScrollTimeoutRef.current);
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
 
     if (activePortal.type === "xtream" || activePortal.type === "m3u") {
@@ -621,18 +890,9 @@ export default function LiveTVScreen() {
     }
   }, [selectedCategory]);
 
-  /**
-   * Opens a channel.
-   *
-   * Two things happen before navigating that did not before: the parental lock
-   * gets a chance to interpose, and the ordered channel list is handed to
-   * liveChannelSession so the player can zap without coming back here.
-   */
   const openChannel = useCallback(async (channel: Channel) => {
     if (!activePortal || !channel.streamUrl) return;
 
-    // The list the viewer is actually looking at becomes the zap order, so
-    // CH+/CH- in the player walks the same category they were browsing.
     const categoryId = selectedCategoryRef.current;
     const categoryName =
       categoryId && categoryId !== "all"
@@ -643,7 +903,6 @@ export default function LiveTVScreen() {
     let zapList = numberedListRef.current(source);
     let index = zapList.findIndex((c) => String(c.id) === String(channel.id));
 
-    // Prepare full numbered portal list so player knows all channels
     const pool = allChannelsCacheRef.current.length > 0
       ? allChannelsCacheRef.current
       : (storeChannels.length > 0 ? storeChannels : displayChannelsRef.current);
@@ -651,7 +910,6 @@ export default function LiveTVScreen() {
 
     let activeCatName = categoryName;
     if (index < 0) {
-      // Channel is outside current category view (e.g. tuned via numpad)!
       zapList = allNumbered;
       index = Math.max(0, zapList.findIndex((c) => String(c.id) === String(channel.id)));
       if (channel.categoryId) {
@@ -676,8 +934,6 @@ export default function LiveTVScreen() {
   }, [activePortal, router]);
 
   const handleChannelPress = useCallback((channel: Channel) => {
-    // A locked channel never reaches the player until the PIN is entered; the
-    // prompt calls back into openChannel on success.
     if (parentalControl.isChannelLocked(channel)) {
       setPinTarget(channel);
       return;
@@ -703,17 +959,8 @@ export default function LiveTVScreen() {
     flashNotice(nowLocked ? `Locked ${channel.name}` : `Unlocked ${channel.name}`);
   }, [flashNotice]);
 
-  /**
-   * Long-press locks or unlocks a channel.
-   *
-   * It sits on the tile rather than in a settings list because that is where
-   * the decision is made — you notice a channel should be locked while looking
-   * at it, not while scrolling a separate menu of ten thousand names.
-   */
   const handleChannelLongPress = useCallback((channel: Channel) => {
     if (parentalControl.requiresPin("settings")) {
-      // Changing what is locked is itself a parental action, so it is behind
-      // the same PIN as the settings screen when that scope is on.
       setLockTarget(channel);
       return;
     }
@@ -732,7 +979,6 @@ export default function LiveTVScreen() {
   const handleChannelFocus = useCallback((channel: Channel, index?: number) => {
     focusedIdRef.current = String(channel.id);
     isSidebarFocusedRef.current = false;
-    // The pulse has done its job once the tile it named actually has focus.
     setTunedFocusId((prev) => (prev === String(channel.id) ? null : prev));
 
     if (focusedChannelTimerRef.current) clearTimeout(focusedChannelTimerRef.current);
@@ -740,11 +986,21 @@ export default function LiveTVScreen() {
       setFocusedChannel(channel);
     }, 80);
 
-    InteractionManager.runAfterInteractions(() => {
-      updateCinematicBackground(channel.logo || null);
-    });
+    // Keep focus fixed on scrolling — smoothly animated when row changes
+    if (index !== undefined) {
+      const rowIndex = Math.floor(index / numColumns);
+      if (currentGridTopRowRef.current !== rowIndex) {
+        currentGridTopRowRef.current = rowIndex;
+        const targetOffset = rowIndex * ROW_HEIGHT;
+        if (gridScrollTimeoutRef.current) clearTimeout(gridScrollTimeoutRef.current);
+        gridScrollTimeoutRef.current = setTimeout(() => {
+          try {
+            flatListRef.current?.scrollToOffset({ offset: targetOffset, animated: true });
+          } catch { /* ignore */ }
+        }, 16);
+      }
+    }
 
-    // Debounce prefetching so rapid D-pad moves don't saturate network / JS thread
     if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current);
     prefetchTimerRef.current = setTimeout(() => {
       const portal = usePortalStore.getState().activePortal;
@@ -754,37 +1010,31 @@ export default function LiveTVScreen() {
       }
     }, 250);
 
-    // Growing the list synchronously inside a focus handler makes React commit
-    // new cells while the native focus engine is still resolving the key press,
-    // and focus lands somewhere unrelated. Let the focus event finish first.
     if (index !== undefined && totalCountRef.current > 0 && index >= totalCountRef.current - 12) {
       InteractionManager.runAfterInteractions(() => onEndReachedRef.current());
     }
-  }, []);
+  }, [numColumns, ROW_HEIGHT]);
 
-  // After a refresh/reset, scroll the list back to the previously focused item
   const restoreFocusPosition = useCallback((list: Channel[]) => {
     if (!focusedIdRef.current || !flatListRef.current) return;
     const idx = list.findIndex(c => String(c.id) === focusedIdRef.current);
-    if (idx > 0) {
+    if (idx >= 0) {
       const rowIndex = Math.floor(idx / numColumns);
+      currentGridTopRowRef.current = rowIndex;
+      const targetOffset = rowIndex * ROW_HEIGHT;
       setTimeout(() => {
         try {
-          flatListRef.current?.scrollToIndex({ index: rowIndex, animated: false, viewPosition: 0.3 });
-        } catch { /* ignore if out of range */ }
+          flatListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
+        } catch { /* ignore */ }
       }, 120);
     }
-  }, [numColumns]);
+  }, [numColumns, ROW_HEIGHT]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     setPage(1);
     setHasMore(true);
-    // An explicit refresh re-arms the one-shot resync so a repeat failure can
-    // ask the portal for a fresh session again.
     resyncRequestedRef.current = false;
-    // M3U caches the full list the same way Xtream does, so pull-to-refresh has
-    // to drop it too or the refresh returns the same stale list.
     if (activePortal?.type === "xtream" || activePortal?.type === "m3u") {
       allChannelsCacheRef.current = [];
       fullListRef.current = [];
@@ -796,15 +1046,9 @@ export default function LiveTVScreen() {
 
   const onEndReached = useCallback(() => {
     if (isLoading || loadingMore || !hasMore) return;
-
-    // Hold focus inside the grid while the new cells reconcile so the focus
-    // engine doesn't fall back to the sidebar.
     trapFocusBriefly();
 
     if (activePortal?.type === "xtream" || activePortal?.type === "m3u") {
-      // Grow the slice from the cached full list — no network, and no store
-      // write: pushing each page into the store re-rendered every subscriber
-      // mid-scroll for data only this list uses.
       const nextPage = page + 1;
       const sliced = fullListRef.current.slice(0, nextPage * PAGE_SIZE);
       setDisplayChannels(sliced);
@@ -813,17 +1057,14 @@ export default function LiveTVScreen() {
       return;
     }
 
-    // MAG: fetch the next server page.
     loadChannels(selectedCategory, page + 1, false);
-  }, [isLoading, loadingMore, hasMore, selectedCategory, page, loadChannels, activePortal, trapFocusBriefly]);
+  }, [isLoading, loadingMore, hasMore, selectedCategory, page, loadChannels, activePortal, trapFocusBriefly, PAGE_SIZE]);
 
   useEffect(() => {
     onEndReachedRef.current = onEndReached;
   }, [onEndReached]);
 
-  // ── Numeric tuner ─────────────────────────────────────────────────────────
-  // Numbers span the whole portal, not the visible slice, so dialling 102 finds
-  // channel 102 whichever category happens to be on screen.
+  // Numeric tuner
   const allChannelsPool = useMemo(() => {
     if (allChannelsCacheRef.current && allChannelsCacheRef.current.length > 0) {
       return allChannelsCacheRef.current;
@@ -872,19 +1113,6 @@ export default function LiveTVScreen() {
     [numberToChannel]
   );
 
-  /**
-   * A dialled number tunes and plays, the way a set-top box does.
-   *
-   * The tuner does not commit on the first digit — it waits out the multi-digit
-   * window and only fires when no longer number could match (see
-   * useChannelTuner) — so by the time this runs the viewer has finished
-   * dialling and a channel is what they asked for. The grid highlight is moved
-   * too, so backing out of the player lands on the channel just watched rather
-   * than wherever the cursor was before.
-   *
-   * The parental gate is deliberately not bypassed here: a locked channel
-   * reached by number is as locked as one reached by pressing OK on its tile.
-   */
   const handleTune = useCallback((num: number) => {
     const target = numberToChannel.get(num);
     if (!target) {
@@ -895,22 +1123,20 @@ export default function LiveTVScreen() {
     setFocusedChannel(target);
     setTunedFocusId(String(target.id));
 
-    // Scroll the grid to it before leaving, so it is under the cursor on the
-    // way back. Best-effort: a row that is not measured yet simply is not
-    // scrolled to, and the focus pulse still lands when the list catches up.
     const idx = displayChannelsRef.current.findIndex((c) => String(c.id) === String(target.id));
     if (idx >= 0 && flatListRef.current) {
       try {
-        flatListRef.current.scrollToIndex({
-          index: Math.floor(idx / numColumns),
+        const rowIndex = Math.floor(idx / numColumns);
+        currentGridTopRowRef.current = rowIndex;
+        flatListRef.current.scrollToOffset({
+          offset: rowIndex * ROW_HEIGHT,
           animated: true,
-          viewPosition: 0.3,
         });
       } catch { /* row not measured yet */ }
     }
 
     handleChannelPressRef.current(target);
-  }, [numberToChannel, numColumns, flashNotice]);
+  }, [numberToChannel, numColumns, flashNotice, ROW_HEIGHT]);
 
   const tuner = useChannelTuner({
     onCommit: handleTune,
@@ -919,8 +1145,6 @@ export default function LiveTVScreen() {
     enabled: !pinTarget,
   });
 
-  // The number pad and GUIDE key, straight off the remote — the only way to
-  // dial a channel from this screen, by design.
   useStbKeys(
     {
       onDigit: tuner.pushDigit,
@@ -929,9 +1153,10 @@ export default function LiveTVScreen() {
     { enabled: !pinTarget, priority: STB_PRIORITY.SCREEN }
   );
 
-  // Back button handler: Directly return to dashboard
+  // Back button handler: matches VOD and Series
   useEffect(() => {
     const handleBack = () => {
+      if (!isScreenFocused) return false;
       if (pinTarget || lockTarget) {
         setPinTarget(null);
         setLockTarget(null);
@@ -941,76 +1166,31 @@ export default function LiveTVScreen() {
         tuner.cancel();
         return true;
       }
-      safeGoBack();
-      return true;
+      if (isSearchOpen) {
+        setIsSearchOpen(false);
+        setSearchQuery("");
+        setDebouncedQuery("");
+        return true;
+      }
+      return safeBack();
     };
 
     const sub = BackHandler.addEventListener("hardwareBackPress", handleBack);
     return () => sub.remove();
-  }, [pinTarget, lockTarget, tuner, safeGoBack]);
+  }, [isScreenFocused, pinTarget, lockTarget, tuner, isSearchOpen]);
 
   const tunerName = tuner.entry ? numberToChannel.get(Number(tuner.entry))?.name ?? null : null;
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  /**
-   * Mirrors the field's own focus, purely for styling.
-   *
-   * The field is a plain D-pad target again — no wrapper, no programmatic
-   * focus. That is not a style preference, it is the only thing that works on
-   * a TV: ReactEditText.requestFocusProgrammatically() raises the keyboard
-   * only `if (isInTouchMode && showSoftInputOnFocus)`, and a D-pad device is
-   * never in touch mode — so every autoFocus and every ref.focus() took the
-   * else branch and called hideSoftKeyboard(). RN says as much in a comment
-   * right there: "only clicking the input will do that".
-   *
-   * What works is the path RN designed for: the viewer navigates onto the
-   * field, and ReactEditText.onKeyUp toggles isKeyboardOpened on
-   * KEYCODE_DPAD_CENTER — so OK *on the focused field* opens the IME. Nothing
-   * may intercept that press, which is why there is no Focusable wrapper.
-   */
-  const [searchFocused, setSearchFocused] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(searchQuery);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  // ── Filter ──
-  // When searching on Xtream/M3U: search across fullListRef (uncapped).
-  // Otherwise: show displayChannels (local category-filtered state).
+  // Filter channels
   const filteredChannels = useMemo(() => {
-    const isXtreamOrM3U = activePortal?.type === "xtream" || activePortal?.type === "m3u";
-
     if (debouncedQuery) {
       const needle = debouncedQuery.toLowerCase();
-
-      // Searching is scoped to whatever the sidebar has selected.
-      //
-      // This used to search allChannelsCacheRef — the portal's entire library
-      // — so pressing a category while a search was open moved the sidebar
-      // highlight and changed nothing else: the results were global and stayed
-      // global. Two things were wrong and both had to be fixed: the pool
-      // ignored the category, and `selectedCategory` was not a dependency, so
-      // even a category-aware pool could not have re-run this. A ref would not
-      // have worked either, for the same reason.
-      if (isXtreamOrM3U) {
-        return filterByCategory(allChannelsCacheRef.current, selectedCategory, storeCategories)
-          .filter((c) => c.name.toLowerCase().includes(needle))
-          .slice(0, 100);
-      }
-
-      // MAG has no full list in memory, so this searches what is loaded — and
-      // that is already the selected category. Previously this branch fell
-      // through and returned the category unfiltered, so on a MAG portal
-      // typing in the search box did nothing at all.
-      return displayChannels.filter((c) => c.name.toLowerCase().includes(needle));
+      const pool = allChannelsPool.length > 0 ? allChannelsPool : displayChannels;
+      return pool.filter((c) => c.name.toLowerCase().includes(needle));
     }
 
     return displayChannels;
-  }, [displayChannels, debouncedQuery, activePortal?.type, selectedCategory, storeCategories]);
+  }, [displayChannels, debouncedQuery, allChannelsPool]);
 
   const chunkedChannels = useMemo(() => {
     const chunks = [];
@@ -1029,51 +1209,68 @@ export default function LiveTVScreen() {
     totalCountRef.current = filteredChannels.length;
   }, [filteredChannels.length]);
 
-  // Build sidebar categories with "All" at top.
-  // Memoised: a fresh array on every render made CategorySidebar's FlatList
-  // treat the data as changed each time, re-running its scroll effect.
+  // Sidebar categories (no 'All Channels' placeholder, exactly matching VOD & Series)
   const sidebarCategories: Category[] = useMemo(
     () => [
-      { id: "all", name: "All Channels", type: "live" as const },
-      // Categories the viewer hid in Settings are dropped from the sidebar but
-      // not from the library — "All Channels" still shows everything, which is
-      // what keeps hiding a tidying tool rather than a filter.
       ...hiddenCategories.filter(
         "live",
-        localCategories.filter(c =>
-          c.type === "live" &&
-          c.name.toLowerCase() !== "all" &&
-          c.name.toLowerCase() !== "all channels"
-        )
+        (localCategories || []).filter((c) => {
+          if (!c.name) return false;
+          const lower = c.name.trim().toLowerCase();
+          const idLower = String(c.id).trim().toLowerCase();
+          return (
+            lower !== "all" &&
+            lower !== "all channels" &&
+            lower !== "all live" &&
+            lower !== "all live channels" &&
+            idLower !== "all" &&
+            idLower !== "all channels" &&
+            idLower !== "*"
+          );
+        })
       ),
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [localCategories, hiddenVersion]
   );
 
-  // The sidebar owns focus on this screen: it takes the initial focus on entry
-  // and keeps it when the category changes. No grid tile claims
-  // `hasTVPreferredFocus`, so the user moves right into the grid deliberately.
+  const isSameCat = useCallback((a: any, b: any) => {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const sa = String(a).trim();
+    const sb = String(b).trim();
+    if (sa === sb) return true;
+    const rawA = sa.includes(":") ? sa.split(":")[1] : sa;
+    const rawB = sb.includes(":") ? sb.split(":")[1] : sb;
+    return rawA === rawB;
+  }, []);
+
+  useEffect(() => {
+    if (sidebarCategories.length === 0) return;
+    if (
+      selectedCategory &&
+      selectedCategory !== "all" &&
+      sidebarCategories.some((c) => isSameCat(c.id, selectedCategory))
+    ) {
+      return;
+    }
+    if (hasInitializedCategoryRef.current && selectedCategory && selectedCategory !== "all") return;
+    hasInitializedCategoryRef.current = true;
+
+    const remembered = FocusMemory.get("category-sidebar");
+    const matchRemembered =
+      remembered && remembered !== "all" && sidebarCategories.find((c) => isSameCat(c.id, remembered));
+    const defaultCat = matchRemembered ? matchRemembered.id : sidebarCategories[0].id;
+    setSelectedCategory(defaultCat);
+  }, [sidebarCategories, selectedCategory, isSameCat]);
+
   const focusSidebar = useInitialFocusPulse(sidebarCategories.length > 0);
 
-  const SIDEBAR_WIDTH = isTV ? 260 : 220;
-  const GRID_H_PADDING = pw(1.5) * 2;
-  const SAFETY_MARGIN = 4;
-  const itemWidth = Math.floor(
-    (SCREEN_WIDTH - SIDEBAR_WIDTH - GRID_H_PADDING - SAFETY_MARGIN) / numColumns
-  );
-  const ROW_HEIGHT = Math.floor(itemWidth / 0.85) + pw(1.2);
-  // FlatList already accounts for contentContainerStyle padding, so the extra
-  // pw(1.5) here offset every row by one pad — scrollToIndex landed short and
-  // the restored item sat half off-screen.
   const getItemLayout = useCallback((_: any, index: number) => ({
     length: ROW_HEIGHT,
     offset: index * ROW_HEIGHT,
     index,
   }), [ROW_HEIGHT]);
 
-  // Only relevant while the grid has nothing to show; a background refresh must
-  // never replace content that is already on screen with a spinner.
   const busy = isLoading || (syncing && filteredChannels.length === 0);
 
   const renderRow = useCallback(
@@ -1081,8 +1278,11 @@ export default function LiveTVScreen() {
       <ChannelRow
         row={row}
         rowIndex={rowIndex}
+        totalRows={chunkedChannels.length}
         numColumns={numColumns}
         itemWidth={itemWidth}
+        cardHeight={cardHeight}
+        rowHeight={ROW_HEIGHT}
         focusedId={focusedIdRef.current}
         isSidebarFocused={isSidebarFocusedRef.current}
         tunedFocusId={tunedFocusId}
@@ -1093,22 +1293,10 @@ export default function LiveTVScreen() {
         parentalVersion={parentalVersion}
       />
     ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [itemWidth, numColumns, handleChannelPress, handleChannelLongPress, handleChannelFocus, channelNumbers, tunedFocusId, parentalVersion]
+    [chunkedChannels.length, numColumns, itemWidth, cardHeight, ROW_HEIGHT, handleChannelPress, handleChannelLongPress, handleChannelFocus, channelNumbers, tunedFocusId, parentalVersion]
   );
 
-  // The info bar tracks the cursor. Passing the portal opts this one channel
-  // into an on-demand guide fetch — the tiles deliberately do not.
-  const focusedNowNext = useNowNext(focusedChannel, activePortal);
-  const focusedNumber = focusedChannel
-    ? (focusedChannel.num && focusedChannel.num > 0
-      ? focusedChannel.num
-      : channelNumbers.get(String(focusedChannel.id)))
-    : undefined;
-  const infoBarChannel = useMemo(
-    () => (focusedChannel ? { ...focusedChannel, num: focusedNumber } : null),
-    [focusedChannel, focusedNumber]
-  );
+
 
   const handleCategorySelect = useCallback((catId: string) => {
     isSidebarFocusedRef.current = false;
@@ -1125,177 +1313,199 @@ export default function LiveTVScreen() {
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
-      <CinematicBackground />
-
       {/* ─── Header ─── */}
       <View style={S.header}>
-        <Text style={S.headerTitle}>Live TV</Text>
+        {/* Left spacer matching VOD & Series */}
+        <View style={{ width: 38 }} />
 
-        <FocusGroup style={S.searchWrapper}>
-          {/* No wrapper around this field, deliberately — see the note on
-              searchFocused above. Anything that intercepts the OK press stops the
-              keyboard from ever opening on a TV.
+        <View style={S.headerCenterTitleWrapper}>
+          <Text style={S.headerTitle}>Live TV</Text>
+        </View>
 
-              The border is a real one rather than two stacked gradients faking it:
-              the ring used to be `padding: 1.5` on this view with a gradient filling
-              it, which is why the field never matched the tiles around it. */}
-          <View style={[S.searchGradient, searchFocused && S.searchGradientFocused, { flex: 1 }]}>
-            <View style={[S.searchInner, searchFocused && { backgroundColor: "#0b0b10" }]}>
-              <Ionicons name="search" size={ps(1.1)} color={searchFocused ? "#fff" : "rgba(255,255,255,0.3)"} style={{ marginRight: pw(1) }} />
+        <View style={S.headerRight}>
+          {isSearchOpen ? (
+            <View style={S.searchOpenBar}>
+              <Pressable onPress={() => commitSearch()} style={{ padding: 2 }}>
+                <Search
+                  size={ps(1.8)}
+                  color="rgba(255,255,255,0.75)"
+                  style={{ marginRight: pw(0.8) }}
+                />
+              </Pressable>
               <TextInput
                 ref={searchInputRef}
                 style={S.searchInput}
                 placeholder="Search channels..."
-                placeholderTextColor="rgba(255,255,255,0.2)"
+                placeholderTextColor="rgba(255,255,255,0.4)"
                 value={searchQuery}
-                onChangeText={setSearchQuery}
+                onChangeText={(text) => {
+                  searchQueryRef.current = text;
+                  setSearchQuery(text);
+                }}
                 autoCapitalize="none"
                 autoCorrect={false}
-                autoFocus={false}
-                focusable={isScreenFocused && !isFocusTrapped && !pinTarget && !lockTarget}
-                editable={isScreenFocused && !isFocusTrapped && !pinTarget && !lockTarget}
-                importantForAutofill="no"
-                textContentType="none"
+                autoFocus={true}
                 returnKeyType="search"
-                onFocus={() => { setSearchFocused(true); isSidebarFocusedRef.current = false; }}
-                onBlur={() => setSearchFocused(false)}
-                onSubmitEditing={() => setSearchFocused(false)}
+                onSubmitEditing={(e) => commitSearch(e.nativeEvent?.text)}
+                onEndEditing={(e) => commitSearch(e.nativeEvent?.text)}
+                onKeyPress={(e) => {
+                  if (e.nativeEvent.key === "Enter" || (e.nativeEvent as any).key === "Select") {
+                    commitSearch();
+                  }
+                }}
               />
+              <Focusable
+                screenKey={SCREEN_KEY}
+                focusKey="live-search-close-btn"
+                onPress={() => {
+                  setSearchQuery("");
+                  setDebouncedQuery("");
+                  setIsSearchOpen(false);
+                }}
+                ringOnFocus={false}
+                style={{ padding: 2, borderRadius: 18, justifyContent: "center", alignItems: "center" }}
+              >
+                {(focused) => (
+                  <View style={focused ? { transform: [{ scale: 1.15 }] } : undefined}>
+                    <X
+                      size={ps(2.1)}
+                      color={focused ? "#ffffff" : "rgba(255,255,255,0.75)"}
+                    />
+                  </View>
+                )}
+              </Focusable>
             </View>
-          </View>
-        </FocusGroup>
-
-        {/* No on-screen number pad and no guide button.
-            react-native-tvos forwards KEYCODE_0..9 and KEYCODE_GUIDE to JS
-            itself (see the note at the top of src/tv/stbKeys.ts), so the remote
-            is the number pad — dialling a channel needs no UI beyond the
-            readout that shows the digits landing. The guide is a destination
-            rather than a control on this grid, and lives on the dashboard next
-            to Search. */}
-        <View style={S.countBadge}>
-          <Text style={S.countText}>
-            {busy ? "..." : String(filteredChannels.length)}
-          </Text>
+          ) : (
+            <Focusable
+              screenKey={SCREEN_KEY}
+              focusKey="live-search-btn"
+              onPress={() => {
+                setIsSearchOpen(true);
+                setSearchQuery("");
+                setDebouncedQuery("");
+                setTimeout(() => searchInputRef.current?.focus(), 150);
+              }}
+              ringOnFocus={false}
+              style={[S.searchBtnWrapper, { borderRadius: 24 }]}
+            >
+              {(focused) => (
+                <View
+                  style={[
+                    S.searchCircleBtn,
+                    focused && S.searchCircleBtnFocused,
+                    { borderRadius: 22 },
+                  ]}
+                >
+                  <Search size={ps(2.2)} color={focused ? "#000000" : "#ffffff"} />
+                </View>
+              )}
+            </Focusable>
+          )}
         </View>
       </View>
 
-      {/* ─── Body: Sidebar + Grid ─── */}
-      <View style={S.body}>
+      {/* ─── Body: Sidebar + Grid (Exact 3 Rows Height) ─── */}
+      <View style={[S.body, { height: EXACT_GRID_HEIGHT }]}>
         {/* Left sidebar */}
-        <FocusGroup style={{ width: SIDEBAR_WIDTH }}>
+        <FocusGroup style={{ width: SIDEBAR_WIDTH_VAL, height: EXACT_GRID_HEIGHT }}>
           <CategorySidebar
             categories={sidebarCategories}
-            selectedId={selectedCategory || "all"}
+            selectedId={selectedCategory || (sidebarCategories[0]?.id ?? "")}
             onSelect={handleCategorySelect}
             onFocus={handleCategoryFocus}
-            width={SIDEBAR_WIDTH}
+            width={SIDEBAR_WIDTH_VAL}
+            height={EXACT_GRID_HEIGHT}
             autoFocusFirst={focusSidebar}
           />
         </FocusGroup>
 
         {/* Right channel grid */}
-        <View style={S.gridArea}>
+        <View style={[S.gridArea, { height: EXACT_GRID_HEIGHT }]}>
           <FlatList
+            ref={flatListRef}
             data={chunkedChannels}
             keyExtractor={(item) => item.id}
             getItemLayout={getItemLayout}
             onEndReached={onEndReached}
             onEndReachedThreshold={0.5}
             removeClippedSubviews={false}
-            contentContainerStyle={[S.gridContent, (isLoading || chunkedChannels.length === 0) && { flexGrow: 1 }]}
+            showsVerticalScrollIndicator={false}
+            style={{ height: EXACT_GRID_HEIGHT, overflow: "hidden" }}
+            contentContainerStyle={[
+              S.gridContent,
+              { paddingBottom: ROW_HEIGHT * 3 },
+              (isLoading || chunkedChannels.length === 0) && { flexGrow: 1 },
+            ]}
             extraData={filteredChannels.length}
-            initialNumToRender={isTV ? 4 : 4}
-            maxToRenderPerBatch={isTV ? 2 : 2}
-            windowSize={3}
-            updateCellsBatchingPeriod={50}
-            ref={flatListRef}
+            initialNumToRender={6}
+            maxToRenderPerBatch={6}
+            windowSize={5}
+            updateCellsBatchingPeriod={16}
+            scrollEventThrottle={16}
+            decelerationRate="fast"
             renderItem={renderRow}
             ListEmptyComponent={
               busy ? (
-                <View style={{ flex: 1, paddingVertical: ph(10), justifyContent: "center", alignItems: "center" }}>
+                <View style={{ flex: 1, paddingVertical: ph(8), justifyContent: "center", alignItems: "center" }}>
                   <ActivityIndicator color={THEME.colors.primary} size="large" />
-                  <Text style={[S.loadingText, { marginTop: 10 }]}>Loading channels...</Text>
+                  <Text style={[S.loadingText, { marginTop: 10 }]}>Loading live channels...</Text>
                 </View>
               ) : (
                 <View style={S.emptyState}>
-                  <Ionicons
-                    name={loadFailed ? "cloud-offline-outline" : "tv-outline"}
-                    size={64}
-                    color="rgba(255,255,255,0.08)"
+                  <DynamicIcon
+                    name={loadFailed ? "cloud-off-outline" : "television-play"}
+                    size={ps(4)}
+                    color="rgba(255,255,255,0.05)"
                   />
                   <Text style={S.emptyTitle}>
                     {loadFailed ? "Couldn't Load Channels" : "No Channels Found"}
                   </Text>
-                  <Text style={S.emptySubtitle}>
-                    {loadFailed
-                      ? "The portal returned no data. Retrying in the background…"
-                      : searchQuery
+                  {loadFailed ? (
+                    <>
+                      <Text style={S.emptySubtitle}>
+                        The portal returned no data. Retrying in the background…
+                      </Text>
+                      <Focusable onPress={onRefresh} ringOnFocus={false} style={S.retryBtn}>
+                        {(focused) => (
+                          <View style={[S.retryInner, focused && S.retryInnerFocused]}>
+                            <RefreshCw size={ps(1.1)} color={focused ? "#111111" : "#FFFFFF"} />
+                            <Text style={[S.retryText, focused && { color: "#111111" }]}>Retry</Text>
+                          </View>
+                        )}
+                      </Focusable>
+                    </>
+                  ) : (
+                    <Text style={S.emptySubtitle}>
+                      {searchQuery
                         ? "Try a different search term"
                         : "No channels in this category"}
-                  </Text>
-                  {loadFailed ? (
-                    <Focusable onPress={onRefresh} ringOnFocus={false} style={S.retryBtn}>
-                      {(focused) => (
-                        <View style={[S.retryInner, focused && S.retryInnerFocused]}>
-                          <Ionicons name="refresh" size={ps(1.1)} color={focused ? "#000" : "#fff"} />
-                          <Text style={[S.retryText, focused && { color: "#000" }]}>Retry</Text>
-                        </View>
-                      )}
-                    </Focusable>
-                  ) : null}
+                    </Text>
+                  )}
                 </View>
               )
-            }
-            ListFooterComponent={
-              loadingMore && filteredChannels.length > 0 ? (
-                <View style={S.loadingMore}>
-                  <ActivityIndicator color={THEME.colors.primary} size="small" />
-                  <Text style={S.loadingMoreText}>Loading more...</Text>
-                </View>
-              ) : null
-            }
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor={THEME.colors.primary}
-              />
             }
           />
         </View>
       </View>
 
-      {/* ─── STB channel banner ─── */}
-      {infoBarChannel ? (
-        <ChannelInfoBar
-          channel={infoBarChannel}
-          nowNext={focusedNowNext}
-          locked={parentalControl.isChannelRestricted(focusedChannel)}
-          badges={[{ label: "LIVE", tone: "live" }]}
-          hint={
-            parentalControl.isChannelRestricted(focusedChannel)
-              ? "Locked — a PIN is needed to watch this channel"
-              : undefined
-          }
-        />
-      ) : null}
 
-      {/* ─── Numeric tuner ─── */}
+
+      {/* ─── Numeric tuner readout ─── */}
       <ChannelTunerReadout
         entry={tuner.entry}
         resolvedName={tunerName}
         width={tunerMaxDigits}
       />
 
-      {/* ─── Transient feedback ─── */}
+      {/* ─── Transient feedback notice ─── */}
       {notice ? (
         <View style={S.notice} pointerEvents="none">
-          <Ionicons name="information-circle-outline" size={ps(1.1)} color="#fff" />
+          <Info size={ps(1.1)} color="#fff" />
           <Text style={S.noticeText} numberOfLines={1}>{notice}</Text>
         </View>
       ) : null}
 
-      {/* ─── Parental lock ─── */}
+      {/* ─── Parental lock PIN prompt ─── */}
       <PinPrompt
         visible={!!pinTarget}
         title="Channel Locked"
@@ -1328,290 +1538,3 @@ export default function LiveTVScreen() {
     </View>
   );
 }
-
-const S = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: THEME.colors.background,
-  },
-
-  // ── Header ──
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: pw(3),
-    paddingVertical: ph(1.2),
-    gap: pw(2),
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.03)",
-  },
-  headerTitle: { color: "#fff", fontSize: ps(1.8), fontWeight: "900", minWidth: pw(10) },
-  backBtn: {
-    width: ps(3.2),
-    height: ps(3.2),
-    borderRadius: ps(1.6),
-    backgroundColor: "rgba(255,255,255,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backBtnFocused: {
-    backgroundColor: "#fff",
-    transform: [{ scale: 1.1 }],
-  },
-  searchWrapper: {
-    flex: 1,
-    height: ph(6.5),
-  },
-  searchGradient: { ...TILE_FRAME, flex: 1, borderRadius: 25 },
-  searchGradientFocused: { ...TILE_FRAME_FOCUSED },
-  searchInner: {
-    flex: 1,
-    backgroundColor: "rgba(10, 10, 16, 0.61)",
-    borderRadius: 25 - 1,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: pw(1.6),
-  },
-  searchInput: { flex: 1, color: "#fff", fontSize: ps(1.1) },
-  iconBtn: { padding: ps(0.6), borderRadius: 12, backgroundColor: "rgba(255,255,255,0.05)" },
-  countBadge: {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 10,
-    paddingHorizontal: pw(1.5),
-    paddingVertical: ph(0.6),
-  },
-  countText: { color: THEME.colors.primary, fontSize: ps(1), fontWeight: "800" },
-  notice: {
-    position: "absolute",
-    top: ph(10),
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: pw(0.8),
-    paddingHorizontal: pw(2),
-    paddingVertical: ph(1),
-    borderRadius: ps(1),
-    backgroundColor: "rgba(10,10,16,0.94)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    maxWidth: pw(60),
-    zIndex: 70,
-  },
-  noticeText: { color: "#fff", fontSize: ps(1), fontWeight: "700" },
-  headerBtn: { borderRadius: ps(1) },
-  headerBtnInner: {
-    width: ps(2.8),
-    height: ps(2.8),
-    borderRadius: ps(1.4),
-    backgroundColor: "rgba(255,255,255,0.07)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  headerBtnFocused: {
-    backgroundColor: "#fff",
-    borderColor: "#fff",
-    transform: [{ scale: 1.08 }],
-  },
-
-  // ── Body ──
-  body: {
-    flex: 1,
-    flexDirection: "row",
-  },
-  gridArea: {
-    flex: 1,
-  },
-
-  // ── Cards ──
-  gridContent: {
-    paddingHorizontal: pw(1.5),
-    paddingTop: 0,
-    paddingBottom: ph(4),
-  },
-  gridRow: {
-    flexDirection: "row",
-    justifyContent: "flex-start",
-  },
-  cardWrapper: {
-    aspectRatio: 0.85,
-  },
-  cardBorder: { ...TILE_FRAME, flex: 1 },
-  cardBorderFocused: { ...TILE_FRAME_FOCUSED },
-  card: {
-    flex: 1,
-    backgroundColor: "transparent",
-    borderRadius: ps(1.1),
-    paddingHorizontal: ps(0.5),
-    paddingTop: ps(0.5),
-    paddingBottom: ps(0.5),
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  cardLogoWrapper: {
-    width: "70%",
-    flex: 1,
-    maxHeight: "65%",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: ph(0.2),
-  },
-  cardLogo: {
-    width: "100%",
-    height: "100%",
-  },
-  cardInfo: {
-    alignItems: "center",
-    width: "100%",
-    paddingHorizontal: 4,
-  },
-  cardTitle: {
-    color: "#fff",
-    fontSize: ps(0.9),
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  cardCategory: {
-    color: "rgba(255,255,255,0.28)",
-    fontSize: ps(0.72),
-    fontWeight: "600",
-    textAlign: "center",
-    marginTop: 2,
-  },
-  cardNow: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: ps(0.72),
-    fontWeight: "600",
-    textAlign: "center",
-    marginTop: 2,
-  },
-  cardProgressTrack: {
-    height: 2,
-    width: "80%",
-    borderRadius: 1,
-    backgroundColor: "rgba(255,255,255,0.16)",
-    marginTop: 4,
-    overflow: "hidden",
-  },
-  cardProgressFill: { height: "100%", backgroundColor: "#fff" },
-  cardNumber: {
-    position: "absolute",
-    top: ps(0.4),
-    left: ps(0.4),
-    minWidth: ps(1.6),
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 4,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    alignItems: "center",
-    zIndex: 2,
-  },
-  cardNumberText: {
-    color: "#fff",
-    fontSize: ps(0.7),
-    fontWeight: "900",
-    fontVariant: ["tabular-nums"],
-  },
-  cardLock: {
-    position: "absolute",
-    top: ps(0.4),
-    right: ps(0.4),
-    zIndex: 2,
-  },
-
-  // ── States ──
-  loadingCenter: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: ph(2),
-  },
-  loadingText: {
-    color: "rgba(255,255,255,0.35)",
-    fontSize: ps(1),
-    fontWeight: "600",
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingTop: ph(12),
-    gap: ph(1.5),
-  },
-  emptyTitle: {
-    color: "rgba(255,255,255,0.45)",
-    fontSize: ps(1.4),
-    fontWeight: "700",
-  },
-  emptySubtitle: {
-    color: "rgba(255,255,255,0.22)",
-    fontSize: ps(0.95),
-  },
-  retryBtn: {
-    marginTop: ph(2),
-  },
-  retryInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: pw(0.8),
-    paddingHorizontal: pw(3),
-    paddingVertical: ph(1.2),
-    borderRadius: ps(1),
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  retryInnerFocused: {
-    backgroundColor: "#fff",
-  },
-  retryText: {
-    color: "#fff",
-    fontSize: ps(1),
-    fontWeight: "800",
-    marginLeft: pw(0.6),
-  },
-  loadingMore: {
-    width: "100%",
-    paddingVertical: ph(3),
-    alignItems: "center",
-    gap: ph(0.8),
-    flexDirection: "row",
-    justifyContent: "center",
-  },
-  loadingMoreText: {
-    color: "rgba(255,255,255,0.3)",
-    fontSize: ps(0.9),
-    marginLeft: pw(1),
-  },
-  loadMoreFooter: {
-    paddingVertical: ph(3),
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadMoreBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: pw(0.8),
-    paddingHorizontal: pw(3),
-    paddingVertical: ph(1.4),
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: ps(1),
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  loadMoreBtnFocused: {
-    borderColor: "#fff",
-    backgroundColor: THEME.colors.primary,
-    shadowColor: THEME.colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.7,
-    shadowRadius: 12,
-    elevation: 12,
-  },
-  loadMoreBtnText: {
-    color: "#fff",
-    fontSize: ps(1),
-    fontWeight: "900",
-    letterSpacing: 1.5,
-  },
-});

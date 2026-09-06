@@ -342,11 +342,17 @@ export class M3UApi {
       const liveChannels = rows.filter((c) => c.type === "live");
       const categories = [...new Set(liveChannels.map((c) => c.category))];
 
-      const result = categories.map((name) => ({
-        id: name,
-        name,
-        type: "live" as const,
-      }));
+      const result = categories
+        .filter((name) => {
+          if (!name) return false;
+          const lower = String(name).trim().toLowerCase();
+          return lower !== "all" && lower !== "all channels" && lower !== "all live" && lower !== "*";
+        })
+        .map((name) => ({
+          id: name,
+          name,
+          type: "live" as const,
+        }));
 
       await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
       return result;
@@ -397,11 +403,17 @@ export class M3UApi {
       const vodItems = rows.filter((c) => c.type === "vod");
       const categories = [...new Set(vodItems.map((c) => c.category))];
 
-      const result = categories.map((name) => ({
-        id: name,
-        name,
-        type: "vod" as const,
-      }));
+      const result = categories
+        .filter((name) => {
+          if (!name) return false;
+          const lower = String(name).trim().toLowerCase();
+          return lower !== "all" && lower !== "all movies" && lower !== "all vod" && lower !== "*";
+        })
+        .map((name) => ({
+          id: name,
+          name,
+          type: "vod" as const,
+        }));
 
       await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
       return result;
@@ -466,11 +478,17 @@ export class M3UApi {
       const seriesItems = rows.filter((c) => c.type === "series");
       const categories = [...new Set(seriesItems.map((c) => c.category))];
 
-      const result = categories.map((name) => ({
-        id: name,
-        name,
-        type: "series" as const,
-      }));
+      const result = categories
+        .filter((name) => {
+          if (!name) return false;
+          const lower = String(name).trim().toLowerCase();
+          return lower !== "all" && lower !== "all series" && lower !== "*";
+        })
+        .map((name) => ({
+          id: name,
+          name,
+          type: "series" as const,
+        }));
 
       await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
       return result;

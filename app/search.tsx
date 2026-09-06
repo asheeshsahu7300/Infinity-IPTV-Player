@@ -1,19 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  Dimensions,
-  FlatList,
-  ScrollView,
-  Platform,
-} from "react-native";
+import { View, StyleSheet, ActivityIndicator, Dimensions, FlatList, ScrollView, Platform, Animated, findNodeHandle, Pressable , TextInput as RNTextInput} from 'react-native';
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -23,17 +11,22 @@ import { usePortalStore } from "../src/store/portalStore";
 import { portalApi, buildImageUrl } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
-import { isTV } from "../src/utils/tvUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
-import { Focusable, FocusGroup, Overlay, useIsFocusTrapped } from "../src/tv";
+import { Focusable, FocusGroup, Overlay, useIsFocusTrapped, useDPad, FocusMemory } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
 import { THEME, pw, ph, ps, psRaw, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import { playbackQueue } from "../src/services/playbackQueue";
+import { Calendar, ExternalLink, Play, Search, Star, X } from 'lucide-react-native';
+import { DynamicIcon } from '../src/components/DynamicIcon';
+import { Text } from '../src/components/Text';
+import { TextInput } from '../src/components/TextInput';
+
+
 
 const { width: W } = Dimensions.get("window");
-const RAIL_H_PAD = pw(isTV ? 4.2 : 4);
-const HEADER_ELEM_HEIGHT = isTV ? pw(3.8) : pw(9.5);
+const RAIL_H_PAD = pw(4.2);
+const HEADER_ELEM_HEIGHT = pw(3.8);
 
 // ─────────────────────────────────────────────
 // Metadata & Channel Helpers
@@ -112,161 +105,223 @@ const pickYear = (v: any) => {
 };
 
 // ─────────────────────────────────────────────
-// Universal Content Card (16:11 for Live TV, 2:3 for Movies, Flush Focus Border)
+// Universal Content Card (VOD / OTT Tile Style with Clean Poster Frame & Titles Below)
 // ─────────────────────────────────────────────
-const ContentCard = React.memo(function ContentCard({
+const CardInner = React.memo(function CardInner({
   item,
-  onPress,
-  onFocus,
-  itemWidth,
+  isLive,
+  posterHeight,
+  channelMeta,
+  ratingVal,
+  focused,
 }: {
   item: any;
-  onPress: (item: any) => void;
-  onFocus?: (item: any) => void;
-  itemWidth: number;
+  isLive: boolean;
+  posterHeight: number;
+  channelMeta: any;
+  ratingVal: string;
+  focused: boolean;
 }) {
-  const isLive = item.type === "live";
-  const cardHeight = isLive ? Math.round(itemWidth * 1.15) : Math.round(itemWidth * 1.38);
+  const [imgError, setImgError] = useState(false);
 
-  const handlePress = useCallback(() => onPress(item), [onPress, item]);
-  const handleFocus = useCallback(() => onFocus?.(item), [onFocus, item]);
-
-  const channelMeta = isLive ? parseChannelMeta(item) : null;
+  useEffect(() => {
+    setImgError(false);
+  }, [item?.logo]);
 
   return (
-    <Focusable
-      onPress={handlePress}
-      onFocus={handleFocus}
-      ringOnFocus={false}
-      accessibilityLabel={item.name}
-      style={[S.cardWrapper, { width: itemWidth, overflow: "visible" }]}
-    >
-      {(focused) => (
-        <View
-          style={[
-            S.cardBorder,
-            { height: cardHeight },
-            focused && S.cardBorderFocused,
-            focused && { transform: [{ scale: 1.05 }] },
-          ]}
-        >
-          <View style={S.card}>
-            {isLive ? (
-              // ── Live Channel Card (Enlarged Hero Logo, Channel #, Region/Category) ──
-              <View style={S.liveCardInner}>
-                <View style={S.liveLogoArea}>
-                  {channelMeta?.channelNum ? (
-                    <View style={S.channelNumBadge}>
-                      <Text style={S.channelNumText}>{channelMeta.channelNum}</Text>
-                    </View>
-                  ) : null}
-
-                  {item.logo ? (
-                    <Image
-                      source={{ uri: item.logo }}
-                      style={S.liveLogoImg}
-                      contentFit="contain"
-                      cachePolicy="memory-disk"
-                    />
-                  ) : (
-                    <Ionicons name="tv-outline" size={ps(3.2)} color="rgba(255,255,255,0.25)" />
-                  )}
-
-                  <View style={S.liveBadge}>
-                    <View style={S.liveBadgeDot} />
-                    <Text style={S.liveBadgeText}>LIVE</Text>
-                  </View>
-                </View>
-
-                <View style={S.liveInfoArea}>
-                  <Text style={[S.liveTitle, focused && S.liveTitleFocused]} numberOfLines={1}>
-                    {channelMeta?.cleanTitle || item.name}
-                  </Text>
-                  <Text style={S.liveCategory} numberOfLines={1}>
-                    {channelMeta?.subtitle || "Live Stream"}
-                  </Text>
-                </View>
-              </View>
-            ) : (
-              // ── VOD / Series Poster Card ──
-              <View style={S.vodCardInner}>
-                <View style={S.cardImgContainer}>
-                  {item.logo ? (
-                    <Image
-                      source={{ uri: item.logo }}
-                      style={S.cardImg}
-                      contentFit="cover"
-                      cachePolicy="memory-disk"
-                    />
-                  ) : (
-                    <View style={S.brandedPlaceholder}>
-                      <LinearGradient
-                        colors={["#1c2032", "#10121d", "#08090f"]}
-                        locations={[0, 0.5, 1]}
-                        style={StyleSheet.absoluteFillObject}
-                      />
-                      <View style={S.placeholderIconWrap}>
-                        <Ionicons
-                          name={item.type === "series" ? "albums-outline" : "film-outline"}
-                          size={ps(2.2)}
-                          color="#FFFFFF"
-                        />
-                      </View>
-                      <Text style={S.placeholderTitle} numberOfLines={2}>
-                        {item.name}
-                      </Text>
-                      {/* Year only. The SERIES/MOVIE half is gone, and with it
-                          the badge on anything that has no year — an empty pill
-                          is worse than no pill. */}
-                      {item.year ? (
-                        <View style={S.placeholderBadge}>
-                          <Text style={S.placeholderBadgeText}>{item.year}</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  )}
-                  {item.quality ? (
-                    <View style={S.badge}>
-                      <Text style={S.badgeText}>{item.quality}</Text>
-                    </View>
-                  ) : null}
-                </View>
-                {item.logo ? (
-                  <LinearGradient
-                    colors={[
-                      "transparent",
-                      "rgba(8, 8, 12, 0.45)",
-                      "rgba(8, 8, 12, 0.92)",
-                      "#08080c",
-                    ]}
-                    locations={[0, 0.35, 0.7, 1]}
-                    style={S.cardInfo}
-                  >
-                    <Text style={[S.cardTitle, focused && S.cardTitleFocused]} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    {/* Year only — see the note on the placeholder badge above.
-                        Rendered conditionally so a card with no year does not
-                        keep a blank line under its title. */}
-                    {item.year ? (
-                      <Text style={S.cardSub} numberOfLines={1}>
-                        {item.year}
-                      </Text>
-                    ) : null}
-                  </LinearGradient>
-                ) : null}
-              </View>
-            )}
+    <View style={[S.movieCardContainer, focused && S.movieCardContainerFocused]}>
+      <View
+        style={[
+          S.posterFrame,
+          { height: posterHeight },
+          focused && S.posterFrameFocused,
+        ]}
+      >
+        {item.logo && !imgError ? (
+          <Image
+            source={{ uri: item.logo }}
+            recyclingKey={item.logo}
+            style={S.posterImage}
+            contentFit={isLive ? "contain" : "cover"}
+            cachePolicy="memory-disk"
+            transition={200}
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <View style={[StyleSheet.absoluteFillObject, S.posterFallback]}>
+            <DynamicIcon
+              name={isLive ? "television" : "filmstrip"}
+              size={isLive ? ps(2.8) : ps(4.2)}
+              color="rgba(255,255,255,0.32)"
+            />
           </View>
-        </View>
-      )}
-    </Focusable>
+        )}
+
+        {isLive && (
+          <View style={S.liveBadge}>
+            <View style={S.liveBadgeDot} />
+            <Text style={S.liveBadgeText}>LIVE</Text>
+          </View>
+        )}
+
+        {isLive && channelMeta?.channelNum ? (
+          <View style={S.channelNumBadge}>
+            <Text style={S.channelNumText}>{channelMeta.channelNum}</Text>
+          </View>
+        ) : null}
+
+        {!isLive && item.quality ? (
+          <View style={S.qualityBadge}>
+            <Text style={S.qualityBadgeText}>{item.quality}</Text>
+          </View>
+        ) : null}
+
+        {!isLive && ratingVal ? (
+          <View style={S.cornerRatingBadge}>
+            <Text style={S.cornerRatingText}>{ratingVal}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <Text
+        style={[S.movieTitleText, focused && S.movieTitleTextFocused]}
+        numberOfLines={1}
+      >
+        {isLive ? (channelMeta?.cleanTitle || item.name) : item.name}
+      </Text>
+
+      {isLive ? (
+        channelMeta?.subtitle ? (
+          <Text style={S.movieSubText} numberOfLines={1}>
+            {channelMeta.subtitle}
+          </Text>
+        ) : null
+      ) : item.year ? (
+        <Text style={S.movieSubText} numberOfLines={1}>
+          {item.year}
+        </Text>
+      ) : null}
+    </View>
   );
 });
+
+const ContentCard = React.memo(
+  function ContentCard({
+    item,
+    index,
+    onPress,
+    onFocus,
+    itemWidth,
+    hasTVPreferredFocus = false,
+    trapFocusLeft = false,
+    trapFocusRight = false,
+    nextFocusUp,
+    cardRef,
+  }: {
+    item: any;
+    index?: number;
+    onPress: (item: any) => void;
+    onFocus?: (item: any, index?: number) => void;
+    itemWidth: number;
+    hasTVPreferredFocus?: boolean;
+    trapFocusLeft?: boolean;
+    trapFocusRight?: boolean;
+    nextFocusUp?: number;
+    cardRef?: React.RefObject<any>;
+  }) {
+    const isLive = item.type === "live";
+    const posterHeight = isLive ? Math.round(itemWidth * 0.75) : Math.round(itemWidth * 1.48);
+
+    const handlePress = useCallback(() => onPress(item), [onPress, item]);
+    const handleFocus = useCallback(() => onFocus?.(item, index), [onFocus, item, index]);
+
+    const channelMeta = isLive ? parseChannelMeta(item) : null;
+
+    const ratingVal = useMemo(() => {
+      if (isLive) return "";
+      const r = item.rating;
+      if (!r) return "";
+      const s = String(r).trim();
+      const lower = s.toLowerCase();
+      if (
+        lower === "0" ||
+        lower === "0.0" ||
+        lower === "0.00" ||
+        lower === "null" ||
+        lower === "undefined" ||
+        lower === "na" ||
+        lower === "n/a"
+      ) {
+        return "";
+      }
+      const num = parseFloat(s);
+      if (!isNaN(num) && num > 0) {
+        return Number.isInteger(num) ? num.toFixed(1) : String(Math.round(num * 10) / 10);
+      }
+      return s;
+    }, [isLive, item.rating]);
+
+    return (
+      <View style={[S.movieItemWrapper, { width: itemWidth }]}>
+        <Focusable
+          ref={cardRef}
+          screenKey="search-screen"
+          focusKey={`${item.type}-${item.id}`}
+          onPress={handlePress}
+          onFocus={handleFocus}
+          hasTVPreferredFocus={hasTVPreferredFocus}
+          trapFocusLeft={trapFocusLeft}
+          trapFocusRight={trapFocusRight}
+          nextFocusUp={nextFocusUp}
+          ringOnFocus={false}
+          accessibilityLabel={item.name}
+        >
+          {(focused) => (
+            <CardInner
+              item={item}
+              isLive={isLive}
+              posterHeight={posterHeight}
+              channelMeta={channelMeta}
+              ratingVal={ratingVal}
+              focused={focused}
+            />
+          )}
+        </Focusable>
+      </View>
+    );
+  },
+  (prev, next) => {
+    return (
+      prev.item?.id === next.item?.id &&
+      prev.index === next.index &&
+      prev.itemWidth === next.itemWidth &&
+      prev.hasTVPreferredFocus === next.hasTVPreferredFocus &&
+      prev.trapFocusLeft === next.trapFocusLeft &&
+      prev.trapFocusRight === next.trapFocusRight &&
+      prev.nextFocusUp === next.nextFocusUp &&
+      prev.cardRef === next.cardRef &&
+      prev.onPress === next.onPress &&
+      prev.onFocus === next.onFocus
+    );
+  }
+);
 
 // ─────────────────────────────────────────────
 // Horizontal Content Rail with Smooth D-Pad Auto-Scrolling
 // ─────────────────────────────────────────────
+interface ContentRailProps {
+  title: string;
+  subtitle?: string;
+  data: any[];
+  itemWidth: number;
+  onPress: (item: any) => void;
+  onFocus?: (item: any) => void;
+  isFirstRail?: boolean;
+  nextFocusUp?: number;
+  inputRef?: React.RefObject<any>;
+  firstCardRef?: React.RefObject<any>;
+}
+
 const ContentRail = React.memo(function ContentRail({
   title,
   subtitle,
@@ -274,89 +329,105 @@ const ContentRail = React.memo(function ContentRail({
   itemWidth,
   onPress,
   onFocus,
-}: {
-  title: string;
-  subtitle?: string;
-  data: any[];
-  itemWidth: number;
-  onPress: (item: any) => void;
-  onFocus?: (item: any) => void;
-}) {
-  const scrollRef = useRef<ScrollView>(null);
-  /** Rail viewport width and current offset, for the visibility test below. */
-  const viewportRef = useRef(0);
-  const offsetRef = useRef(0);
+  isFirstRail = false,
+  nextFocusUp,
+  inputRef,
+  firstCardRef,
+}: ContentRailProps) {
+  const flatListRef = useRef<FlatList>(null);
+  const scrollRafRef = useRef<number | null>(null);
+  const currentScrollIndexRef = useRef(-1);
+
+  useEffect(() => () => {
+    if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+  }, []);
+
+  const gap = pw(1.2);
+  const stride = itemWidth + gap;
+
+  const getItemLayout = useCallback(
+    (_: any, index: number) => ({
+      length: stride,
+      offset: stride * index,
+      index,
+    }),
+    [stride]
+  );
 
   /**
-   * Scrolls only when the focused card is not already fully visible.
-   *
-   * This used to run `scrollTo((idx - 1) * itemWidth)` on every focus event,
-   * unconditionally. Two things fell out of that. Moving focus into a rail from
-   * the search box or a neighbouring rail yanked it sideways even though the
-   * card was already on screen, and stepping along a rail re-anchored the whole
-   * strip on every press instead of scrolling once at the edge — which is the
-   * drifting, over-eager scrolling this screen had.
-   *
-   * Now it behaves like scroll-into-view: off the left edge, reveal leftward;
-   * off the right, reveal rightward; already visible, do nothing at all.
+   * Keep focus fixed at the first item slot on the screen (Slot 0)
+   * while smoothly scrolling the horizontal rail with VSYNC timing.
    */
-  const handleCardFocus = useCallback((item: any, idx: number) => {
-    onFocus?.(item);
+  const handleCardFocus = useCallback(
+    (item: any, idx?: number) => {
+      onFocus?.(item);
 
-    const gap = isTV ? pw(1.2) : pw(1.5);
-    const stride = itemWidth + gap;
-    const viewport = viewportRef.current;
-    // Before the first layout there is nothing to measure against, and
-    // guessing would reintroduce the yank.
-    if (viewport <= 0) return;
+      if (idx === undefined || currentScrollIndexRef.current === idx) return;
+      currentScrollIndexRef.current = idx;
 
-    const left = idx * stride;
-    const right = left + stride;
-    const offset = offsetRef.current;
+      const targetOffset = idx * stride;
+      if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+      scrollRafRef.current = requestAnimationFrame(() => {
+        try {
+          flatListRef.current?.scrollToOffset({
+            offset: targetOffset,
+            animated: true,
+          });
+        } catch { /* ignore */ }
+      });
+    },
+    [onFocus, stride]
+  );
 
-    if (left < offset) {
-      scrollRef.current?.scrollTo({ x: Math.max(0, left - gap), animated: true });
-    } else if (right > offset + viewport) {
-      scrollRef.current?.scrollTo({ x: right - viewport + gap, animated: true });
-    }
-  }, [itemWidth, onFocus]);
+  const renderItem = useCallback(
+    ({ item, index }: { item: any; index: number }) => (
+      <ContentCard
+        key={`${item.type}-${item.id}`}
+        item={item}
+        index={index}
+        itemWidth={itemWidth}
+        onPress={onPress}
+        onFocus={handleCardFocus}
+        trapFocusLeft={index === 0}
+        trapFocusRight={index === data.length - 1}
+        hasTVPreferredFocus={isFirstRail && index === 0}
+        nextFocusUp={isFirstRail ? nextFocusUp : undefined}
+        cardRef={isFirstRail && index === 0 ? firstCardRef : undefined}
+      />
+    ),
+    [itemWidth, onPress, handleCardFocus, data.length, isFirstRail, nextFocusUp, firstCardRef]
+  );
 
-  // Below the hooks, not above them.
-  //
-  // This return sat before the useRef and useCallback above, so a rail whose
-  // data arrived after mount — which is every rail, since the library streams
-  // in — went from calling zero hooks to calling two. React matches hook state
-  // by call order, so that mismatch remounted the rail and dropped whatever
-  // had focus inside it. It is the focus jumping on this screen.
   if (!data || data.length === 0) return null;
 
   return (
-    <FocusGroup style={S.railSection}>
+    <FocusGroup
+      style={[S.railSection, { overflow: "visible" }]}
+      trapLeft
+      trapRight
+      destinations={isFirstRail && inputRef?.current ? [inputRef.current] : undefined}
+    >
       <View style={S.railHeader}>
         <Text style={S.railTitle}>{title}</Text>
         {subtitle ? <Text style={S.railSubtitle}>{subtitle}</Text> : null}
       </View>
-      <ScrollView
-        ref={scrollRef}
+      <FlatList
+        ref={flatListRef}
         horizontal
+        data={data}
+        renderItem={renderItem}
+        keyExtractor={(item) => `${item.type}-${item.id}`}
+        getItemLayout={getItemLayout}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={S.railScrollContent}
-        onLayout={(e) => { viewportRef.current = e.nativeEvent.layout.width; }}
-        onScroll={(e) => { offsetRef.current = e.nativeEvent.contentOffset.x; }}
-        // Cheap: this only feeds the visibility test, so it needs to be roughly
-        // current, not every frame.
-        scrollEventThrottle={64}
-      >
-        {data.map((item, idx) => (
-          <ContentCard
-            key={`${item.type}-${item.id}`}
-            item={item}
-            itemWidth={itemWidth}
-            onPress={onPress}
-            onFocus={(it) => handleCardFocus(it, idx)}
-          />
-        ))}
-      </ScrollView>
+        style={{ overflow: "visible" }}
+        scrollEventThrottle={16}
+        removeClippedSubviews={false}
+        initialNumToRender={Math.max(data.length, 10)}
+        maxToRenderPerBatch={Math.max(data.length, 10)}
+        windowSize={11}
+        updateCellsBatchingPeriod={16}
+      />
     </FocusGroup>
   );
 });
@@ -373,7 +444,7 @@ type ContentFilter = "all" | "live" | "vod" | "series";
  * Dropping the state as well would have made the landing page a single type,
  * which is a different change from removing a chip.
  */
-const FILTER_TABS: { id: ContentFilter; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+const FILTER_TABS: { id: ContentFilter; label: string; icon?: string }[] = [
   { id: "live", label: "Live TV", icon: "tv-outline" },
   { id: "vod", label: "Movies", icon: "film-outline" },
   { id: "series", label: "Series", icon: "albums-outline" },
@@ -396,7 +467,11 @@ export default function SearchScreen() {
   const searchTimeout = useRef<any>(null);
   const searchRequestId = useRef(0);
 
-  const [query, setQuery] = useState("");
+  const draftQueryRef = useRef("");
+  const lastSearchedRef = useRef("");
+
+  const [draftQuery, setDraftQuery] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<ContentFilter>("all");
   const [results, setResults] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -407,12 +482,82 @@ export default function SearchScreen() {
    * only ever hide the keyboard.
    */
   const [searchFocused, setSearchFocused] = useState(false);
+  const [clearFocused, setClearFocused] = useState(false);
   const [focusedImage, setFocusedImage] = useState<string | null>(null);
-  const inputRef = useRef<TextInput>(null);
+
+  const inputRef = useRef<RNTextInput>(null);
+  const clearBtnRef = useRef<View>(null);
+  const firstFilterRef = useRef<View>(null);
+  const firstCardRef = useRef<View>(null);
+
+  const [inputNode, setInputNode] = useState<number | undefined>(undefined);
+  const [clearBtnNode, setClearBtnNode] = useState<number | undefined>(undefined);
+  const [firstFilterNode, setFirstFilterNode] = useState<number | undefined>(undefined);
+  const [firstCardNode, setFirstCardNode] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    const attachNodes = () => {
+      const input = inputRef.current ? findNodeHandle(inputRef.current) : null;
+      const firstFilter = firstFilterRef.current ? findNodeHandle(firstFilterRef.current) : null;
+      const clearBtn = clearBtnRef.current ? findNodeHandle(clearBtnRef.current) : null;
+      const card = firstCardRef.current ? findNodeHandle(firstCardRef.current) : null;
+      if (input) setInputNode(input);
+      if (firstFilter) setFirstFilterNode(firstFilter);
+      if (card) setFirstCardNode(card);
+      setClearBtnNode(clearBtn || undefined);
+    };
+
+    attachNodes();
+    const t = setTimeout(attachNodes, 120);
+    return () => clearTimeout(t);
+  }, [draftQuery, submittedQuery, activeFilter]);
+
+  const handleClearSearch = useCallback(() => {
+    setDraftQuery("");
+    setSubmittedQuery("");
+    setResults([]);
+    setClearFocused(false);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+  }, []);
 
   // VOD Modal
   const [playModalVisible, setPlayModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
+
+  const isTopRowFocusedRef = useRef(false);
+
+  useDPad(
+    {
+      onUp: () => {
+        if (isTopRowFocusedRef.current && !playModalVisible) {
+          inputRef.current?.focus();
+        }
+      },
+      onDown: () => {
+        if ((searchFocused || clearFocused) && !playModalVisible) {
+          inputRef.current?.blur();
+          setSearchFocused(false);
+          setClearFocused(false);
+          if (firstCardRef.current) {
+            (firstCardRef.current as any)?.focus?.();
+          } else {
+            const firstItem =
+              submittedQuery.trim().length === 0
+                ? filteredRails[0]?.data?.[0]
+                : filteredResults[0];
+            if (firstItem) {
+              const key = `${firstItem.type}-${firstItem.id}`;
+              const node = FocusMemory.getRef("search-screen", key)?.current;
+              node?.focus?.();
+            }
+          }
+        }
+      },
+    },
+    { enabled: isScreenFocused && !playModalVisible }
+  );
 
   // ── Curated Content Rails (Discovery State) ──
   const discoveryRails = useMemo(() => {
@@ -509,17 +654,23 @@ export default function SearchScreen() {
       const localCombined = [...localLive, ...localVod, ...localSeries];
       setResults(localCombined);
 
-      // 2. If it's a MAG portal, perform fast remote search to augment results
+      // 2. If it's a MAG portal, perform remote search for VOD & Series to augment results immediately
+      // NOTE: Do NOT query "live" remotely on MAG because MAG does not support live search (it returns all 11,000+ channels)
+      // and live channels are already fully searched locally in memory above!
       if (activePortal.type === "mag") {
         const reqId = ++searchRequestId.current;
         setIsLoading(true);
+        console.log(`[Search] Initiating MAG search for "${q}"...`);
 
-        if (searchTimeout.current) clearTimeout(searchTimeout.current);
-        searchTimeout.current = setTimeout(async () => {
+        (async () => {
           try {
-            // Determine which types to search based on activeFilter
-            const typesToQuery: ("live" | "vod" | "series")[] =
-              activeFilter === "all" ? ["live", "vod", "series"] : [activeFilter];
+            // Determine which types to search remotely based on activeFilter
+            const typesToQuery: ("vod" | "series")[] =
+              activeFilter === "vod"
+                ? ["vod"]
+                : activeFilter === "series"
+                  ? ["series"]
+                  : ["vod", "series"];
 
             const remoteMatches: any[] = [];
             for (const st of typesToQuery) {
@@ -545,8 +696,8 @@ export default function SearchScreen() {
                   rating: pickRating(i),
                 }));
                 remoteMatches.push(...mapped);
-              } catch {
-                // Keep local in-memory matches intact
+              } catch (err) {
+                console.warn(`[Search] Error searching ${st}:`, err);
               }
             }
 
@@ -568,7 +719,7 @@ export default function SearchScreen() {
               setIsLoading(false);
             }
           }
-        }, 350);
+        })();
       } else {
         setIsLoading(false);
       }
@@ -576,16 +727,46 @@ export default function SearchScreen() {
     [activePortal, channels, vodItems, series, activeFilter]
   );
 
+  const commitSearch = useCallback(
+    (overrideText?: string) => {
+      const candidate = (typeof overrideText === "string" && overrideText.trim().length > 0)
+        ? overrideText
+        : (draftQueryRef.current || draftQuery);
+      const textToSearch = (candidate || "").trim();
+      console.log(`[Search] commitSearch called with: "${textToSearch}"`);
+      if (!textToSearch) {
+        lastSearchedRef.current = "";
+        setSubmittedQuery("");
+        setResults([]);
+        return;
+      }
+      lastSearchedRef.current = textToSearch;
+      setSubmittedQuery(textToSearch);
+      performSearch(textToSearch);
+      setSearchFocused(false);
+    },
+    [draftQuery, performSearch]
+  );
+
   useEffect(() => {
-    performSearch(query);
-  }, [query, activeFilter, performSearch]);
+    if (submittedQuery && submittedQuery !== lastSearchedRef.current) {
+      lastSearchedRef.current = submittedQuery;
+      performSearch(submittedQuery);
+    }
+  }, [submittedQuery, performSearch]);
+
+  useEffect(() => {
+    if (submittedQuery) {
+      performSearch(submittedQuery);
+    }
+  }, [activeFilter]);
 
   const filteredResults = useMemo(() => {
     if (activeFilter === "all") return results;
     return results.filter((item) => item.type === activeFilter);
   }, [results, activeFilter]);
 
-  const handleResultPress = (item: any) => {
+  const handleResultPress = useCallback((item: any) => {
     if (item.type === "live") {
       router.push({
         pathname: "/player",
@@ -616,7 +797,7 @@ export default function SearchScreen() {
     }
     setSelectedItem(item);
     setPlayModalVisible(true);
-  };
+  }, []);
 
   const handleVodAction = async (isExternal: boolean) => {
     if (!selectedItem || !activePortal) return;
@@ -664,6 +845,7 @@ export default function SearchScreen() {
             poster: selectedItem.logo || "",
             streamUrl: streamUrl || selectedItem.streamUrl || "",
             description: selectedItem.description,
+            hasStill: false,
             kind: "vod",
           },
         ],
@@ -688,10 +870,10 @@ export default function SearchScreen() {
     }
   };
 
-  const RESULT_COLUMNS = isTV ? 7 : (W >= 1024 ? 6 : (W >= 768 ? 4 : 3));
+  const RESULT_COLUMNS = 7;
   const CARD_WIDTH = (W - RAIL_H_PAD * 2) / RESULT_COLUMNS;
   // Sized so that 6 cards + padding show fully and ~18-20% of the 7th card peeks on the right
-  const RAIL_ITEM_WIDTH = isTV ? pw(13.2) : pw(27);
+  const RAIL_ITEM_WIDTH = pw(13.2);
 
   // Chunk flat results into rows of RESULT_COLUMNS — same pattern as vod.tsx.
   // A FocusGroup (TVFocusGuideView) wraps each row so left/right D-pad
@@ -704,27 +886,52 @@ export default function SearchScreen() {
     return rows;
   }, [filteredResults, RESULT_COLUMNS]);
 
-  // Keep a stable ref so renderResultRow doesn't recreate on every focusedImage change
-  const handleResultFocus = useCallback((it: any) => {
-    if (it.logo) setFocusedImage(it.logo);
+  // Debounced backdrop artwork update to prevent re-renders on rapid D-pad moves
+  const focusedImageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (focusedImageTimerRef.current) clearTimeout(focusedImageTimerRef.current);
   }, []);
 
-  const renderResultRow = useCallback(({ item: row }: { item: { id: string; items: any[] } }) => (
-    <FocusGroup style={{ flexDirection: "row" }}>
-      {row.items.map((it) => (
-        <ContentCard
-          key={`${it.type}-${it.id}`}
-          item={it}
-          itemWidth={CARD_WIDTH}
-          onPress={handleResultPress}
-          onFocus={handleResultFocus}
-        />
-      ))}
-    </FocusGroup>
-  ), [CARD_WIDTH, handleResultPress, handleResultFocus]);
+  const handleResultFocus = useCallback((it: any) => {
+    if (!it?.logo) return;
+    if (focusedImageTimerRef.current) clearTimeout(focusedImageTimerRef.current);
+    focusedImageTimerRef.current = setTimeout(() => {
+      setFocusedImage(it.logo);
+    }, 180);
+  }, []);
+
+  const renderResultRow = useCallback(
+    ({ item: row, index: rowIndex }: { item: { id: string; items: any[] }; index: number }) => (
+      <FocusGroup
+        style={{ flexDirection: "row" }}
+        trapLeft
+        trapRight
+        destinations={rowIndex === 0 && inputRef.current ? [inputRef.current] : undefined}
+      >
+        {row.items.map((it, colIndex) => (
+          <ContentCard
+            key={`${it.type}-${it.id}`}
+            item={it}
+            itemWidth={CARD_WIDTH}
+            onPress={handleResultPress}
+            onFocus={(item) => {
+              handleResultFocus(item);
+              isTopRowFocusedRef.current = rowIndex === 0;
+            }}
+            hasTVPreferredFocus={rowIndex === 0 && colIndex === 0 && !searchFocused}
+            trapFocusLeft={colIndex === 0}
+            trapFocusRight={colIndex === row.items.length - 1}
+            nextFocusUp={rowIndex === 0 ? inputNode : undefined}
+            cardRef={rowIndex === 0 && colIndex === 0 ? firstCardRef : undefined}
+          />
+        ))}
+      </FocusGroup>
+    ),
+    [CARD_WIDTH, handleResultPress, handleResultFocus, searchFocused, inputNode, firstCardRef]
+  );
 
   return (
-    <View style={[S.container, { paddingTop: insets.top + (isTV ? ph(3) : ph(3.5)) }]}>
+    <View style={[S.container, { paddingTop: insets.top }]}>
       <View
         style={{ flex: 1 }}
         accessibilityElementsHidden={playModalVisible}
@@ -740,115 +947,137 @@ export default function SearchScreen() {
           pointerEvents="none"
         />
 
-        {/* Header Bar */}
-        <FocusGroup>
-          <View style={S.headerRow}>
-            <View style={S.searchBarWrapper}>
-              <View style={[S.searchBarContainer, searchFocused && S.searchBarContainerFocused]}>
-                <Ionicons
-                  name="search"
-                  size={isTV ? ps(1.4) : ps(1.5)}
-                  color={searchFocused ? "#fff" : "rgba(255,255,255,0.4)"}
-                  style={{ marginRight: pw(0.8) }}
-                />
-                <TextInput
-                  ref={inputRef}
-                  style={S.searchInput}
-                  placeholder="Search content..."
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  value={query}
-                  onChangeText={setQuery}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  focusable={isScreenFocused && !isFocusTrapped && !playModalVisible}
-                  editable={isScreenFocused && !isFocusTrapped && !playModalVisible}
-                  returnKeyType="search"
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
-                  onSubmitEditing={() => setSearchFocused(false)}
-                />
-                {query.length > 0 && (
-                  <TouchableOpacity onPress={() => setQuery("")} style={{ padding: 6 }}>
-                    <Ionicons name="close-circle" size={isTV ? ps(1.4) : ps(1.5)} color="rgba(255,255,255,0.5)" />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
+        {/* ─── Clean Header Bar ─── */}
+        <View style={S.header}>
+          <View style={{ width: 38 }} />
 
-            <Focusable
-              ringOnFocus={false}
-              focusStyle={S.roundBtnFocused}
-              style={S.roundBtn}
-              onPress={() => router.push("/portals")}
-            >
-              {(focused) => <Ionicons name="apps" size={isTV ? ps(1.4) : ps(1.35)} color={focused ? "#000" : "#fff"} />}
-            </Focusable>
-            <Focusable
-              ringOnFocus={false}
-              focusStyle={S.roundBtnFocused}
-              style={S.roundBtn}
-              onPress={() => router.push("/settings")}
-            >
-              {(focused) => <Ionicons name="settings-sharp" size={isTV ? ps(1.4) : ps(1.35)} color={focused ? "#000" : "#fff"} />}
-            </Focusable>
+          <View style={S.headerCenterTitleWrapper}>
+            <Text style={S.headerTitle}>Search</Text>
           </View>
-        </FocusGroup>
 
-        {/* ── Content Type Filter Tabs (Live TV, VOD, Series) ── */}
-        <FocusGroup style={S.filterBar}>
-          {FILTER_TABS.map((tab, index) => {
-            const isActive = activeFilter === tab.id;
-            return (
+          <View style={{ width: 38 }} />
+        </View>
+
+        {/* ─── Search Input Bar + Content Type Filter Tabs ─── */}
+        <View style={S.searchControlsRow}>
+          <View style={[S.searchBarContainer, (searchFocused || clearFocused) && S.searchBarContainerFocused]}>
+            <Pressable onPress={() => commitSearch()} style={{ padding: 4 }}>
+              <Search
+                size={ps(1.5)}
+                color={searchFocused || clearFocused ? "#ffffff" : "rgba(255,255,255,0.4)"}
+                style={{ marginRight: pw(0.8) }}
+              />
+            </Pressable>
+            <TextInput
+              ref={inputRef}
+              style={S.searchInput}
+              placeholder="Search channels, movies, and series..."
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              value={draftQuery}
+              onChangeText={(text) => {
+                draftQueryRef.current = text;
+                setDraftQuery(text);
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              focusable={isScreenFocused && !isFocusTrapped && !playModalVisible}
+              editable={isScreenFocused && !isFocusTrapped && !playModalVisible}
+              returnKeyType="search"
+              nextFocusRight={clearBtnNode ?? firstFilterNode}
+              nextFocusDown={firstCardNode}
+              onFocus={() => {
+                setSearchFocused(true);
+                isTopRowFocusedRef.current = false;
+              }}
+              onBlur={() => setSearchFocused(false)}
+              onSubmitEditing={(e) => commitSearch(e.nativeEvent?.text)}
+              onEndEditing={(e) => commitSearch(e.nativeEvent?.text)}
+              onKeyPress={(e) => {
+                if (e.nativeEvent.key === "Enter" || (e.nativeEvent as any).key === "Select") {
+                  commitSearch();
+                }
+              }}
+            />
+            {draftQuery.length > 0 && (
               <Focusable
-                key={tab.id}
-                // Entry focus for the screen.
-                //
-                // Something has to claim it or Android picks, and left to
-                // itself it picked the apps button at the end of the header.
-                // It cannot be the search field: claiming focus there means
-                // claiming it programmatically, and on a TV that is the one
-                // thing guaranteed to hide the keyboard (see searchFocused).
-                // The first chip is next to the field, so UP reaches it.
-                hasTVPreferredFocus={index === 0 && !playModalVisible}
+                ref={clearBtnRef}
+                focusKey="search-clear-btn"
                 ringOnFocus={false}
-                // Pressing the active chip clears back to "all". With no All
-                // chip that is the only route to mixed results, and without it
-                // narrowing would be one-way until the screen was left.
-                onPress={() => setActiveFilter(isActive ? "all" : tab.id)}
-                style={S.filterChipWrapper}
+                nextFocusLeft={inputNode}
+                nextFocusRight={firstFilterNode}
+                nextFocusDown={firstCardNode}
+                onPress={handleClearSearch}
+                onFocus={() => {
+                  setClearFocused(true);
+                  isTopRowFocusedRef.current = false;
+                }}
+                onBlur={() => setClearFocused(false)}
+                style={S.clearBtnWrapper}
               >
                 {(focused) => (
-                  <View
-                    style={[
-                      S.filterChip,
-                      isActive && S.filterChipActive,
-                      focused && S.filterChipFocused,
-                    ]}
-                  >
-                    <Ionicons
-                      name={tab.icon}
-                      size={isTV ? ps(1.1) : ps(1.0)}
-                      color={focused || isActive ? "#000000" : "rgba(255,255,255,0.7)"}
+                  <View style={[S.clearBtnCircle, focused && S.clearBtnCircleFocused]}>
+                    <X
+                      size={ps(1.8)}
+                      color={"#ffffff"}
                     />
-                    <Text
-                      style={[
-                        S.filterChipText,
-                        isActive && S.filterChipTextActive,
-                        focused && S.filterChipTextFocused,
-                      ]}
-                    >
-                      {tab.label}
-                    </Text>
                   </View>
                 )}
               </Focusable>
-            );
-          })}
-        </FocusGroup>
+            )}
+          </View>
+
+          {/* Filter Tabs */}
+          <FocusGroup style={S.filterBar} trapRight>
+            {FILTER_TABS.map((tab, idx) => {
+              const isActive = activeFilter === tab.id;
+              return (
+                <Focusable
+                  key={tab.id}
+                  ref={idx === 0 ? firstFilterRef : undefined}
+                  focusKey={`filter-${tab.id}`}
+                  ringOnFocus={false}
+                  nextFocusLeft={idx === 0 ? (clearBtnNode ?? inputNode) : undefined}
+                  nextFocusDown={firstCardNode}
+                  onFocus={() => {
+                    isTopRowFocusedRef.current = false;
+                  }}
+                  onPress={() => setActiveFilter(isActive ? "all" : tab.id)}
+                  style={S.filterChipWrapper}
+                  trapFocusRight={idx === FILTER_TABS.length - 1}
+                >
+                  {(focused) => (
+                    <View
+                      style={[
+                        S.filterChip,
+                        isActive && S.filterChipActive,
+                        focused && S.filterChipFocused,
+                      ]}
+                    >
+                      <DynamicIcon
+                        name={tab.icon}
+                        size={ps(1.25)}
+                        color={focused || isActive ? "#000000" : "rgba(255,255,255,0.7)"}
+                      />
+                      <Text
+                        style={[
+                          S.filterChipText,
+                          isActive && S.filterChipTextActive,
+                          focused && S.filterChipTextFocused,
+                        ]}
+                      >
+                        {tab.label}
+                      </Text>
+                    </View>
+                  )}
+                </Focusable>
+              );
+            })}
+          </FocusGroup>
+        </View>
 
         {/* Dynamic Content Area: Horizontal Rails (Discovery) OR Grid (Search Results) */}
-        {query.trim().length === 0 ? (
-          // ── Horizontal 2-Axis Content Rails (Netflix/OTT Style) ──
+        {submittedQuery.trim().length === 0 ? (
+          // ── Horizontal 2-Axis Content Rails (Discovery) ──
           <ScrollView
             style={{ flex: 1 }}
             showsVerticalScrollIndicator={false}
@@ -862,7 +1091,14 @@ export default function SearchScreen() {
                 data={rail.data}
                 itemWidth={RAIL_ITEM_WIDTH}
                 onPress={handleResultPress}
-                onFocus={(it) => it.logo && setFocusedImage(it.logo)}
+                onFocus={(item) => {
+                  handleResultFocus(item);
+                  isTopRowFocusedRef.current = idx === 0;
+                }}
+                isFirstRail={idx === 0}
+                nextFocusUp={inputNode}
+                inputRef={inputRef}
+                firstCardRef={firstCardRef}
               />
             ))}
           </ScrollView>
@@ -871,7 +1107,7 @@ export default function SearchScreen() {
           <FocusGroup style={S.resultsArea}>
             <View style={S.sectionLabelArea}>
               <Text style={S.sectionLabelTitle}>
-                Results for "{query}" ({filteredResults.length})
+                Results for "{submittedQuery}" ({filteredResults.length})
               </Text>
               <Text style={S.sectionLabelSubtitle}>
                 {activeFilter === "all"
@@ -898,18 +1134,18 @@ export default function SearchScreen() {
               removeClippedSubviews={false}
               initialNumToRender={4}
               maxToRenderPerBatch={3}
-              windowSize={isTV ? 9 : 7}
+              windowSize={9}
               updateCellsBatchingPeriod={80}
               renderItem={renderResultRow}
               ListEmptyComponent={
                 !isLoading ? (
                   <View style={S.emptyState}>
                     <View style={S.emptyIconWrap}>
-                      <Ionicons name="search-outline" size={isTV ? ps(4) : ps(3.5)} color="rgba(255,255,255,0.4)" />
+                      <Search size={ps(4)} color="rgba(255,255,255,0.4)" />
                     </View>
                     <Text style={S.emptyTitle}>No Results Found</Text>
                     <Text style={S.emptyText}>
-                      We couldn't find anything matching "{query}". Try searching by actor, genre, or title keywords.
+                      We couldn't find anything matching "{submittedQuery}". Try searching by actor, genre, or title keywords.
                     </Text>
                   </View>
                 ) : null
@@ -939,7 +1175,7 @@ export default function SearchScreen() {
             colors={["rgba(10, 12, 18, 0.75)", "rgba(8, 8, 12, 0.95)", "#08080a"]}
             style={StyleSheet.absoluteFillObject}
           />
-          <View style={[isTV ? S.modalTVContent : null, S.modalBody]}>
+          <View style={[S.modalTVContent, S.modalBody]}>
             {/* Left: Poster Image */}
             <View style={S.modalPosterWrapper}>
               {selectedItem?.logo ? (
@@ -951,7 +1187,7 @@ export default function SearchScreen() {
                 />
               ) : (
                 <View style={S.modalPosterFallback}>
-                  <Ionicons
+                  <DynamicIcon
                     name={selectedItem?.type === "series" ? "albums-outline" : "film-outline"}
                     size={ps(3.2)}
                     color="rgba(255, 255, 255, 0.3)"
@@ -971,13 +1207,13 @@ export default function SearchScreen() {
               <View style={S.modalMetaRow}>
                 {selectedItem?.rating ? (
                   <View style={S.modalBadge}>
-                    <Ionicons name="star" size={ps(0.9)} color="#FFD700" />
+                    <Star size={ps(0.9)} color="#FFD700" />
                     <Text style={S.modalBadgeText}>{selectedItem.rating}</Text>
                   </View>
                 ) : null}
                 {selectedItem?.year ? (
                   <View style={S.modalBadge}>
-                    <Ionicons name="calendar-outline" size={ps(0.9)} color="#fff" />
+                    <Calendar size={ps(0.9)} color="#fff" />
                     <Text style={S.modalBadgeText}>{selectedItem.year}</Text>
                   </View>
                 ) : null}
@@ -987,7 +1223,7 @@ export default function SearchScreen() {
                   </View>
                 ) : null}
               </View>
-              <Text style={S.modalDescription} numberOfLines={isTV ? 5 : 4}>
+              <Text style={S.modalDescription} numberOfLines={5}>
                 {selectedItem?.description || "No description available for this content."}
               </Text>
             </View>
@@ -1001,11 +1237,9 @@ export default function SearchScreen() {
                 style={S.modalBtnWrapper}
               >
                 {(focused) => (
-                  <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                    <View style={S.modalBtnPrimaryInner}>
-                      <Ionicons name="play" size={ps(1.1)} color="#000" />
-                      <Text style={[S.modalBtnPrimaryText, focused && { color: "#000" }]}>WATCH NOW</Text>
-                    </View>
+                  <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
+                    <Play size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                    <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>WATCH NOW</Text>
                   </View>
                 )}
               </Focusable>
@@ -1015,11 +1249,9 @@ export default function SearchScreen() {
                 style={S.modalBtnWrapper}
               >
                 {(focused) => (
-                  <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                    <View style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
-                      <Ionicons name="open-outline" size={ps(1.1)} color={focused ? "#000" : "#fff"} />
-                      <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>EXTERNAL PLAYER</Text>
-                    </View>
+                  <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
+                    <ExternalLink size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                    <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>EXTERNAL PLAYER</Text>
                   </View>
                 )}
               </Focusable>
@@ -1029,11 +1261,9 @@ export default function SearchScreen() {
                 style={S.modalBtnWrapper}
               >
                 {(focused) => (
-                  <View style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}>
-                    <View style={[S.modalBtnSecondaryInner, focused && { backgroundColor: "#fff" }]}>
-                      <Ionicons name="close" size={ps(1.1)} color={focused ? "#000" : "#fff"} />
-                      <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>CLOSE</Text>
-                    </View>
+                  <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
+                    <X size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                    <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>CLOSE</Text>
                   </View>
                 )}
               </Focusable>
@@ -1050,151 +1280,191 @@ export default function SearchScreen() {
 const S = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#08080a",
+    backgroundColor: "#000000",
   },
-  headerRow: {
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: RAIL_H_PAD,
+    height: 56,
+  },
+  headerCenterTitleWrapper: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    pointerEvents: "none",
+  },
+  headerTitle: {
+    color: "#FFFFFF",
+    fontSize: ps(1.6),
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  searchBtnWrapper: {
+    borderRadius: 24,
+    overflow: "hidden",
+  },
+  searchCircleBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#17181c",
+    borderWidth: 0,
+    borderColor: "transparent",
+    overflow: "hidden",
+  },
+  searchCircleBtnFocused: {
+    borderRadius: 22,
+    backgroundColor: "#F5F5F5",
+    borderColor: "transparent",
+    borderWidth: 0,
+    transform: [{ scale: 1.12 }],
+    overflow: "hidden",
+  },
+  searchControlsRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: RAIL_H_PAD,
-    marginBottom: isTV ? ph(1.8) : ph(2.2),
-    gap: isTV ? pw(1.2) : pw(2),
-  },
-  roundBtn: {
-    width: isTV ? pw(3.8) : pw(9.5),
-    height: isTV ? pw(3.8) : pw(9.5),
-    borderRadius: isTV ? pw(1.9) : pw(4.75),
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: TILE_FRAME.borderWidth,
-    borderColor: TILE_FRAME.borderColor,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  roundBtnFocused: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#FFFFFF",
-    transform: [{ scale: 1.12 }],
-    ...Platform.select({
-      ios: {
-        shadowColor: "#fff",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.85,
-        shadowRadius: 14,
-      },
-      android: {
-        elevation: 12,
-      },
-    }),
-  },
-
-  searchBarWrapper: {
-    flex: 1,
-    height: HEADER_ELEM_HEIGHT,
+    gap: pw(1.2),
+    marginBottom: ph(1.6),
   },
   searchBarContainer: {
-    ...TILE_FRAME,
     flex: 1,
-    borderRadius: isTV ? pw(1.9) : pw(4.75),
+    height: 46,
+    borderRadius: 18,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: isTV ? pw(1.2) : pw(2.5),
+    paddingHorizontal: pw(1.2),
+    backgroundColor: "#17181c",
+    borderWidth: 1,
+    borderColor: "transparent",
   },
-  // Was white-45% against the tiles' white-60%, close enough to look like a
-  // mistake rather than a choice.
-  searchBarContainerFocused: { ...TILE_FRAME_FOCUSED },
+  searchBarContainerFocused: {
+    borderColor: "#ffffff",
+    backgroundColor: "#17181c",
+  },
   searchInput: {
     flex: 1,
     color: "#fff",
-    fontSize: isTV ? ps(1.15) : ps(1.05),
-    marginLeft: isTV ? 8 : 6,
+    fontSize: ps(1.15),
+    marginLeft: 8,
     paddingVertical: 0,
     fontWeight: "500",
+  },
+  clearBtnWrapper: {
+    borderRadius: 16,
+    overflow: "hidden",
+    marginLeft: 6,
+  },
+  clearBtnCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "transparent",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  clearBtnCircleFocused: {
+    backgroundColor: "transparent",
+    transform: [{ scale: 1.25 }],
+    elevation: 8,
   },
 
   // ── Filter Bar ──
   filterBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: RAIL_H_PAD,
     gap: ps(0.8),
-    marginBottom: isTV ? ph(1.6) : ph(1.8),
   },
   filterChipWrapper: {
-    borderRadius: ps(2),
+    borderRadius: 18,
   },
   filterChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: ps(0.45),
-    paddingHorizontal: ps(1.1),
-    paddingVertical: ps(0.48),
-    borderRadius: ps(2),
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    // Had no border at all, so the chips were the one row on this screen with
-    // no edge. Background left as it was — a chip reads as a filled pill.
-    borderWidth: TILE_FRAME.borderWidth,
-    borderColor: TILE_FRAME.borderColor,
+    gap: ps(0.6),
+    paddingHorizontal: ps(1.5),
+    height: 44,
+    borderRadius: 18,
+    backgroundColor: "#17181c",
+    borderWidth: 0,
+    borderColor: "transparent",
   },
   filterChipActive: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#F5F5F5",
+    borderColor: "transparent",
+    borderWidth: 0,
   },
   filterChipFocused: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#F5F5F5",
+    borderColor: "transparent",
+    borderWidth: 0,
     transform: [{ scale: 1.06 }],
   },
   filterChipText: {
     color: "rgba(255, 255, 255, 0.75)",
-    fontSize: ps(0.88),
-    fontWeight: "600",
-    fontFamily: THEME.fonts.medium,
+    fontSize: ps(1.15),
+    fontWeight: "700",
   },
   filterChipTextActive: {
-    color: "#000000",
+    color: "#111111",
     fontWeight: "800",
   },
   filterChipTextFocused: {
-    color: "#000000",
+    color: "#111111",
     fontWeight: "800",
   },
 
   // ── Rails ──
   railSection: {
-    marginBottom: isTV ? ph(3) : ph(3.5),
+    marginBottom: ph(4.5),
   },
   railHeader: {
     paddingHorizontal: RAIL_H_PAD,
-    marginBottom: isTV ? ph(1) : ph(1.2),
+    marginBottom: ph(1.8),
   },
   railTitle: {
     color: "#FFFFFF",
-    fontSize: isTV ? ps(1.6) : ps(1.4),
+    fontSize: ps(1.6),
     fontWeight: "700",
     letterSpacing: 0.3,
   },
   railSubtitle: {
     color: "rgba(142, 147, 168, 0.65)",
-    fontSize: isTV ? ps(0.95) : ps(0.85),
+    fontSize: ps(0.95),
     marginTop: 2,
     fontWeight: "500",
   },
   railScrollContent: {
     paddingHorizontal: RAIL_H_PAD,
-    gap: isTV ? pw(1.2) : pw(1.5),
+    paddingTop: ph(1.5),
+    paddingBottom: ph(1.8),
+    gap: pw(1.2),
   },
 
   // ── Section Label ──
   sectionLabelArea: {
     paddingHorizontal: RAIL_H_PAD,
-    marginBottom: isTV ? ph(1.5) : ph(1.8),
+    marginBottom: ph(1.5),
   },
   sectionLabelTitle: {
     color: "#FFFFFF",
-    fontSize: isTV ? ps(1.6) : ps(1.4),
+    fontSize: ps(1.6),
     fontWeight: "700",
     letterSpacing: 0.3,
   },
   sectionLabelSubtitle: {
     color: "#8E93A8",
-    fontSize: isTV ? ps(1.05) : ps(0.95),
+    fontSize: ps(1.05),
     marginTop: 2,
   },
 
@@ -1206,204 +1476,129 @@ const S = StyleSheet.create({
     paddingVertical: ph(3),
     alignItems: "center",
   },
-  cardWrapper: {
-    padding: isTV ? pw(0.4) : pw(0.3),
+  // ── VOD / OTT Movie Item Styles (Same as vod.tsx) ──
+  movieItemWrapper: {
+    paddingHorizontal: pw(0.4),
+    paddingTop: 4,
+    paddingBottom: 4,
+    overflow: "visible",
   },
-  // This screen has its own rail card, separate from ContentCard, and it had
-  // its own border to match: white-10% resting over an opaque black slab, and
-  // a pure #FFFFFF 1.5px edge with an elevation-10 lift on focus. Both now
-  // come from the shared frame, which also brings the translucent wash the
-  // opaque background was standing in for.
-  cardBorder: {
-    ...TILE_FRAME,
-    flex: 1,
-    borderRadius: psRaw(1.5),
+  movieCardContainer: {
+    borderRadius: 16,
+    overflow: "visible",
+  },
+  movieCardContainerFocused: {},
+  posterFrame: {
+    width: "100%",
+    borderRadius: 18,
     overflow: "hidden",
-  },
-  cardBorderFocused: { ...TILE_FRAME_FOCUSED },
-  card: {
-    flex: 1,
-    overflow: "hidden",
-  },
-
-  // ── Live Channel Card Styling (16:11, Large Logo, Channel #, Region/Quality) ──
-  liveCardInner: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.02)",
-    justifyContent: "space-between",
-  },
-  liveLogoArea: {
-    flex: 1,
-    padding: ps(0.6),
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
-  },
-  liveLogoImg: {
-    width: "92%",
-    height: "88%",
-  },
-  channelNumBadge: {
-    position: "absolute",
-    top: isTV ? ps(0.6) : ps(0.7),
-    left: isTV ? ps(0.6) : ps(0.7),
-    backgroundColor: "rgba(0,0,0,0.7)",
-    paddingHorizontal: isTV ? pw(0.6) : pw(0.9),
-    paddingVertical: isTV ? ph(0.2) : ph(0.3),
-    borderRadius: 4,
+    backgroundColor: "#17181c",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    zIndex: 2,
+    borderColor: "transparent",
   },
-  channelNumText: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: isTV ? ps(0.7) : ps(0.65),
-    fontWeight: "800",
-    letterSpacing: 0.3,
-  },
-  liveBadge: {
-    position: "absolute",
-    top: isTV ? ps(0.6) : ps(0.7),
-    right: isTV ? ps(0.6) : ps(0.7),
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.7)",
-    paddingHorizontal: isTV ? pw(0.9) : pw(1.3),
-    paddingVertical: isTV ? ph(0.35) : ph(0.45),
-    borderRadius: 100,
+  posterFrameFocused: {
+    borderColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "rgba(112, 222, 91, 0.35)",
-    gap: pw(0.4),
-    zIndex: 2,
+    transform: [{ scale: 1.03 }],
+    elevation: 12,
   },
-  liveBadgeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#70de5b",
-  },
-  liveBadgeText: {
-    color: "#70de5b",
-    fontSize: isTV ? ps(0.7) : ps(0.65),
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-  liveInfoArea: {
-    paddingHorizontal: ps(1.1),
-    paddingVertical: ps(0.75),
-    backgroundColor: "rgba(10,11,16,0.92)",
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
-  },
-  liveTitle: {
-    color: "#FFFFFF",
-    fontSize: isTV ? ps(1.15) : ps(1.05),
-    fontWeight: "700",
-  },
-  liveTitleFocused: {
-    color: "#FFFFFF",
-  },
-  liveCategory: {
-    color: "#8E93A8",
-    fontSize: isTV ? ps(0.82) : ps(0.75),
-    marginTop: 2,
-    fontWeight: "600",
-  },
-
-  // ── Movies / Series Card Styling ──
-  vodCardInner: {
-    flex: 1,
-  },
-  brandedPlaceholder: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: ps(1.2),
-  },
-  placeholderIconWrap: {
-    width: ps(4.5),
-    height: ps(4.5),
-    borderRadius: ps(2.25),
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: ph(0.8),
-  },
-  placeholderTitle: {
-    color: "#FFFFFF",
-    fontSize: isTV ? ps(1.1) : ps(0.95),
-    fontWeight: "700",
-    textAlign: "center",
-    lineHeight: isTV ? ps(1.4) : ps(1.3),
-  },
-  placeholderBadge: {
-    marginTop: ph(0.8),
-    paddingHorizontal: pw(0.8),
-    paddingVertical: ph(0.3),
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 4,
-  },
-  placeholderBadgeText: {
-    color: "#A2A7BD",
-    fontSize: isTV ? ps(0.75) : ps(0.7),
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-  cardImgContainer: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.03)",
-  },
-  cardImg: {
+  posterImage: {
     width: "100%",
     height: "100%",
   },
-  cardInfo: {
-    position: "absolute",
-    bottom: 0,
-    width: "100%",
-    height: "48%",
-    justifyContent: "flex-end",
-    padding: ps(1.1),
-    borderBottomLeftRadius: ps(1.1),
-    borderBottomRightRadius: ps(1.1),
-    overflow: "hidden",
+  posterFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#2C2D32",
   },
-  cardTitle: {
+  cornerRatingBadge: {
+    position: "absolute",
+    bottom: 6,
+    right: 6,
+    backgroundColor: "rgba(0, 0, 0, 0.78)",
+    borderWidth: 0,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 7,
+    elevation: 4,
+  },
+  cornerRatingText: {
     color: "#FFFFFF",
-    fontSize: isTV ? ps(1.18) : ps(1.1),
+    fontSize: ps(0.85),
+    fontWeight: "900",
+    letterSpacing: 0.2,
+  },
+  movieTitleText: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: ps(0.92),
     fontWeight: "700",
-    textShadowColor: "rgba(0, 0, 0, 0.95)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    marginTop: 8,
+    lineHeight: 20,
   },
-  cardTitleFocused: {
-    color: "#FFFFFF",
+  movieTitleTextFocused: {
+    color: "#ffffff",
+    fontWeight: "900",
   },
-  cardSub: {
-    color: "#A2A7BD",
-    fontSize: isTV ? ps(0.88) : ps(0.8),
+  movieSubText: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: ps(0.8),
+    fontWeight: "500",
     marginTop: 2,
-    fontWeight: "600",
-    textShadowColor: "rgba(0, 0, 0, 0.85)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
-  badge: {
+  qualityBadge: {
     position: "absolute",
-    top: isTV ? ps(0.6) : ps(0.8),
-    right: isTV ? ps(0.6) : ps(0.8),
-    backgroundColor: "rgba(0,0,0,0.65)",
-    paddingHorizontal: isTV ? pw(0.6) : pw(1),
-    paddingVertical: isTV ? ph(0.3) : ph(0.5),
-    borderRadius: 4,
+    top: 6,
+    left: 6,
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
+    borderColor: "rgba(255, 255, 255, 0.2)",
   },
-  badgeText: {
-    color: "#fff",
-    fontSize: isTV ? ps(0.65) : ps(0.7),
+  qualityBadgeText: {
+    color: "#FFFFFF",
+    fontSize: ps(0.72),
+    fontWeight: "800",
+  },
+  liveBadge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(229, 9, 20, 0.85)",
+    paddingHorizontal: 6,
+    paddingVertical: 2.5,
+    borderRadius: 5,
+    gap: 4,
+  },
+  liveBadgeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "#F5F5F5",
+  },
+  liveBadgeText: {
+    color: "#FFFFFF",
+    fontSize: ps(0.68),
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  channelNumBadge: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+    borderWidth: 0,
+  },
+  channelNumText: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: ps(0.7),
     fontWeight: "800",
   },
 
@@ -1428,16 +1623,16 @@ const S = StyleSheet.create({
   },
   emptyTitle: {
     color: "#FFFFFF",
-    fontSize: isTV ? ps(2) : ps(1.6),
+    fontSize: ps(2),
     fontWeight: "700",
     marginBottom: ph(1),
     letterSpacing: 0.3,
   },
   emptyText: {
     color: "#8E93A8",
-    fontSize: isTV ? ps(1.2) : ps(1),
+    fontSize: ps(1.2),
     textAlign: "center",
-    lineHeight: isTV ? ps(1.8) : ps(1.5),
+    lineHeight: ps(1.8),
     maxWidth: pw(45),
   },
 
@@ -1460,12 +1655,12 @@ const S = StyleSheet.create({
     alignItems: "center",
   },
   modalPosterWrapper: {
-    width: isTV ? pw(11) : pw(22),
+    width: pw(11),
     aspectRatio: 2 / 3,
     borderRadius: ps(0.8),
     overflow: "hidden",
     backgroundColor: "rgba(255, 255, 255, 0.05)",
-    marginRight: isTV ? pw(2) : pw(3),
+    marginRight: pw(2),
   },
   modalPosterImg: {
     width: "100%",
@@ -1536,50 +1731,39 @@ const S = StyleSheet.create({
     fontWeight: "700",
   },
   modalBtnWrapper: {
-    borderRadius: ps(0.6),
+    borderRadius: 18,
     overflow: "visible",
     width: "100%",
   },
-  modalBtnBorder: {
-    padding: 1,
-    borderRadius: ps(0.6),
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
-  },
-  modalBtnBorderFocused: {
-    borderColor: "#FFFFFF",
-    backgroundColor: "#FFFFFF",
-  },
-  modalBtnPrimaryInner: {
+  modalBtnPill: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: ps(0.4),
-    paddingVertical: ps(0.7),
-    paddingHorizontal: ps(1.2),
-    borderRadius: ps(0.5),
-    backgroundColor: "#FFFFFF",
+    gap: ps(0.6),
+    paddingVertical: ps(0.95),
+    paddingHorizontal: ps(1.5),
+    borderRadius: 18,
+    borderWidth: 0,
+    borderColor: "transparent",
+    backgroundColor: "#17181c",
   },
-  modalBtnSecondaryInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: ps(0.4),
-    paddingVertical: ps(0.7),
-    paddingHorizontal: ps(1.2),
-    borderRadius: ps(0.5),
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  modalBtnPillFocused: {
+    backgroundColor: "#F5F5F5",
+    borderColor: "transparent",
+    borderWidth: 0,
+    elevation: 8,
+    transform: [{ scale: 1.05 }],
   },
-  modalBtnPrimaryText: {
-    color: "#000000",
-    fontSize: ps(0.88),
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  modalBtnSecondaryText: {
+  modalBtnText: {
     color: "#FFFFFF",
-    fontSize: ps(0.88),
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    fontSize: ps(1.0),
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  modalBtnTextFocused: {
+    color: "#000000",
+    fontSize: ps(1.0),
+    fontWeight: "900",
+    letterSpacing: 0.3,
   },
 });

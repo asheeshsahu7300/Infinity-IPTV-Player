@@ -7,15 +7,17 @@
 // how much of it you have already seen, not by what is on now.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { Image } from "expo-image";
-import { Ionicons } from "@expo/vector-icons";
-
 import { Focusable, FocusGroup, Overlay } from "../tv";
 import { THEME, ph, ps, pw } from "../theme/tokens";
 import { resumeIndex } from "../services/resumeIndex";
 import { formatRuntime } from "../utils/duration";
 import type { QueueItem } from "../services/playbackQueue";
+import { CornerDownLeft, Film, Play } from 'lucide-react-native';
+import { DynamicIcon } from '../components/DynamicIcon';
+import { Text } from './Text';
+
 
 export interface QueueListProps {
   visible: boolean;
@@ -27,7 +29,7 @@ export interface QueueListProps {
   onClose: () => void;
 }
 
-const ROW_HEIGHT = ps(5.8);
+const ROW_HEIGHT = ps(7.2);
 /** Past this, an episode reads as watched rather than in progress. */
 const WATCHED_THRESHOLD = 0.92;
 
@@ -62,6 +64,7 @@ const QueueRow = React.memo(
       [item.videoQuality, item.audioLanguage, item.duration]
     );
 
+    const isLandscapeStill = item.kind === "episode" && !!item.hasStill;
     const handlePress = useCallback(() => onSelect(item, index), [onSelect, item, index]);
 
     if (!item) return null;
@@ -81,7 +84,7 @@ const QueueRow = React.memo(
                 {item.episodeNum ?? index + 1}
               </Text>
               {watched && !isCurrent ? (
-                <Ionicons
+                <DynamicIcon
                   name="checkmark-circle"
                   size={ps(1)}
                   color={focused ? "rgba(0,0,0,0.5)" : "#34c759"}
@@ -89,18 +92,18 @@ const QueueRow = React.memo(
               ) : null}
             </View>
 
-            <View style={S.thumb}>
+            <View style={isLandscapeStill ? S.thumbLandscape : S.thumbPortrait}>
               {item.poster ? (
                 <Image
                   source={{ uri: item.poster }}
                   style={S.thumbImage}
                   contentFit="cover"
                   cachePolicy="memory-disk"
+                  transition={120}
                 />
               ) : (
-                <Ionicons
-                  name="film-outline"
-                  size={ps(1.4)}
+                <Film
+                  size={ps(1.6)}
                   color={focused ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.3)"}
                 />
               )}
@@ -150,7 +153,7 @@ const QueueRow = React.memo(
             </View>
 
             {isCurrent ? (
-              <Ionicons name="play" size={ps(1.2)} color={focused ? "#000" : "#fff"} />
+              <Play size={ps(1.2)} color={focused ? "#000" : "#fff"} />
             ) : null}
           </View>
         )}
@@ -159,6 +162,8 @@ const QueueRow = React.memo(
   },
   (prev, next) =>
     prev.item?.id === next.item?.id &&
+    prev.item?.poster === next.item?.poster &&
+    prev.item?.hasStill === next.item?.hasStill &&
     prev.isCurrent === next.isCurrent &&
     prev.preferFocus === next.preferFocus &&
     prev.resumeVersion === next.resumeVersion
@@ -268,7 +273,7 @@ export function QueueList({
         </FocusGroup>
 
         <View style={S.footer}>
-          <Ionicons name="return-down-back" size={ps(1)} color="rgba(255,255,255,0.4)" style={{ marginRight: ps(0.4) }} />
+          <CornerDownLeft size={ps(1)} color="rgba(255,255,255,0.4)" style={{ marginRight: ps(0.4) }} />
           <Text style={S.footerHint}>OK to play · BACK to close</Text>
         </View>
       </View>
@@ -295,9 +300,9 @@ const S = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: 0,
-    width: "28%",
-    minWidth: 280,
-    maxWidth: 380,
+    width: pw(34),
+    minWidth: 360,
+    maxWidth: 500,
     backgroundColor: "rgba(10, 12, 18, 0.96)",
     zIndex: 90,
     elevation: 20,
@@ -340,24 +345,24 @@ const S = StyleSheet.create({
 
   rowWrapper: {
     height: ROW_HEIGHT,
-    paddingHorizontal: ps(0.7),
+    paddingHorizontal: ps(0.8),
     paddingVertical: ps(0.2),
     justifyContent: "center",
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: ps(0.8),
-    paddingHorizontal: ps(0.8),
-    paddingVertical: ps(1.0),
-    borderRadius: ps(0.65),
+    gap: ps(1.0),
+    paddingHorizontal: ps(0.9),
+    paddingVertical: ps(0.6),
+    borderRadius: ps(0.7),
     backgroundColor: "rgba(255, 255, 255, 0.03)",
   },
   rowCurrent: {
     backgroundColor: "rgba(255, 255, 255, 0.12)",
   },
   rowFocused: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#F5F5F5",
   },
 
   numberCol: {
@@ -372,10 +377,19 @@ const S = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
 
-  thumb: {
-    width: ps(4.2),
-    height: ps(2.6),
-    borderRadius: ps(0.45),
+  thumbPortrait: {
+    width: ps(3.7),
+    height: ps(5.5),
+    borderRadius: ps(0.55),
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  thumbLandscape: {
+    width: ps(5.4),
+    height: ps(3.4),
+    borderRadius: ps(0.55),
     backgroundColor: "rgba(255, 255, 255, 0.06)",
     alignItems: "center",
     justifyContent: "center",

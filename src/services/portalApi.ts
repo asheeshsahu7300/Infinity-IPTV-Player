@@ -377,6 +377,18 @@ async function portalGet(
         return res;
       }
 
+      // On search queries, an empty response body indicates 0 matches found on server, not an auth error
+      const isSearchRequest = /[?&]search=/i.test(url);
+      if (isSearchRequest) {
+        return {
+          status: 200,
+          statusText: "OK",
+          headers: {},
+          config: options as any,
+          data: { js: [] },
+        };
+      }
+
       console.warn("⚠️ [MAG Portal] HTTP 200 OK with empty response body:", {
         url,
         status: res.status,
@@ -918,17 +930,30 @@ export const portalApi = {
         return `${base}/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml`;
       });
 
-      const mapped = rows.map((c: any) => {
-        const rawId = String(c.id ?? c.gid ?? "");
-        const id = rawId === "*" || rawId === "0" ? "all" : rawId;
-        return {
-          id,
-          name: c.title ?? c.name ?? c.genre_name ?? "Unknown",
-          type: "live" as const,
-        };
-      });
-      const hasAll = mapped.some(c => c.id === "all" || c.name.toLowerCase() === "all");
-      const result = hasAll ? mapped : [{ id: "all", name: "All", type: "live" as const }, ...mapped];
+      const result = rows
+        .map((c: any) => {
+          const rawId = String(c.id ?? c.gid ?? "");
+          const name = String(c.title ?? c.name ?? c.genre_name ?? "Unknown").trim();
+          return {
+            id: rawId,
+            name,
+            type: "live" as const,
+          };
+        })
+        .filter((c) => {
+          const lower = c.name.toLowerCase();
+          const idLower = c.id.toLowerCase();
+          return (
+            lower !== "all" &&
+            lower !== "all channels" &&
+            lower !== "all live" &&
+            lower !== "all live channels" &&
+            idLower !== "all" &&
+            idLower !== "*" &&
+            idLower !== "0" &&
+            c.id !== ""
+          );
+        });
 
       if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
       return result;
@@ -1017,18 +1042,29 @@ export const portalApi = {
         return `${base}/portal.php?type=vod&action=get_categories&JsHttpRequest=1-xml`;
       });
 
-      const mapped = rows.map((c: any) => {
-        const rawId = String(c.id ?? "");
-        const id = rawId === "*" || rawId === "0" ? "all" : `vod:${rawId}`;
-        return {
-          id,
-          name: c.title ?? c.name ?? "Unknown",
-          type: "vod" as const,
-        };
-      });
-      const hasAll = mapped.some(c => c.id === "all" || c.name.toLowerCase() === "all");
-      const result = hasAll ? mapped : [{ id: "all", name: "All", type: "vod" as const }, ...mapped];
-
+      const result = rows
+        .map((c: any) => {
+          const rawId = String(c.id ?? "");
+          const name = String(c.title ?? c.name ?? "Unknown").trim();
+          return {
+            id: `vod:${rawId}`,
+            name,
+            type: "vod" as const,
+          };
+        })
+        .filter((c) => {
+          const lower = c.name.toLowerCase();
+          const rawId = c.id.replace("vod:", "").toLowerCase();
+          return (
+            lower !== "all" &&
+            lower !== "all movies" &&
+            lower !== "all vod" &&
+            rawId !== "all" &&
+            rawId !== "*" &&
+            rawId !== "0" &&
+            rawId !== ""
+          );
+        });
 
       if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
       return result;
@@ -1048,26 +1084,35 @@ export const portalApi = {
         const rawCategoryId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
         const isAllCat = !rawCategoryId || rawCategoryId === "all" || rawCategoryId === "*";
 
-        let rows = await fetchWithRetry(portal, (refreshed) => {
-          const base = safe(refreshed.config.url).replace(/\/$/, "");
-          let url = `${base}/portal.php?type=vod&action=get_ordered_list&max_page_items=100000&p=${page}&JsHttpRequest=1-xml`;
+        const refreshed = await refreshToken(portal);
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        const mac = refreshed.config.mac ?? "";
+        const token = refreshed.config.token ?? "";
+
+        const buildVodUrl = (p: number) => {
+          let url = `${base}/portal.php?type=vod&action=get_ordered_list&p=${p}&JsHttpRequest=1-xml`;
           if (!isAllCat) {
             url += `&category=${encodeURIComponent(rawCategoryId!)}`;
           } else {
             url += `&category=*`;
           }
           return url;
-        });
+        };
 
-        const refreshed = await refreshToken(portal);
-        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        const res1 = await axios.get(buildVodUrl(1), {
+          ...rmAcceptHeader,
+          headers: headers(mac, token, base),
+          timeout: 30000,
+        }).catch(() => null);
+
+        let rows: any[] = res1 ? extract(res1) : [];
 
         // Fallback 1: Try category=0 if category=* returned 0 items
         if ((!rows || rows.length === 0) && isAllCat) {
-          const fbUrl1 = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&category=0&JsHttpRequest=1-xml`;
+          const fbUrl1 = `${base}/portal.php?type=vod&action=get_ordered_list&p=1&category=0&JsHttpRequest=1-xml`;
           const fbRes1 = await axios.get(fbUrl1, {
             ...rmAcceptHeader,
-            headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+            headers: headers(mac, token, base),
             timeout: 30000,
           }).catch(() => null);
           if (fbRes1) {
@@ -1078,15 +1123,42 @@ export const portalApi = {
 
         // Fallback 2: Try no category parameter
         if ((!rows || rows.length === 0) && isAllCat) {
-          const fbUrl2 = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&JsHttpRequest=1-xml`;
+          const fbUrl2 = `${base}/portal.php?type=vod&action=get_ordered_list&p=1&JsHttpRequest=1-xml`;
           const fbRes2 = await axios.get(fbUrl2, {
             ...rmAcceptHeader,
-            headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+            headers: headers(mac, token, base),
             timeout: 30000,
           }).catch(() => null);
           if (fbRes2) {
             const fbRows2 = extract(fbRes2);
             if (fbRows2 && fbRows2.length > 0) rows = fbRows2;
+          }
+        }
+
+        // Automatically fetch remaining pages for the category if more items exist
+        const js = res1?.data?.js;
+        const totalItemsReported = Number(js?.total_items ?? js?.max_page_items ?? 0);
+        const pageSize = rows.length > 0 ? rows.length : 14;
+
+        if (totalItemsReported > rows.length && rows.length > 0) {
+          const totalPages = Math.min(Math.ceil(totalItemsReported / pageSize), 60);
+          const pagePromises: Promise<any[]>[] = [];
+          for (let p = 2; p <= totalPages; p++) {
+            pagePromises.push(
+              axios.get(buildVodUrl(p), {
+                ...rmAcceptHeader,
+                headers: headers(mac, token, base),
+                timeout: 30000,
+              })
+                .then(r => extract(r))
+                .catch(() => [])
+            );
+          }
+          const remainingPages = await Promise.all(pagePromises);
+          for (const pageRows of remainingPages) {
+            if (Array.isArray(pageRows)) {
+              rows.push(...pageRows);
+            }
           }
         }
 
@@ -1138,17 +1210,28 @@ export const portalApi = {
         return `${base}/portal.php?type=series&action=get_categories&JsHttpRequest=1-xml`;
       });
 
-      const mapped = rows.map((c: any) => {
-        const rawId = String(c.id ?? "");
-        const id = rawId === "*" || rawId === "0" ? "all" : `series:${rawId}`;
-        return {
-          id,
-          name: c.title ?? c.name ?? "Unknown",
-          type: "series" as const,
-        };
-      });
-      const hasAll = mapped.some(c => c.id === "all" || c.name.toLowerCase() === "all");
-      const result = hasAll ? mapped : [{ id: "all", name: "All", type: "series" as const }, ...mapped];
+      const result = rows
+        .map((c: any) => {
+          const rawId = String(c.id ?? "");
+          const name = String(c.title ?? c.name ?? "Unknown").trim();
+          return {
+            id: `series:${rawId}`,
+            name,
+            type: "series" as const,
+          };
+        })
+        .filter((c) => {
+          const lower = c.name.toLowerCase();
+          const rawId = c.id.replace("series:", "").toLowerCase();
+          return (
+            lower !== "all" &&
+            lower !== "all series" &&
+            rawId !== "all" &&
+            rawId !== "*" &&
+            rawId !== "0" &&
+            rawId !== ""
+          );
+        });
 
       if (result.length > 0) await cacheManager.set(cacheKey, result, CACHE_TTL.CATEGORIES);
       return result;
@@ -1168,26 +1251,35 @@ export const portalApi = {
         const rawCategoryId = categoryId?.includes(":") ? categoryId.split(":")[1] : categoryId;
         const isAllCat = !rawCategoryId || rawCategoryId === "all" || rawCategoryId === "*";
 
-        let rows = await fetchWithRetry(portal, (refreshed) => {
-          const base = safe(refreshed.config.url).replace(/\/$/, "");
-          let url = `${base}/portal.php?type=series&action=get_ordered_list&max_page_items=100000&p=${page}&JsHttpRequest=1-xml`;
+        const refreshed = await refreshToken(portal);
+        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        const mac = refreshed.config.mac ?? "";
+        const token = refreshed.config.token ?? "";
+
+        const buildSeriesUrl = (p: number) => {
+          let url = `${base}/portal.php?type=series&action=get_ordered_list&p=${p}&JsHttpRequest=1-xml`;
           if (!isAllCat) {
             url += `&category=${encodeURIComponent(rawCategoryId!)}`;
           } else {
             url += `&category=*`;
           }
           return url;
-        });
+        };
 
-        const refreshed = await refreshToken(portal);
-        const base = safe(refreshed.config.url).replace(/\/$/, "");
+        const res1 = await axios.get(buildSeriesUrl(1), {
+          ...rmAcceptHeader,
+          headers: headers(mac, token, base),
+          timeout: 30000,
+        }).catch(() => null);
+
+        let rows: any[] = res1 ? extract(res1) : [];
 
         // Fallback 1: Try category=0 if category=* returned 0 items
         if ((!rows || rows.length === 0) && isAllCat) {
-          const fallbackUrl = `${base}/portal.php?type=series&action=get_ordered_list&p=${page}&category=0&JsHttpRequest=1-xml`;
+          const fallbackUrl = `${base}/portal.php?type=series&action=get_ordered_list&p=1&category=0&JsHttpRequest=1-xml`;
           const fbRes = await axios.get(fallbackUrl, {
             ...rmAcceptHeader,
-            headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+            headers: headers(mac, token, base),
             timeout: 30000,
           }).catch(() => null);
           if (fbRes) {
@@ -1198,15 +1290,42 @@ export const portalApi = {
 
         // Fallback 2: Try type=vod&movie_type=series if series returned 0 items
         if ((!rows || rows.length === 0) && isAllCat) {
-          const fallbackUrl2 = `${base}/portal.php?type=vod&action=get_ordered_list&p=${page}&category=*&movie_type=series&JsHttpRequest=1-xml`;
+          const fallbackUrl2 = `${base}/portal.php?type=vod&action=get_ordered_list&p=1&category=*&movie_type=series&JsHttpRequest=1-xml`;
           const fbRes2 = await axios.get(fallbackUrl2, {
             ...rmAcceptHeader,
-            headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+            headers: headers(mac, token, base),
             timeout: 30000,
           }).catch(() => null);
           if (fbRes2) {
             const fbRows2 = extract(fbRes2);
             if (fbRows2 && fbRows2.length > 0) rows = fbRows2;
+          }
+        }
+
+        // Automatically fetch remaining pages for the series category if more items exist
+        const js = res1?.data?.js;
+        const totalItemsReported = Number(js?.total_items ?? js?.max_page_items ?? 0);
+        const pageSize = rows.length > 0 ? rows.length : 14;
+
+        if (totalItemsReported > rows.length && rows.length > 0) {
+          const totalPages = Math.min(Math.ceil(totalItemsReported / pageSize), 60);
+          const pagePromises: Promise<any[]>[] = [];
+          for (let p = 2; p <= totalPages; p++) {
+            pagePromises.push(
+              axios.get(buildSeriesUrl(p), {
+                ...rmAcceptHeader,
+                headers: headers(mac, token, base),
+                timeout: 30000,
+              })
+                .then(r => extract(r))
+                .catch(() => [])
+            );
+          }
+          const remainingPages = await Promise.all(pagePromises);
+          for (const pageRows of remainingPages) {
+            if (Array.isArray(pageRows)) {
+              rows.push(...pageRows);
+            }
           }
         }
 
@@ -1749,17 +1868,23 @@ export const portalApi = {
   },
 
   async search(portal: Portal, q: string, type: string): Promise<any[]> {
+    const latestPortal = usePortalStore.getState().activePortal ?? portal;
+    const refreshed = await refreshToken(latestPortal);
     const magType = type === "live" ? "itv" : type;
-    const base = safe(portal.config.url).replace(/\/$/, "");
+    const base = safe(refreshed.config.url).replace(/\/$/, "");
     const action = magType === "itv" ? "get_all_channels" : "get_ordered_list";
     const url = `${base}/portal.php?type=${magType}&action=${action}&search=${encodeURIComponent(
       q
     )}&p=1&JsHttpRequest=1-xml`;
 
+    console.log(`[MAG Portal API] Hitting search: type=${magType}, query="${q}", url=${url}`);
     try {
-      const res = await portalGet(portal, url, { timeout: 12000 }, 0);
-      return extract(res);
-    } catch {
+      const res = await portalGet(refreshed, url, { timeout: 15000 }, 0);
+      const items = extract(res);
+      console.log(`[MAG Portal API] Search returned ${items.length} items for "${q}" (${magType})`);
+      return items;
+    } catch (err: any) {
+      console.warn(`[MAG Portal API] Search failed for "${q}":`, err?.message || err);
       return [];
     }
   },

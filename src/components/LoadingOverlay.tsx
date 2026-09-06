@@ -1,9 +1,11 @@
 import React from 'react';
-import { View, ActivityIndicator, Text, StyleSheet, ViewStyle } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { THEME, ps, ph, pw } from '../theme/tokens';
 import { LinearGradient } from 'expo-linear-gradient';
 import GradientLoader from './GradientLoader';
+import { Text } from './Text';
+
 
 interface LoadingOverlayProps {
   message?: string;

@@ -10,27 +10,8 @@
 //     loses the extra IPTV-hardening features in that case.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Dimensions,
-  Platform,
-  ActivityIndicator,
-  StatusBar,
-  GestureResponderEvent,
-  PanResponder,
-  ScrollView,
-  BackHandler,
-  findNodeHandle,
-  Animated,
-  AppState,
-  AppStateStatus,
-  UIManager,
-  useTVEventHandler,
-} from "react-native";
+import { View, StyleSheet, Dimensions, Platform, ActivityIndicator, StatusBar, GestureResponderEvent, PanResponder, ScrollView, BackHandler, findNodeHandle, Animated, AppState, AppStateStatus, UIManager, useTVEventHandler } from 'react-native';
 import { useLocalSearchParams } from "expo-router";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { PlayerAspectRatio, VLCPlayer } from "react-native-vlc-media-player";
 import { Video, ResizeMode, AVPlaybackStatus } from "expo-av";
 import * as ScreenOrientation from "expo-screen-orientation";
@@ -54,6 +35,7 @@ import { stbEnvironment, BufferTuning, applySameHostStreamProxy } from "../src/s
 import { liveChannelSession, buildChannelNumbers, withChannelNumbers } from "../src/services/liveChannelSession";
 import { playbackQueue, QueueItem } from "../src/services/playbackQueue";
 import { resumeIndex } from "../src/services/resumeIndex";
+import { safeBack } from "../src/services/safeNavigation";
 import { useNowNext } from "../src/hooks/useNowNext";
 import { useChannelTuner } from "../src/hooks/useChannelTuner";
 import ChannelInfoBar from "../src/components/ChannelInfoBar";
@@ -63,6 +45,10 @@ import QueueList from "../src/components/QueueList";
 import UpNextCard from "../src/components/UpNextCard";
 import { ChannelTunerReadout } from "../src/components/ChannelTunerOverlay";
 import PinPrompt from "../src/components/PinPrompt";
+import { AlertCircle, Check, ChevronDown, ChevronUp, Film, Gauge, Info, List, Monitor, Music, Settings, SkipBack, SkipForward, StepBack, StepForward, Subtitles, Sun, TriangleAlert, Volume2, Wifi, X } from 'lucide-react-native';
+import { DynamicIcon } from '../src/components/DynamicIcon';
+import { Text } from '../src/components/Text';
+
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -129,7 +115,40 @@ function detectNetworkQuality(type: string | null, effectiveType?: string | null
  * 4K streams get 1.5× more buffer — decode latency on MediaCodec is higher.
  * Only meaningful for the VLC path; expo-av has no equivalent knob.
  */
+function matches4KKeywords(text?: string | null): boolean {
+  if (!text || typeof text !== "string") return false;
+  return (
+    /\b(4k|uhd|2160p?|ultra\s*hd|hdr10\+?|hevc\s*4k)\b/i.test(text) ||
+    text.toUpperCase().includes("4K") ||
+    text.toUpperCase().includes("UHD") ||
+    text.toUpperCase().includes("2160")
+  );
+}
+
+/**
+ * Calculates adaptive network cache minimums based on stream type, 4K resolution,
+ * and measured line latency/jitter. High-bitrate 4K streams (HEVC/UHD) require
+ * deeper cache floors to absorb burst variance without decoder starvation.
+ */
 function calcNetworkCacheMs(quality: NetworkQuality, isLive: boolean, is4K: boolean): number {
+  if (is4K) {
+    if (isLive) {
+      switch (quality) {
+        case "fast": return 3500;
+        case "medium": return 4500;
+        case "slow": return 6000;
+        default: return 4000;
+      }
+    } else {
+      switch (quality) {
+        case "fast": return 3000;
+        case "medium": return 4000;
+        case "slow": return 5500;
+        default: return 3500;
+      }
+    }
+  }
+
   let base: number;
   if (isLive) {
     switch (quality) {
@@ -147,7 +166,7 @@ function calcNetworkCacheMs(quality: NetworkQuality, isLive: boolean, is4K: bool
       default: base = 700; break;
     }
   }
-  return is4K ? Math.round(base * 1.5) : base;
+  return base;
 }
 
 /**
@@ -198,10 +217,10 @@ function getQualityLabel(quality: NetworkQuality, is4K: boolean): string | null 
 // ─── Animated scrubber dot ────────────────────────────────────────────────────
 const AnimatedScrubber = React.memo(
   ({ focused, progressPercent }: { focused: boolean; progressPercent: number }) => {
-    const scale = useRef(new Animated.Value(focused ? 1 : 0.01)).current;
+    const scale = useRef(new Animated.Value(focused ? 1.35 : 1)).current;
     useEffect(() => {
       Animated.spring(scale, {
-        toValue: focused ? 1 : 0.01,
+        toValue: focused ? 1.35 : 1,
         useNativeDriver: true,
         friction: 7,
         tension: 60,
@@ -209,6 +228,7 @@ const AnimatedScrubber = React.memo(
     }, [focused, scale]);
     return (
       <Animated.View
+        pointerEvents="none"
         style={[S.scrubber, { left: `${progressPercent}%`, transform: [{ scale }] }]}
       />
     );
@@ -262,23 +282,11 @@ export default function PlayerScreen() {
 
   const [isDetected4K, setIsDetected4K] = useState(false);
   const isLive = params.type === "live";
-  const is4K =
-    isDetected4K ||
-    (typeof params.title === "string" &&
-      (params.title.toUpperCase().includes("4K") || params.title.toUpperCase().includes("UHD")));
 
   // Decided once per mount: VLC gives us all the IPTV-hardening below; when
   // it's unavailable (e.g. Expo Go, web) we fall back to expo-av so playback
   // still works, just without the adaptive-buffer/stall/reconnect features.
   const [usingVLC] = useState(() => isVLCSupported());
-
-  // ── Network quality (drives adaptive buffering on the VLC path) ───────────
-  const [networkQuality, setNetworkQuality] = useState<NetworkQuality>("unknown");
-  const [networkCacheMs, setNetworkCacheMs] = useState(() =>
-    calcNetworkCacheMs("unknown", isLive, is4K)
-  );
-  const [isNetworkLost, setIsNetworkLost] = useState(false);
-  const networkCacheMsRef = useRef(networkCacheMs);
 
   // ── Core playback state ───────────────────────────────────────────────────
   const [streamUrl, setStreamUrl] = useState(() =>
@@ -295,8 +303,6 @@ export default function PlayerScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
-  /** Whether the buffering pill is on screen. See PILL_AFTER_STALL_MS. */
-  const [showBufferingPill, setShowBufferingPill] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
   const [aspectRatioIndex, setAspectRatioIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -381,6 +387,24 @@ export default function PlayerScreen() {
   const [queueIndex, setQueueIndex] = useState(() =>
     (hasQueueInitial(params.type, params.contentId) || queueHasItems) ? playbackQueue.index : 0
   );
+
+  // ── 4K stream detection & adaptive network quality ────────────────────────
+  const is4K =
+    isDetected4K ||
+    matches4KKeywords(params.title) ||
+    matches4KKeywords(liveChannel?.name) ||
+    matches4KKeywords(queueItem?.title) ||
+    matches4KKeywords(queueItem?.videoQuality) ||
+    matches4KKeywords(params.cmd) ||
+    matches4KKeywords(params.url) ||
+    matches4KKeywords(streamUrl);
+
+  const [networkQuality, setNetworkQuality] = useState<NetworkQuality>("unknown");
+  const [networkCacheMs, setNetworkCacheMs] = useState(() =>
+    calcNetworkCacheMs("unknown", isLive, is4K)
+  );
+  const [isNetworkLost, setIsNetworkLost] = useState(false);
+  const networkCacheMsRef = useRef(networkCacheMs);
   /** The end-of-episode card. Null when nothing is queued behind this one. */
   const [upNext, setUpNext] = useState<QueueItem | null>(null);
   /**
@@ -420,21 +444,6 @@ export default function PlayerScreen() {
 
   // ── Retry configuration ───────────────────────────────────────────────────
   const BUFFERING_UI_DEBOUNCE_MS = 600;
-
-  /**
-   * How long the position must sit still before the pill is shown.
-   *
-   * Buffering ahead is not something the viewer needs told about. While the
-   * picture is still moving the player is doing its job, whatever it says
-   * about its buffer — so filling the next part happens silently and the
-   * pill is reserved for the picture having actually stopped.
-   *
-   * Sits between two other numbers. Above the progress tick, so ordinary
-   * jitter between events cannot trigger it. Well below
-   * `stallTimeoutMs` (6-15s by profile), so a real freeze is admitted to
-   * long before the stall watchdog gives up and reconnects.
-   */
-  const PILL_AFTER_STALL_MS = 1200;
 
   /** One arrow press, as in VLC. */
   const ARROW_SEEK_MS = 10000;
@@ -483,19 +492,6 @@ export default function PlayerScreen() {
   const isRetryingRef = useRef(false);
   const lastVlcErrorTimeRef = useRef(0);
   const hasStartedPlayingRef = useRef(false);
-  /**
-   * Set the first time the reported position actually moves.
-   *
-   * The VLC binding polls `getTime()` on a 250 ms timer rather than reporting
-   * time-changed events, so a frozen stream keeps delivering progress with an
-   * unchanging clock — which is exactly what makes position-freeze the right
-   * stall signal. The flipside is a stream whose clock never leaves zero: for
-   * that one, freeze detection would reconnect every few seconds forever. The
-   * watchdog waits for this flag so it only ever judges a clock it has seen
-   * running.
-   */
-  const hasObservedProgressRef = useRef(false);
-  const stallCountRef = useRef(0);
   const brightnessPermissionRequestInProgress = useRef(false);
 
   const targetSeekPosition = useRef<number | null>(null);
@@ -510,7 +506,6 @@ export default function PlayerScreen() {
   // Ref mirrors (stable captures for timers/effects without stale closures)
   const isPlayingRef = useRef(isPlaying);
   const isLoadingRef = useRef(isLoading);
-  const showBufferingPillRef = useRef(showBufferingPill);
   const showControlsRef = useRef(showControls);
   const isLockedRef = useRef(isLocked);
   const showVideoModalRef = useRef(showVideoModal);
@@ -521,7 +516,6 @@ export default function PlayerScreen() {
   const showZapListRef = useRef(false);
 
   useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
-  useEffect(() => { showBufferingPillRef.current = showBufferingPill; }, [showBufferingPill]);
   const showBannerRef = useRef(false);
   const positionRef = useRef(position);
   const durationRef = useRef(duration);
@@ -732,75 +726,7 @@ export default function PlayerScreen() {
     }
   }, [isLive]);
 
-  /**
-   * Unified Stall Watchdog & Adaptive Buffer Booster (Runs for BOTH Live and VOD)
-   *
-   * 1. Detects frozen playback (e.g. silent TCP disconnects, relay hiccups, packet starvation).
-   * 2. Toggles buffering UI pill when frozen for > PILL_AFTER_STALL_MS.
-   * 3. When freeze duration exceeds the profile's stallTimeoutMs (6–15s):
-   *    - Increments stallCountRef
-   *    - Deepens bufferBoostRef (1.0 → 1.5 → 2.0 → max 3.0)
-   *    - Bumps bufferGeneration to reconstruct VLC with deeper cache
-   *    - Triggers silent retry/reconnect via handleSilentRetry
-   */
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (!mountedRef.current) return;
 
-      // Paused is not stalled, and neither is seeking, scrubbing, or already retrying
-      if (
-        !isPlayingRef.current ||
-        isSeeking.current ||
-        isScrubbing.current ||
-        isRetryingRef.current ||
-        liveReconnectMode
-      ) {
-        if (showBufferingPillRef.current) {
-          showBufferingPillRef.current = false;
-          setShowBufferingPill(false);
-        }
-        return;
-      }
-
-      // Stream must have started and seen initial progress before diagnosing a stall
-      if (!hasStartedPlayingRef.current || !hasObservedProgressRef.current) return;
-
-      const frozenFor = Date.now() - lastProgressTimeRef.current;
-
-      // 1. Buffering Pill (VOD UI only — live channels display reconnect indicator on info bar)
-      if (!isLive) {
-        const shouldShow = frozenFor > PILL_AFTER_STALL_MS;
-        if (showBufferingPillRef.current !== shouldShow) {
-          showBufferingPillRef.current = shouldShow;
-          setShowBufferingPill(shouldShow);
-        }
-      }
-
-      // 2. Watchdog Recovery Trigger
-      const tuning = bufferTuningRef.current;
-      const stallTimeoutMs = tuning?.stallTimeoutMs || (isLive ? 8000 : 10000);
-
-      if (frozenFor > stallTimeoutMs) {
-        console.warn(
-          `[Watchdog] ${isLive ? "Live stream" : "VOD stream"} stalled for ${Math.round(
-            frozenFor / 1000
-          )}s (timeout: ${Math.round(stallTimeoutMs / 1000)}s). Escalating buffer & reconnecting.`
-        );
-
-        stallCountRef.current += 1;
-        // Deepen buffer: 1.0 -> 1.5 -> 2.0 -> 2.5 -> max 3.0
-        bufferBoostRef.current = Math.min(3.0, Number((bufferBoostRef.current + 0.5).toFixed(1)));
-
-        // Reset progress timer so watchdog doesn't immediately double-fire while reconnecting
-        lastProgressTimeRef.current = Date.now();
-
-        // Trigger silent reconnect (which bumps bufferGeneration atomically along with the new URL)
-        handleSilentRetryRef.current();
-      }
-    }, 400);
-
-    return () => clearInterval(id);
-  }, [isLive, liveReconnectMode]);
 
   // ── Controls auto-hide ────────────────────────────────────────────────────
   const resetControlsTimeout = useCallback(() => {
@@ -1003,7 +929,7 @@ export default function PlayerScreen() {
         positionRef.current,
         durationRef.current
       );
-      return false;
+      return safeBack();
     });
     return () => sub.remove();
   }, [params.contentId]);
@@ -1363,6 +1289,7 @@ export default function PlayerScreen() {
   // ── Native TV remote event listener (guarantees controls wake up on any remote event) ──
   useTVEventHandler((evt: any) => {
     if (!evt || !evt.eventType || evt.eventType === "focus" || evt.eventType === "blur") return;
+    if (evt.eventType === "back" || evt.eventType === "hardwareBackPress") return;
     const action = evt?.eventKeyAction;
     if (action === 1 || action === "1" || action === "up") return;
     if (showAudioModalRef.current || showSubtitleModalRef.current || showVideoModalRef.current) return;
@@ -1479,10 +1406,6 @@ export default function PlayerScreen() {
         targetSeekPosition.current = null;
         bufferingStartedRef.current = null;
         lastProgressTimeRef.current = Date.now();
-        lastProgressPositionRef.current = positionRef.current;
-        // The new URL is a new clock — the watchdog has to see it move before
-        // it is allowed to judge it again.
-        hasObservedProgressRef.current = false;
         hasStartedPlayingRef.current = false;
         setHasStartedPlaying(false);
         upNextArmedRef.current = false;
@@ -1562,11 +1485,9 @@ export default function PlayerScreen() {
       // would make the new channel give up early.
       retryCount.current = 0;
       isRetryingRef.current = false;
-      stallCountRef.current = 0;
       bufferBoostRef.current = 1;
       hasStartedPlayingRef.current = false;
       setHasStartedPlaying(false);
-      hasObservedProgressRef.current = false;
       upNextArmedRef.current = false;
       lastProgressPositionRef.current = 0;
       lastProgressTimeRef.current = Date.now();
@@ -1675,11 +1596,9 @@ export default function PlayerScreen() {
 
       retryCount.current = 0;
       isRetryingRef.current = false;
-      stallCountRef.current = 0;
       bufferBoostRef.current = 1;
       hasStartedPlayingRef.current = false;
       setHasStartedPlaying(false);
-      hasObservedProgressRef.current = false;
       upNextArmedRef.current = false;
       lastProgressPositionRef.current = 0;
       lastProgressTimeRef.current = Date.now();
@@ -1859,7 +1778,6 @@ export default function PlayerScreen() {
       }
       if (status.isPlaying) {
         lastProgressTimeRef.current = Date.now();
-        hasObservedProgressRef.current = true;
         if ((status.positionMillis || 0) > 0) {
           hasStartedPlayingRef.current = true;
           setHasStartedPlaying(true);
@@ -1934,21 +1852,28 @@ export default function PlayerScreen() {
       bufferBoostRef.current
     );
     const effectiveCache = isLive
-      ? Math.max(cache, is4K ? 2500 : 1000)
-      : Math.max(cache, is4K ? 1500 : 800);
+      ? Math.max(cache, is4K ? 4000 : 1000)
+      : Math.max(cache, is4K ? 3500 : 800);
     const hardwareDecode = stbEnvironment.snapshot.hardwareAcceleration !== false;
 
     return [
       `--network-caching=${effectiveCache}`,
       `--live-caching=${isLive ? effectiveCache : 0}`,
-      `--file-caching=${isLive ? effectiveCache : 800}`,
-      `--sout-mux-caching=${isLive ? effectiveCache : 0}`,
+      `--file-caching=${effectiveCache}`,
+      `--sout-mux-caching=${effectiveCache}`,
 
       // Connection & Transport
       "--http-reconnect",
+      "--http-continuous=1",
       "--rtsp-tcp",
       "--no-sub-autodetect-file",
       "--no-spu",
+
+      // MPEG-TS & Stream Clock Smoothing for high-bitrate 4K IPTV
+      "--demux=any",
+      "--ts-trust-pcr=0",
+      "--clock-jitter=0",
+      "--clock-synchro=0",
 
       // Hardware & Codec decode (native MediaCodec Direct Rendering for 4K HEVC/H.264)
       ...(hardwareDecode
@@ -1957,6 +1882,9 @@ export default function PlayerScreen() {
             "--avcodec-hw=any",
             "--mediacodec-dr=1",
             "--mediacodec-audio=0",
+            "--mediacodec-all=1",
+            "--avcodec-skiploopfilter=1",
+            "--avcodec-fast",
           ]
         : ["--codec=all", "--avcodec-hw=none"]),
       "--avcodec-threads=0",              // Auto-detect optimal thread count for CPU
@@ -2093,10 +2021,18 @@ export default function PlayerScreen() {
             if (e.videoTracks) {
               const tracks = normalizeVlcTracks(e.videoTracks);
               setVideoTracks(tracks);
-              const has4kTrack = e.videoTracks.some(
-                (t: any) => (t.width && t.width >= 3840) || (t.height && t.height >= 2160)
-              );
-              if (has4kTrack) setIsDetected4K(true);
+            }
+            const has4kTrack =
+              (e?.width && e.width >= 3840) ||
+              (e?.height && e.height >= 2160) ||
+              (e?.naturalSize?.width && e.naturalSize.width >= 3840) ||
+              (e?.naturalSize?.height && e.naturalSize.height >= 2160) ||
+              (Array.isArray(e?.videoTracks) &&
+                e.videoTracks.some(
+                  (t: any) => (t.width && t.width >= 3840) || (t.height && t.height >= 2160)
+                ));
+            if (has4kTrack && !isDetected4K) {
+              setIsDetected4K(true);
             }
             if (e.audioTracks) setAudioTracks(normalizeVlcTracks(e.audioTracks));
             if (e.textTracks) setTextTracks(normalizeVlcTracks(e.textTracks));
@@ -2168,7 +2104,6 @@ export default function PlayerScreen() {
             if (currentMs !== lastProgressPositionRef.current) {
               lastProgressPositionRef.current = currentMs;
               lastProgressTimeRef.current = Date.now();
-              hasObservedProgressRef.current = true;
               bufferingStartedRef.current = null;
               if (isBufferingRef.current) {
                 isBufferingRef.current = false;
@@ -2242,7 +2177,7 @@ export default function PlayerScreen() {
       {/* ── Network lost overlay ─────────────────────────────────────────── */}
       {isNetworkLost && (
         <View style={S.loadingOverlay} pointerEvents="none">
-          <Ionicons name="wifi-outline" size={52} color="rgba(255,255,255,0.45)" />
+          <Wifi size={52} color="rgba(255,255,255,0.45)" />
           <Text style={S.loadingText}>No network connection</Text>
           <Text style={[S.loadingText, { fontSize: ps(0.85), opacity: 0.5, marginTop: 2 }]}>
             Waiting to reconnect…
@@ -2253,7 +2188,7 @@ export default function PlayerScreen() {
       {/* ── VOD hard failure ─────────────────────────────────────────────── */}
       {isShowingHardFailure && !isNetworkLost && (
         <View style={S.loadingOverlay}>
-          <Ionicons name="warning-outline" size={44} color="rgba(255,255,255,0.7)" />
+          <TriangleAlert size={44} color="rgba(255,255,255,0.7)" />
           <Text style={S.loadingText}>Stream unavailable</Text>
           <Focusable
             ringOnFocus={false}
@@ -2296,7 +2231,7 @@ export default function PlayerScreen() {
               </View>
             ) : (
               <View style={S.vodPosterFallback}>
-                <Ionicons name="film-outline" size={ps(3)} color="rgba(255,255,255,0.45)" />
+                <Film size={ps(3)} color="rgba(255,255,255,0.45)" />
               </View>
             )}
 
@@ -2348,10 +2283,10 @@ export default function PlayerScreen() {
       {/* ── Initial loading for Live TV — suppressed for instant channel tuning ── */}
 
       {/* ── Mid-stream buffering indicator (compact center pill) ─────────── */}
-      {!isLive && hasStartedPlaying && (showBufferingPill || isRetrying) && !isShowingHardFailure && !isNetworkLost && (
+      {!isLive && hasStartedPlaying && (isBuffering || isRetrying) && !isShowingHardFailure && !isNetworkLost && (
         <View style={S.midstreamBufferingOverlay} pointerEvents="none">
           <View style={S.midstreamBufferingPill}>
-            <ActivityIndicator size="small" color={THEME.colors.primary} />
+            <ActivityIndicator size="small" color="#FFFFFF" />
             <Text style={S.midstreamBufferingText}>
               {isRetrying ? `Reconnecting (${retryCount.current})…` : "Buffering…"}
             </Text>
@@ -2362,7 +2297,7 @@ export default function PlayerScreen() {
       {/* ── Volume indicator ─────────────────────────────────────────────── */}
       {volumeIndicator !== null && (
         <View style={S.centerIndicator} pointerEvents="none">
-          <Ionicons name="volume-high" size={40} color="#fff" />
+          <Volume2 size={40} color="#fff" />
           <Text style={S.indicatorText}>{Math.round(volumeIndicator)}%</Text>
           <View style={S.barContainer}>
             <View style={[S.barFill, { width: `${volumeIndicator}%` }]} />
@@ -2373,7 +2308,7 @@ export default function PlayerScreen() {
       {/* ── Brightness indicator ─────────────────────────────────────────── */}
       {brightnessIndicator !== null && (
         <View style={S.centerIndicator} pointerEvents="none">
-          <Ionicons name="sunny" size={40} color="#fff" />
+          <Sun size={40} color="#fff" />
           <Text style={S.indicatorText}>{Math.round(brightnessIndicator * 100)}%</Text>
           <View style={S.barContainer}>
             <View style={[S.barFill, { width: `${brightnessIndicator * 100}%` }]} />
@@ -2385,17 +2320,19 @@ export default function PlayerScreen() {
       {seekIndicator !== null && (
         <View style={S.seekIndicatorOverlay} pointerEvents="none">
           <View style={S.seekIndicatorBox}>
-            <MaterialCommunityIcons
-              name={
-                seekIndicator.includes("x")
-                  ? "speedometer"
-                  : seekIndicator.startsWith("+")
-                    ? "fast-forward"
-                    : "rewind"
-              }
-              size={ps(2.5)}
-              color="#fff"
-            />
+            <View style={S.seekIconBadge}>
+              <DynamicIcon
+                name={
+                  seekIndicator.includes("x")
+                    ? "speedometer-outline"
+                    : seekIndicator.startsWith("+")
+                      ? "play-forward"
+                      : "play-back"
+                }
+                size={ps(2.2)}
+                color="#FFFFFF"
+              />
+            </View>
             <Text style={S.seekIndicatorText}>{seekIndicator}</Text>
           </View>
         </View>
@@ -2404,17 +2341,15 @@ export default function PlayerScreen() {
       {/* ── Controls overlay ─────────────────────────────────────────────── */}
       {showControls && !upNext && (
         <FocusGroup style={S.controlsOverlay}>
-          {/* No header.
-              Its only content was the title, which the banner at the foot of
-              this same panel already carries — along with the channel number,
-              logo and what is on now. Two copies of the title at opposite ends
-              of the screen is worse than one in the place that has the rest of
-              the context. The top gradient went with it: it existed to make
-              that title legible over the picture. */}
-
           {/* Center play / seek buttons */}
           {!isLocked && (
-            <View style={S.centerRow}>
+            <View
+              style={[
+                S.centerRow,
+                (seekIndicator !== null || volumeIndicator !== null || brightnessIndicator !== null) && { opacity: 0 },
+              ]}
+              pointerEvents={seekIndicator !== null ? "none" : "auto"}
+            >
               {!isLive && (
                 <Focusable
                   ringOnFocus={false}
@@ -2423,12 +2358,23 @@ export default function PlayerScreen() {
                   onPress={() => seek(-10000)}
                   {...navRowFocusHandlers}
                 >
-                  <Ionicons name="play-back" size={ps(1.8)} color="#fff" />
+                  {(focused) => (
+                    <SkipBack size={ps(2.2)} color={focused ? "#000000" : "#FFFFFF"} />
+                  )}
                 </Focusable>
               )}
               <View style={S.playBtnContainer}>
-                <Focusable hasTVPreferredFocus ringOnFocus={false} focusStyle={S.mainPlayBtnFocused} style={S.mainPlayBtn} onPress={togglePlay} {...navRowFocusHandlers}>
-                  <Ionicons name={isPlaying ? "pause" : "play"} size={ps(2.8)} color="#fff" />
+                <Focusable
+                  hasTVPreferredFocus
+                  ringOnFocus={false}
+                  focusStyle={S.mainPlayBtnFocused}
+                  style={S.mainPlayBtn}
+                  onPress={togglePlay}
+                  {...navRowFocusHandlers}
+                >
+                  {(focused) => (
+                    <DynamicIcon name={isPlaying ? "pause" : "play"} size={ps(3.2)} color={focused ? "#000000" : "#FFFFFF"} />
+                  )}
                 </Focusable>
               </View>
               {!isLive && (
@@ -2439,7 +2385,9 @@ export default function PlayerScreen() {
                   onPress={() => seek(10000)}
                   {...navRowFocusHandlers}
                 >
-                  <Ionicons name="play-forward" size={ps(1.8)} color="#fff" />
+                  {(focused) => (
+                    <SkipForward size={ps(2.2)} color={focused ? "#000000" : "#FFFFFF"} />
+                  )}
                 </Focusable>
               )}
             </View>
@@ -2462,7 +2410,7 @@ export default function PlayerScreen() {
               {/* Live reconnect banner */}
               {isLive && liveReconnectMode && (
                 <View style={S.liveReconnectBanner}>
-                  <ActivityIndicator size="small" color="#ffcc00" style={{ marginRight: 8 }} />
+                  <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 8 }} />
                   <Text style={S.liveReconnectText}>Reconnecting to live stream…</Text>
                 </View>
               )}
@@ -2520,8 +2468,8 @@ export default function PlayerScreen() {
                             <View ref={progressViewRef} style={[S.progressRail, effFocused && S.progressRailFocused]} onTouchEnd={handleProgressPress}>
                               {isBuffering && <ShimmerBar />}
                               <View style={[S.progressFill, { width: `${progressPercent}%` }]} />
-                              <AnimatedScrubber focused={effFocused} progressPercent={progressPercent} />
                             </View>
+                            <AnimatedScrubber focused={effFocused} progressPercent={progressPercent} />
                           </View>
                         );
                       }}
@@ -2567,7 +2515,9 @@ export default function PlayerScreen() {
                     {!isLive && canStepQueue && (
                       <>
                         <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => setShowQueueList(true)} accessibilityLabel="Episode list" {...navRowFocusHandlers}>
-                          <Ionicons name="list-outline" size={ps(2.0)} color="white" />
+                          {(focused) => (
+                            <List size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                          )}
                         </Focusable>
                         {playbackQueue.size > 1 && (
                           <>
@@ -2580,7 +2530,9 @@ export default function PlayerScreen() {
                               accessibilityLabel="Previous episode"
                               {...navRowFocusHandlers}
                             >
-                              <Ionicons name="play-skip-back" size={ps(2.0)} color="white" />
+                              {(focused) => (
+                                <StepBack size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                              )}
                             </Focusable>
                             <Focusable
                               ringOnFocus={false}
@@ -2591,7 +2543,9 @@ export default function PlayerScreen() {
                               accessibilityLabel="Next episode"
                               {...navRowFocusHandlers}
                             >
-                              <Ionicons name="play-skip-forward" size={ps(2.0)} color="white" />
+                              {(focused) => (
+                                <StepForward size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                              )}
                             </Focusable>
                           </>
                         )}
@@ -2600,39 +2554,57 @@ export default function PlayerScreen() {
                     {isLive && canZap && (
                       <>
                         <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { setShowZapList(true); }} accessibilityLabel="Channel list" {...navRowFocusHandlers}>
-                          <Ionicons name="list-outline" size={ps(2.0)} color="white" />
+                          {(focused) => (
+                            <List size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                          )}
                         </Focusable>
                         <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => zapBy(1)} accessibilityLabel="Channel up" {...navRowFocusHandlers}>
-                          <Ionicons name="chevron-up" size={ps(2.0)} color="white" />
+                          {(focused) => (
+                            <ChevronUp size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                          )}
                         </Focusable>
                         <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => zapBy(-1)} accessibilityLabel="Channel down" {...navRowFocusHandlers}>
-                          <Ionicons name="chevron-down" size={ps(2.0)} color="white" />
+                          {(focused) => (
+                            <ChevronDown size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                          )}
                         </Focusable>
                         <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => flashBanner()} accessibilityLabel="Channel info" {...navRowFocusHandlers}>
-                          <Ionicons name="information-circle-outline" size={ps(2.0)} color="white" />
+                          {(focused) => (
+                            <Info size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                          )}
                         </Focusable>
                       </>
                     )}
                     {!isLive && (
                       <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cyclePlaybackSpeed} {...navRowFocusHandlers}>
-                        <MaterialCommunityIcons name="play-speed" size={ps(2.0)} color="white" />
+                        {(focused) => (
+                          <Gauge size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                        )}
                       </Focusable>
                     )}
                     {usingVLC && !isLive && videoTracks.length > 1 && (
                       <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowVideoModal(true); }} {...navRowFocusHandlers}>
-                        <Ionicons name="settings-outline" size={ps(2.0)} color="white" />
+                        {(focused) => (
+                          <Settings size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                        )}
                       </Focusable>
                     )}
                     {!isLive && (
                       <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowSubtitleModal(true); }} {...navRowFocusHandlers}>
-                        <MaterialCommunityIcons name="subtitles-outline" size={ps(2.0)} color="white" />
+                        {(focused) => (
+                          <Subtitles size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                        )}
                       </Focusable>
                     )}
                     <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowAudioModal(true); }} {...navRowFocusHandlers}>
-                      <Ionicons name="musical-notes-outline" size={ps(2.0)} color="white" />
+                      {(focused) => (
+                        <Music size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                      )}
                     </Focusable>
                     <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cycleAspectRatio} {...navRowFocusHandlers}>
-                      <MaterialCommunityIcons name="aspect-ratio" size={ps(2.0)} color="white" />
+                      {(focused) => (
+                        <Monitor size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                      )}
                     </Focusable>
                   </View>
                 )}
@@ -2772,24 +2744,80 @@ function TrackSelectionModal({
   visible, title, icon, options, selected, onSelect, onClose,
   isSubtitle = false, isVideo = false,
 }: any) {
-  const hasSelectedTrack = options.some((track: any, idx: number) => {
+  // Separate valid media tracks from disable options
+  const mediaTracks = (options || []).filter((track: any) => {
+    if (typeof track === "string") return !track.toLowerCase().includes("disable");
+    if (typeof track === "object" && track !== null) {
+      const rawName = track.title || track.name || track.language || "";
+      return track.id !== -1 && track.index !== -1 && !rawName.toLowerCase().includes("disable");
+    }
+    return true;
+  });
+
+  const disableTrack = (options || []).find((track: any) => {
+    if (typeof track === "string") return track.toLowerCase().includes("disable");
+    if (typeof track === "object" && track !== null) {
+      const rawName = track.title || track.name || track.language || "";
+      return track.id === -1 || track.index === -1 || rawName.toLowerCase().includes("disable");
+    }
+    return false;
+  });
+
+  const hasSelectedTrack = mediaTracks.some((track: any, idx: number) => {
     const id = typeof track === "object" ? (track.id ?? track.index ?? idx) : idx;
     return selected !== undefined && selected === id;
   });
 
+  const totalAvailable = mediaTracks.length + (isVideo ? 1 : 0);
+
+  const getTrackDisplay = (track: any, index: number) => {
+    const isObj = typeof track === "object" && track !== null;
+    const rawTitle = isObj ? (track.title || track.name || track.language) : String(track);
+
+    if (isVideo && isObj) {
+      if (track.height || track.width) {
+        const h = track.height;
+        const w = track.width;
+        let label = `${h}p`;
+        if (h >= 2160 || w >= 3840) label = "4K UHD";
+        else if (h >= 1440) label = "2K QHD";
+        else if (h >= 1080) label = "1080p FHD";
+        else if (h >= 720) label = "720p HD";
+        else if (h >= 480) label = "480p SD";
+        return {
+          title: label,
+          subtitle: w && h ? `${w} × ${h}` : rawTitle,
+        };
+      }
+    }
+
+    if (isObj && track.language) {
+      return {
+        title: rawTitle || `Track ${index + 1}`,
+        subtitle: track.language.toUpperCase(),
+      };
+    }
+
+    return {
+      title: rawTitle || `Track ${index + 1}`,
+      subtitle: undefined,
+    };
+  };
+
   return (
     <Overlay visible={visible} onClose={onClose} contentStyle={S.modalContent}>
       <View style={S.modalHeader}>
-        {/* A flat chip rather than a white gradient pill. The gradient was the
-            brightest thing on the panel and pulled the eye to an icon that is
-            only there to label the list. */}
         <View style={S.modalIconBg}>
-          <Ionicons name={(icon as any) || "settings"} size={ps(1.7)} color="rgba(255,255,255,0.8)" />
+          <DynamicIcon name={(icon as any) || "settings-outline"} size={ps(1.9)} color="#FFFFFF" />
         </View>
         <Text style={S.modalTitle}>{title}</Text>
-        <Text style={S.modalSubtitle}>
-          {options.length === 0 ? "No tracks available" : `${options.length} track${options.length !== 1 ? "s" : ""} available`}
-        </Text>
+        <View style={S.modalSubtitleBadge}>
+          <Text style={S.modalSubtitleText}>
+            {totalAvailable === 0
+              ? "No tracks available"
+              : `${totalAvailable} track${totalAvailable !== 1 ? "s" : ""} available`}
+          </Text>
+        </View>
       </View>
 
       <ScrollView style={S.modalScroll} showsVerticalScrollIndicator={false}>
@@ -2801,38 +2829,48 @@ function TrackSelectionModal({
             focusStyle={S.modalOptionFocused}
             onPress={() => onSelect(undefined)}
           >
-            {(focused: boolean) => (
-              <View style={S.modalOptionInner}>
-                <View style={S.modalOptionLeft}>
-                  <View style={[S.trackIndexBadge, (selected === undefined || focused) && S.trackIndexBadgeActive]}>
-                    <Ionicons
-                      name="aperture"
-                      size={ps(1.1)}
-                      color={selected === undefined || focused ? "#000" : "rgba(255,255,255,0.5)"}
-                    />
+            {(focused: boolean) => {
+              const isSelected = selected === undefined;
+              return (
+                <View style={S.modalOptionInner}>
+                  <View style={S.modalOptionLeft}>
+                    <View style={[S.trackIndexBadge, focused ? S.trackIndexBadgeFocused : isSelected && S.trackIndexBadgeActive]}>
+                      <DynamicIcon
+                        name="sparkles-outline"
+                        size={ps(1.1)}
+                        color={focused ? "#FFFFFF" : isSelected ? "#FFFFFF" : "rgba(255,255,255,0.7)"}
+                      />
+                    </View>
+                    <View style={S.trackTitleCol}>
+                      <Text style={[S.modalOptionText, isSelected && S.modalOptionTextSelected, focused && S.modalOptionTextFocused]}>
+                        Auto (Recommended)
+                      </Text>
+                      <Text style={[S.modalOptionSubtext, focused && S.modalOptionSubtextFocused]}>
+                        Adapts automatically to network & screen
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={[S.modalOptionText, selected === undefined && S.modalOptionTextSelected, focused && S.modalOptionTextFocused]}>
-                    Auto (Recommended)
-                  </Text>
+                  {isSelected && (
+                    <View style={[S.checkBadge, focused && S.checkBadgeFocused]}>
+                      <Check size={ps(1.1)} color={focused ? "#FFFFFF" : "#000000"} />
+                    </View>
+                  )}
                 </View>
-                {selected === undefined && <View style={[S.checkBadge, focused && S.checkBadgeFocused]}><Ionicons name="checkmark" size={ps(1.1)} color={focused ? "#fff" : "#000"} /></View>}
-              </View>
-            )}
+              );
+            }}
           </Focusable>
         )}
 
-        {options.length === 0 ? (
+        {mediaTracks.length === 0 && !isVideo ? (
           <View style={S.emptyState}>
-            <Ionicons name="alert-circle-outline" size={32} color="rgba(255,255,255,0.2)" />
+            <AlertCircle size={32} color="rgba(255,255,255,0.2)" />
             <Text style={S.emptyText}>No tracks found</Text>
           </View>
         ) : (
-          options.map((track: any, index: number) => {
+          mediaTracks.map((track: any, index: number) => {
             const id = typeof track === "object" ? (track.id ?? track.index ?? index) : index;
             const isSelected = selected !== undefined && selected === id;
-            const trackName = typeof track === "object"
-              ? (track.title || track.language || track.name || `Track ${index + 1}`)
-              : track;
+            const display = getTrackDisplay(track, index);
             const preferThisFocus = isVideo
               ? isSelected
               : (hasSelectedTrack ? isSelected : index === 0);
@@ -2849,14 +2887,27 @@ function TrackSelectionModal({
                 {(focused: boolean) => (
                   <View style={S.modalOptionInner}>
                     <View style={S.modalOptionLeft}>
-                      <View style={[S.trackIndexBadge, (isSelected || focused) && S.trackIndexBadgeActive]}>
-                        <Text style={[S.trackIndexText, (isSelected || focused) && S.trackIndexTextActive]}>{index + 1}</Text>
+                      <View style={[S.trackIndexBadge, focused ? S.trackIndexBadgeFocused : isSelected && S.trackIndexBadgeActive]}>
+                        <Text style={[S.trackIndexText, focused ? S.trackIndexTextFocused : isSelected && S.trackIndexTextActive]}>
+                          {index + 1}
+                        </Text>
                       </View>
-                      <Text style={[S.modalOptionText, isSelected && S.modalOptionTextSelected, focused && S.modalOptionTextFocused]} numberOfLines={2}>
-                        {trackName}
-                      </Text>
+                      <View style={S.trackTitleCol}>
+                        <Text style={[S.modalOptionText, isSelected && S.modalOptionTextSelected, focused && S.modalOptionTextFocused]} numberOfLines={1}>
+                          {display.title}
+                        </Text>
+                        {display.subtitle ? (
+                          <Text style={[S.modalOptionSubtext, focused && S.modalOptionSubtextFocused]} numberOfLines={1}>
+                            {display.subtitle}
+                          </Text>
+                        ) : null}
+                      </View>
                     </View>
-                    {isSelected && <View style={[S.checkBadge, focused && S.checkBadgeFocused]}><Ionicons name="checkmark" size={ps(1.1)} color={focused ? "#fff" : "#000"} /></View>}
+                    {isSelected && (
+                      <View style={[S.checkBadge, focused && S.checkBadgeFocused]}>
+                        <Check size={ps(1.1)} color={focused ? "#FFFFFF" : "#000000"} />
+                      </View>
+                    )}
                   </View>
                 )}
               </Focusable>
@@ -2864,7 +2915,7 @@ function TrackSelectionModal({
           })
         )}
 
-        {isSubtitle && (
+        {(isSubtitle || disableTrack) && (
           <Focusable
             ringOnFocus={false}
             hasTVPreferredFocus={selected === -1 || (options.length === 0 && !hasSelectedTrack)}
@@ -2872,23 +2923,35 @@ function TrackSelectionModal({
             focusStyle={S.modalOptionFocused}
             onPress={() => onSelect(-1)}
           >
-            {(focused: boolean) => (
-              <View style={S.modalOptionInner}>
-                <View style={S.modalOptionLeft}>
-                  <View style={[S.trackIndexBadge, (selected === -1 || focused) && S.trackIndexBadgeActive]}>
-                    <Ionicons
-                      name="close"
-                      size={ps(1.1)}
-                      color={selected === -1 || focused ? "#000" : "rgba(255,255,255,0.5)"}
-                    />
+            {(focused: boolean) => {
+              const isSelected = selected === -1;
+              return (
+                <View style={S.modalOptionInner}>
+                  <View style={S.modalOptionLeft}>
+                    <View style={[S.trackIndexBadge, focused ? S.trackIndexBadgeFocused : isSelected && S.trackIndexBadgeActive]}>
+                      <DynamicIcon
+                        name="close-circle-outline"
+                        size={ps(1.2)}
+                        color={focused ? "#FFFFFF" : isSelected ? "#FFFFFF" : "rgba(255,255,255,0.7)"}
+                      />
+                    </View>
+                    <View style={S.trackTitleCol}>
+                      <Text style={[S.modalOptionText, isSelected && S.modalOptionTextSelected, focused && S.modalOptionTextFocused]}>
+                        {isSubtitle ? "Disable Subtitles" : "Disable Video"}
+                      </Text>
+                      <Text style={[S.modalOptionSubtext, focused && S.modalOptionSubtextFocused]}>
+                        Turn off track
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={[S.modalOptionText, selected === -1 && S.modalOptionTextSelected, focused && S.modalOptionTextFocused]}>
-                    Disable Subtitles
-                  </Text>
+                  {isSelected && (
+                    <View style={[S.checkBadge, focused && S.checkBadgeFocused]}>
+                      <Check size={ps(1.1)} color={focused ? "#FFFFFF" : "#000000"} />
+                    </View>
+                  )}
                 </View>
-                {selected === -1 && <View style={[S.checkBadge, focused && S.checkBadgeFocused]}><Ionicons name="checkmark" size={ps(1.1)} color={focused ? "#fff" : "#000"} /></View>}
-              </View>
-            )}
+              );
+            }}
           </Focusable>
         )}
       </ScrollView>
@@ -2900,12 +2963,13 @@ function TrackSelectionModal({
         focusStyle={S.modalCloseBtnFocused}
         onPress={onClose}
       >
-        {/* Render prop, not a bare child: the focused button is solid white,
-            so a 70%-white label on it would be invisible. */}
         {(focused: boolean) => (
-          <Text style={[S.modalCloseBtnText, focused && S.modalCloseBtnTextFocused]}>
-            CLOSE
-          </Text>
+          <View style={S.modalCloseInner}>
+            <X size={ps(1.2)} color={focused ? "#000000" : "#FFFFFF"} />
+            <Text style={[S.modalCloseBtnText, focused && S.modalCloseBtnTextFocused]}>
+              CLOSE
+            </Text>
+          </View>
         )}
       </Focusable>
     </Overlay>
@@ -3073,31 +3137,50 @@ const S = StyleSheet.create({
   },
   midstreamBufferingOverlay: {
     position: "absolute",
-    top: "50%",
+    top: "34%",
     alignSelf: "center",
-    marginTop: -24,
     zIndex: 55,
   },
   midstreamBufferingPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: ps(0.6),
+    gap: ps(0.8),
+    backgroundColor: "rgba(14, 15, 20, 0.88)",
+    paddingHorizontal: ps(1.6),
+    paddingVertical: ps(0.8),
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.22)",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 8,
   },
   midstreamBufferingText: {
     color: "#ffffff",
-    fontSize: ps(0.9),
-    fontWeight: "600",
+    fontSize: ps(1.0),
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
 
   centerIndicator: {
     position: "absolute",
-    top: "50%",
+    top: "42%",
     alignSelf: "center",
-    backgroundColor: "rgba(0,0,0,0.7)",
-    padding: 25,
-    borderRadius: 20,
+    backgroundColor: "rgba(14, 15, 20, 0.95)",
+    paddingHorizontal: ps(2.8),
+    paddingVertical: ps(1.8),
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.22)",
     alignItems: "center",
-    marginTop: -60,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
+    elevation: 20,
+    zIndex: 100,
   },
   indicatorText: {
     color: "#fff",
@@ -3112,7 +3195,7 @@ const S = StyleSheet.create({
     borderRadius: 2,
     marginTop: 15,
   },
-  barFill: { height: "100%", backgroundColor: THEME.colors.primary, borderRadius: 2 },
+  barFill: { height: "100%", backgroundColor: "#F5F5F5", borderRadius: 2 },
 
   retryBtn: {
     marginTop: 20,
@@ -3148,30 +3231,41 @@ const S = StyleSheet.create({
   // Seek / speed indicator
   seekIndicatorOverlay: {
     position: "absolute",
-    top: "40%",
+    top: "38%",
     alignSelf: "center",
     zIndex: 100,
   },
   seekIndicatorBox: {
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.75)",
-    paddingHorizontal: 28,
-    paddingVertical: 16,
-    borderRadius: 16,
+    backgroundColor: "rgba(14, 15, 20, 0.95)",
+    paddingHorizontal: ps(3.2),
+    paddingVertical: ps(1.6),
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.22)",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
+    elevation: 20,
+    minWidth: ps(14),
+    gap: ps(0.6),
+  },
+  seekIconBadge: {
+    width: ps(3.8),
+    height: ps(3.8),
+    borderRadius: ps(1.9),
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   seekIndicatorText: {
-    color: "#fff",
+    color: "#FFFFFF",
     fontSize: ps(1.6),
     fontWeight: "900",
-    // No fontFamily here on purpose. Tenor Sans is a single-weight face and
-    // only its 400 is loaded, so asking for it at weight 900 makes Android
-    // synthesise a bold it does not have — which rendered as doubled, smeared
-    // glyphs. Heavy text uses the system font, which has real weights.
-    // See the note on THEME.fonts in src/theme/tokens.ts.
-    marginTop: 4,
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
 
   controlsOverlay: { ...StyleSheet.absoluteFillObject },
@@ -3202,29 +3296,41 @@ const S = StyleSheet.create({
     gap: pw(4),
   },
   skipBtn: {
-    width: ps(3.5),
-    height: ps(3.5),
-    borderRadius: ps(1.75),
+    width: ps(4.0),
+    height: ps(4.0),
+    borderRadius: ps(2.0),
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "transparent",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
   },
   skipBtnFocused: {
     transform: [{ scale: 1.18 }],
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "#F5F5F5",
+    elevation: 12,
+    shadowOpacity: 0.8,
   },
   playBtnContainer: { alignItems: "center", justifyContent: "center" },
   mainPlayBtn: {
-    width: ps(4.8),
-    height: ps(4.8),
-    borderRadius: ps(2.4),
+    width: ps(5.6),
+    height: ps(5.6),
+    borderRadius: ps(2.8),
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "transparent",
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
   },
   mainPlayBtnFocused: {
     transform: [{ scale: 1.18 }],
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "#F5F5F5",
+    elevation: 16,
+    shadowOpacity: 0.9,
   },
 
   bottomOverlay: {
@@ -3248,7 +3354,7 @@ const S = StyleSheet.create({
     marginBottom: 4,
   },
   liveReconnectText: {
-    color: "#ffcc00",
+    color: "#FFFFFF",
     fontSize: ps(0.8),
     fontWeight: "700",
   },
@@ -3261,40 +3367,49 @@ const S = StyleSheet.create({
     fontWeight: "700",
   },
   progressBarWrapper: {
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "transparent",
   },
-  progressBarInner: { height: 28, justifyContent: "center" },
+  progressBarInner: {
+    height: isTV ? ps(2.4) : 32,
+    justifyContent: "center",
+  },
   progressRail: {
-    height: 6,
+    height: isTV ? ps(0.7) : 8,
     width: "100%",
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: 3,
+    backgroundColor: "rgba(255, 255, 255, 0.22)",
+    borderRadius: isTV ? ps(0.35) : 4,
     overflow: "hidden",
   },
-  progressRailFocused: { height: 6, borderRadius: 3 },
+  progressRailFocused: {
+    height: isTV ? ps(0.85) : 10,
+    borderRadius: isTV ? ps(0.42) : 5,
+    backgroundColor: "rgba(255, 255, 255, 0.32)",
+  },
   progressFill: {
     height: "100%",
-    borderRadius: 3,
+    borderRadius: isTV ? ps(0.35) : 4,
     overflow: "hidden",
-    backgroundColor: "#fff",
+    backgroundColor: "#F5F5F5",
   },
   scrubber: {
     position: "absolute",
     top: "50%",
-    marginTop: -12,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "white",
-    marginLeft: -12,
-    shadowColor: "#000",
+    width: isTV ? ps(1.4) : 20,
+    height: isTV ? ps(1.4) : 20,
+    marginTop: isTV ? -ps(0.7) : -10,
+    marginLeft: isTV ? -ps(0.7) : -10,
+    borderRadius: isTV ? ps(0.7) : 10,
+    backgroundColor: "#F5F5F5",
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOpacity: 0.8,
+    shadowRadius: 5,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: "rgba(255, 255, 255, 0.9)",
   },
 
   liveBadgeRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
@@ -3308,17 +3423,24 @@ const S = StyleSheet.create({
 
   actionsRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center" },
   iconChip: { padding: 6, borderRadius: 6, borderWidth: 1, borderColor: "transparent" },
-  iconChipFocused: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.25)", transform: [{ scale: 1.1 }] },
+  iconChipFocused: {
+    borderColor: "#FFFFFF",
+    backgroundColor: "#F5F5F5",
+    transform: [{ scale: 1.15 }],
+    elevation: 8,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+  },
   actionsRight: { flexDirection: "row", alignItems: "center", gap: 14 },
   settingBtn: {
-    width: ps(3.6),
-    height: ps(3.6),
-    borderRadius: ps(1.8),
+    width: ps(4.0),
+    height: ps(4.0),
+    borderRadius: ps(2.0),
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "transparent",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
   },
 
   // ── Modal ──────────────────────────────────────────────────────────────────
@@ -3336,41 +3458,60 @@ const S = StyleSheet.create({
   //   • the custom font family was paired with weights the family has no cut
   //     for. See the note on THEME.fonts in src/theme/tokens.ts.
   modalContent: {
-    // Solid pitch black background for the modal panel.
-    backgroundColor: "#000000",
-    width: isTV ? "42%" : "78%",
-    maxWidth: ps(34),
-    maxHeight: "82%",
-    borderRadius: ps(1.4),
+    backgroundColor: "rgba(14, 15, 20, 0.96)",
+    width: isTV ? "42%" : "84%",
+    maxWidth: ps(36),
+    maxHeight: "85%",
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.16)",
     overflow: "hidden",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.9,
+    shadowRadius: 30,
+    elevation: 25,
   },
   modalHeader: {
     alignItems: "center",
-    paddingTop: ph(2.4),
-    paddingBottom: ph(1.4),
-    paddingHorizontal: pw(2),
+    paddingTop: ph(2.6),
+    paddingBottom: ph(1.6),
+    paddingHorizontal: pw(2.5),
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.08)",
   },
   modalIconBg: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-    width: ps(3.4),
-    height: ps(3.4),
-    borderRadius: ps(1.7),
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    width: ps(3.8),
+    height: ps(3.8),
+    borderRadius: ps(1.9),
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: ph(1.2),
+    marginBottom: ph(1.0),
   },
   modalTitle: {
-    color: "#fff",
-    fontSize: ps(1.5),
-    fontWeight: "800",
+    color: "#FFFFFF",
+    fontSize: ps(1.6),
+    fontWeight: "900",
+    letterSpacing: 0.5,
     textAlign: "center",
   },
-  modalSubtitle: {
-    color: "rgba(255,255,255,0.45)",
-    fontSize: ps(1),
-    fontWeight: "600",
-    marginTop: ph(0.4),
-    textAlign: "center",
+  modalSubtitleBadge: {
+    marginTop: ph(0.6),
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    paddingHorizontal: ps(1.0),
+    paddingVertical: ps(0.3),
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+  },
+  modalSubtitleText: {
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: ps(0.85),
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
   modalDivider: { height: 0, backgroundColor: "transparent" },
   modalScroll: { paddingHorizontal: pw(1.6), paddingVertical: ph(1.2) },
@@ -3383,18 +3524,28 @@ const S = StyleSheet.create({
   modalOption: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: ps(0.9),
-    paddingVertical: ph(1.1),
+    borderRadius: 14,
+    paddingVertical: ph(1.2),
     paddingHorizontal: pw(1.4),
     marginBottom: ph(0.6),
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
   modalOptionSelected: {
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderColor: "rgba(255, 255, 255, 0.32)",
   },
-  // Solid white, as everywhere else. Ordered after the selected style at the call
-  // sites so focus wins when a row is both.
-  modalOptionFocused: { backgroundColor: "#fff" },
+  modalOptionFocused: {
+    backgroundColor: "#F5F5F5",
+    borderColor: "#FFFFFF",
+    transform: [{ scale: 1.02 }],
+    elevation: 8,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+  },
   modalOptionInner: {
     flexDirection: "row",
     alignItems: "center",
@@ -3402,57 +3553,103 @@ const S = StyleSheet.create({
     flex: 1,
   },
   modalOptionLeft: { flexDirection: "row", alignItems: "center", gap: pw(1.2), flex: 1 },
+  trackTitleCol: { flex: 1, gap: 2 },
+  modalOptionSubtext: {
+    color: "rgba(255, 255, 255, 0.45)",
+    fontSize: ps(0.85),
+    fontWeight: "600",
+  },
+  modalOptionSubtextFocused: {
+    color: "rgba(0, 0, 0, 0.6)",
+    fontWeight: "700",
+  },
   trackIndexBadge: {
-    width: ps(2.2),
-    height: ps(2.2),
-    borderRadius: ps(1.1),
-    backgroundColor: "rgba(255,255,255,0.08)",
+    width: ps(2.4),
+    height: ps(2.4),
+    borderRadius: ps(1.2),
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     alignItems: "center",
     justifyContent: "center",
   },
-  trackIndexBadgeActive: { backgroundColor: "#fff" },
+  trackIndexBadgeActive: {
+    backgroundColor: "rgba(255, 255, 255, 0.22)",
+  },
+  trackIndexBadgeFocused: {
+    backgroundColor: "#000000",
+  },
   trackIndexText: {
-    color: "rgba(255,255,255,0.5)",
-    fontSize: ps(0.85),
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: ps(0.9),
     fontWeight: "900",
   },
-  trackIndexTextActive: { color: "#000" },
+  trackIndexTextActive: {
+    color: "#FFFFFF",
+  },
+  trackIndexTextFocused: {
+    color: "#FFFFFF",
+  },
   modalOptionText: {
-    color: "#fff",
+    color: "#FFFFFF",
     fontSize: ps(1.15),
     fontWeight: "700",
     flex: 1,
   },
-  modalOptionTextSelected: { color: THEME.colors.primary },
-  // Black on the white focused row — the same inversion the grids use.
-  modalOptionTextFocused: { color: "#000" },
-  // Inverted on a focused row, which is solid white — a white badge there is
-  // an invisible container around a visible tick.
-  checkBadgeFocused: { backgroundColor: "#0E0F14" },
+  modalOptionTextSelected: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+  modalOptionTextFocused: {
+    color: "#000000",
+    fontWeight: "800",
+  },
   checkBadge: {
     width: ps(1.8),
     height: ps(1.8),
     borderRadius: ps(0.9),
-    backgroundColor: "#fff",
+    backgroundColor: "#F5F5F5",
     alignItems: "center",
     justifyContent: "center",
   },
+  checkBadgeFocused: {
+    backgroundColor: "#000000",
+  },
   modalCloseBtn: {
     alignItems: "center",
+    justifyContent: "center",
     paddingVertical: ph(1.3),
     marginHorizontal: pw(1.6),
-    marginVertical: ph(0.8),
-    borderRadius: ps(0.9),
-    backgroundColor: "rgba(255,255,255,0.06)",
+    marginTop: ph(0.6),
+    marginBottom: ph(1.4),
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.14)",
   },
-  modalCloseBtnFocused: { backgroundColor: "#fff" },
+  modalCloseBtnFocused: {
+    backgroundColor: "#F5F5F5",
+    borderColor: "#FFFFFF",
+    transform: [{ scale: 1.02 }],
+    elevation: 8,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+  },
+  modalCloseInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: ps(0.6),
+  },
   modalCloseBtnText: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: ps(1),
+    color: "#FFFFFF",
+    fontSize: ps(1.0),
     fontWeight: "900",
     letterSpacing: 2,
   },
-  modalCloseBtnTextFocused: { color: "#000" },
+  modalCloseBtnTextFocused: {
+    color: "#000000",
+  },
 
   // Unused legacy slots (kept to avoid import errors from other files referencing S)
   backBtn: {

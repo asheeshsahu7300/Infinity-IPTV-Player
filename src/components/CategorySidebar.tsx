@@ -1,16 +1,9 @@
 import React, { useRef, useEffect, useCallback, useMemo } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  Platform,
-} from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { THEME, pw, ph, ps } from "../theme/tokens";
+import { View, StyleSheet, FlatList, Dimensions, Animated } from 'react-native';
+import { pw, ps, THEME } from "../theme/tokens";
 import { Focusable } from "../tv";
+import { Text } from './Text';
+
 
 interface Category {
   id: string;
@@ -23,155 +16,165 @@ interface CategorySidebarProps {
   onSelect: (id: string) => void;
   onFocus?: (id: string) => void;
   width?: number;
+  height?: number;
   autoFocusFirst?: boolean;
 }
+
+const { height: SCREEN_H } = Dimensions.get("window");
+const DEFAULT_SIDEBAR_H = SCREEN_H - 64;
 
 // ─────────────────────────────────────────────
 // Styles Defined at Top to Prevent Hoisting Issues
 // ─────────────────────────────────────────────
 const S = StyleSheet.create({
   container: {
-    flex: 1,
     backgroundColor: "transparent",
-    paddingTop: ph(1),
-  },
-  sidebarHeader: {
-    paddingHorizontal: pw(2),
-    paddingVertical: ph(1.2),
-    marginBottom: ph(1),
-  },
-  sidebarLabel: {
-    color: "rgba(255,255,255,0.4)",
-    fontSize: ps(0.95),
-    fontWeight: "900",
-    letterSpacing: 2,
+    paddingTop: 0,
+    overflow: "hidden",
   },
   listContent: {
-    paddingHorizontal: pw(1.5),
-    paddingBottom: ph(8),
-  },
-  itemWrapper: {
-    marginBottom: ph(1),
-  },
-  itemContainer: {
-    height: ph(6),
-    borderRadius: ps(1),
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: pw(1.5),
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  itemContainerFocused: {
-    borderColor: "rgba(255,255,255,0.4)",
-    backgroundColor: "rgba(255,255,255,0.1)",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#fff",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.8,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 0,
-      }
-    })
+    paddingHorizontal: pw(1.2),
+    paddingTop: 2,
+    paddingBottom: 2,
   },
   itemInner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    width: "100%",
   },
   itemText: {
-    color: "rgba(255,255,255,0.5)",
-    fontSize: ps(1.15),
-    fontWeight: "600",
-    letterSpacing: 0.3,
+    color: "#FFFFFF",
+    fontSize: ps(1.1),
+    fontWeight: "800",
+    letterSpacing: 0.2,
     textAlign: "center",
   },
   itemTextActive: {
-    color: "#fff",
-    fontSize: ps(1.25),
-    fontWeight: "800",
-    letterSpacing: 0.5,
+    color: "#111111",
+    fontSize: ps(1.15),
+    fontWeight: "900",
+    letterSpacing: 0.3,
   },
 });
 
+const CategoryItem = React.memo(
+  function CategoryItem({
+    item,
+    index,
+    isActive,
+    hasTVPreferredFocus,
+    onSelect,
+    onItemFocus,
+    itemTotalHeight,
+    pillHeight,
+    trapFocusUp,
+    trapFocusDown,
+  }: {
+    item: Category;
+    index: number;
+    isActive: boolean;
+    hasTVPreferredFocus?: boolean;
+    onSelect: (id: string) => void;
+    onItemFocus: (id: string, index: number) => void;
+    itemTotalHeight: number;
+    pillHeight: number;
+    trapFocusUp?: boolean;
+    trapFocusDown?: boolean;
+  }) {
+    const scaleAnim = useRef(new Animated.Value(1)).current;
 
+    const handleSelect = useCallback(() => {
+      onSelect(item.id);
+    }, [onSelect, item.id]);
 
-const CategoryItem = React.memo(function CategoryItem({
-  item,
-  isActive,
-  hasTVPreferredFocus,
-  onSelect,
-  onFocus,
-  index,
-}: {
-  item: Category;
-  isActive: boolean;
-  hasTVPreferredFocus?: boolean;
-  onSelect: (id: string) => void;
-  onFocus?: (id: string) => void;
-  index: number;
-}) {
-  const handleSelect = useCallback(() => {
-    onSelect(item.id);
-  }, [onSelect, item.id]);
+    const handleFocus = useCallback(() => {
+      onItemFocus(item.id, index);
+    }, [onItemFocus, item.id, index]);
 
-  const handleFocus = useCallback(() => {
-    onFocus?.(item.id);
-  }, [onFocus, item.id]);
+    return (
+      <View style={{ height: itemTotalHeight, justifyContent: "center", overflow: "visible" }}>
+        <Focusable
+          screenKey="category-sidebar"
+          focusKey={String(item.id)}
+          hasTVPreferredFocus={hasTVPreferredFocus}
+          trapFocusUp={trapFocusUp}
+          trapFocusDown={trapFocusDown}
+          onPress={handleSelect}
+          onFocus={handleFocus}
+          ringOnFocus={false}
+          style={{ overflow: "visible" }}
+        >
+          {(focused) => {
+            Animated.spring(scaleAnim, {
+              toValue: focused ? 1.05 : 1,
+              friction: 7,
+              tension: 100,
+              useNativeDriver: true,
+            }).start();
 
-  return (
-    <View style={[S.itemWrapper, { overflow: "visible" }]}>
-      <Focusable
-        screenKey="category-sidebar"
-        focusKey={String(item.id)}
-        hasTVPreferredFocus={hasTVPreferredFocus}
-        onPress={handleSelect}
-        onFocus={handleFocus}
-        ringOnFocus={false}
-        style={{ overflow: "visible" }}
-      >
-        {(focused) => {
-          return (
-            <View
-              style={[
-                S.itemContainer,
-                focused && S.itemContainerFocused,
-                isActive && !focused && { backgroundColor: "rgba(255,255,255,0.15)" },
-                focused && { backgroundColor: "#fff", transform: [{ scale: 1.05 }] }
-              ]}
-            >
-              <View style={S.itemInner}>
-                <Text
-                  style={[
-                    S.itemText,
-                    (isActive || focused) && S.itemTextActive,
-                    (isActive || focused) && { color: focused ? "#000" : "#fff" }
-                  ]}
-                  numberOfLines={1}
-                >
-                  {item.name}
-                </Text>
-              </View>
-            </View>
-          );
-        }}
-      </Focusable>
-    </View>
-  );
-}, (prevProps, nextProps) => {
-  return (
-    prevProps.item.id === nextProps.item.id &&
-    prevProps.item.name === nextProps.item.name &&
-    prevProps.isActive === nextProps.isActive &&
-    prevProps.hasTVPreferredFocus === nextProps.hasTVPreferredFocus &&
-    prevProps.index === nextProps.index &&
-    prevProps.onFocus === nextProps.onFocus
-  );
-});
+            return (
+              <Animated.View
+                style={[
+                  {
+                    height: pillHeight,
+                    width: (focused || isActive) ? "100%" : "90%",
+                    alignSelf: "center",
+                    borderRadius: 18,
+                    justifyContent: "center",
+                    alignItems: "center",
+                    paddingHorizontal: pw(1.2),
+                    overflow: "hidden",
+                    borderWidth: 0,
+                    borderColor: "transparent",
+                    backgroundColor: "#17181c",
+                    transform: [{ scale: scaleAnim }],
+                  },
+                  isActive && !focused && {
+                    backgroundColor: "#F5F5F5",
+                    borderColor: "transparent",
+                  },
+                  focused && {
+                    borderColor: "transparent",
+                    backgroundColor: "#F5F5F5",
+                    elevation: 8,
+                  },
+                ]}
+              >
+                <View style={S.itemInner}>
+                  <Text
+                    style={[
+                      S.itemText,
+                      (focused || isActive)
+                        ? { color: THEME.colors.selectedText, fontWeight: "900", fontSize: ps(1.15) }
+                        : { color: THEME.colors.text },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {item.name}
+                  </Text>
+                </View>
+              </Animated.View>
+            );
+          }}
+        </Focusable>
+      </View>
+    );
+  },
+  (prev, next) => {
+    return (
+      prev.item.id === next.item.id &&
+      prev.item.name === next.item.name &&
+      prev.isActive === next.isActive &&
+      prev.hasTVPreferredFocus === next.hasTVPreferredFocus &&
+      prev.itemTotalHeight === next.itemTotalHeight &&
+      prev.pillHeight === next.pillHeight &&
+      prev.index === next.index &&
+      prev.trapFocusUp === next.trapFocusUp &&
+      prev.trapFocusDown === next.trapFocusDown
+    );
+  }
+);
 
 export default function CategorySidebar({
   categories,
@@ -179,6 +182,7 @@ export default function CategorySidebar({
   onSelect,
   onFocus,
   width = 240,
+  height,
   autoFocusFirst = false,
 }: CategorySidebarProps) {
   const flatListRef = useRef<FlatList>(null);
@@ -186,104 +190,133 @@ export default function CategorySidebar({
 
   useEffect(() => {
     isMounted.current = true;
-    return () => { isMounted.current = false; };
+    return () => {
+      isMounted.current = false;
+    };
   }, []);
+
+  const totalHeight = height && height > 0 ? height : DEFAULT_SIDEBAR_H;
+  const itemTotalHeight = Math.floor(totalHeight / 8.3);
+  const itemGap = Math.max(14, Math.floor(itemTotalHeight * 0.12));
+  const pillHeight = itemTotalHeight - itemGap;
 
   const countRef = useRef(categories.length);
   countRef.current = categories.length;
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const scrollToIndex = useCallback((index: number, animated: boolean) => {
-    if (flatListRef.current && index >= 0 && index < countRef.current) {
-      try {
-        if (index <= 2) {
-          flatListRef.current.scrollToOffset({ offset: 0, animated });
-        } else {
-          flatListRef.current.scrollToIndex({ index, animated, viewPosition: 0.2 });
-        }
-      } catch { /* ignore */ }
-    }
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    };
   }, []);
 
-  // Only scroll on an actual selection change.
-  //
-  // This used to depend on the `categories` array itself, which callers rebuild
-  // on every render — so the effect re-fired continuously and kept animating the
-  // list under the focus engine. `animated: false` for the same reason: a moving
-  // container is what makes D-pad focus land on the wrong row.
+  const currentScrollIndexRef = useRef(0);
+
+  const scrollToIndex = useCallback((index: number, immediate = false) => {
+    if (!flatListRef.current || index < 0 || index >= countRef.current) return;
+    currentScrollIndexRef.current = index;
+
+    // Focus anchored at Slot 0 (Top of the sidebar)
+    const targetOffset = index * itemTotalHeight;
+
+    if (immediate) {
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+      try {
+        flatListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
+      } catch { /* ignore */ }
+    } else {
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+      scrollTimeoutRef.current = setTimeout(() => {
+        try {
+          flatListRef.current?.scrollToOffset({ offset: targetOffset, animated: true });
+        } catch { /* ignore */ }
+      }, 16);
+    }
+  }, [itemTotalHeight]);
+
+  const isCategoryActive = useCallback((catId: string) => {
+    if (catId === selectedId) return true;
+    const sA = String(catId).trim();
+    const sB = String(selectedId).trim();
+    if (sA === sB) return true;
+    const rawA = sA.includes(":") ? sA.split(":")[1] : sA;
+    const rawB = sB.includes(":") ? sB.split(":")[1] : sB;
+    return rawA === rawB;
+  }, [selectedId]);
+
   const lastScrolledIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!selectedId || categories.length === 0) return;
     if (lastScrolledIdRef.current === selectedId) return;
     lastScrolledIdRef.current = selectedId;
 
-    const index = categories.findIndex((c) => c.id === selectedId);
+    const index = categories.findIndex((c) => isCategoryActive(c.id));
     if (index === -1) return;
-    const timer = setTimeout(() => scrollToIndex(index, false), 100);
+    const timer = setTimeout(() => scrollToIndex(index, true), 100);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, categories.length, scrollToIndex]);
+  }, [selectedId, categories.length, scrollToIndex, isCategoryActive]);
 
-  const ITEM_HEIGHT = ph(7);
-
-  // Exactly one row may claim initial focus. The old condition
-  // (`selectedId === item.id || index === 0`) matched two rows whenever the
-  // selection was not the first one, leaving which of them won up to the
-  // native focus engine.
   const preferredIndex = useMemo(() => {
     if (!autoFocusFirst) return -1;
-    const selected = categories.findIndex((c) => c.id === selectedId);
+    const selected = categories.findIndex((c) => isCategoryActive(c.id));
     return selected >= 0 ? selected : 0;
-  }, [autoFocusFirst, categories, selectedId]);
+  }, [autoFocusFirst, categories, isCategoryActive]);
 
-  // The native focus engine already scrolls a focused child into view. Doing it
-  // again from onFocus meant every D-pad press animated the list, which is what
-  // made focus feel like it was skipping rows.
+  const handleItemFocus = useCallback(
+    (id: string, index: number) => {
+      scrollToIndex(index, false);
+      onFocus?.(id);
+    },
+    [scrollToIndex, onFocus]
+  );
+
   const renderItem = useCallback(
     ({ item, index }: { item: Category; index: number }) => (
       <CategoryItem
         item={item}
-        isActive={selectedId === item.id}
+        index={index}
+        isActive={isCategoryActive(item.id)}
         hasTVPreferredFocus={index === preferredIndex}
         onSelect={onSelect}
-        onFocus={onFocus}
-        index={index}
+        onItemFocus={handleItemFocus}
+        itemTotalHeight={itemTotalHeight}
+        pillHeight={pillHeight}
+        trapFocusUp={index === 0}
+        trapFocusDown={index === categories.length - 1}
       />
     ),
-    [selectedId, preferredIndex, onSelect, onFocus]
+    [isCategoryActive, preferredIndex, onSelect, handleItemFocus, itemTotalHeight, pillHeight, categories.length]
   );
 
   return (
-    <View style={[S.container, { width }]}>
-      <View style={S.sidebarHeader}>
-        <Text style={S.sidebarLabel}>CATEGORIES</Text>
-      </View>
-
-      <View style={{ flex: 1 }}>
-        <FlatList
-          ref={flatListRef}
-          data={categories}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={S.listContent}
-          removeClippedSubviews={false}
-          initialNumToRender={12}
-          maxToRenderPerBatch={8}
-          windowSize={3}
-          updateCellsBatchingPeriod={50}
-          keyboardShouldPersistTaps="always"
-          getItemLayout={(_, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
-          onScrollToIndexFailed={(info) => {
-            setTimeout(() => {
-              if (isMounted.current && flatListRef.current) {
-                try {
-                  flatListRef.current.scrollToIndex({ index: info.index, animated: false });
-                } catch { /* list shrank in the meantime */ }
-              }
-            }, 100);
-          }}
-          renderItem={renderItem}
-        />
-      </View>
+    <View style={[S.container, { width, height: totalHeight }]}>
+      <FlatList
+        ref={flatListRef}
+        data={categories}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[S.listContent, { paddingBottom: Math.max(0, totalHeight - itemTotalHeight) }]}
+        removeClippedSubviews={false}
+        initialNumToRender={20}
+        maxToRenderPerBatch={16}
+        windowSize={11}
+        updateCellsBatchingPeriod={16}
+        scrollEventThrottle={16}
+        decelerationRate="fast"
+        keyboardShouldPersistTaps="always"
+        style={{ height: totalHeight, overflow: "hidden" }}
+        getItemLayout={(_, index) => ({ length: itemTotalHeight, offset: itemTotalHeight * index, index })}
+        onScrollToIndexFailed={(info) => {
+          setTimeout(() => {
+            if (isMounted.current && flatListRef.current) {
+              try {
+                flatListRef.current.scrollToIndex({ index: info.index, animated: false });
+              } catch { /* list shrank in the meantime */ }
+            }
+          }, 100);
+        }}
+        renderItem={renderItem}
+      />
     </View>
   );
 }

@@ -4,17 +4,15 @@
  * Implements: focus scale 1.06×, gradient border, glow shadow, 3 states
  */
 import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Animated,
-} from "react-native";
+import { View, StyleSheet, Animated } from 'react-native';
 import { Image } from "expo-image";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Focusable } from "../tv";
 import { THEME, pw, ph, ps, TILE_FRAME, TILE_FRAME_FOCUSED } from "../theme/tokens";
+import { Heart } from 'lucide-react-native';
+import { DynamicIcon } from '../components/DynamicIcon';
+import { Text } from './Text';
+
 
 export type CardAspectRatio = "16:9" | "2:3" | "1:1";
 export type CardType = "channel" | "vod" | "series";
@@ -38,10 +36,10 @@ const RATIO_MAP: Record<CardAspectRatio, number> = {
   "1:1": 1,
 };
 
-const PLACEHOLDER_ICON: Record<CardType, keyof typeof MaterialCommunityIcons.glyphMap> = {
-  channel: "television-play",
-  vod: "movie-outline",
-  series: "television-classic",
+const PLACEHOLDER_ICON: Record<CardType, string> = {
+  channel: "tv",
+  vod: "film",
+  series: "layers",
 };
 
 export const ContentCard = React.memo(function ContentCard({
@@ -87,7 +85,7 @@ export const ContentCard = React.memo(function ContentCard({
                   />
                 ) : (
                   <View style={S.placeholder}>
-                    <MaterialCommunityIcons
+                    <DynamicIcon
                       name={PLACEHOLDER_ICON[type]}
                       size={ps(2)}
                       color="rgba(255,255,255,0.15)"
@@ -106,7 +104,7 @@ export const ContentCard = React.memo(function ContentCard({
                 {/* Favourite badge */}
                 {isFavorite && (
                   <View style={S.favBadge}>
-                    <Ionicons name="heart" size={ps(1)} color="#ff2d55" />
+                    <Heart size={ps(1)} color="#ff2d55" />
                   </View>
                 )}
               </View>

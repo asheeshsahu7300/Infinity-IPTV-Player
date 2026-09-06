@@ -11,6 +11,7 @@ import {
   StyleSheet,
   View,
   ViewStyle,
+  findNodeHandle,
 } from "react-native";
 
 import { FocusMemory } from "./FocusMemory";
@@ -38,6 +39,12 @@ export interface FocusableProps {
   nextFocusDown?: number;
   nextFocusLeft?: number;
   nextFocusRight?: number;
+
+  /** Pins focus to this element when pressing directional D-pad keys */
+  trapFocusUp?: boolean;
+  trapFocusDown?: boolean;
+  trapFocusLeft?: boolean;
+  trapFocusRight?: boolean;
 
   /** Enables focus memory for this item. Both keys are required. */
   screenKey?: string;
@@ -74,6 +81,10 @@ export const Focusable = forwardRef<View, FocusableProps>(
       nextFocusDown,
       nextFocusLeft,
       nextFocusRight,
+      trapFocusUp = false,
+      trapFocusDown = false,
+      trapFocusLeft = false,
+      trapFocusRight = false,
       screenKey,
       focusKey,
       accessibilityLabel,
@@ -200,6 +211,24 @@ export const Focusable = forwardRef<View, FocusableProps>(
       }
     }, [isFocusTrapped, screenKey, focusKey]);
 
+    const hasDirectionalTraps = trapFocusUp || trapFocusDown || trapFocusLeft || trapFocusRight;
+    const [selfTag, setSelfTag] = useState<number | undefined>(undefined);
+
+    const updateSelfTag = useCallback(() => {
+      if (nativeRef.current) {
+        const tag = findNodeHandle(nativeRef.current);
+        if (tag && tag !== selfTag) {
+          setSelfTag(tag);
+        }
+      }
+    }, [selfTag]);
+
+    React.useEffect(() => {
+      if (hasDirectionalTraps) {
+        updateSelfTag();
+      }
+    });
+
     const isInsideOverlay = Boolean(overlayController);
     const lastPressTimeRef = useRef(0);
     const focusTimeRef = useRef(0);
@@ -208,6 +237,9 @@ export const Focusable = forwardRef<View, FocusableProps>(
       setFocused(true);
       focusedRef.current = true;
       focusTimeRef.current = Date.now();
+      if (hasDirectionalTraps) {
+        updateSelfTag();
+      }
       if (!isInsideOverlay && !isFocusTrapped) {
         lastFocusedRef.current = nativeRef.current;
       }
@@ -220,7 +252,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
       }
 
       onFocus?.();
-    }, [isInsideOverlay, isFocusTrapped, screenKey, focusKey, onFocus]);
+    }, [hasDirectionalTraps, updateSelfTag, isInsideOverlay, isFocusTrapped, screenKey, focusKey, onFocus]);
 
     const handleBlur = useCallback(() => {
       setFocused(false);
@@ -284,12 +316,24 @@ export const Focusable = forwardRef<View, FocusableProps>(
       {
         onSelect: handlePress,
         onLongSelect: handleLongPress,
+        onUp: trapFocusUp ? () => {
+          nativeRef.current?.focus?.();
+        } : undefined,
+        onDown: trapFocusDown ? () => {
+          nativeRef.current?.focus?.();
+        } : undefined,
+        onLeft: trapFocusLeft ? () => {
+          nativeRef.current?.focus?.();
+        } : undefined,
+        onRight: trapFocusRight ? () => {
+          nativeRef.current?.focus?.();
+        } : undefined,
       },
       {
         // Either handler is reason enough to listen: a tile that only offers a
         // long press (favourite, context menu) would otherwise never be heard.
-        enabled: focused && !isInert && Boolean(onPress || onLongPress),
-        priority: isInsideOverlay ? DPAD_PRIORITY.OVERLAY + 10 : DPAD_PRIORITY.SCREEN,
+        enabled: focused && !isInert && Boolean(onPress || onLongPress || hasDirectionalTraps),
+        priority: isInsideOverlay ? DPAD_PRIORITY.OVERLAY + 10 : (hasDirectionalTraps ? DPAD_PRIORITY.SCREEN + 2 : DPAD_PRIORITY.SCREEN),
       }
     );
 
@@ -298,11 +342,13 @@ export const Focusable = forwardRef<View, FocusableProps>(
         ? children(focused)
         : children;
 
-    // Effective next focus props: explicit props take precedence over overlay auto-tags
-    const effUp = nextFocusUp ?? overlayNextFocus.nextFocusUp;
-    const effDown = nextFocusDown ?? overlayNextFocus.nextFocusDown;
-    const effLeft = nextFocusLeft ?? overlayNextFocus.nextFocusLeft;
-    const effRight = nextFocusRight ?? overlayNextFocus.nextFocusRight;
+    const resolvedSelfTag = selfTag ?? (nativeRef.current ? (findNodeHandle(nativeRef.current) ?? undefined) : undefined);
+
+    // Effective next focus props: explicit props take precedence over overlay auto-tags and directional traps
+    const effUp = nextFocusUp ?? (trapFocusUp ? resolvedSelfTag : overlayNextFocus.nextFocusUp);
+    const effDown = nextFocusDown ?? (trapFocusDown ? resolvedSelfTag : overlayNextFocus.nextFocusDown);
+    const effLeft = nextFocusLeft ?? (trapFocusLeft ? resolvedSelfTag : overlayNextFocus.nextFocusLeft);
+    const effRight = nextFocusRight ?? (trapFocusRight ? resolvedSelfTag : overlayNextFocus.nextFocusRight);
 
     return (
       <Pressable

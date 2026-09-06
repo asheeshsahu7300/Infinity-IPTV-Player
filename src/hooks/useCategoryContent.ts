@@ -19,8 +19,12 @@ export interface CategorizedItem {
   categoryId?: string;
 }
 
-export const isAllCategory = (categoryId?: string): boolean =>
-  !categoryId || categoryId === "all" || categoryId === "*";
+export const isAllCategory = (categoryId?: string): boolean => {
+  if (!categoryId) return false;
+  const s = String(categoryId).trim().toLowerCase();
+  const raw = s.includes(":") ? s.split(":")[1] : s;
+  return raw === "all" || raw === "*";
+};
 
 /**
  * Filter `items` to one category.
@@ -36,27 +40,46 @@ export function filterByCategory<T extends CategorizedItem>(
 ): T[] {
   if (isAllCategory(categoryId)) return items;
 
-  const target = String(categoryId);
+  const target = String(categoryId || "").trim();
+  if (!target) {
+    return [];
+  }
+
   const rawTarget = target.includes(":") ? target.split(":")[1] : target;
-  const match = categories.find(
-    (c) => String(c.id) === target || String(c.id) === rawTarget || String(c.id).split(":")[1] === rawTarget
-  );
-  const matchName = match?.name?.toLowerCase();
+  const match = categories.find((c) => {
+    const cId = String(c.id || "").trim();
+    const rawCId = cId.includes(":") ? cId.split(":")[1] : cId;
+    return cId === target || rawCId === rawTarget || cId === rawTarget;
+  });
+  const matchName = match?.name?.trim().toLowerCase();
 
   return items.filter((item) => {
-    const itemCatId = String(item.categoryId ?? "");
-    const rawItemCatId = itemCatId.includes(":") ? itemCatId.split(":")[1] : itemCatId;
+    const rawCatId = item.categoryId != null ? String(item.categoryId).trim() : "";
+    const cleanItemCatId = rawCatId.includes(":") ? rawCatId.split(":")[1] : rawCatId;
 
-    if (
-      itemCatId === target ||
-      itemCatId === rawTarget ||
-      rawItemCatId === target ||
-      (rawTarget && rawItemCatId === rawTarget)
-    ) {
-      return true;
+    // 1. If item has a categoryId, match STRICTLY on categoryId
+    if (cleanItemCatId) {
+      if (cleanItemCatId === rawTarget || rawCatId === target || cleanItemCatId === target) {
+        return true;
+      }
+      // For M3U where categoryId might store the category title string
+      if (matchName && cleanItemCatId.toLowerCase() === matchName) {
+        return true;
+      }
+      return false;
     }
 
-    if (matchName && item.category?.toLowerCase() === matchName) return true;
+    // 2. Fallback to category name ONLY if item has no categoryId
+    if (item.category) {
+      const itemCatName = String(item.category).trim().toLowerCase();
+      if (matchName && itemCatName === matchName) {
+        return true;
+      }
+      if (itemCatName === target.toLowerCase() || itemCatName === rawTarget.toLowerCase()) {
+        return true;
+      }
+    }
+
     return false;
   });
 }
@@ -73,7 +96,7 @@ export interface AdoptStoreContentOptions<T extends CategorizedItem> {
   /** Current category id, by ref so adopting never re-runs on a category change. */
   categoryRef: React.MutableRefObject<string>;
   categories: Category[];
-  pageSize: number;
+  pageSize?: number;
   /**
    * `true` for portals that serve everything in one request (Xtream, M3U), where
    * the screen slices a cached full list. `false` for Stalker/MAG, which
@@ -146,6 +169,7 @@ export function useAdoptStoreContent<T extends CategorizedItem>({
     if (filtered.length === 0) return;
 
     l.fullListRef.current = filtered;
-    l.onAdopt(filtered.slice(0, l.pageSize), filtered.length);
+    const itemsToAdopt = l.pageSize ? filtered.slice(0, l.pageSize) : filtered;
+    l.onAdopt(itemsToAdopt, filtered.length);
   }, [storeItems.length]);
 }

@@ -1,20 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  ScrollView,
-  Dimensions,
-  TouchableOpacity,
-  Platform,
-  KeyboardAvoidingView,
-  Image,
-  BackHandler,
-  Keyboard,
-} from "react-native";
+import { View, StyleSheet, ScrollView, Dimensions, TouchableOpacity, Platform, KeyboardAvoidingView, Image, BackHandler, Keyboard , TextInput as RNTextInput} from 'react-native';
 import { useRouter } from "expo-router";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Server, Cloud, List } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import MaskedView from "@react-native-masked-view/masked-view";
@@ -24,49 +11,17 @@ import { portalApi, formatMac } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import LoadingOverlay from "../src/components/LoadingOverlay";
-import { CinematicBackground } from "../src/components/CinematicBackground";
 import { useDialog } from "../src/components/ConfirmDialog";
-import { isTV } from "../src/utils/tvUtils";
+import { safeBack } from "../src/services/safeNavigation";
 import { Focusable } from "../src/tv";
 
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { Text } from '../src/components/Text';
+import { TextInput } from '../src/components/TextInput';
 
-/** Breathing room left between a focused field and the top of the keyboard. */
-const KEYBOARD_GAP = ph(3);
 
-const { height: WINDOW_H } = Dimensions.get("window");
 
-/**
- * Share of the screen the IME is assumed to cover when the platform reports no
- * keyboard metrics.
- *
- * Android derives `keyboardDidShow` from the root view's height changing, and
- * under Android 15 edge-to-edge the window is never resized — so on this app
- * the event does not fire at all and `endCoordinates` is never available. The
- * fields still have to get out from under the IME, so when there are no real
- * metrics we assume a generously tall keyboard instead. A too-large assumption
- * only over-scrolls slightly; a too-small one leaves the field hidden.
- */
-const ASSUMED_KEYBOARD_FRACTION = 0.55;
-
-/** Focus targets that raise the IME. Buttons in the same form must not. */
-const TEXT_FIELDS = new Set(["name", "url", "username", "password", "mac"]);
-
-// ─── Gradient text ────────────────────────────────────────────────────────────
-const GradientText = ({
-  text,
-  isActive,
-  style,
-}: {
-  text: string;
-  isActive: boolean;
-  style: any;
-}) => {
-  if (!isActive) return <Text style={style}>{text}</Text>;
-  return <Text style={[style, { color: "#fff", textShadowColor: "rgba(255,255,255,0.5)", textShadowRadius: 8 }]}>{text}</Text>;
-};
-
-// ─── Card with gradient border on focus ──────────────────────────────────────
+// ─── Card with focus state (reduced border radius, borderless #17181c) ───────
 type CardType = "m3u" | "xtream" | "mag";
 
 const GradientBorderCard = ({
@@ -88,8 +43,7 @@ const GradientBorderCard = ({
   children: React.ReactNode;
 }) => {
   const focused = focusedField === id;
-  const RADIUS = pw(2);
-  const BORDER = 1.5; // ~2 px on a 1080p TV
+  const RADIUS = 18;
 
   return (
     <Focusable
@@ -100,57 +54,36 @@ const GradientBorderCard = ({
       ringOnFocus={false}
       style={[
         {
-          width: isTV ? "30%" : "100%",
-          aspectRatio: isTV ? 1 : undefined,
-          minHeight: isTV ? undefined : ph(28),
+          width: "30%",
+          aspectRatio: 1,
           borderRadius: RADIUS,
+          backgroundColor: focused ? "#FFFFFF" : "#17181c",
+          borderWidth: 0,
+          borderColor: "transparent",
+          overflow: "hidden",
         },
         focused && {
           transform: [{ scale: 1.05 }],
-          ...Platform.select({
-            ios: {
-              shadowColor: "#fff",
-              shadowOffset: { width: 0, height: 0 },
-              shadowOpacity: 0.55,
-              shadowRadius: pw(1.2),
-            },
-            android: {
-              elevation: 0,
-            }
-          })
         },
       ]}
     >
-      <BlurView
-        intensity={focused ? 40 : 20}
-        tint="dark"
+      <View
         style={{
           flex: 1,
           borderRadius: RADIUS,
-          borderWidth: focused ? BORDER : 1,
-          borderColor: focused ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.05)",
-          overflow: "hidden",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: pw(2.8),
         }}
       >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: focused ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.02)",
-            borderRadius: RADIUS,
-            alignItems: "center",
-            justifyContent: "center",
-            padding: pw(2.8),
-          }}
-        >
-          {children}
-        </View>
-      </BlurView>
+        {children}
+      </View>
     </Focusable>
   );
 };
 
-// ─── Input with gradient border on focus ─────────────────────────────────────
-const GradientBorderInput = ({
+// ─── Input with focus ring (reduced border radius) ──────────────────────────
+const ThemedInput = ({
   isFocused,
   children,
   style,
@@ -159,34 +92,29 @@ const GradientBorderInput = ({
   children: React.ReactNode;
   style?: any;
 }) => {
-  const RADIUS = pw(1.2);
-  const BORDER = 1.5;
-
   return (
     <View
-      style={[{
-        borderRadius: RADIUS,
-        borderWidth: isFocused ? BORDER : 0,
-        borderColor: isFocused ? "#fff" : "transparent",
-        overflow: "hidden",
-        width: "100%",
-      }, style]}
+      style={[
+        S.inputBox,
+        isFocused && S.inputBoxFocused,
+        style,
+      ]}
     >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          backgroundColor: "rgba(20, 19, 24, 0.6)",
-          borderRadius: isFocused ? RADIUS - BORDER : RADIUS,
-          paddingHorizontal: pw(2),
-          width: "100%",
-        }}
-      >
-        {children}
-      </View>
+      {children}
     </View>
   );
 };
+
+// ─── Original Brand Logo Header ──────────────────────────────────────────────
+const BrandHeader = () => (
+  <View style={S.brandHeader}>
+    <Image
+      source={require("../assets/images/TV.png")}
+      style={S.brandLogoImage}
+      resizeMode="contain"
+    />
+  </View>
+);
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export default function AddPortalScreen() {
@@ -198,12 +126,12 @@ export default function AddPortalScreen() {
   const deletePortal = usePortalStore((s) => s.deletePortal);
 
   const [step, setStep] = useState<1 | 2>(1);
-  const [type, setType] = useState<CardType>("m3u");
+  const [type, setType] = useState<CardType>("mag");
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [mac, setMac] = useState("00:1A:79:");
+  const [mac, setMac] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
 
@@ -226,11 +154,11 @@ export default function AddPortalScreen() {
     return () => clearTimeout(timer);
   }, [step]);
 
-  const nameInputRef = useRef<TextInput>(null);
-  const urlInputRef = useRef<TextInput>(null);
-  const userInputRef = useRef<TextInput>(null);
-  const passInputRef = useRef<TextInput>(null);
-  const macInputRef = useRef<TextInput>(null);
+  const nameInputRef = useRef<RNTextInput>(null);
+  const urlInputRef = useRef<RNTextInput>(null);
+  const userInputRef = useRef<RNTextInput>(null);
+  const passInputRef = useRef<RNTextInput>(null);
+  const macInputRef = useRef<RNTextInput>(null);
 
   // `Alert.alert` is unusable here: on an Android TV release build it does not
   // reliably surface, and the D-pad cannot reach its buttons — so a failed
@@ -252,7 +180,6 @@ export default function AddPortalScreen() {
   );
 
   const validateInputs = useCallback(() => {
-    if (!name.trim()) { showError("Enter a name for this portal."); return false; }
     if (!url.trim()) { showError("Enter the portal URL."); return false; }
     if (type === "xtream" && (!username.trim() || !password.trim())) {
       showError("Xtream Codes requires both a username and a password.");
@@ -266,7 +193,7 @@ export default function AddPortalScreen() {
       }
     }
     return true;
-  }, [name, url, type, username, password, mac, showError]);
+  }, [url, type, username, password, mac, showError]);
 
   const handleSaveAndConnect = useCallback(async () => {
     if (!validateInputs()) return;
@@ -274,25 +201,26 @@ export default function AddPortalScreen() {
       setIsLoading(true);
       setLoadingMessage("Connecting...");
       const id = Date.now().toString();
+      const portalName = name.trim() || "TV";
       let portal: any;
       if (type === "m3u") {
         const api = new M3UApi({ url });
         const result = await api.login();
         if (!result.ok) throw new Error(result.error || "Invalid M3U playlist");
-        portal = { id, name, type, config: { url } };
+        portal = { id, name: portalName, type, config: { url } };
       } else if (type === "xtream") {
         const api = new XtreamApi({ url, username, password });
         await api.login();
-        portal = { id, name, type, config: { url, username, password } };
+        portal = { id, name: portalName, type, config: { url, username, password } };
       } else {
         const formattedMac = formatMac(mac);
         const base = {
-          id, name, type: "mag" as const,
+          id, name: portalName, type: "mag" as const,
           config: { url: url.trim(), mac: formattedMac },
         };
         const { token, expiry, serverInfo } = await portalApi.authenticate(base);
         portal = {
-          id, name, type,
+          id, name: portalName, type,
           config: { url: url.trim(), mac: formattedMac, token, expiry, serverInfo },
         };
       }
@@ -322,111 +250,28 @@ export default function AddPortalScreen() {
       setStep(1);
       return true;
     }
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/portals");
-    }
-    return true;
-  }, [step, router]);
+    return safeBack();
+  }, [step]);
 
-  // ── Keyboard ───────────────────────────────────────────────────────────────
-  // The IME is handled entirely off *focus*, not off keyboard events, because
-  // on this app there are none to work with (see ASSUMED_KEYBOARD_FRACTION).
-  // Two things are needed and neither happens by itself:
-  //   1. scroll range — the form is vertically centred, so the content exactly
-  //      fills the viewport and nothing can be scrolled anywhere;
-  //   2. the scroll itself — `adjustResize` no longer resizes the window, so
-  //      the system never lifts the focused input above the keyboard.
-  // So while a text field holds focus the form is top-aligned with the
-  // keyboard's height reserved beneath it, and the field is scrolled up by its
-  // measured overlap with the keyboard. Real keyboard metrics are still used
-  // when the platform provides them; they just aren't required.
-
+  // ── Keyboard & Back Handling ───────────────────────────────────────────────
   // Track whether the software keyboard is currently visible so that
   // hardware-back while the keyboard is open is NOT intercepted — Android
-  // will dismiss the keyboard first (its default behaviour).  Only once the
-  // keyboard is gone do we intercept the next back press for step/nav logic.
+  // will dismiss the keyboard first (its default behaviour).
   const keyboardVisibleRef = useRef(false);
-  /** Top edge of the keyboard in screen coordinates, when the platform says. */
-  const keyboardTopRef = useRef<number | null>(null);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-
   const scrollRef = useRef<ScrollView>(null);
-  const scrollOffsetRef = useRef(0);
-  /** The TextInput holding focus, so the effect below can still reach it. */
-  const activeInputRef = useRef<TextInput | null>(null);
-
-  const textFieldFocused = focusedField !== null && TEXT_FIELDS.has(focusedField);
-  // iOS is exempt: the root KeyboardAvoidingView already shrinks the layout.
-  const liftForKeyboard = Platform.OS !== "ios" && textFieldFocused;
-  const keyboardReserve = keyboardHeight > 0 ? keyboardHeight : WINDOW_H * ASSUMED_KEYBOARD_FRACTION;
-
-  const ensureInputVisible = useCallback(() => {
-    const input = activeInputRef.current;
-    if (!input) return;
-    const keyboardTop = keyboardTopRef.current ?? WINDOW_H * (1 - ASSUMED_KEYBOARD_FRACTION);
-
-    // A frame's grace so native layout has picked up the reserved bottom
-    // padding — until it has, `scrollTo` is clamped to the old content size.
-    requestAnimationFrame(() => {
-      input.measureInWindow?.((_x, y, _w, height) => {
-        const overlap = y + height + KEYBOARD_GAP - keyboardTop;
-        if (overlap <= 0) return;
-        scrollRef.current?.scrollTo({ y: scrollOffsetRef.current + overlap, animated: true });
-      });
-    });
-  }, []);
 
   useEffect(() => {
-    const show = Keyboard.addListener("keyboardDidShow", (e) => {
+    const show = Keyboard.addListener("keyboardDidShow", () => {
       keyboardVisibleRef.current = true;
-      const height = e.endCoordinates?.height ?? 0;
-      keyboardTopRef.current = e.endCoordinates?.screenY ?? WINDOW_H - height;
-      setKeyboardHeight(height);
     });
     const hide = Keyboard.addListener("keyboardDidHide", () => {
       keyboardVisibleRef.current = false;
-      keyboardTopRef.current = null;
-      setKeyboardHeight(0);
-      // The IME can be dismissed while its field keeps focus (its own ✓ or Back
-      // key). Dropping focus as well routes that through the same un-lift path
-      // below, so the layout never disagrees with what is on screen.
-      activeInputRef.current?.blur?.();
     });
     return () => { show.remove(); hide.remove(); };
   }, []);
 
-  // Post-commit, so the reserved padding — and the scroll range it creates —
-  // already exists. Keyed on the focused field so moving between fields
-  // re-scrolls, and on keyboardHeight so real metrics refine the result on
-  // platforms that report them.
-  useEffect(() => {
-    if (focusedField === null || !TEXT_FIELDS.has(focusedField)) return;
-    ensureInputVisible();
-  }, [focusedField, keyboardHeight, ensureInputVisible]);
-
-  // Keyboard gone: undo the lift. Without this the form stays parked wherever
-  // the last field scrolled it to, and re-centring alone would not bring it
-  // back — the reserved padding disappears, but the scroll offset does not.
-  // Guarded on the lifted→not-lifted transition so it never fights the user on
-  // mount or when stepping between screens.
-  const wasLiftedRef = useRef(false);
-  useEffect(() => {
-    if (textFieldFocused) {
-      wasLiftedRef.current = true;
-      return;
-    }
-    if (!wasLiftedRef.current) return;
-    wasLiftedRef.current = false;
-    scrollOffsetRef.current = 0;
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
-  }, [textFieldFocused]);
-
-  /** Records which input holds focus; the effect above does the scrolling. */
-  const handleInputFocus = useCallback((field: string, input: TextInput | null) => {
+  const handleInputFocus = useCallback((field: string) => {
     setFocusedField(field);
-    activeInputRef.current = input;
   }, []);
 
   // Register hardware back handler for Android TV / Android
@@ -439,254 +284,230 @@ export default function AddPortalScreen() {
     return () => sub.remove();
   }, [handleBack]);
 
+
   // OK is delivered via each Pressable's onPress when focused.
 
   // ── STEP 1 ──────────────────────────────────────────────────────────────────
   const renderStep1 = () => (
     <View style={S.step1Container}>
-      <View style={S.logoRow}>
-        <Image source={require("../assets/images/TV.png")} style={S.mainLogoImage} resizeMode="contain" />
-      </View>
-
-      <Text style={S.step1Subtitle}>
-        Select your preferred connection method to begin your{"\n"}
-      </Text>
+      <BrandHeader />
 
       <View style={S.cardsContainer}>
         {(
           [
             {
-              id: "select-type-m3u",
-              icon: "format-list-bulleted",
-              title: "M3U Playlist",
-              desc: "Upload an M3U file or provide a remote URL to load your channel lists.",
-              t: "m3u",
+              id: "select-type-mag",
+              icon: Server,
+              title: "STB Portal",
+              desc: "Connect via MAC address and portal URL. Optimised for legacy STB setups.",
+              t: "mag",
             },
             {
               id: "select-type-xtream",
-              icon: "cloud-sync",
-              title: "Xtream Codes API",
+              icon: Cloud,
+              title: "Xtream Codes",
               desc: "Log in with your server URL, username, and password for a fully synced experience.",
               t: "xtream",
             },
             {
-              id: "select-type-mag",
-              icon: "router-wireless",
-              title: "MAC Portal",
-              desc: "Connect via MAC address and portal URL. Optimised for legacy STB setups.",
-              t: "mag",
+              id: "select-type-m3u",
+              icon: List,
+              title: "M3U Playlist",
+              desc: "Upload an M3U file or provide a remote URL to load your channel lists.",
+              t: "m3u",
             },
           ] as { id: string; icon: any; title: string; desc: string; t: CardType }[]
-        ).map(({ id, icon, title, desc, t }) => (
-          <GradientBorderCard
-            key={id}
-            id={id}
-            focusedField={focusedField}
-            // M3U is the most common connection method, so it owns step 1's
-            // initial focus.
-            preferred={focusFirstCard && t === "m3u"}
-            onPress={() => { setType(t); setStep(2); }}
-            onFocus={() => setFocusedField(id)}
-            onBlur={() => setFocusedField(null)}
-          >
-            <View style={S.darkCardIconWrapper}>
-              <MaterialCommunityIcons name={icon} size={isTV ? ps(2.4) : 28} color={focusedField === id ? "#fff" : "rgba(255,255,255,0.7)"} />
-            </View>
-            <GradientText
-              text={title}
-              isActive={focusedField === id}
-              style={S.darkCardTitle}
-            />
-            <Text style={[S.darkCardDesc, focusedField === id && { color: "#fff" }]}>{desc}</Text>
-          </GradientBorderCard>
-        ))}
+        ).map(({ id, icon: IconComponent, title, desc, t }) => {
+          const isFocused = focusedField === id;
+          return (
+            <GradientBorderCard
+              key={id}
+              id={id}
+              focusedField={focusedField}
+              preferred={focusFirstCard && t === "mag"}
+              onPress={() => { setType(t); setStep(2); }}
+              onFocus={() => setFocusedField(id)}
+              onBlur={() => setFocusedField(null)}
+            >
+              <View style={S.darkCardIconWrapper}>
+                <IconComponent size={ps(3)} color={isFocused ? "#000000" : "rgba(255,255,255,0.75)"} />
+              </View>
+              <Text style={[S.darkCardTitle, isFocused && { color: "#000000" }]}>
+                {title}
+              </Text>
+              <Text style={[S.darkCardDesc, isFocused && { color: "rgba(0,0,0,0.65)" }]}>{desc}</Text>
+            </GradientBorderCard>
+          );
+        })}
       </View>
     </View>
   );
 
   // ── STEP 2 ──────────────────────────────────────────────────────────────────
   const renderStep2 = () => {
-    const titleMap = { m3u: "M3U Playlist", xtream: "Xtream Codes API", mag: "MAC Portal" };
-    return (
-      <View style={[S.premiumStep2Container, liftForKeyboard && S.premiumStep2ContainerLifted]}>
-        <View style={S.premiumFormCard}>
-          <Text style={S.premiumFormTitle}>Connect via {titleMap[type]}</Text>
-          <Text style={S.premiumFormSubtitle}>
-            Enter your streaming credentials
-            {type === "m3u" ? " or import a playlist file" : ""} to access your personalised library.
-          </Text>
+    const portalTitleMap: Record<CardType, string> = {
+      mag: "STB Portal",
+      xtream: "Xtream Codes",
+      m3u: "M3U Playlist",
+    };
 
-          {/* Name */}
-          <View style={S.premiumInputGroup}>
-            <Text style={S.premiumLabel}>{type === "m3u" ? "PLAYLIST NAME" : "PORTAL NAME"}</Text>
-            <GradientBorderInput isFocused={focusedField === "name"}>
-              <TextInput
-                ref={nameInputRef}
-                style={S.premiumInput}
-                placeholder={type === "m3u" ? "e.g. My Premium Streams" : "My IPTV Portal"}
-                placeholderTextColor="#555"
-                value={name}
-                onChangeText={setName}
-                onFocus={() => handleInputFocus("name", nameInputRef.current)}
-                onBlur={() => setFocusedField(null)}
-              />
-            </GradientBorderInput>
+    return (
+      <View style={S.ventoxStep2Container}>
+        {/* Top Header with original logo */}
+        <BrandHeader />
+
+        {/* 2-Column Split Layout */}
+        <View style={S.ventoxTwoColRow}>
+          {/* Left Column */}
+          <View style={S.ventoxLeftCol}>
+            <Text style={S.ventoxHeadlinePre}>Start watching with</Text>
+            <Text style={S.ventoxHeadlineMain}>{portalTitleMap[type]}</Text>
           </View>
 
-          {/* URL */}
-          <View style={S.premiumInputGroup}>
-            <Text style={S.premiumLabel}>{type === "m3u" ? "M3U URL" : "PORTAL URL"}</Text>
-            <GradientBorderInput isFocused={focusedField === "url"}>
+          {/* Right Column */}
+          <View style={S.ventoxRightCol}>
+            {/* Name input */}
+            <ThemedInput isFocused={focusedField === "name"}>
+              <TextInput
+                ref={nameInputRef}
+                style={S.textInput}
+                placeholder="TV"
+                placeholderTextColor="rgba(255, 255, 255, 0.65)"
+                value={name}
+                onChangeText={setName}
+                onFocus={() => handleInputFocus("name")}
+                onBlur={() => setFocusedField((cur) => (cur === "name" ? null : cur))}
+                returnKeyType="default"
+                autoCorrect={false}
+                autoCapitalize="words"
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </ThemedInput>
+
+            {/* URL input */}
+            <ThemedInput isFocused={focusedField === "url"}>
               <TextInput
                 ref={urlInputRef}
-                style={S.premiumInput}
-                placeholder={
-                  type === "m3u"
-                    ? "http://example.com/playlist.m3u"
-                    : "http://example.com:8080"
-                }
-                placeholderTextColor="#555"
+                style={S.textInput}
+                placeholder={type === "m3u" ? "http://livebox.pro/playlist.m3u" : "http://livebox.pro/"}
+                placeholderTextColor="rgba(255, 255, 255, 0.65)"
                 value={url}
                 onChangeText={setUrl}
-                onFocus={() => handleInputFocus("url", urlInputRef.current)}
-                onBlur={() => setFocusedField(null)}
+                onFocus={() => handleInputFocus("url")}
+                onBlur={() => setFocusedField((cur) => (cur === "url" ? null : cur))}
+                returnKeyType="default"
                 autoCorrect={false}
                 autoCapitalize="none"
                 spellCheck={false}
                 autoComplete="off"
               />
-              <Ionicons
-                name="link"
-                size={ps(1.8)}
-                color={focusedField === "url" ? "#fff" : "#555"}
-                style={{ marginLeft: pw(1) }}
-              />
-            </GradientBorderInput>
-          </View>
+            </ThemedInput>
 
-          {/* Xtream */}
-          {type === "xtream" &&
-            (["username", "password"] as const).map((field) => {
-              const ref = field === "username" ? userInputRef : passInputRef;
-              return (
-                <View key={field} style={S.premiumInputGroup}>
-                  <Text style={S.premiumLabel}>{field.toUpperCase()}</Text>
-                  <GradientBorderInput isFocused={focusedField === field}>
-                    <TextInput
-                      ref={ref}
-                      style={S.premiumInput}
-                      placeholder={field}
-                      placeholderTextColor="#555"
-                      secureTextEntry={field === "password"}
-                      value={field === "username" ? username : password}
-                      onChangeText={field === "username" ? setUsername : setPassword}
-                      onFocus={() => handleInputFocus(field, ref.current)}
-                      onBlur={() => setFocusedField(null)}
-                      autoCorrect={false}
-                      autoCapitalize="none"
-                      spellCheck={false}
-                      autoComplete="off"
-                    />
-                  </GradientBorderInput>
-                </View>
-              );
-            })}
+            {/* Xtream specific inputs */}
+            {type === "xtream" && (
+              <>
+                <ThemedInput isFocused={focusedField === "username"}>
+                  <TextInput
+                    ref={userInputRef}
+                    style={S.textInput}
+                    placeholder="Username"
+                    placeholderTextColor="rgba(255, 255, 255, 0.65)"
+                    value={username}
+                    onChangeText={setUsername}
+                    onFocus={() => handleInputFocus("username")}
+                    onBlur={() => setFocusedField((cur) => (cur === "username" ? null : cur))}
+                    returnKeyType="default"
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                </ThemedInput>
 
-          {/* MAG */}
-          {type === "mag" && (
-            <View style={S.premiumInputGroup}>
-              <Text style={S.premiumLabel}>MAC ADDRESS</Text>
-              <GradientBorderInput isFocused={focusedField === "mac"}>
+                <ThemedInput isFocused={focusedField === "password"}>
+                  <TextInput
+                    ref={passInputRef}
+                    style={S.textInput}
+                    placeholder="Password"
+                    placeholderTextColor="rgba(255, 255, 255, 0.65)"
+                    secureTextEntry
+                    value={password}
+                    onChangeText={setPassword}
+                    onFocus={() => handleInputFocus("password")}
+                    onBlur={() => setFocusedField((cur) => (cur === "password" ? null : cur))}
+                    returnKeyType="default"
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                </ThemedInput>
+              </>
+            )}
+
+            {/* MAG specific MAC input */}
+            {type === "mag" && (
+              <ThemedInput isFocused={focusedField === "mac"}>
                 <TextInput
                   ref={macInputRef}
-                  style={S.premiumInput}
-                  placeholder="00:1A:79:XX:XX:XX"
-                  placeholderTextColor="#555"
+                  style={S.textInput}
+                  placeholder="00:1a:79:bc:ad:4a"
+                  placeholderTextColor="rgba(255, 255, 255, 0.65)"
                   value={mac}
                   onChangeText={setMac}
-                  onFocus={() => handleInputFocus("mac", macInputRef.current)}
+                  onFocus={() => handleInputFocus("mac")}
                   onBlur={() => {
-                    setFocusedField(null);
-                    setMac((prev) => formatMac(prev));
+                    setFocusedField((cur) => (cur === "mac" ? null : cur));
+                    setMac((prev) => (prev ? formatMac(prev) : ""));
                   }}
+                  returnKeyType="default"
                   autoCorrect={false}
                   autoCapitalize="characters"
                   spellCheck={false}
                   autoComplete="off"
                 />
-              </GradientBorderInput>
-            </View>
-          )}
+              </ThemedInput>
+            )}
 
-
-
-          {/* Action buttons */}
-          <View style={S.actionRow}>
-            {/* Save & Connect */}
+            {/* Add Button - Black & White Theme */}
             <Focusable
               onPress={handleSaveAndConnect}
               onFocus={() => setFocusedField("save-connect")}
               onBlur={() => setFocusedField(null)}
               ringOnFocus={false}
               style={[
-                S.connectBtnWrapper,
-                focusedField === "save-connect" && { transform: [{ scale: 1.04 }] },
+                S.themeAddBtn,
+                focusedField === "save-connect" && S.themeAddBtnFocused,
               ]}
             >
-              {(focused) => (
-                <BlurView
-                  intensity={focused ? 0 : 40}
-                  tint="dark"
-                  style={[S.connectBtnGradient, focused && { backgroundColor: "#fff" }]}
-                >
-                  <Text style={[S.connectBtnText, focused && { color: "#000" }]}>Connect Playlist</Text>
-                </BlurView>
-              )}
+              <Text
+                style={[
+                  S.themeAddBtnText,
+                  focusedField === "save-connect" && S.themeAddBtnTextFocused,
+                ]}
+              >
+                Add
+              </Text>
             </Focusable>
-
           </View>
-
-          <Text style={S.premiumFooterWarning}>
-            Infinity IPTV Player TV DOES NOT HOST ANY CONTENT. ENSURE YOU HAVE THE LEGAL RIGHT TO USE YOUR PLAYLIST.
-          </Text>
         </View>
       </View>
     );
   };
 
   // ── Root ─────────────────────────────────────────────────────────────────────
-  // On Android, KeyboardAvoidingView with behavior="height" physically shrinks
-  // the container when the keyboard opens, and does NOT reliably restore its
-  // height when the keyboard dismisses — causing a blank-screen layout. Android
-  // instead reserves the keyboard's height inside the ScrollView (see the
-  // keyboard section above), which leaves the root layout untouched.
   const rootStyle = [S.container, { paddingTop: insets.top }];
   const inner = (
     <>
-      <CinematicBackground />
-
       {isLoading && <LoadingOverlay message={loadingMessage} />}
-
-      {step === 2 && (
-        <View style={S.premiumHeader}>
-          <Image source={require("../assets/images/TV.png")} style={S.headerLogoImage} resizeMode="contain" />
-        </View>
-      )}
 
       <ScrollView
         ref={scrollRef}
         style={S.content}
-        contentContainerStyle={[
-          S.scrollContent,
-          // Centred content gives the ScrollView zero scroll range, so while the
-          // keyboard is up the form is top-aligned and the keyboard's height is
-          // reserved below it.
-          liftForKeyboard && { justifyContent: "flex-start", paddingBottom: keyboardReserve + ph(4) },
-        ]}
+        contentContainerStyle={S.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        onScroll={(e) => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
-        scrollEventThrottle={16}
       >
         {step === 1 ? renderStep1() : renderStep2()}
       </ScrollView>
@@ -696,28 +517,18 @@ export default function AddPortalScreen() {
     </>
   );
 
-  return Platform.OS === "ios" ? (
-    <KeyboardAvoidingView style={rootStyle} behavior="padding">
-      {inner}
-    </KeyboardAvoidingView>
-  ) : (
+  return (
     <View style={rootStyle}>{inner}</View>
   );
 }
 
 // ─── StyleSheet ───────────────────────────────────────────────────────────────
-// Rules:
-//   • All layout sizes  → pw() / ph() / ps()
-//   • borderWidth 1–2   → kept absolute (hairlines; scaling would break them)
-//   • elevation         → kept absolute (Android Z-axis; unitless)
-//   • letterSpacing     → kept small absolute (sub-pixel fine-tuning)
-//   • opacity / scale   → unitless ratios, kept as-is
 const S = StyleSheet.create({
 
   // ── Root ──────────────────────────────────────────────────────────────────
   container: {
     flex: 1,
-    backgroundColor: "transparent",
+    backgroundColor: "#000000",
   },
   content: {
     flex: 1,
@@ -731,273 +542,147 @@ const S = StyleSheet.create({
     width: "100%",
   },
 
-  // ── Step-1 back (mobile) ─────────────────────────────────────────────────
-  step1BackButton: {
-    position: "absolute",
-    top: ph(5),
-    left: pw(2),
-    zIndex: 10,
-    width: pw(5),
-    height: pw(5),
-    justifyContent: "center",
+  // ── Brand Header (Original Theme) ─────────────────────────────────────────
+  brandHeader: {
     alignItems: "center",
+    justifyContent: "center",
+    height: ph(12),
+    marginTop: -ph(5),
+    marginBottom: ph(6),
+  },
+  brandLogoImage: {
+    width: pw(40),
+    height: ph(12),
+    transform: [{ scale: 2.6 }],
   },
 
   // ── Step 1 ───────────────────────────────────────────────────────────────
   step1Container: {
     alignItems: "center",
-    marginTop: ph(4),
+    marginTop: ph(2),
     width: "100%",
-    maxWidth: isTV ? pw(90) : "100%",
+    maxWidth: pw(90),
     alignSelf: "center",
     paddingBottom: ph(2),
   },
-  logoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: pw(1),
-    marginBottom: ph(1.8),
-  },
-  logoTitle: {
-    color: "#fff",
-    fontSize: ps(2.5),
-    fontWeight: "500",
-    letterSpacing: 2,
-  },
-  mainLogoImage: {
-    width: pw(30),
-    height: ph(20),
-    transform: [{ scale: 1.5 }],
-  },
-  headerLogoImage: {
-    width: pw(25),
-    height: ph(8),
-    transform: [{ scale: 2.5 }],
-  },
-  step1Subtitle: {
-    fontSize: ps(1.6),
-    color: "#a0a4b8",
-    textAlign: "center",
-    marginBottom: ph(6),
-    lineHeight: ph(3.2),
-  },
-  premiumText: {
-    color: THEME.colors.primary,
-    fontWeight: "800",
-  },
   cardsContainer: {
-    flexDirection: isTV ? "row" : "column",
+    flexDirection: "row",
     gap: pw(2.5),
     width: "100%",
     justifyContent: "center",
-    alignItems: isTV ? "stretch" : "center",
-    paddingHorizontal: isTV ? pw(5) : 0,
+    alignItems: "stretch",
+    paddingHorizontal: pw(5),
+    marginTop: ph(2),
   },
 
   // ── Card internals ───────────────────────────────────────────────────────
   darkCardIconWrapper: {
-    width: pw(7),
-    height: pw(7),
-    borderRadius: pw(3.5),
-    backgroundColor: "rgba(255,255,255,0.04)",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: ph(3),
+    marginBottom: ph(2),
   },
   darkCardTitle: {
-    fontSize: isTV ? ps(1.6) : 20,
-    fontWeight: "500",
+    fontSize: ps(1.6),
+    fontWeight: "600",
     color: "#fff",
     marginBottom: 8,
     textAlign: "center",
   },
   darkCardDesc: {
-    fontSize: isTV ? ps(1.2) : 13,
+    fontSize: ps(1.2),
     color: "#7e8299",
     textAlign: "center",
-    lineHeight: isTV ? ph(3) : 20,
+    lineHeight: ph(3),
     paddingHorizontal: 8,
   },
 
-  // ── Premium header (step 2) ──────────────────────────────────────────────
-  premiumHeader: {
-    flexDirection: "row",
+  // ── Step 2 Layout ─────────────────────────────────────────────────────────
+  ventoxStep2Container: {
+    flex: 1,
+    width: "100%",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: pw(3),
     paddingVertical: ph(2),
   },
-  premiumHeaderTitle: {
-    fontSize: ps(2.2),
-    fontWeight: "500",
-    color: "#fff",
-    letterSpacing: 5,
-  },
-  premiumSupportBtnFocused: {
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: pw(1),
-    paddingHorizontal: pw(1),
-  },
-  premiumTopActionBtn: {
-    width: pw(5),
-    height: pw(5),
-    borderRadius: pw(2.5),
-    backgroundColor: "rgba(255,255,255,0.08)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  premiumTopActionBtnFocused: {
-    borderWidth: 1,
-    borderColor: THEME.colors.primary,
-  },
-  premiumSupportBtn: {
+  ventoxTwoColRow: {
     flexDirection: "row",
     alignItems: "center",
-  },
-  premiumSupportText: {
-    color: "#b0b0b0",
-    fontSize: ps(1.2),
-    fontWeight: "600",
-    letterSpacing: 1,
-  },
-
-  // ── Step 2 form ──────────────────────────────────────────────────────────
-  premiumStep2Container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: ph(4),
+    justifyContent: "space-between",
     width: "100%",
-  },
-  /** Keyboard open: drop the vertical centring so the form starts at the top
-   *  and the fields sit as high as possible above the IME. */
-  premiumStep2ContainerLifted: {
-    flex: 0,
-    justifyContent: "flex-start",
-    paddingVertical: ph(2),
-  },
-  premiumFormCard: {
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: pw(2),
-    padding: 24,
-    width: "100%",
-    maxWidth: isTV ? pw(45) : 380,
-  },
-  premiumFormTitle: {
-    fontSize: isTV ? ps(1.8) : 20,
-    fontWeight: "700",
-    color: "#e2e2e2",
-    marginBottom: ph(0.2),
-  },
-  premiumFormSubtitle: {
-    fontSize: isTV ? ps(1.2) : 12,
-    color: "#9ca3af",
-    lineHeight: 18,
-    marginTop: 4,
-    marginBottom: 16,
-  },
-  premiumInputGroup: {
-    marginBottom: 12,
-  },
-  premiumLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#b0b0b0",
-    letterSpacing: 1.2,
-    marginBottom: 6,
-  },
-  premiumInput: {
-    flex: 1,
-    paddingVertical: isTV ? ph(1.6) : 10,
-    color: "#fff",
-    fontSize: isTV ? ps(1.5) : 12,
-  },
-
-  // ── OR divider ───────────────────────────────────────────────────────────
-  premiumDividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: ph(2.5),
-  },
-  premiumDividerLine: {
-    flex: 1,
-    height: 1,                               // hairline — intentionally absolute
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  premiumDividerText: {
-    color: "#555",
-    fontSize: ps(1.1),
-    fontWeight: "700",
-    paddingHorizontal: pw(2),
-  },
-
-  // ── Browse button ────────────────────────────────────────────────────────
-  premiumBrowseBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.08)",
-    borderRadius: pw(1.2),
-    paddingVertical: isTV ? ph(1.6) : ph(1.4),
-  },
-  premiumBrowseBtnText: {
-    color: "#e2e2e2",
-    fontSize: isTV ? ps(1.5) : ps(1.3),
-    fontWeight: "600",
-  },
-  premiumInputWrapperFocused: {
-    borderColor: "#ff1b8a",
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-
-  // ── Action buttons ───────────────────────────────────────────────────────
-  actionRow: {
-    flexDirection: "column",
-    gap: ph(1),
-    marginTop: ph(2.5),
-    alignItems: "stretch",
-  },
-  saveOnlyBtn: {
-    paddingVertical: ph(1.2),
-    borderRadius: pw(1.2),
-    alignItems: "center",
-    justifyContent: "center",
+    maxWidth: pw(84),
     marginTop: ph(1),
   },
-  saveOnlyBtnFocused: {
-    backgroundColor: "rgba(255,255,255,0.05)",
+  ventoxLeftCol: {
+    flex: 1,
+    paddingRight: pw(5),
+    marginBottom: 0,
+    alignItems: "flex-start",
   },
-  saveOnlyBtnText: {
-    color: "#777",
-    fontSize: ps(1.3),
-    fontWeight: "600",
-    textDecorationLine: "underline",
+  ventoxHeadlinePre: {
+    color: "#FFFFFF",
+    fontSize: ps(2.3),
+    fontWeight: "700",
+    lineHeight: ph(4.2),
+    textAlign: "left",
   },
-  connectBtnWrapper: {
-    borderRadius: pw(1.2),
-    overflow: "hidden",
+  ventoxHeadlineMain: {
+    color: "#FFFFFF",
+    fontSize: ps(3.0),
+    fontWeight: "900",
+    lineHeight: ph(5.2),
+    marginTop: ph(0.6),
+    textAlign: "left",
   },
-  connectBtnGradient: {
+  ventoxRightCol: {
+    width: pw(48),
+  },
+  inputBox: {
+    width: "100%",
+    height: ph(9.8),
+    backgroundColor: "#17181c",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "transparent",
+    paddingHorizontal: pw(2.5),
+    justifyContent: "center",
+    marginBottom: ph(2.2),
+  },
+  inputBoxFocused: {
+    borderColor: "#FFFFFF",
+    backgroundColor: "#17181c",
+  },
+  textInput: {
+    color: "#FFFFFF",
+    fontSize: ps(1.6),
+    fontWeight: "500",
+    paddingVertical: 0,
+    width: "100%",
+  },
+  themeAddBtn: {
+    width: "100%",
+    height: ph(9.8),
+    backgroundColor: "#F5F5F5",
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: isTV ? ph(2.0) : 12,
+    marginTop: ph(0.6),
+    borderWidth: 0,
+    borderColor: "transparent",
   },
-  connectBtnText: {
-    color: "#fff",
-    fontSize: isTV ? ps(1.6) : 14,
+  themeAddBtnFocused: {
+    backgroundColor: "#F5F5F5",
+    borderColor: "transparent",
+    borderWidth: 0,
+    transform: [{ scale: 1.02 }],
+  },
+  themeAddBtnText: {
+    color: "#000000",
+    fontSize: ps(1.7),
     fontWeight: "700",
     letterSpacing: 0.5,
   },
-
-  // ── Footer ───────────────────────────────────────────────────────────────
-  premiumFooterWarning: {
-    color: "#555",
-    fontSize: ps(1.0),
-    textAlign: "center",
-    marginTop: ph(4),
-    fontWeight: "600",
-    letterSpacing: 0.8,
+  themeAddBtnTextFocused: {
+    color: "#000000",
+    fontWeight: "900",
   },
 });

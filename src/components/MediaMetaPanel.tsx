@@ -11,10 +11,12 @@
 // nothing after them reads as a broken app rather than a thin catalogue.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from 'react-native';
 
 import { THEME, ph, ps, pw } from "../theme/tokens";
 import type { MediaMeta } from "../store/portalStore";
+import { Text } from './Text';
+
 
 export interface MediaMetaPanelProps {
   meta?: MediaMeta | null;

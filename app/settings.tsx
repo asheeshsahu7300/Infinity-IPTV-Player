@@ -1,14 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Platform,
-  Image,
-} from 'react-native';
+import { View, StyleSheet, ScrollView, Platform, Image } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 
@@ -19,13 +11,16 @@ import { parentalControl } from '../src/services/parentalControl';
 import { epgService } from '../src/services/epgService';
 import { hiddenCategories } from '../src/services/hiddenCategories';
 import PinPrompt from '../src/components/PinPrompt';
-import { isTV } from '../src/utils/tvUtils';
-import { THEME, pw, ph, psRaw as ps, TILE_FRAME, TILE_FRAME_FOCUSED } from '../src/theme/tokens';
+import { THEME, pw, ph, psRaw as ps } from '../src/theme/tokens';
 import { Focusable, FocusGroup, FocusMemory, useFocusRestore } from '../src/tv';
 import { CinematicBackground } from '../src/components/CinematicBackground';
 import { useDialog } from '../src/components/ConfirmDialog';
+import { ArrowLeftRight, ChevronRight, LogOut } from 'lucide-react-native';
+import { DynamicIcon } from '../src/components/DynamicIcon';
+import { Text } from '../src/components/Text';
 
-type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+type IconName = string;
 
 const SCREEN_KEY = 'settings';
 
@@ -42,19 +37,19 @@ type RowControl =
 function RowControlView({ control, focused }: { control: RowControl; focused: boolean }) {
   if (control.kind === 'switch') {
     return (
-      <View style={[S.switchTrack, focused && S.switchTrackFocused, control.on && S.switchTrackOn]}>
-        <View style={[S.switchKnob, control.on && S.switchKnobOn]} />
+      <View style={[S.switchTrack, focused && S.switchTrackFocused, control.on && S.switchTrackOn, control.on && focused && S.switchTrackOnFocused]}>
+        <View style={[S.switchKnob, control.on && S.switchKnobOn, focused && S.switchKnobFocused]} />
       </View>
     );
   }
   if (control.kind === 'value') {
     return (
       <View style={[S.valuePill, focused && S.valuePillFocused]}>
-        <Text style={[S.valuePillText, focused && { color: '#000' }]}>{control.text}</Text>
+        <Text style={[S.valuePillText, focused && { color: '#fff' }]}>{control.text}</Text>
       </View>
     );
   }
-  return <Ionicons name="chevron-forward" size={ps(2)} color={focused ? '#fff' : 'rgba(255,255,255,0.3)'} />;
+  return <ChevronRight size={ps(2)} color={focused ? '#000' : 'rgba(255,255,255,0.3)'} />;
 }
 
 interface SettingRowProps {
@@ -96,11 +91,14 @@ function SettingRow({
     >
       {(focused) => (
         <>
-          <View style={[S.rowIconBox, focused && S.rowIconBoxFocused]}>
-            <Ionicons name={icon} size={ps(2.2)} color={focused ? '#000' : '#fff'} />
-          </View>
+          <DynamicIcon
+            name={icon}
+            size={ps(2.6)}
+            color={focused ? '#000' : 'rgba(255,255,255,0.75)'}
+            style={S.rowIcon}
+          />
           <View style={S.rowText}>
-            <Text style={S.rowTitle}>{title}</Text>
+            <Text style={[S.rowTitle, focused && S.rowTitleFocused]}>{title}</Text>
             <Text style={[S.rowSubtitle, focused && S.rowSubtitleFocused]} numberOfLines={2}>
               {subtitle}
             </Text>
@@ -135,30 +133,26 @@ function DataTile({ icon, title, subtitle, focusKey, onPress, value }: DataTileP
     >
       {(focused) => (
         <View style={[S.tile, focused && S.tileFocused]}>
-          <View style={[S.tileIconBox, focused && S.tileIconBoxFocused]}>
-            <Ionicons
-              name={icon}
-              size={ps(2)}
-              color={focused ? '#000' : 'rgba(255,255,255,0.75)'}
-            />
-          </View>
+          <DynamicIcon
+            name={icon}
+            size={ps(2.5)}
+            color={focused ? '#000' : 'rgba(255,255,255,0.75)'}
+            style={S.tileIcon}
+          />
           <View style={S.tileText}>
-            <Text style={S.tileTitle} numberOfLines={1}>
-              {title}
-            </Text>
-            <Text style={S.tileSubtitle} numberOfLines={2}>
+            <View style={S.tileHeaderRow}>
+              <Text style={[S.tileTitle, focused && S.tileTitleFocused]} numberOfLines={1}>
+                {title}
+              </Text>
+              {value ? (
+                <View style={[S.valuePill, focused && S.valuePillFocused]}>
+                  <Text style={[S.valuePillText, focused && { color: '#fff' }]}>{value}</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={[S.tileSubtitle, focused && S.tileSubtitleFocused]} numberOfLines={2}>
               {subtitle}
             </Text>
-            {/* Under the title, not beside it.
-                As a sibling of the text column this pill claimed its intrinsic
-                width first and left the flexible column with almost nothing, so a tile
-                with a value rendered the icon and the pill and no title at all
-                — which is what "Off" and "19 hidden" looked like. */}
-            {value ? (
-              <View style={S.valuePill}>
-                <Text style={S.valuePillText}>{value}</Text>
-              </View>
-            ) : null}
           </View>
         </View>
       )}
@@ -209,10 +203,13 @@ export default function SettingsScreen() {
       // focus nowhere in particular, so put it back where the user left it.
       if (isFirstFocusRef.current) {
         isFirstFocusRef.current = false;
+        if (activePortal) {
+          FocusMemory.set(SCREEN_KEY, 'switch-portal');
+        }
         return;
       }
       FocusMemory.restoreWithRetry(SCREEN_KEY);
-    }, [])
+    }, [activePortal])
   );
 
   // Load settings on mount
@@ -404,8 +401,9 @@ export default function SettingsScreen() {
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
 
-      <View style={S.headerBranding}>
-        <Image source={require('../assets/images/TV.png')} style={S.headerLogoImage} resizeMode="contain" />
+      {/* ── Header ── */}
+      <View style={S.header}>
+        <Text style={S.headerTitle}>Settings</Text>
       </View>
 
       <ScrollView
@@ -420,34 +418,70 @@ export default function SettingsScreen() {
           <View style={S.rootSection}>
             <SectionLabel>PORTAL INFORMATION</SectionLabel>
             <View style={S.portalCard}>
+              <View style={S.portalCardHeader}>
+                <View style={S.portalNameRow}>
+                  <Text style={S.portalNameText}>{activePortal.name}</Text>
+                  <View style={S.portalTypeBadge}>
+                    <Text style={S.portalTypeBadgeText}>
+                      {activePortal.type === "m3u"
+                        ? "M3U PLAYLIST"
+                        : activePortal.type === "xtream"
+                          ? "XTREAM CODES API"
+                          : "MAC PORTAL"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
               <View style={S.portalInfoCols}>
                 <View style={S.infoCol}>
-                  <Text style={S.tinyLabel}>Portal URL</Text>
+                  <Text style={S.tinyLabel}>PORTAL URL</Text>
                   <Text style={S.largeValue} numberOfLines={1}>{activePortal.config.url}</Text>
                 </View>
                 <View style={S.infoCol}>
-                  <Text style={S.tinyLabel}>Device MAC Address</Text>
+                  <Text style={S.tinyLabel}>DEVICE MAC ADDRESS</Text>
                   <Text style={S.largeValue}>{activePortal.config.mac || '00:1A:79:XX:XX:XX'}</Text>
                 </View>
               </View>
 
-              <Focusable
-                ringOnFocus={false}
-                onPress={handleDisconnect}
-                style={S.disconnectBtnWrapper}
-                screenKey={SCREEN_KEY}
-                focusKey="disconnect"
-                accessibilityLabel="Disconnect portal"
-              >
-                {(focused) => (
-                  <View style={[S.disconnectBtn, focused && S.disconnectBtnFocused]}>
-                    <Ionicons name="warning" size={ps(1.8)} color={focused ? '#000' : 'rgba(255,255,255,0.7)'} />
-                    <Text style={[S.disconnectBtnText, focused && S.disconnectBtnTextFocused]}>
-                      Disconnect Portal
-                    </Text>
-                  </View>
-                )}
-              </Focusable>
+              <FocusGroup style={S.portalActionsRow}>
+                <Focusable
+                  ringOnFocus={false}
+                  onPress={() => openGuarded('portals')}
+                  style={S.portalBtnWrapper}
+                  screenKey={SCREEN_KEY}
+                  focusKey="switch-portal"
+                  hasTVPreferredFocus={autoFocusFirst}
+                  accessibilityLabel="Switch or manage portals"
+                >
+                  {(focused) => (
+                    <View style={[S.switchBtn, focused && S.switchBtnFocused]}>
+                      <ArrowLeftRight size={ps(1.8)} color={focused ? '#000' : '#fff'} />
+                      <Text style={[S.switchBtnText, focused && S.switchBtnTextFocused]}>
+                        Switch Portal
+                      </Text>
+                    </View>
+                  )}
+                </Focusable>
+
+                <Focusable
+                  ringOnFocus={false}
+                  onPress={handleDisconnect}
+                  style={S.portalBtnWrapper}
+                  screenKey={SCREEN_KEY}
+                  focusKey="disconnect"
+                  accessibilityLabel="Disconnect portal"
+                >
+                  {(focused) => (
+                    <View style={[S.disconnectBtn, focused && S.disconnectBtnFocused]}>
+                      <LogOut size={ps(1.8)} color={focused ? '#000' : 'rgba(255,255,255,0.7)'} />
+                      <Text style={[S.disconnectBtnText, focused && S.disconnectBtnTextFocused]}>
+                        Disconnect
+                      </Text>
+                    </View>
+                  )}
+                </Focusable>
+              </FocusGroup>
             </View>
           </View>
         )}
@@ -461,9 +495,7 @@ export default function SettingsScreen() {
               title="Hardware Acceleration"
               subtitle="Use the GPU for smoother video decoding"
               focusKey="hwaccel"
-              // Inherited the screen's initial focus when the autoplay row above
-              // it was removed.
-              preferred={autoFocusFirst}
+              preferred={autoFocusFirst && !activePortal}
               onPress={toggleHardwareAcceleration}
               accessibilityRole="switch"
               selected={hardwareAcceleration}
@@ -573,7 +605,7 @@ export default function SettingsScreen() {
               icon="calendar-outline"
               title="TV Guide"
               subtitle="Browse the programme schedule"
-              focusKey="guide"
+              focusKey="epg"
               onPress={() => router.push('/epg')}
             />
           </FocusGroup>
@@ -650,20 +682,25 @@ export default function SettingsScreen() {
 const S = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: '#000000',
   },
 
   // ── Header ────────────────────────────────────────────────────────────────
-  headerBranding: {
-    alignItems: 'center',
-    paddingTop: ph(4),
-    marginBottom: ph(2),
+  header: {
+    paddingHorizontal: pw(8),
+    paddingTop: ph(5),
+    paddingBottom: ph(2),
   },
-  headerLogoImage: {
-    width: pw(25),
-    height: ph(8),
-    transform: [{ scale: 2.5 }],
-    marginBottom: ph(1),
+  headerTitle: {
+    color: '#FFFFFF',
+    fontSize: ps(2.6),
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  headerSubtitle: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: ps(1.1),
+    marginTop: ph(0.6),
   },
 
   content: {
@@ -671,73 +708,135 @@ const S = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: pw(8),
-    paddingBottom: ph(10),
+    paddingTop: ph(2),
+    paddingBottom: ph(8),
   },
 
   // ── Sections ──────────────────────────────────────────────────────────────
   rootSection: {
-    marginBottom: ph(4),
+    marginBottom: ph(5),
   },
   sectionLabel: {
-    fontSize: isTV ? ps(1.2) : ps(1),
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 1.5,
-    marginBottom: ph(2),
+    fontSize: ps(1.45),
+    fontWeight: '900',
+    color: 'rgba(255,255,255,0.65)',
+    letterSpacing: 2.5,
+    marginBottom: ph(1.4),
+    paddingLeft: pw(0.5),
   },
 
   // ── Portal card ───────────────────────────────────────────────────────────
   portalCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: ps(2.5),
-    padding: ps(3.5),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: '#17181c',
+    borderRadius: 18,
+    padding: ps(2.8),
+    borderWidth: 0,
+    borderColor: 'transparent',
+  },
+  portalCardHeader: {
+    marginBottom: ph(2),
+  },
+  portalNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: pw(1.2),
+  },
+  portalNameText: {
+    color: '#FFFFFF',
+    fontSize: ps(2.2),
+    fontWeight: '900',
+  },
+  portalTypeBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 6,
+    paddingHorizontal: pw(1),
+    paddingVertical: ph(0.6),
+    borderWidth: 0,
+    borderColor: 'transparent',
+  },
+  portalTypeBadgeText: {
+    color: 'rgba(255, 255, 255, 0.95)',
+    fontSize: ps(0.95),
+    fontWeight: '800',
+    letterSpacing: 0.8,
   },
   portalInfoCols: {
-    flexDirection: isTV ? 'row' : 'column',
-    marginBottom: ph(3),
-    gap: isTV ? pw(4) : ph(2),
+    flexDirection: 'row',
+    marginBottom: ph(2.2),
+    gap: pw(4),
   },
   infoCol: {
-    flex: isTV ? 1 : undefined,
+    flex: 1,
   },
   tinyLabel: {
-    fontSize: isTV ? ps(1.2) : ps(0.9),
-    color: 'rgba(255,255,255,0.4)',
-    fontWeight: '600',
-    letterSpacing: 0.5,
+    fontSize: ps(1.05),
+    color: 'rgba(255,255,255,0.5)',
+    fontWeight: '800',
+    letterSpacing: 1.2,
     marginBottom: ph(0.5),
   },
   largeValue: {
-    fontSize: isTV ? ps(1.8) : ps(1.5),
+    fontSize: ps(1.5),
     color: '#fff',
     fontWeight: '600',
   },
-  disconnectBtnWrapper: {
-    alignSelf: 'flex-start',
+  portalActionsRow: {
+    flexDirection: 'row',
+    gap: pw(1.5),
     marginTop: ph(1),
-    borderRadius: ps(1.2),
+  },
+  portalBtnWrapper: {
+    borderRadius: 18,
+    overflow: 'visible',
+  },
+  switchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: pw(2.2),
+    paddingVertical: ph(1.4),
+    gap: pw(0.8),
+    borderRadius: 18,
+    borderWidth: 0,
+    borderColor: 'transparent',
+    backgroundColor: '#17181c',
+  },
+  switchBtnFocused: {
+    borderColor: 'transparent',
+    borderWidth: 0,
+    backgroundColor: '#fff',
+    transform: [{ scale: 1.04 }],
+    elevation: 8,
+  },
+  switchBtnText: {
+    fontSize: ps(1.25),
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    color: '#fff',
+  },
+  switchBtnTextFocused: {
+    color: '#000',
   },
   disconnectBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: pw(2),
-    paddingVertical: ph(1.2),
+    paddingHorizontal: pw(2.2),
+    paddingVertical: ph(1.4),
     gap: pw(0.8),
-    borderRadius: ps(1.2),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 18,
+    borderWidth: 0,
+    borderColor: 'transparent',
+    backgroundColor: '#17181c',
   },
   disconnectBtnFocused: {
-    borderColor: '#fff',
+    borderColor: 'transparent',
+    borderWidth: 0,
     backgroundColor: '#fff',
     transform: [{ scale: 1.04 }],
+    elevation: 8,
   },
   disconnectBtnText: {
-    fontSize: ps(1.3),
-    fontWeight: '700',
+    fontSize: ps(1.25),
+    fontWeight: '800',
     letterSpacing: 0.5,
     color: 'rgba(255,255,255,0.7)',
   },
@@ -746,165 +845,176 @@ const S = StyleSheet.create({
   },
 
   // ── Grouped list ──────────────────────────────────────────────────────────
-  // This is the tile on this screen — the thing that legitimately wears the
-  // frame — so it takes the shared values (was 0.07 / 0.03 against 0.05 / 0.04).
   groupedCard: {
-    ...TILE_FRAME,
-    borderRadius: ps(2.5),
-    padding: ps(1),
+    borderRadius: 18,
+    padding: ps(0.8),
+    backgroundColor: '#17181c',
+    borderWidth: 0,
+    borderColor: 'transparent',
+    overflow: 'hidden',
   },
-  /** The transparent border is reserved up front so gaining focus recolours it
-   *  instead of resizing the row and nudging the whole list. */
-  /**
-   * No resting frame, deliberately — the frame belongs to `groupedCard`.
-   *
-   * Every SettingRow lives inside one, so giving the row TILE_FRAME's own
-   * hairline and wash drew a box inside a box: each row read as a raised slab
-   * with its own edge, stacked within the group's edge. The card is the tile
-   * here; the rows are bands inside it.
-   *
-   * The border still has to be *declared* at rest, transparent, so gaining
-   * focus only recolours it instead of adding 1px and reflowing the row —
-   * same trick as Focusable's ringReserved.
-   */
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: ps(2),
-    borderRadius: ps(2),
-    borderWidth: TILE_FRAME.borderWidth,
+    paddingHorizontal: pw(2),
+    paddingVertical: ph(2.4),
+    borderRadius: 12,
+    borderWidth: 0,
     borderColor: 'transparent',
+    marginBottom: ph(0.4),
   },
-  rowFocused: { ...TILE_FRAME_FOCUSED },
-  rowIconBox: {
-    width: ps(5.5),
-    height: ps(5.5),
-    borderWidth: 1,
-    borderRadius: ps(2.75),
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: pw(2),
+  rowFocused: {
+    borderColor: 'transparent',
+    borderWidth: 0,
+    backgroundColor: "#F5F5F5",
   },
-  rowIconBoxFocused: {
-    backgroundColor: '#fff',
-    borderColor: '#fff',
+  rowIcon: {
+    marginRight: pw(1.8),
   },
   rowText: {
     flex: 1,
     paddingRight: pw(1),
   },
   rowTitle: {
-    fontSize: isTV ? ps(1.6) : ps(1.4),
+    fontSize: ps(1.5),
     color: '#fff',
     fontWeight: '700',
   },
+  rowTitleFocused: {
+    color: '#000',
+    fontWeight: '900',
+  },
   rowSubtitle: {
-    fontSize: isTV ? ps(1.2) : ps(1),
-    color: 'rgba(255,255,255,0.4)',
-    marginTop: 2,
+    fontSize: ps(1.12),
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 4,
+    lineHeight: ps(1.55),
   },
   rowSubtitleFocused: {
-    color: 'rgba(255,255,255,0.85)',
+    color: 'rgba(0,0,0,0.65)',
   },
 
   // ── Data tiles ────────────────────────────────────────────────────
   tileRow: {
-    flexDirection: isTV ? 'row' : 'column',
-    ...(isTV ? { flexWrap: 'wrap' as const } : null),
-    gap: isTV ? 16 : ph(1.5),
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: pw(1.5),
   },
   tileWrapper: {
-    ...(isTV
-      ? { width: '31.8%', minWidth: 0, flexGrow: 0, flexShrink: 0 }
-      : { alignSelf: 'stretch' }),
-    borderRadius: ps(2.5),
+    width: '31.8%',
+    borderRadius: 18,
+    marginBottom: ph(1.5),
   },
   tile: {
-    ...TILE_FRAME,
     flex: 1,
-    borderRadius: ps(2.5),
-    paddingHorizontal: ps(2),
-    paddingVertical: ps(2),
+    minHeight: ph(12.5),
+    borderRadius: 18,
+    paddingHorizontal: pw(1.8),
+    paddingVertical: ph(1.6),
     flexDirection: 'row',
     alignItems: 'center',
-    gap: pw(1.2),
+    backgroundColor: '#17181c',
+    borderWidth: 0,
+    borderColor: 'transparent',
   },
-  // The lift is this tile's own, and stays: it is how a Tools tile reads as
-  // pressable. Only the border and wash now come from the shared frame.
-  tileFocused: { ...TILE_FRAME_FOCUSED, transform: [{ scale: 1.04 }] },
-  tileIconBox: {
-    width: ps(5.5),
-    height: ps(5.5),
-    borderRadius: ps(2.75),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  tileFocused: {
+    borderColor: 'transparent',
+    borderWidth: 0,
+    backgroundColor: "#F5F5F5",
+    transform: [{ scale: 1.035 }],
   },
-  tileIconBoxFocused: {
-    backgroundColor: '#fff',
-    borderColor: '#fff',
+  tileIcon: {
+    marginRight: pw(1.4),
   },
   tileText: {
     flex: 1,
-    // Lets the column shrink to the space actually available instead of
-    // forcing the row wider than the tile.
     minWidth: 0,
     gap: ph(0.4),
-    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  tileHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: pw(0.6),
   },
   tileTitle: {
-    fontSize: isTV ? ps(1.5) : ps(1.35),
+    fontSize: ps(1.35),
     color: '#fff',
     fontWeight: '700',
+    flexShrink: 1,
+  },
+  tileTitleFocused: {
+    color: '#000',
+    fontWeight: '900',
   },
   tileSubtitle: {
-    fontSize: isTV ? ps(1.1) : ps(0.95),
-    color: 'rgba(255,255,255,0.4)',
+    fontSize: ps(1.05),
+    color: 'rgba(255,255,255,0.6)',
     marginTop: 2,
+    lineHeight: ps(1.45),
+  },
+  tileSubtitleFocused: {
+    color: 'rgba(0,0,0,0.65)',
   },
   valuePill: {
-    paddingHorizontal: pw(1.2),
-    paddingVertical: ph(0.6),
-    borderRadius: ps(1.2),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: pw(1.6),
+    paddingVertical: ph(0.8),
+    minHeight: ph(3.4),
+    borderRadius: ps(1),
+    backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  valuePillFocused: { backgroundColor: '#fff' },
+  valuePillFocused: {
+    backgroundColor: '#0E0F14',
+    borderColor: '#0E0F14',
+    borderWidth: 1,
+  },
   valuePillText: {
     color: '#fff',
-    fontSize: ps(1.2),
-    fontWeight: '700',
+    fontSize: ps(1.15),
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
 
   // ── Switch ────────────────────────────────────────────────────────────────
   switchTrack: {
-    width: pw(4.5),
-    height: ph(3.5),
-    minWidth: ps(4),
-    borderRadius: ps(2),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    width: pw(4.2),
+    height: ph(3.2),
+    minWidth: ps(3.8),
+    borderRadius: ps(1.6),
+    backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     padding: 2,
   },
+  // When row is focused (white bg), track must go dark so it's visible
   switchTrackFocused: {
-    borderColor: 'rgba(255,255,255,0.85)',
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    borderColor: 'rgba(0,0,0,0.3)',
   },
   switchTrackOn: {
-    backgroundColor: '#fff',
-    borderColor: '#fff',
+    backgroundColor: '#4ADE80',
+    borderColor: '#4ADE80',
+  },
+  // ON + focused: keep green but slightly darker
+  switchTrackOnFocused: {
+    backgroundColor: '#22c55e',
+    borderColor: '#22c55e',
   },
   switchKnob: {
-    width: ps(1.8),
-    height: ps(1.8),
-    borderRadius: ps(0.9),
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    width: ps(1.6),
+    height: ps(1.6),
+    borderRadius: ps(0.8),
+    backgroundColor: 'rgba(255,255,255,0.6)',
+  },
+  switchKnobFocused: {
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   switchKnobOn: {
     alignSelf: 'flex-end',
@@ -914,19 +1024,19 @@ const S = StyleSheet.create({
   // ── Footer ────────────────────────────────────────────────────────────────
   footer: {
     alignItems: 'center',
-    marginTop: ph(4),
+    marginTop: ph(3),
+    paddingBottom: ph(2),
   },
   footerText: {
-    fontSize: ps(1.2),
-    color: 'rgba(255,255,255,0.25)',
-    fontWeight: '700',
+    fontSize: ps(1),
+    color: 'rgba(255,255,255,0.3)',
+    fontWeight: '800',
     letterSpacing: 2,
   },
   footerSubtext: {
-    fontSize: ps(1),
-    color: 'rgba(255,255,255,0.15)',
+    fontSize: ps(0.85),
+    color: 'rgba(255,255,255,0.18)',
     marginTop: 4,
     letterSpacing: 1,
   },
-
 });

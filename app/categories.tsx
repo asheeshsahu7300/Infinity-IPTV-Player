@@ -11,18 +11,21 @@
 // Parental Control instead — see src/services/hiddenCategories.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, StatusBar, StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { FlatList, StatusBar, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { usePortalStore, Category } from "../src/store/portalStore";
 import { hiddenCategories } from "../src/services/hiddenCategories";
 import type { MediaKind } from "../src/services/parentalControl";
 import { CinematicBackground } from "../src/components/CinematicBackground";
-import { THEME, ph, ps, pw, TILE_FRAME } from "../src/theme/tokens";
+import { THEME, ph, psRaw as ps, pw, TILE_FRAME } from "../src/theme/tokens";
 import { Focusable, FocusGroup } from "../src/tv";
+import { Eye, FolderOpen , LucideIcon} from 'lucide-react-native';
+import { DynamicIcon } from '../src/components/DynamicIcon';
+import { Text } from '../src/components/Text';
 
-const KINDS: { key: MediaKind; label: string; icon: React.ComponentProps<typeof Ionicons>["name"] }[] = [
+
+const KINDS: { key: MediaKind; label: string; icon: string }[] = [
   { key: "live", label: "LIVE TV", icon: "tv-outline" },
   { key: "vod", label: "MOVIES", icon: "film-outline" },
   { key: "series", label: "SERIES", icon: "albums-outline" },
@@ -57,7 +60,7 @@ const CategoryRow = React.memo(
       >
         {(focused) => (
           <View style={[S.row, focused && S.rowFocused]}>
-            <Ionicons
+            <DynamicIcon
               name={hidden ? "eye-off-outline" : "eye-outline"}
               size={ps(1.5)}
               color={focused ? "#000" : hidden ? "rgba(255,255,255,0.3)" : "#fff"}
@@ -179,9 +182,9 @@ export default function CategoriesScreen() {
           >
             {(focused) => (
               <View style={[S.tab, kind === k.key && S.tabActive, focused && S.tabFocused]}>
-                <Ionicons
+                <DynamicIcon
                   name={k.icon}
-                  size={ps(1.2)}
+                  size={ps(1.8)}
                   color={focused || kind === k.key ? "#000" : "#fff"}
                 />
                 <Text
@@ -218,7 +221,7 @@ export default function CategoriesScreen() {
           contentContainerStyle={S.listContent}
           ListEmptyComponent={
             <View style={S.empty}>
-              <Ionicons name="folder-open-outline" size={ps(3)} color="rgba(255,255,255,0.1)" />
+              <FolderOpen size={ps(3)} color="rgba(255,255,255,0.1)" />
               <Text style={S.emptyText}>
                 Open this library once so its categories load, then come back.
               </Text>
@@ -238,7 +241,7 @@ export default function CategoriesScreen() {
         >
           {(focused) => (
             <View style={[S.action, focused && S.actionFocused, hiddenCount === 0 && S.actionDisabled]}>
-              <Ionicons name="eye-outline" size={ps(1.3)} color={focused ? "#000" : "#fff"} />
+              <Eye size={ps(1.3)} color={focused ? "#000" : "#fff"} />
               <Text style={[S.actionText, focused && S.actionTextFocused]}>SHOW ALL</Text>
             </View>
           )}
@@ -249,67 +252,65 @@ export default function CategoriesScreen() {
 }
 
 const S = StyleSheet.create({
-  container: { flex: 1, backgroundColor: THEME.colors.background },
+  container: { flex: 1, backgroundColor: "#000000" },
 
-  header: { paddingHorizontal: pw(4), paddingTop: ph(2) },
-  headerTitle: { color: "#fff", fontSize: ps(2), fontWeight: "900" },
-  headerSubtitle: { color: THEME.colors.textDim, fontSize: ps(1), marginTop: ph(0.4) },
+  header: {
+    paddingHorizontal: pw(8),
+    paddingTop: ph(5),
+    paddingBottom: ph(1),
+  },
+  headerTitle: { color: "#fff", fontSize: ps(2.2), fontWeight: "900", letterSpacing: 0.5 },
+  headerSubtitle: { color: THEME.colors.textDim, fontSize: ps(1.1), marginTop: ph(0.6) },
 
-  tabs: { flexDirection: "row", gap: pw(1), paddingHorizontal: pw(4), paddingVertical: ph(1.5) },
-  tabWrapper: { borderRadius: ps(0.9) },
+  tabs: { flexDirection: "row", gap: pw(1.5), paddingHorizontal: pw(8), paddingVertical: ph(2) },
+  tabWrapper: { borderRadius: 18 },
   tab: {
     flexDirection: "row",
     alignItems: "center",
-    gap: pw(0.6),
-    paddingHorizontal: pw(2),
-    paddingVertical: ph(1),
-    borderRadius: ps(0.9),
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: TILE_FRAME.borderWidth,
-    borderColor: TILE_FRAME.borderColor,
+    gap: pw(0.8),
+    paddingHorizontal: pw(3),
+    paddingVertical: ph(1.6),
+    borderRadius: 18,
+    backgroundColor: "#17181c",
+    borderWidth: 0,
+    borderColor: "transparent",
   },
-  tabActive: { backgroundColor: "rgba(255,255,255,0.85)" },
-  tabFocused: { backgroundColor: "#fff", borderColor: "#fff" },
-  tabText: { color: "#fff", fontSize: ps(0.9), fontWeight: "900", letterSpacing: 1 },
+  tabActive: { backgroundColor: "#F5F5F5" },
+  tabFocused: { backgroundColor: "#F5F5F5", borderColor: "transparent", borderWidth: 0 },
+  tabText: { color: "#fff", fontSize: ps(1.3), fontWeight: "900", letterSpacing: 1 },
 
-  listHost: { flex: 1, paddingHorizontal: pw(3) },
+  listHost: { flex: 1, paddingHorizontal: pw(8) },
   listContent: { paddingBottom: ph(4), paddingTop: ph(1) },
 
   rowWrapper: { height: ROW_HEIGHT, justifyContent: "center", paddingVertical: ph(0.5) },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: pw(1.4),
+    gap: pw(1.8),
     paddingHorizontal: pw(2.5),
-    paddingVertical: ph(2),
-    borderRadius: ps(0.8),
-    // Resting frame from TILE_FRAME. It rested on a *transparent* border, so a
-    // row had no visible edge at all next to the framed tiles elsewhere.
-    borderWidth: TILE_FRAME.borderWidth,
-    borderColor: TILE_FRAME.borderColor,
-    backgroundColor: TILE_FRAME.backgroundColor,
+    paddingVertical: ph(2.2),
+    borderRadius: 18,
+    borderWidth: 0,
+    borderColor: "transparent",
+    backgroundColor: "#17181c",
   },
-  // Focus stays a full white fill rather than TILE_FRAME_FOCUSED: the row's
-  // text and switches invert to black against it (see `onFocus` below and the
-  // dark switch variants), so swapping the fill for a border would leave black
-  // text on a dark row.
-  rowFocused: { backgroundColor: "#fff", borderColor: "#fff" },
-  rowName: { flex: 1, color: "#fff", fontSize: ps(1.1), fontWeight: "700" },
+  rowFocused: { backgroundColor: "#F5F5F5", borderColor: "transparent", borderWidth: 0 },
+  rowName: { flex: 1, color: "#fff", fontSize: ps(1.5), fontWeight: "700" },
   rowNameHidden: { color: "rgba(255,255,255,0.35)" },
   onFocus: { color: "#000" },
 
   switchTrack: {
-    width: ps(3),
-    height: ps(1.6),
-    borderRadius: ps(0.8),
-    backgroundColor: "rgba(255,255,255,0.16)",
+    width: ps(3.8),
+    height: ps(2),
+    borderRadius: ps(1),
+    backgroundColor: "rgba(255,255,255,0.14)",
     padding: 2,
     justifyContent: "center",
   },
-  switchTrackFocused: { backgroundColor: "rgba(0,0,0,0.16)" },
+  switchTrackFocused: { backgroundColor: "rgba(0,0,0,0.15)" },
   switchTrackOn: { backgroundColor: "#4ade80" },
-  switchKnob: { width: ps(1.2), height: ps(1.2), borderRadius: ps(0.6), backgroundColor: "#fff" },
-  switchKnobFocused: { backgroundColor: "#0E0F14" },
+  switchKnob: { width: ps(1.6), height: ps(1.6), borderRadius: ps(0.8), backgroundColor: "rgba(255,255,255,0.6)" },
+  switchKnobFocused: { backgroundColor: "#000" },
   switchKnobOn: { alignSelf: "flex-end", backgroundColor: "#0E0F14" },
 
   empty: { alignItems: "center", justifyContent: "center", paddingVertical: ph(10), gap: ph(1.5) },
@@ -320,21 +321,21 @@ const S = StyleSheet.create({
     maxWidth: pw(40),
   },
 
-  actions: { flexDirection: "row", gap: pw(1.5), paddingHorizontal: pw(4), paddingVertical: ph(1.5) },
-  actionWrapper: { borderRadius: ps(1) },
+  actions: { flexDirection: "row", gap: pw(1.5), paddingHorizontal: pw(8), paddingVertical: ph(2) },
+  actionWrapper: { borderRadius: 18 },
   action: {
     flexDirection: "row",
     alignItems: "center",
-    gap: pw(0.7),
-    paddingHorizontal: pw(2.5),
-    paddingVertical: ph(1.2),
-    borderRadius: ps(1),
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: 1,
+    gap: pw(0.9),
+    paddingHorizontal: pw(3),
+    paddingVertical: ph(1.6),
+    borderRadius: 18,
+    backgroundColor: "#17181c",
+    borderWidth: 0,
     borderColor: "transparent",
   },
-  actionFocused: { backgroundColor: "#fff", borderColor: "#fff", transform: [{ scale: 1.04 }] },
+  actionFocused: { backgroundColor: "#fff", borderColor: "transparent", borderWidth: 0 },
   actionDisabled: { opacity: 0.45 },
-  actionText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1 },
+  actionText: { color: "#fff", fontSize: ps(1.3), fontWeight: "900", letterSpacing: 1 },
   actionTextFocused: { color: "#000" },
 });

@@ -1,21 +1,13 @@
 import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Modal,
-  Platform,
-  Linking,
-  Animated,
-  Easing,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { View, StyleSheet, TouchableOpacity, Modal, Platform, Linking, Animated, Easing } from 'react-native';
 import * as IntentLauncher from "expo-intent-launcher";
 import { LinearGradient } from "expo-linear-gradient";
 import { THEME, pw, ph, ps } from "../theme/tokens";
 import { isTV } from "../utils/tvUtils";
 import { launchExternalPlayer } from "../utils/externalPlayer";
+import { Clock, Play, Star, Tv } from 'lucide-react-native';
+import { Text } from './Text';
+
 
 interface VODDetailsModalProps {
   visible: boolean;
@@ -168,13 +160,13 @@ export default function VODDetailsModal({
           <View style={S.metaRow}>
             {meta?.rating ? (
               <View style={S.badge}>
-                <Ionicons name="star" size={ps(0.9)} color="#fbbf24" />
+                <Star size={ps(0.9)} color="#fbbf24" />
                 <Text style={S.badgeText}>{meta.rating}</Text>
               </View>
             ) : null}
             {meta?.duration ? (
               <View style={S.badge}>
-                <Ionicons name="time-outline" size={ps(0.9)} color="#93c5fd" />
+                <Clock size={ps(0.9)} color="#93c5fd" />
                 <Text style={S.badgeText}>{formatDuration(meta.duration)}</Text>
               </View>
             ) : null}
@@ -186,14 +178,14 @@ export default function VODDetailsModal({
           {/* Action Buttons */}
           <ModalButton
             label="Play in App"
-            icon={<Ionicons name="play" size={ps(1.1)} color="#fff" style={{ marginRight: pw(1) }} />}
+            icon={<Play size={ps(1.1)} color="#fff" style={{ marginRight: pw(1) }} />}
             onPress={() => { onClose(); onPlay(); }}
             variant="filled"
             autoFocus
           />
           <ModalButton
             label="External Player"
-            icon={<Ionicons name="tv-outline" size={ps(1.1)} color="rgba(255,255,255,0.7)" style={{ marginRight: pw(1) }} />}
+            icon={<Tv size={ps(1.1)} color="rgba(255,255,255,0.7)" style={{ marginRight: pw(1) }} />}
             onPress={handleExternalPlay}
             variant="outline"
           />

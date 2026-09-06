@@ -1,14 +1,19 @@
+import { DynamicIcon } from './DynamicIcon';
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, TouchableOpacity, StyleSheet, Platform, StatusBar } from 'react-native';
+
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { LucideIcon } from "lucide-react-native";
+import { Text } from './Text';
+
 
 interface HeaderProps {
   title: string;
   showBack?: boolean;
   rightAction?: {
-    icon: keyof typeof Ionicons.glyphMap;
+    icon: string;
     onPress: () => void;
   };
 }
@@ -26,7 +31,7 @@ export default function Header({ title, showBack = false, rightAction }: HeaderP
         
         {rightAction ? (
           <TouchableOpacity onPress={rightAction.onPress} style={styles.rightButton}>
-            <Ionicons name={rightAction.icon} size={24} color="#fff" />
+            <DynamicIcon name={rightAction.icon} size={24} color="#fff" />
           </TouchableOpacity>
         ) : (
           <View style={styles.placeholder} />

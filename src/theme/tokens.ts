@@ -9,8 +9,7 @@ const IS_TV =
 
 const TV_SCALE = IS_TV ? 1.3 : 1;
 
-/** The one custom family app/_layout.tsx actually loads via useFonts(). */
-export const FONT_FAMILY = "Tenor Sans";
+export const FONT_FAMILY = "Inter";
 
 export const pw = (pct: number) => (W * pct) / 100;
 export const ph = (pct: number) => (H * pct) / 100;
@@ -50,32 +49,37 @@ export const CARD_FRAME_INNER_RADIUS = psRaw(1.5);
 
 export const THEME = {
   colors: {
-    background: "#000000",          // Pure deep black background
-    surface: "#0c0d12",             // Deep surface card
-    surfaceLight: "rgba(255, 255, 255, 0.06)",
+    background: "#000000",          // Pure black main background
+    surface: "#151512ED",             // Dark charcoal sidebar / surface
+    surfaceLight: "#161613CC",       // Transparent black normal sidebar
 
-    primary: "#ffffff",             // Pure white primary
-    secondary: "#e0e0e0",           // Crisp silver secondary
-    accent: "#ffffff",              // Pure white accent
+    primary: "#F5F5F5",             // Cinema Gold primary accent
+    secondary: "#16161672",           // Soft gray secondary text
+    accent: "#F5F5F5",              // Cinema Gold primary accent
 
-    text: "#FFFFFF",
-    textMuted: "rgba(255, 255, 255, 0.70)",
-    textDim: "rgba(255, 255, 255, 0.45)",
+    text: "#FFFFFF",                // White main text
+    textMuted: "#B8B8B8",           // Soft gray secondary text
+    textDim: "rgba(184, 184, 184, 0.60)",
 
-    border: "rgba(255, 255, 255, 0.12)",
+    border: "rgba(255, 255, 255, 0.10)",
     borderLight: "rgba(255, 255, 255, 0.06)",
 
-    overlay: "rgba(0, 0, 0, 0.85)",
+    overlay: "rgba(8, 8, 6, 0.85)",
 
-    // TV focus colors - strict monochrome white ring / glow
-    focusRing: "#FFFFFF",
-    focusGlow: "rgba(255, 255, 255, 0.25)",
+    // Focus & Category Selection
+    selectedCategory: "#F9F4EA",    // Warm ivory selected category
+    selectedText: "#111111",        // Black selected text
+    focusRing: "#F4F2EF",           // Gold focus border
+    focusGlow: "rgba(232, 231, 228, 0.35)",
+
+    // Rating Badge
+    ratingBadge: "#C58D00",         // Dark gold rating badge
 
     // Glassmorphism
-    glassBg: "rgba(255, 255, 255, 0.04)",
-    glassBgFocus: "rgba(255, 255, 255, 0.12)",
-    glassBorder: "rgba(255, 255, 255, 0.18)",
-    glassBorderFocus: "rgba(255, 255, 255, 0.6)",
+    glassBg: "#161613CC",
+    glassBgFocus: "#FFF7E6",
+    glassBorder: "rgba(255, 255, 255, 0.08)",
+    glassBorderFocus: "#FFC857",
   },
   spacing: {
     xs: pw(1),
@@ -118,9 +122,9 @@ export const THEME = {
    * what they meant; they are not different faces.
    */
   fonts: {
-    regular: FONT_FAMILY,
-    medium: FONT_FAMILY,
-    bold: FONT_FAMILY,
+    regular: "Inter_400Regular",
+    medium: "Inter_500Medium",
+    bold: "Inter_700Bold",
   }
 };
 

@@ -12,15 +12,17 @@
 // the corner.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from 'react-native';
 import { Image } from "expo-image";
-import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { THEME, ph, ps, pw } from "../theme/tokens";
 import { NowNext } from "../services/epgService";
 import { stbEnvironment } from "../services/stbEnvironment";
 import type { Channel } from "../store/portalStore";
+import { Lock, Tv } from 'lucide-react-native';
+import { Text } from './Text';
+
 
 export interface ChannelInfoBarProps {
   channel: Channel | null | undefined;
@@ -103,7 +105,7 @@ export const ChannelInfoBar = React.memo(function ChannelInfoBar({
           </View>
           <View style={S.logoBox}>
             {locked ? (
-              <Ionicons name="lock-closed" size={ps(2.4)} color="rgba(255,255,255,0.55)" />
+              <Lock size={ps(2.4)} color="rgba(255,255,255,0.55)" />
             ) : channel.logo ? (
               <Image
                 source={{ uri: channel.logo }}
@@ -113,7 +115,7 @@ export const ChannelInfoBar = React.memo(function ChannelInfoBar({
                 transition={120}
               />
             ) : (
-              <Ionicons name="tv-outline" size={ps(2.4)} color="rgba(255,255,255,0.3)" />
+              <Tv size={ps(2.4)} color="rgba(255,255,255,0.3)" />
             )}
           </View>
         </View>
@@ -181,8 +183,8 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(2),
     paddingVertical: ph(1.2),
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
-    backgroundColor: "rgba(12,12,18,0.72)",
+    borderTopColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#151512",
   },
   // Inherits the host's horizontal inset and scrim; see the `variant` note.
   wrapInline: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: ph(1) },
@@ -201,12 +203,14 @@ const S = StyleSheet.create({
     height: ps(5.4),
     paddingHorizontal: pw(0.8),
     borderRadius: ps(0.8),
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#161613CC",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
     alignItems: "center",
     justifyContent: "center",
   },
   numberText: {
-    color: "#fff",
+    color: "#FFF7E6",
     fontSize: ps(1.6),
     fontWeight: "900",
     letterSpacing: 1,
@@ -221,21 +225,23 @@ const S = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: ps(0.8),
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
   },
   logo: { width: "95%", height: "95%" },
 
   detail: { flex: 1, gap: ph(0.5) },
   titleRow: { flexDirection: "row", alignItems: "center", gap: pw(0.8) },
   channelName: {
-    color: "#fff",
+    color: "#FFFFFF",
     fontSize: ps(1.3),
     fontWeight: "800",
     flexShrink: 1,
   },
   clock: {
     marginLeft: "auto",
-    color: "rgba(255,255,255,0.55)",
+    color: "#B8B8B8",
     fontSize: ps(1.05),
     fontWeight: "700",
     letterSpacing: 0.5,
@@ -262,14 +268,14 @@ const S = StyleSheet.create({
 
   nowRow: { flexDirection: "row", alignItems: "center", gap: pw(1) },
   nowTime: {
-    color: "rgba(255,255,255,0.6)",
+    color: "#B8B8B8",
     fontSize: ps(0.95),
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
-  nowTitle: { color: "#fff", fontSize: ps(1.05), fontWeight: "700", flex: 1 },
+  nowTitle: { color: "#FFFFFF", fontSize: ps(1.05), fontWeight: "700", flex: 1 },
   remaining: {
-    color: "rgba(255,255,255,0.45)",
+    color: "#B8B8B8",
     fontSize: ps(0.85),
     fontWeight: "600",
   },
@@ -287,8 +293,8 @@ const S = StyleSheet.create({
     fontSize: ps(0.95),
     fontStyle: "italic",
   },
-  nextLine: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.9), fontWeight: "600" },
-  nextLabel: { color: "rgba(255,255,255,0.32)", fontWeight: "900", letterSpacing: 1 },
+  nextLine: { color: "#B8B8B8", fontSize: ps(0.9), fontWeight: "600" },
+  nextLabel: { color: THEME.colors.primary, fontWeight: "900", letterSpacing: 1 },
   hint: { color: "rgba(255,255,255,0.3)", fontSize: ps(0.8), marginTop: ph(0.3) },
 });
 

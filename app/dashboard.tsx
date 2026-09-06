@@ -1,19 +1,8 @@
+import { DynamicIcon } from '../src/components/DynamicIcon';
 import React, { useEffect, useState, useCallback } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-  Image,
-  Dimensions,
-  Platform,
-  ActivityIndicator,
-} from "react-native";
+import { View, StyleSheet, Image, Platform, ActivityIndicator } from 'react-native';
 import { useRouter } from "expo-router";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePortalStore } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
@@ -21,15 +10,18 @@ import { XtreamApi } from "../src/services/xtreamApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import LoadingOverlay from "../src/components/LoadingOverlay";
-import { isTV } from "../src/utils/tvUtils";
 import { Focusable, Overlay, useInitialFocusPulse } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
 import { useNetworkActivity } from "../src/services/networkActivity";
-import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
+import { CinematicBackground } from "../src/components/CinematicBackground";
+import { safeNavigate } from "../src/services/safeNavigation";
 // This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
 import { THEME, pw, ph, psRaw as ps, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
+import { Calendar, ExternalLink, Film, Layers, LayoutGrid, LucideIcon, Play, RefreshCw, Search, Settings, Star, Tv, X } from 'lucide-react-native';
+import { Text } from '../src/components/Text';
 
-const RAIL_H_PAD = pw(isTV ? 5 : 4);
+
+const RAIL_H_PAD = pw(5);
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
@@ -37,13 +29,11 @@ const HeroPill = ({
   icon,
   text,
   onPress,
-  iconType = "ionicons",
   autoFocus = false,
 }: {
   icon: string;
   text: string;
   onPress: () => void;
-  iconType?: "ionicons" | "material";
   autoFocus?: boolean;
 }) => {
   const [shouldFocus, setShouldFocus] = useState(autoFocus);
@@ -72,15 +62,11 @@ const HeroPill = ({
           <View
             style={[
               S.heroPillGradient,
-              !focused && { backgroundColor: "rgba(255,255,255,0.05)" },
+              !focused && { backgroundColor: "#17181c" },
               focused && { backgroundColor: "#fff" }
             ]}
           >
-            {iconType === "material" ? (
-              <MaterialCommunityIcons name={icon as any} size={ps(1.8)} color={focused ? "#000" : "#fff"} style={{ marginRight: pw(0.8) }} />
-            ) : (
-              <Ionicons name={icon as any} size={ps(1.8)} color={focused ? "#000" : "#fff"} style={{ marginRight: pw(0.8) }} />
-            )}
+            <DynamicIcon name={icon} size={ps(2.2)} color={focused ? "#000" : "#fff"} style={{ marginRight: pw(1.0) }} />
             <Text style={[S.heroPillText, focused && { color: "#000" }]}>{text}</Text>
           </View>
         </View>
@@ -101,7 +87,7 @@ export default function DashboardScreen() {
   const loadFavorites = usePortalStore((s) => s.loadFavorites);
 
   const [isLoading, setIsLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+
   // True while any portal request is in flight, including the boot sync and the
   // periodic refresh that this screen never started.
   const syncing = useNetworkActivity();
@@ -134,12 +120,6 @@ export default function DashboardScreen() {
       setIsLoading(false);
     }
   }, [activePortal, notify]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await handleFullRefresh();
-    setRefreshing(false);
-  }, [handleFullRefresh]);
 
   // Handle VOD play action (Watch Now or External)
   const handleVodAction = useCallback(async (isExternal: boolean) => {
@@ -207,14 +187,14 @@ export default function DashboardScreen() {
             {(focused) => syncing ? (
               <ActivityIndicator size="small" color={focused ? "#000" : "#fff"} />
             ) : (
-              <Ionicons name="refresh" size={isTV ? ps(1.8) : ps(2.2)} color={focused ? "#000" : "#fff"} />
+              <RefreshCw size={ps(2.3)} color={focused ? "#000" : "#fff"} />
             )}
           </Focusable>
-          <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/portals")} style={S.roundBtn}>
-            {(focused) => <Ionicons name="apps" size={isTV ? ps(1.8) : ps(2.2)} color={focused ? "#000" : "#fff"} />}
+          <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => safeNavigate("/portals")} style={S.roundBtn}>
+            {(focused) => <LayoutGrid size={ps(2.3)} color={focused ? "#000" : "#fff"} />}
           </Focusable>
-          <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => router.push("/settings")} style={S.roundBtn}>
-            {(focused) => <Ionicons name="settings-sharp" size={isTV ? ps(1.8) : ps(2.2)} color={focused ? "#000" : "#fff"} />}
+          <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => safeNavigate("/settings")} style={S.roundBtn}>
+            {(focused) => <Settings size={ps(2.3)} color={focused ? "#000" : "#fff"} />}
           </Focusable>
         </View>
       </View>
@@ -233,12 +213,12 @@ export default function DashboardScreen() {
         </Text>
         <View style={S.heroButtons}>
           {/* Initial focus belongs to the Live TV tile below, not here. */}
-          <HeroPill icon="search" text="Search Content" onPress={() => router.push("/search")} />
+          <HeroPill icon="search" text="Search Content" onPress={() => safeNavigate("/search")} />
           {/* The guide lives here rather than behind a button in the Live TV
               header. It is a place you go, like Search — not a control on the
               channel grid — and from the remote it is still one GUIDE press
               away from anywhere. */}
-          <HeroPill icon="calendar-outline" text="TV Guide" onPress={() => router.push("/epg")} />
+          <HeroPill icon="calendar" text="TV Guide" onPress={() => safeNavigate("/epg")} />
         </View>
       </View>
 
@@ -252,7 +232,7 @@ export default function DashboardScreen() {
               // remote images arrived.
               { id: "cat-live", title: "Live TV", icon: "tv", img: require("../assets/images/livetv.png"), route: "/live-tv" },
               { id: "cat-movies", title: "Movies", icon: "film", img: require("../assets/images/movies.png"), route: "/vod" },
-              { id: "cat-series", title: "Series", icon: "albums", img: require("../assets/images/series.png"), route: "/series" },
+              { id: "cat-series", title: "Series", icon: "layers", img: require("../assets/images/series.png"), route: "/series" },
             ]
           ).map((cat) => (
             <Focusable
@@ -260,8 +240,7 @@ export default function DashboardScreen() {
               // Live TV is where most sessions start, so it owns the
               // dashboard's initial focus.
               hasTVPreferredFocus={focusLiveTile && cat.id === "cat-live"}
-              onFocus={() => updateCinematicBackground(cat.img, .5)}
-              onPress={() => router.push(cat.route as any)}
+              onPress={() => safeNavigate(cat.route)}
               ringOnFocus={false}
               // TV: no fixed height — `flex: 1` shares the row's width and
               // the height comes from the parent stretching, so the row fits
@@ -286,11 +265,12 @@ export default function DashboardScreen() {
                       style={StyleSheet.absoluteFillObject}
                     />
 
-                    {/* Text container sitting on top at the bottom */}
+                    {/* Text container sitting on top at the bottom with NO icon background */}
                     <View style={S.browseCardContent}>
-                      <View style={[S.browseCardIconWrap, focused && S.browseCardIconWrapFocused]}>
-                        <Ionicons name={cat.icon as any} size={ps(2.2)} color={focused ? "#fff" : "#d8dce8"} />
-                      </View>
+                      <DynamicIcon name={cat.icon}
+                        size={ps(2.2)}
+                        color={focused ? "#FFFFFF" : "rgba(255,255,255,0.75)"}
+                      />
                       <Text style={[S.browseCardTitle, focused && S.browseCardTitleFocused]}>{cat.title}</Text>
                     </View>
                   </View>
@@ -310,30 +290,14 @@ export default function DashboardScreen() {
         accessibilityElementsHidden={playModalVisible}
         importantForAccessibility={playModalVisible ? "no-hide-descendants" : "auto"}
       >
-        {/* Cinematic Background */}
+        {/* Pure Black Screensaver & Background */}
         <View style={S.backgroundArea}>
           <CinematicBackground />
         </View>
 
         {isLoading && <LoadingOverlay message="Refreshing your library..." />}
 
-        {/* On TV the dashboard is a single screen — the browse row absorbs
-            whatever height is left over, so there is nothing to scroll and the
-            D-pad never drags the view around. Touch layouts stack the three
-            cards vertically and genuinely cannot fit, so they keep the
-            ScrollView (and with it pull-to-refresh). */}
-        {isTV ? (
-          <View style={[S.body, { paddingTop: insets.top + ph(2) }]}>{dashboardContent}</View>
-        ) : (
-          <ScrollView
-            style={{ flex: 1 }}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingTop: insets.top + ph(2), paddingBottom: ph(10) }}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ff1b8a" />}
-          >
-            {dashboardContent}
-          </ScrollView>
-        )}
+        <View style={[S.body, { paddingTop: insets.top + ph(2) }]}>{dashboardContent}</View>
       </View>
 
       {/* ── Play Modal ────────────────────────────────────────────────────── */}
@@ -342,22 +306,22 @@ export default function DashboardScreen() {
         onClose={() => setPlayModalVisible(false)}
         contentStyle={S.modalContainer}
       >
-        <View style={[isTV ? S.modalTVContent : null, { padding: ps(3) }]}>
+        <View style={[S.modalTVContent, { padding: ps(3) }]}>
           <View style={S.modalLeft}>
             <Text style={S.modalTitle} numberOfLines={2}>{selectedItem?.name}</Text>
-            <Text style={S.modalDescription} numberOfLines={isTV ? 8 : 5}>
+            <Text style={S.modalDescription} numberOfLines={8}>
               {selectedItem?.description || "No description available for this content."}
             </Text>
             <View style={S.modalMetaRow}>
               {selectedItem?.rating ? (
                 <View style={S.modalBadge}>
-                  <Ionicons name="star" size={ps(1)} color="#FFD700" />
+                  <Star size={ps(1)} color="#FFD700" />
                   <Text style={S.modalBadgeText}>{selectedItem.rating}</Text>
                 </View>
               ) : null}
               {selectedItem?.subtitle ? (
                 <View style={S.modalBadge}>
-                  <Ionicons name="calendar-outline" size={ps(1)} color="#fff" />
+                  <Calendar size={ps(1)} color="#fff" />
                   <Text style={S.modalBadgeText}>{selectedItem.subtitle}</Text>
                 </View>
               ) : null}
@@ -372,16 +336,10 @@ export default function DashboardScreen() {
               style={S.modalBtnWrapper}
             >
               {(focused) => (
-                <LinearGradient
-                  colors={focused ? ["#fff", "#fff"] : ["rgba(255,255,255,0.05)", "rgba(255,255,255,0.05)"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnPrimaryInner}>
-                    <Text style={[S.modalBtnPrimaryText, focused && { color: "#000" }]}>WATCH NOW</Text>
-                  </View>
-                </LinearGradient>
+                <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
+                  <Play size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                  <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>WATCH NOW</Text>
+                </View>
               )}
             </Focusable>
             <Focusable
@@ -390,19 +348,10 @@ export default function DashboardScreen() {
               style={S.modalBtnWrapper}
             >
               {(focused) => (
-                <LinearGradient
-                  colors={focused
-                    ? ["#fff", "#fff"]
-                    : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnSecondaryInner}>
-                    <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>EXTERNAL PLAYER</Text>
-                  </View>
-                </LinearGradient>
+                <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
+                  <ExternalLink size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                  <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>EXTERNAL PLAYER</Text>
+                </View>
               )}
             </Focusable>
             <Focusable
@@ -411,19 +360,10 @@ export default function DashboardScreen() {
               style={S.modalBtnWrapper}
             >
               {(focused) => (
-                <LinearGradient
-                  colors={focused
-                    ? ["#fff", "#fff"]
-                    : ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.04)"]
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[S.modalBtnBorder, focused && S.modalBtnBorderFocused]}
-                >
-                  <View style={S.modalBtnSecondaryInner}>
-                    <Text style={[S.modalBtnSecondaryText, focused && { color: "#000" }]}>CLOSE</Text>
-                  </View>
-                </LinearGradient>
+                <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
+                  <X size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                  <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>CLOSE</Text>
+                </View>
               )}
             </Focusable>
           </View>
@@ -438,7 +378,7 @@ export default function DashboardScreen() {
 const S = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#08080a",
+    backgroundColor: "#000000",
   },
   /** TV: the non-scrolling column. */
   body: {
@@ -469,9 +409,8 @@ const S = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: RAIL_H_PAD,
-    // Tighter on TV so everything fits one screen without scrolling.
-    marginBottom: isTV ? ph(1.8) : ph(4),
-    marginTop: isTV ? ph(1.5) : ph(4),
+    marginBottom: ph(1.8),
+    marginTop: ph(1.5),
   },
   logoRow: {
     flexDirection: "row",
@@ -485,28 +424,27 @@ const S = StyleSheet.create({
     letterSpacing: 5,
   },
   headerLogoImage: {
-    width: isTV ? pw(22) : pw(38),
-    height: isTV ? ph(7.2) : ph(6.5),
-    transform: [{ scale: isTV ? 2.1 : 2.2 }],
-    marginLeft: isTV ? -pw(4.2) : -pw(3),
+    width: pw(22),
+    height: ph(7.2),
+    transform: [{ scale: 2.1 }],
+    marginLeft: -pw(4.2),
   },
   headerActions: {
     flexDirection: "row",
-    gap: isTV ? pw(1.2) : pw(2),
+    gap: pw(1.4),
     alignItems: "center",
   },
   roundBtn: {
-    width: isTV ? pw(3.8) : pw(9.5),
-    height: isTV ? pw(3.8) : pw(9.5),
-    borderRadius: isTV ? pw(1.9) : pw(4.75),
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    width: pw(4.6),
+    height: pw(4.6),
+    borderRadius: pw(2.3),
+    backgroundColor: "#17181c",
+    borderWidth: 0,
     justifyContent: "center",
     alignItems: "center",
   },
   roundBtnFocused: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F5F5F5",
     borderColor: "#FFFFFF",
     transform: [{ scale: 1.12 }],
     ...Platform.select({
@@ -527,26 +465,17 @@ const S = StyleSheet.create({
     paddingHorizontal: RAIL_H_PAD,
     maxWidth: pw(72),
     position: "relative",
-    // TV: this band absorbs the leftover height instead of the browse row, so
-    // the cards keep their landscape shape (their artwork is landscape — letting
-    // them stretch to fill crops the sides off) and the slack becomes breathing
-    // room around the hero text rather than a dead black strip under the cards.
-    ...(isTV
-      ? { flex: 1, justifyContent: "center" as const, marginBottom: ph(1.5) }
-      : { marginBottom: ph(8) }),
+    flex: 1,
+    justifyContent: "center",
+    marginBottom: ph(1.5),
   },
   heroGradientOverlay: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: ps(2),
     zIndex: -1,
   },
-  heroTagline: {
-    fontSize: ps(1.1),
-    fontWeight: "900",
-    letterSpacing: 2.5,
-  },
   heroTitle: {
-    fontSize: isTV ? ps(3.2) : ps(2.6),
+    fontSize: ps(3.2),
     color: "#FFFFFF",
     fontWeight: "600",
     letterSpacing: 0.4,
@@ -556,15 +485,15 @@ const S = StyleSheet.create({
     textShadowRadius: 8,
   },
   heroDesc: {
-    fontSize: isTV ? ps(1.3) : ps(1.1),
+    fontSize: ps(1.3),
     color: "#A2A7BD",
-    lineHeight: isTV ? ph(2.8) : ph(2.3),
+    lineHeight: ph(2.8),
     marginBottom: ph(3.5),
-    maxWidth: isTV ? pw(58) : "100%",
+    maxWidth: pw(58),
   },
   heroButtons: {
     flexDirection: "row",
-    gap: pw(1.2),
+    gap: pw(1.5),
   },
   heroPillWrapper: {
     borderRadius: 100,
@@ -572,11 +501,11 @@ const S = StyleSheet.create({
   },
   heroPillContainer: {
     borderRadius: 100,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderWidth: 0,
     overflow: "hidden",
   },
   heroPillContainerFocused: {
+    borderWidth: 1,
     borderColor: "#FFFFFF",
     ...Platform.select({
       ios: {
@@ -593,59 +522,49 @@ const S = StyleSheet.create({
   heroPillGradient: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: isTV ? pw(2.2) : pw(4.5),
-    paddingVertical: isTV ? ph(1.2) : ph(1.6),
+    paddingHorizontal: pw(2.8),
+    paddingVertical: ph(1.5),
     borderRadius: 100,
     overflow: "hidden",
   },
   heroPillText: {
     color: "#fff",
     fontWeight: "600",
-    fontSize: isTV ? ps(1.2) : ps(1.1),
+    fontSize: ps(1.4),
     letterSpacing: 0.5,
   },
 
   // Browse Section ──
   browseSection: {
     paddingHorizontal: RAIL_H_PAD,
-    // A flex *weight*, not a ph() height. `ph()` derives from the window size
-    // captured when tokens.ts was imported; if that reading is short of the real
-    // display the whole column ends above the bottom edge. A weight is resolved
-    // against the parent's actual laid-out height, so the column always reaches
-    // the bottom, and the 1 : 1.6 split against heroSection keeps the cards
-    // roughly landscape.
-    ...(isTV
-      ? { flex: 1.6, marginBottom: ph(3.5) }
-      : { marginBottom: ph(6) }),
+    flex: 1.6,
+    marginBottom: ph(3.5),
   },
   browseContainer: {
-    flexDirection: isTV ? "row" : "column",
-    // Expanded gap for breathing room as recommended by TV design feedback
-    gap: isTV ? pw(2.8) : pw(2.2),
-    ...(isTV ? { flex: 1 } : null),
+    flexDirection: "row",
+    gap: pw(2.8),
+    flex: 1,
   },
   browseCard: {
     flex: 1,
     paddingHorizontal: pw(0.3),
     paddingVertical: pw(0.8),
     overflow: "visible",
-    // Touch layouts stack these vertically inside a ScrollView, so they still
-    // need an explicit height; on TV the row stretches them.
-    height: ph(42),
-    minHeight: ph(42),
   },
   cardBorder: {
-    ...TILE_FRAME,
     flex: 1,
     borderRadius: CARD_FRAME.borderRadius,
+    borderWidth: 1,
+    borderColor: "transparent",
+    overflow: "hidden",
   },
-  // Was a pure #FFFFFF edge over a transparent fill with an elevation-14 lift
-  // — the heaviest focus treatment in the app, on the first cards anyone sees.
-  cardBorderFocused: { ...TILE_FRAME_FOCUSED },
+  cardBorderFocused: {
+    borderColor: "#FFFFFF",
+  },
   browseCardInner: {
     flex: 1,
-    backgroundColor: THEME.colors.background,
-    borderRadius: CARD_FRAME_INNER_RADIUS,
+    backgroundColor: "#000000",
+    borderRadius: CARD_FRAME.borderRadius,
     overflow: "hidden",
   },
   browseCardContent: {
@@ -655,146 +574,65 @@ const S = StyleSheet.create({
     left: 0,
     right: 0,
     padding: ps(1.6),
+    paddingBottom: ps(1.8),
     borderBottomLeftRadius: ps(1.1),
     borderBottomRightRadius: ps(1.1),
     overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
-    gap: pw(1),
-  },
-  browseCardIconWrap: {
-    width: ps(3.2),
-    height: ps(3.2),
-    borderRadius: ps(1.6),
-    backgroundColor: "rgba(255,255,255,0.06)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  browseCardIconWrapFocused: {
-    backgroundColor: "rgba(255,255,255,0.18)",
+    gap: pw(0.8),
   },
   browseCardTitle: {
     color: "#D8DCE8",
-    fontSize: isTV ? ps(1.8) : ps(1.5),
+    fontSize: ps(1.8),
     fontWeight: "700",
     letterSpacing: 0.3,
   },
   browseCardTitleFocused: {
     color: "#FFFFFF",
+    fontWeight: "800",
   },
 
-  // ── Rails ──
-  railsPadding: {
-    paddingHorizontal: 0,
-  },
-  section: {
-    marginBottom: ph(4),
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: RAIL_H_PAD,
-    marginBottom: ph(1.5),
-  },
-  sectionTitle: {
-    color: "#fff",
-    fontSize: ps(1.8),
-    fontWeight: "600",
-  },
-  viewAllBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: pw(0.5),
-  },
-  viewAllText: {
-    color: "#888",
-    fontSize: ps(1.2),
-  },
-  sectionScroll: {
-    paddingLeft: RAIL_H_PAD,
-    paddingRight: pw(5),
-  },
-
-  // ── Items ──
-  railItem: {
-    borderRadius: pw(1.2),
-    overflow: "visible",
-  },
-  railInner: {
-    flex: 1,
-    backgroundColor: "transparent",
-    borderRadius: ps(1.1),
-    overflow: "hidden",
-  },
-  imageWrapper: {
-    flex: 1,
-  },
-  railItemImage: {
-    width: "100%",
-    height: "100%",
-  },
-  placeholderBg: {
-    backgroundColor: "#16181d",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  cardOver: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  cardContent: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: ps(1),
-  },
-  cardTitle: {
-    color: "#fff",
-    fontSize: ps(1.15),
-    fontWeight: "700",
-  },
-  cardSubtitle: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: ps(0.85),
-    marginTop: 2,
-  },
-  focusBorder: {
-    ...StyleSheet.absoluteFillObject,
-    padding: pw(0.4),
-    borderWidth: 0,
-    backgroundColor: "transparent",
-  },
-  borderFill: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 1,
-    borderRadius: pw(1.2),
-    borderWidth: 3,
-    borderColor: "transparent",
-  },
-
-  // ── Play Modal ── (identical to vod.tsx)
-  modalContainer: { backgroundColor: "#111", width: isTV ? ps(65) : "92%", borderRadius: 24, padding: ps(.8), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
+  // ── Play Modal ──
+  modalContainer: { backgroundColor: "#111", width: ps(65), borderRadius: 24, padding: ps(.8), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
   modalTVContent: { flexDirection: "row" },
   modalLeft: { flex: 1.4, padding: ps(1.5) },
-  modalRight: { flex: 0.6, padding: ps(2), paddingRight: isTV ? ps(4) : ps(2), justifyContent: "center", gap: 12 },
+  modalRight: { flex: 0.6, padding: ps(2), paddingRight: ps(4), justifyContent: "center", gap: 12 },
   modalTitle: { color: "#fff", fontSize: ps(1.9), fontWeight: "900", marginBottom: 12 },
   modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(1.2), lineHeight: ps(1.4), marginBottom: 18 },
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
   modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "700" },
-  modalBtnWrapper: { borderRadius: 8, overflow: "visible", width: "100%", maxWidth: 380, alignSelf: "flex-end" },
-  modalBtnBorder: { padding: 1, borderRadius: 8 },
-  modalBtnBorderFocused: {
-    padding: 1,
-    shadowColor: "#fff",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 16,
-    elevation: 14,
+  modalBtnWrapper: { borderRadius: 10, overflow: "visible", width: "100%", maxWidth: 380, alignSelf: "flex-end" },
+  modalBtnPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: ps(0.6),
+    paddingVertical: ps(0.95),
+    paddingHorizontal: ps(1.5),
+    borderRadius: 10,
+    borderWidth: 0,
+    borderColor: "transparent",
+    backgroundColor: "#17181c",
   },
-  modalBtnPrimaryInner: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
-  modalBtnSecondaryInner: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.3)" },
-  modalBtnPrimaryText: { color: "#fff", fontSize: ps(0.95), fontWeight: "900", letterSpacing: 1 },
-  modalBtnSecondaryText: { color: "rgba(255,255,255,0.85)", fontSize: ps(0.9), fontWeight: "700", letterSpacing: 0.5 },
+  modalBtnPillFocused: {
+    backgroundColor: "#F5F5F5",
+    borderColor: "transparent",
+    borderWidth: 0,
+    elevation: 8,
+    transform: [{ scale: 1.05 }],
+  },
+  modalBtnText: {
+    color: "#FFFFFF",
+    fontSize: ps(1.0),
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  modalBtnTextFocused: {
+    color: "#000000",
+    fontSize: ps(1.0),
+    fontWeight: "900",
+    letterSpacing: 0.3,
+  },
 });

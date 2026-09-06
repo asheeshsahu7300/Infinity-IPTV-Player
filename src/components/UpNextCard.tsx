@@ -14,13 +14,14 @@
 //   • the countdown is visible and continuous, so it never fires unannounced.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from 'react-native';
 import { Image } from "expo-image";
-import { Ionicons } from "@expo/vector-icons";
-
 import { Focusable, FocusGroup } from "../tv";
 import { THEME, ph, ps, pw } from "../theme/tokens";
 import type { QueueItem } from "../services/playbackQueue";
+import { Film, Play, X } from 'lucide-react-native';
+import { Text } from './Text';
+
 
 export interface UpNextCardProps {
   visible: boolean;
@@ -91,7 +92,7 @@ export function UpNextCard({
               cachePolicy="memory-disk"
             />
           ) : (
-            <Ionicons name="film-outline" size={ps(2)} color="rgba(255,255,255,0.2)" />
+            <Film size={ps(2)} color="rgba(255,255,255,0.2)" />
           )}
         </View>
 
@@ -122,7 +123,7 @@ export function UpNextCard({
             >
               {(focused) => (
                 <View style={[S.action, focused && S.actionFocused]}>
-                  <Ionicons name="close" size={ps(1.2)} color={focused ? "#000" : "#fff"} />
+                  <X size={ps(1.2)} color={focused ? "#000" : "#fff"} />
                   <Text style={[S.actionText, focused && S.actionTextFocused]}>CANCEL</Text>
                 </View>
               )}
@@ -136,7 +137,7 @@ export function UpNextCard({
             >
               {(focused) => (
                 <View style={[S.action, S.actionPrimary, focused && S.actionFocused]}>
-                  <Ionicons name="play" size={ps(1.2)} color={focused ? "#000" : "#fff"} />
+                  <Play size={ps(1.2)} color={focused ? "#000" : "#fff"} />
                   <Text style={[S.actionText, focused && S.actionTextFocused]}>PLAY NOW</Text>
                 </View>
               )}
