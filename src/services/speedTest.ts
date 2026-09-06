@@ -21,7 +21,22 @@
 import axios from "axios";
 import NetInfo from "@react-native-community/netinfo";
 
+import { safeStorage } from "./safeStorage";
 import type { Portal } from "../store/portalStore";
+
+let cachedSpeedTestResult: SpeedTestResult | null = null;
+
+export function getLastSpeedTestResult(): SpeedTestResult | null {
+  return cachedSpeedTestResult;
+}
+
+safeStorage.getItem("last_speed_test_result").then((val) => {
+  if (val) {
+    try {
+      cachedSpeedTestResult = JSON.parse(val);
+    } catch { }
+  }
+}).catch(() => { });
 
 export type SpeedTestPhase = "idle" | "latency" | "download" | "done" | "failed";
 
@@ -421,6 +436,9 @@ export async function runSpeedTest(
     host,
     finishedAt: Date.now(),
   };
+
+  cachedSpeedTestResult = result;
+  safeStorage.setItem("last_speed_test_result", JSON.stringify(result)).catch(() => { });
 
   onProgress({ phase: "done", progress: 1, mbps, latencyMs });
   return result;

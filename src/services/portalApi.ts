@@ -108,67 +108,54 @@ function epgTimeToMs(v: any): number {
 }
 
 
+let lastMeasuredEdgeRttMs: number | null = null;
+
+export function getLastMeasuredEdgeRtt(): number | null {
+  return lastMeasuredEdgeRttMs;
+}
+
 // ─── Redirect resolution ──────────────────────────────────────────────────────
 // Some Stalker/Xtream/M3U backends return a URL that itself 301/302-redirects
 // to the real CDN edge node. Letting the player follow that at play-time adds
 // a full extra DNS+TCP+TLS+HTTP round trip before the first byte arrives.
 // Resolve the chain once here and hand the player the final direct URL.
 async function resolveDirectStreamUrl(startUrl: string): Promise<string> {
-  if (!/^https?:\/\//i.test(startUrl)) return startUrl; // rtmp/rtsp/etc — nothing to resolve
-
-  // 1. Try HEAD request via Fetch API first (fastest — res.url contains final target after 301/302 redirects)
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
-    const res = await fetch(startUrl, {
-      method: "HEAD",
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "okhttp/3.12.1",
-        Accept: "*/*",
-      },
-    });
-    clearTimeout(timeoutId);
-
-    if (res.url && /^https?:\/\//i.test(res.url) && res.url !== startUrl) {
-      return res.url;
-    }
-  } catch {
-    // HEAD failed or timed out, fallback to GET
-  }
-
-  // 2. Fallback: Fast Range GET via Axios to capture responseURL
-  try {
-    const res = await axios.get(startUrl, {
-      timeout: 4000,
-      headers: {
-        "User-Agent": "okhttp/3.12.1",
-        Accept: "application/json, text/javascript, */*; q=0.01",
-        Range: "bytes=0-1024",
-      },
-      maxRedirects: 5,
-    });
-
-    const final =
-      (res.request as any)?.responseURL ||
-      (res.request as any)?._url ||
-      (res.request as any)?._responseURL ||
-      res.config?.url;
-
-    if (final && /^https?:\/\//i.test(final)) {
-      return final;
-    }
-  } catch (err: any) {
-    const final =
-      (err?.response?.request as any)?.responseURL ||
-      (err?.request as any)?.responseURL ||
-      (err?.response?.request as any)?._url;
-    if (final && /^https?:\/\//i.test(final)) {
-      return final;
-    }
-  }
-
+  // Direct passthrough — bypass pre-probing and let the native player connect to streamUrl directly
   return startUrl;
+
+  // if (!/^https?:\/\//i.test(startUrl)) {
+  //   return startUrl;
+  // }
+  //
+  // const controller = new AbortController();
+  // const timeoutId = setTimeout(() => controller.abort(), 2500);
+  // const startTime = Date.now();
+  //
+  // try {
+  //   const res = await fetch(startUrl, {
+  //     method: "GET",
+  //     signal: controller.signal,
+  //     headers: {
+  //       "User-Agent": "okhttp/3.12.1",
+  //       Accept: "*/*",
+  //       Range: "bytes=0-512",
+  //     },
+  //   });
+  //
+  //   lastMeasuredEdgeRttMs = Date.now() - startTime;
+  //   const finalUrl = res.url;
+  //   controller.abort();
+  //
+  //   if (finalUrl && /^https?:\/\//i.test(finalUrl)) {
+  //     return finalUrl;
+  //   }
+  //   return startUrl;
+  // } catch {
+  //   lastMeasuredEdgeRttMs = Date.now() - startTime;
+  //   return startUrl;
+  // } finally {
+  //   clearTimeout(timeoutId);
+  // }
 }
 
 const rmAcceptHeader = {
@@ -1731,7 +1718,8 @@ export const portalApi = {
 
       let out2 = finalUrl || out || "";
 
-      // Resolve redirect chains ONLY for URLs without one-time play tokens
+      // Direct stream URL — bypass probe resolution and give stream URL directly to player
+      /*
       if (
         out2 &&
         /^https?:\/\//i.test(out2) &&
@@ -1744,6 +1732,7 @@ export const portalApi = {
           // fallback safely to out2
         }
       }
+      */
 
       const { applySameHostStreamProxy } = await import("./stbEnvironment");
       return applySameHostStreamProxy(out2, latestPortal, cleanCmd || cmd);

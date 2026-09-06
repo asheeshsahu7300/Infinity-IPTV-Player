@@ -29,7 +29,8 @@ import { THEME, ps, pw, ph } from "../src/theme/tokens";
 import { Focusable, FocusGroup, Overlay, useDPad, DPAD_PRIORITY, useStbKeys, STB_PRIORITY } from "../src/tv";
 import NetInfo from "@react-native-community/netinfo";
 import { epgService } from "../src/services/epgService";
-import { buildImageUrl, portalApi, streamHeaders } from "../src/services/portalApi";
+import { buildImageUrl, portalApi, streamHeaders, getLastMeasuredEdgeRtt } from "../src/services/portalApi";
+import { getLastSpeedTestResult } from "../src/services/speedTest";
 import { parentalControl } from "../src/services/parentalControl";
 import { stbEnvironment, BufferTuning, applySameHostStreamProxy } from "../src/services/stbEnvironment";
 import { liveChannelSession, buildChannelNumbers, withChannelNumbers } from "../src/services/liveChannelSession";
@@ -102,12 +103,33 @@ function getExpoResizeMode(key: AspectRatioType): ResizeMode {
 }
 
 // ─── Network quality helpers ──────────────────────────────────────────────────
-function detectNetworkQuality(type: string | null, effectiveType?: string | null): NetworkQuality {
+function detectNetworkQuality(
+  type: string | null,
+  effectiveType?: string | null,
+  measuredRttMs?: number | null,
+  measuredMbps?: number | null
+): NetworkQuality {
+  // 1. Measured throughput from speedTest.ts (highest reliability)
+  if (typeof measuredMbps === "number" && measuredMbps > 0) {
+    if (measuredMbps < 6) return "slow";
+    if (measuredMbps < 16) return "medium";
+    return "fast";
+  }
+
+  // 2. Real-time RTT measured from stream URL resolution probe
+  if (typeof measuredRttMs === "number" && measuredRttMs > 0) {
+    if (measuredRttMs > 400) return "slow";     // High latency / congested edge node
+    if (measuredRttMs > 180) return "medium";   // Moderate latency
+    return "fast";                              // Responsive local edge (< 180ms)
+  }
+
+  // 3. Fallback to connection type: Wi-Fi is conservatively rated "medium" instead of blindly "fast"
   const t = (effectiveType || type || "").toLowerCase();
-  if (t === "wifi" || t === "5g" || t === "ethernet") return "fast";
+  if (t === "ethernet") return "fast";
+  if (t === "wifi" || t === "5g") return "medium";
   if (t === "4g" || t === "lte") return "medium";
   if (t === "3g" || t === "2g" || t === "edge" || t === "cdma") return "slow";
-  return "unknown";
+  return "medium";
 }
 
 /**
@@ -134,17 +156,17 @@ function calcNetworkCacheMs(quality: NetworkQuality, isLive: boolean, is4K: bool
   if (is4K) {
     if (isLive) {
       switch (quality) {
-        case "fast": return 3500;
-        case "medium": return 4500;
-        case "slow": return 6000;
-        default: return 4000;
+        case "fast": return 4500;
+        case "medium": return 6000;
+        case "slow": return 8000;
+        default: return 6000;
       }
     } else {
       switch (quality) {
-        case "fast": return 3000;
-        case "medium": return 4000;
-        case "slow": return 5500;
-        default: return 3500;
+        case "fast": return 3500;
+        case "medium": return 5000;
+        case "slow": return 7000;
+        default: return 4500;
       }
     }
   }
@@ -152,18 +174,18 @@ function calcNetworkCacheMs(quality: NetworkQuality, isLive: boolean, is4K: bool
   let base: number;
   if (isLive) {
     switch (quality) {
-      case "fast": base = 800; break;
-      case "medium": base = 1000; break;
-      case "slow": base = 2000; break;
-      default: base = 1000; break;
+      case "fast": return 2200; // 2.2s for clean zapping with jitter headroom
+      case "medium": return 3500; // 3.5s normal IPTV baseline
+      case "slow": return 5500; // 5.5s fluctuating line
+      default: return 3500;
     }
   } else {
     // Fast start for VOD / Series on-demand playback
     switch (quality) {
-      case "fast": base = 500; break;
-      case "medium": base = 700; break;
-      case "slow": base = 1200; break;
-      default: base = 700; break;
+      case "fast": return 1200;
+      case "medium": return 2000;
+      case "slow": return 3500;
+      default: return 2000;
     }
   }
   return base;
@@ -192,7 +214,8 @@ function resolveCacheMs(
 ): number {
   const preference = isLive ? tuning.liveCacheMs : tuning.vodCacheMs;
   const floor = calcNetworkCacheMs(quality, isLive, is4K);
-  return Math.round(Math.max(preference, floor) * boost);
+  // Cap at 10s to keep latency manageable while absorbing extreme jitter
+  return Math.min(10000, Math.round(Math.max(preference, floor) * boost));
 }
 
 /**
@@ -436,6 +459,8 @@ export default function PlayerScreen() {
    * not one to keep probing with a shallow buffer.
    */
   const bufferBoostRef = useRef(1);
+  const stallCountRef = useRef(0);
+  const vlcRecoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNetworkLostRef = useRef(false);
   /** Live values for the channel being watched; a zap replaces both. */
   const activeCmdRef = useRef<string>(params.cmd || params.url || "");
@@ -589,6 +614,7 @@ export default function PlayerScreen() {
         }
       } catch { }
       safeStorage.removeItem("resume_player_state").catch(() => { });
+      if (vlcRecoveryTimeoutRef.current) clearTimeout(vlcRecoveryTimeoutRef.current);
       if (stablePlaybackTimerRef.current) clearTimeout(stablePlaybackTimerRef.current);
       if (liveReconnectIntervalRef.current) clearInterval(liveReconnectIntervalRef.current);
     };
@@ -601,7 +627,9 @@ export default function PlayerScreen() {
       isNetworkLostRef.current = lost;
       setIsNetworkLost(lost);
       if (!lost) {
-        const quality = detectNetworkQuality(type, effectiveType);
+        const edgeRtt = getLastMeasuredEdgeRtt();
+        const speed = getLastSpeedTestResult();
+        const quality = detectNetworkQuality(type, effectiveType, edgeRtt, speed?.mbps);
         const cacheMs = calcNetworkCacheMs(quality, isLive, is4K);
         networkCacheMsRef.current = cacheMs;
         setNetworkQuality(quality);
@@ -642,6 +670,12 @@ export default function PlayerScreen() {
        * and a rising one is its opposite.
        */
       if (positionMs > positionRef.current) {
+        // If VLC self-recovered before grace period expired, disarm the pending reconnect
+        if (vlcRecoveryTimeoutRef.current) {
+          clearTimeout(vlcRecoveryTimeoutRef.current);
+          vlcRecoveryTimeoutRef.current = null;
+          console.log("[VLC] Self-recovered from underrun before reconnect timeout");
+        }
         if (bufferingTimeoutRef.current) {
           clearTimeout(bufferingTimeoutRef.current);
           bufferingTimeoutRef.current = null;
@@ -650,6 +684,18 @@ export default function PlayerScreen() {
         // Guarded on the ref: this runs four times a second, and setting
         // state unconditionally would re-render the player on every tick.
         if (isBufferingRef.current) setIsBuffering(false);
+
+        // Track 30s of uninterrupted stable playback to decay the buffer boost
+        if (!stablePlaybackTimerRef.current) {
+          stablePlaybackTimerRef.current = setTimeout(() => {
+            if (stallCountRef.current > 0) {
+              stallCountRef.current = Math.max(0, stallCountRef.current - 1);
+              bufferBoostRef.current = Math.max(1.0, 1.0 + stallCountRef.current * 0.4);
+              console.log(`[Player] Line stabilized. Stall count decayed to ${stallCountRef.current}, boost: ${bufferBoostRef.current.toFixed(1)}x`);
+            }
+            stablePlaybackTimerRef.current = null;
+          }, 30000);
+        }
       }
 
       positionRef.current = positionMs;
@@ -1365,7 +1411,11 @@ export default function PlayerScreen() {
 
     isRetryingRef.current = true;
     retryCount.current += 1;
+    stallCountRef.current += 1;
     setIsRetrying(true);
+
+    // Deepen adaptive buffer with each stall/retry attempt (1.0x -> 1.4x -> 1.8x -> 2.2x -> capped at 3.0x)
+    bufferBoostRef.current = Math.min(3.0, 1.0 + stallCountRef.current * 0.4);
 
     // Exponential backoff: 500 ms, 1 s, 2 s, 4 s, 8 s … capped at 30 s
     const backoffMs = Math.min(500 * Math.pow(2, retryCount.current - 1), 30000);
@@ -1486,6 +1536,15 @@ export default function PlayerScreen() {
       retryCount.current = 0;
       isRetryingRef.current = false;
       bufferBoostRef.current = 1;
+      stallCountRef.current = 0;
+      if (vlcRecoveryTimeoutRef.current) {
+        clearTimeout(vlcRecoveryTimeoutRef.current);
+        vlcRecoveryTimeoutRef.current = null;
+      }
+      if (stablePlaybackTimerRef.current) {
+        clearTimeout(stablePlaybackTimerRef.current);
+        stablePlaybackTimerRef.current = null;
+      }
       hasStartedPlayingRef.current = false;
       setHasStartedPlaying(false);
       upNextArmedRef.current = false;
@@ -1508,6 +1567,19 @@ export default function PlayerScreen() {
 
       setStreamUrl(applySameHostStreamProxy(url, activePortal, channel.streamUrl));
       flashBanner();
+
+      // Recalculate network quality using the newly measured edge RTT from the channel's URL resolution
+      const edgeRtt = getLastMeasuredEdgeRtt();
+      const speed = getLastSpeedTestResult();
+      const currentNet = await NetInfo.fetch().catch(() => null);
+      const measuredQuality = detectNetworkQuality(
+        currentNet?.type || null,
+        (currentNet?.details as any)?.cellularGeneration,
+        edgeRtt,
+        speed?.mbps
+      );
+      setNetworkQuality(measuredQuality);
+      networkCacheMsRef.current = calcNetworkCacheMs(measuredQuality, isLive, is4K);
 
       if (activePortal) {
         liveChannelSession.rememberLastChannel(channel, activePortal.id).catch(() => { });
@@ -1852,15 +1924,14 @@ export default function PlayerScreen() {
       bufferBoostRef.current
     );
     const effectiveCache = isLive
-      ? Math.max(cache, is4K ? 4000 : 1000)
-      : Math.max(cache, is4K ? 3500 : 800);
+      ? Math.max(cache, is4K ? 4500 : 2200)
+      : Math.max(cache, is4K ? 3500 : 1200);
     const hardwareDecode = stbEnvironment.snapshot.hardwareAcceleration !== false;
 
     return [
       `--network-caching=${effectiveCache}`,
       `--live-caching=${isLive ? effectiveCache : 0}`,
       `--file-caching=${effectiveCache}`,
-      `--sout-mux-caching=${effectiveCache}`,
 
       // Connection & Transport
       "--http-reconnect",
@@ -1869,11 +1940,8 @@ export default function PlayerScreen() {
       "--no-sub-autodetect-file",
       "--no-spu",
 
-      // MPEG-TS & Stream Clock Smoothing for high-bitrate 4K IPTV
+      // MPEG-TS demuxing
       "--demux=any",
-      "--ts-trust-pcr=0",
-      "--clock-jitter=0",
-      "--clock-synchro=0",
 
       // Hardware & Codec decode (native MediaCodec Direct Rendering for 4K HEVC/H.264)
       ...(hardwareDecode
@@ -1883,7 +1951,7 @@ export default function PlayerScreen() {
             "--mediacodec-dr=1",
             "--mediacodec-audio=0",
             "--mediacodec-all=1",
-            "--avcodec-skiploopfilter=1",
+            "--avcodec-skiploopfilter=4",
             "--avcodec-fast",
           ]
         : ["--codec=all", "--avcodec-hw=none"]),
@@ -1901,6 +1969,22 @@ export default function PlayerScreen() {
 
   const qualityLabel = getQualityLabel(networkQuality, is4K);
   const isShowingHardFailure = playbackFailed && !isLive;
+
+  // ── Predictive VLC Recovery Watchdog ─────────────────────────────────────
+  const scheduleVlcRecovery = useCallback((reason: string) => {
+    if (!mountedRef.current || isRetryingRef.current || playbackFailed) return;
+    if (vlcRecoveryTimeoutRef.current) return; // Recovery timer already running
+
+    console.log(`[VLC] ${reason} — granting 3000ms grace period for self-recovery`);
+
+    vlcRecoveryTimeoutRef.current = setTimeout(() => {
+      vlcRecoveryTimeoutRef.current = null;
+      if (!mountedRef.current || isRetryingRef.current || playbackFailed) return;
+
+      console.log(`[VLC] Grace period expired after ${reason}. Triggering silent retry`);
+      handleSilentRetryRef.current();
+    }, 3000);
+  }, [playbackFailed]);
 
   /**
    * The channel/title banner, built once and mounted in one of two places.
@@ -2125,11 +2209,11 @@ export default function PlayerScreen() {
             handleBufferingChange(buffering);
           }}
           onStopped={() => {
-            // VLC fires onStopped when the stream terminates unexpectedly
+            // VLC fires onStopped when the stream terminates or encounters a buffer underrun.
+            // Grant a 3000ms grace period for packets to arrive and resume progress.
             if (!mountedRef.current || isRetryingRef.current) return;
             if (hasStartedPlayingRef.current && isPlayingRef.current && !playbackFailed) {
-              console.log("[VLC] onStopped — triggering reconnect");
-              handleSilentRetryRef.current();
+              scheduleVlcRecovery("onStopped");
             }
           }}
           onEnd={() => {
@@ -2142,7 +2226,7 @@ export default function PlayerScreen() {
             if (now - lastVlcErrorTimeRef.current < 2500) return; // Drop rapid repeated VLC error ticks
             lastVlcErrorTimeRef.current = now;
             if (!isRetryingRef.current && !playbackFailed) {
-              handleSilentRetryRef.current();
+              scheduleVlcRecovery("onError");
             }
           }}
         />
