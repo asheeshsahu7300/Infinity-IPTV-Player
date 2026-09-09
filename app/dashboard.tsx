@@ -109,7 +109,7 @@ export default function DashboardScreen() {
   // Portrait card height: tall enough to look cinematic, capped so 3 fit comfortably.
   // ScrollView handles any overflow on unusually small screens.
   const portraitCardHeight = isPortrait
-    ? Math.max(180, Math.min(260, Math.floor((windowHeight - insets.top - insets.bottom - 260) / 3)))
+    ? Math.max(180, Math.min(290, Math.floor((windowHeight - insets.top - insets.bottom - 290) / 3)))
     : undefined;
   // Errors surface through an in-tree overlay — Alert.alert does not
   // reliably appear on an Android TV release build.
@@ -297,24 +297,24 @@ export default function DashboardScreen() {
           end={{ x: 1, y: 1 }}
           style={S.heroGradientOverlay}
         />
-        <Text style={[
+        {isPortrait && <Text style={[
           S.heroTitle,
           !Platform.isTV && {
             // Keep the title compact — the TV_SCALE=1.3 bump already made ps(3.2) ≈ 44dp
             // on tablet, which overpowers the rest of the layout on a handheld screen.
-            fontSize: isPortrait ? 18 : (isTablet ? 22 : 20),
-            marginVertical: isPortrait ? 10 : 6,
+            fontSize: isPortrait ? 18 : (isTablet ? 18 : 20),
+            marginVertical: isPortrait ? 6 : 6,
           }
         ]}>
           Unlimited Entertainment
-        </Text>
+        </Text>}
         <Text
-          numberOfLines={isPortrait ? 2 : 3}
+          numberOfLines={isPortrait ? 1 : 3}
           style={[
             S.heroDesc,
             !Platform.isTV && {
-              fontSize: isPortrait ? 13 : 13,
-              lineHeight: isPortrait ? 18 : 19,
+              fontSize: isPortrait ? 12 : 13,
+              lineHeight: isPortrait ? 15 : 19,
               marginBottom: isPortrait ? 18 : 14,
               maxWidth: isPortrait ? "100%" : (isTablet ? 560 : 480),
             }
@@ -730,7 +730,7 @@ const S = StyleSheet.create({
   },
   browseContainer: {
     flexDirection: "row",
-    gap: pw(2.8),
+    gap: pw(2.6),
     flex: 1,
   },
   browseCard: {
