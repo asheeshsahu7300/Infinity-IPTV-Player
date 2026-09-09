@@ -10,7 +10,7 @@
 // that would help, rather than leaving the viewer to find that setting.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { usePortalStore } from "../src/store/portalStore";
@@ -24,7 +24,8 @@ import {
 import { BUFFER_PROFILES, stbEnvironment } from "../src/services/stbEnvironment";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { THEME, ph, psRaw as ps, pw } from "../src/theme/tokens";
-import { isTablet } from "../src/utils/tabletUtils";
+import { isPhone } from "../src/utils/phoneUtils";
+import { isTouch } from "../src/utils/tabletUtils";
 import { Focusable, FocusGroup } from "../src/tv";
 import { AlertCircle, RefreshCw, SlidersHorizontal , LucideIcon} from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
@@ -64,7 +65,9 @@ function Stat({
 export default function SpeedTestScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const isPortrait = isTablet && windowHeight > windowWidth;
+  // The same expression every other screen uses. This read `isTablet && ...`,
+  // which is never true on a phone, so a handset took the landscape branch.
+  const isPortrait = !Platform.isTV && windowHeight > windowWidth;
   const activePortal = usePortalStore((s) => s.activePortal);
 
   const [progress, setProgress] = useState<SpeedTestProgress>({ phase: "idle", progress: 0 });
@@ -127,7 +130,11 @@ export default function SpeedTestScreen() {
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
 
-      <View style={[S.header, isTablet && { paddingHorizontal: 24, paddingTop: ph(3) }]}>
+      <View style={[
+        S.header,
+        isTouch && { paddingHorizontal: 24, paddingTop: ph(3) },
+        isPhone && { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 },
+      ]}>
         <Text style={S.headerTitle}>Connection Test</Text>
         <Text style={S.headerSubtitle}>
           {activePortal
@@ -139,9 +146,14 @@ export default function SpeedTestScreen() {
       <ScrollView
         contentContainerStyle={[
           S.scroll,
-          isTablet && {
+          isTouch && {
             paddingHorizontal: 24,
             paddingBottom: insets.bottom + 36,
+          },
+          // Same 14dp gutter as settings, so the two diagnostics screens line up.
+          isPhone && {
+            paddingHorizontal: 14,
+            paddingBottom: insets.bottom + 20,
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -173,9 +185,9 @@ export default function SpeedTestScreen() {
         </View>
 
         {/* ── Numbers ── */}
-        <View style={[S.statRow, isTablet && isPortrait && { flexWrap: "wrap" }]}>
+        <View style={[S.statRow, isPortrait && { flexWrap: "wrap" }]}>
           <Stat
-            style={isTablet && isPortrait ? { minWidth: "48%" } : undefined}
+            style={isPortrait ? { minWidth: "48%" } : undefined}
             icon="pulse-outline"
             label="LATENCY"
             value={
@@ -188,21 +200,21 @@ export default function SpeedTestScreen() {
             hint="Time to reach the server"
           />
           <Stat
-            style={isTablet && isPortrait ? { minWidth: "48%" } : undefined}
+            style={isPortrait ? { minWidth: "48%" } : undefined}
             icon="analytics-outline"
             label="JITTER"
             value={result ? `${result.jitterMs} ms` : "—"}
             hint="Steadiness — what breaks live TV"
           />
           <Stat
-            style={isTablet && isPortrait ? { minWidth: "48%" } : undefined}
+            style={isPortrait ? { minWidth: "48%" } : undefined}
             icon="cloud-download-outline"
             label="TRANSFERRED"
             value={result ? formatBytes(result.bytes) : "—"}
             hint={result ? `in ${(result.durationMs / 1000).toFixed(1)}s` : undefined}
           />
           <Stat
-            style={isTablet && isPortrait ? { minWidth: "48%" } : undefined}
+            style={isPortrait ? { minWidth: "48%" } : undefined}
             icon="wifi-outline"
             label="CONNECTION"
             value={result ? result.connectionType.toUpperCase() : "—"}
@@ -244,9 +256,9 @@ export default function SpeedTestScreen() {
             {(focused) => (
               <View style={[S.action, focused && S.actionFocused, running && S.actionDisabled]}>
                 {running ? (
-                  <ActivityIndicator size="small" color={focused ? "#000" : "#fff"} />
+                  <ActivityIndicator size="small" color={isPhone || focused ? "#000" : "#fff"} />
                 ) : (
-                  <RefreshCw size={ps(1.4)} color={focused ? "#000" : "#fff"} />
+                  <RefreshCw size={ps(1.4)} color={isPhone || focused ? "#000" : "#fff"} />
                 )}
                 <Text style={[S.actionText, focused && S.actionTextFocused]}>
                   {running ? "TESTING…" : "RUN AGAIN"}
@@ -266,7 +278,7 @@ export default function SpeedTestScreen() {
             >
               {(focused) => (
                 <View style={[S.action, focused && S.actionFocused]}>
-                  <SlidersHorizontal size={ps(1.4)} color={focused ? "#000" : "#fff"} />
+                  <SlidersHorizontal size={ps(1.4)} color={isPhone || focused ? "#000" : "#fff"} />
                   <Text style={[S.actionText, focused && S.actionTextFocused]}>
                     USE SMOOTH BUFFER
                   </Text>
@@ -293,7 +305,7 @@ const S = StyleSheet.create({
     paddingBottom: ph(1),
   },
   headerTitle: { color: "#fff", fontSize: ps(2.2), fontWeight: "900", letterSpacing: 0.5 },
-  headerSubtitle: { color: THEME.colors.textDim, fontSize: ps(1.1), marginTop: ph(0.6) },
+  headerSubtitle: { color: THEME.colors.textDim, fontSize: isPhone ? 12.5 : ps(1.1), marginTop: ph(0.6) },
 
   scroll: { paddingHorizontal: pw(8), paddingBottom: ph(8), gap: ph(2.4) },
 
@@ -305,9 +317,15 @@ const S = StyleSheet.create({
     fontVariant: ["tabular-nums"],
     letterSpacing: -1,
   },
-  headlineLabel: { color: THEME.colors.textMuted, fontSize: ps(1.05), fontWeight: "600" },
+  headlineLabel: { color: THEME.colors.textMuted, fontSize: isPhone ? 12.5 : ps(1.05), fontWeight: "600" },
   progressTrack: {
-    width: pw(50),
+    /*
+     * `pw` is a percentage of the *long* edge, so `pw(50)` is 436dp — wider
+     * than the 393dp screen it has to sit on, and this is a centred bar, so it
+     * ran off both sides at once. A percentage of the container instead, which
+     * is what the intent was: half the TV canvas, most of a phone's.
+     */
+    width: isPhone ? "80%" : pw(50),
     height: 4,
     borderRadius: 2,
     backgroundColor: "rgba(255,255,255,0.1)",
@@ -316,10 +334,24 @@ const S = StyleSheet.create({
   },
   progressFill: { height: "100%", backgroundColor: "#fff", borderRadius: 2 },
 
-  statRow: { flexDirection: "row", gap: pw(1.5) },
+  // Gap trimmed on a phone: the stats wrap two to a row at `minWidth: 48%`, and
+  // `pw(1.5)` is 13dp, which leaves those two within 2dp of overflowing — the
+  // same near-miss that dropped the settings tiles to one per row.
+  statRow: { flexDirection: "row", gap: isPhone ? 10 : pw(1.5) },
+  /*
+   * A fixed height on a phone so all four stats match.
+   *
+   * They wrap two to a row, and flex only equalises within a row — so the pair
+   * on the second line sized themselves independently of the first, and any
+   * stat whose hint was absent or whose value wrapped came out shorter than its
+   * neighbours below. 78 clears the tallest content (a ~13dp label, a ~20dp
+   * value, a ~13dp hint and the padding), which makes it the height of every
+   * tile rather than a floor.
+   */
   stat: {
     flex: 1,
-    padding: pw(1.5),
+    minHeight: isPhone ? 78 : undefined,
+    padding: isPhone ? 12 : pw(1.5),
     borderRadius: ps(1),
     backgroundColor: "rgba(255,255,255,0.04)",
     borderWidth: 1,
@@ -328,18 +360,18 @@ const S = StyleSheet.create({
   },
   statLabel: {
     color: "rgba(255,255,255,0.35)",
-    fontSize: ps(0.75),
+    fontSize: isPhone ? 10 : ps(0.75),
     fontWeight: "900",
     letterSpacing: 1.2,
     marginTop: ph(0.4),
   },
   statValue: {
     color: "#fff",
-    fontSize: ps(1.5),
+    fontSize: isPhone ? 16 : ps(1.5),
     fontWeight: "800",
     fontVariant: ["tabular-nums"],
   },
-  statHint: { color: "rgba(255,255,255,0.28)", fontSize: ps(0.78) },
+  statHint: { color: "rgba(255,255,255,0.28)", fontSize: isPhone ? 10 : ps(0.78) },
 
   verdict: {
     padding: pw(2),
@@ -350,8 +382,8 @@ const S = StyleSheet.create({
   },
   verdictHead: { flexDirection: "row", alignItems: "center", gap: pw(1) },
   verdictDot: { width: 10, height: 10, borderRadius: 5 },
-  verdictGrade: { fontSize: ps(1.2), fontWeight: "900", letterSpacing: 1.5 },
-  verdictQuality: { color: "#fff", fontSize: ps(1.05), fontWeight: "700" },
+  verdictGrade: { fontSize: isPhone ? 13.5 : ps(1.2), fontWeight: "900", letterSpacing: 1.5 },
+  verdictQuality: { color: "#fff", fontSize: isPhone ? 12.5 : ps(1.05), fontWeight: "700" },
   verdictSummary: { color: THEME.colors.textMuted, fontSize: ps(1), lineHeight: ps(1.6) },
 
   errorBox: {
@@ -364,7 +396,7 @@ const S = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(248,113,113,0.25)",
   },
-  errorText: { color: "#fca5a5", fontSize: ps(1), flex: 1 },
+  errorText: { color: "#fca5a5", fontSize: isPhone ? 12 : ps(1), flex: 1 },
 
   actions: { flexDirection: "row", gap: pw(1.5), flexWrap: "wrap" },
   actionWrapper: { borderRadius: ps(1) },
@@ -375,14 +407,17 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(2.5),
     paddingVertical: ph(1.3),
     borderRadius: ps(1),
-    backgroundColor: "rgba(255,255,255,0.07)",
+    // White on a phone. The translucent fill is the *resting* state of a
+    // control that turns white when a remote focuses it, and a phone focuses
+    // nothing — so it would have stayed a faint grey panel forever.
+    backgroundColor: isPhone ? "#fff" : "rgba(255,255,255,0.07)",
     borderWidth: 1,
     borderColor: "transparent",
   },
   actionFocused: { backgroundColor: "#fff", borderColor: "#fff", transform: [{ scale: 1.04 }] },
   actionDisabled: { opacity: 0.6 },
-  actionText: { color: "#fff", fontSize: ps(1), fontWeight: "900", letterSpacing: 1 },
+  actionText: { color: isPhone ? "#000" : "#fff", fontSize: isPhone ? 13 : ps(1), fontWeight: "900", letterSpacing: 1 },
   actionTextFocused: { color: "#000" },
 
-  footnote: { color: "rgba(255,255,255,0.28)", fontSize: ps(0.9) },
+  footnote: { color: "rgba(255,255,255,0.28)", fontSize: isPhone ? 11 : ps(0.9) },
 });

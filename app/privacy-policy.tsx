@@ -1,11 +1,13 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Animated, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CinematicBackground } from '../src/components/CinematicBackground';
 import { ph, psRaw as ps, pw, THEME } from '../src/theme/tokens';
-import { isTablet } from '../src/utils/tabletUtils';
+import { isPhone } from '../src/utils/phoneUtils';
+import { isTouch } from '../src/utils/tabletUtils';
 import { useDPad } from '../src/tv';
-import { MessageCircle, ShieldCheck } from 'lucide-react-native';
+import { Check, Copy, MessageCircle, ShieldCheck } from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
 import { Text } from '../src/components/Text';
 
@@ -56,8 +58,10 @@ const SECTIONS: Section[] = [
   },
 ];
 
-const CONTACT_ROWS: { label: string; value: string; icon: IconName }[] = [
-  { label: 'Support Email', value: SUPPORT_EMAIL, icon: 'mail-outline' },
+const CONTACT_ROWS: { label: string; value: string; icon: IconName; copyable?: boolean }[] = [
+  { label: 'Support Email', value: SUPPORT_EMAIL, icon: 'mail-outline', copyable: true },
+  // Not copyable: the app's own name is not something anyone needs on a
+  // clipboard, and a button on every row makes the useful one harder to find.
   { label: 'Application', value: 'Infinity IPTV Player', icon: 'tv-outline' },
 ];
 
@@ -101,6 +105,52 @@ function PolicySection({ section, first }: { section: Section; first: boolean })
   );
 }
 
+/**
+ * Copy-to-clipboard for the support address.
+ *
+ * A plain `TouchableOpacity` and touch-only, both deliberately. This page holds
+ * no focusable content — see the `useDPad` call below, which scrolls the
+ * document by key rather than walking a list of focus targets — so a
+ * `Focusable` here would plant a single focus stop in the middle of a scrolling
+ * document and break that. A remote has nowhere to paste to in any case.
+ */
+function CopyEmailButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The confirmation resets on a timer, so it has to be cleared if the screen
+  // goes away first.
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  const onPress = useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(value);
+      setCopied(true);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard unavailable — say nothing rather than claim a copy that did
+      // not happen.
+    }
+  }, [value]);
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel={copied ? 'Copied to clipboard' : `Copy ${value} to clipboard`}
+      style={[S.copyBtn, copied && S.copyBtnDone]}
+    >
+      {copied ? <Check size={13} color="#000" /> : <Copy size={13} color="#fff" />}
+      <Text style={[S.copyBtnText, copied && S.copyBtnTextDone]}>
+        {copied ? 'COPIED' : 'COPY'}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 function ContactSection() {
   return (
     <View style={S.section}>
@@ -123,6 +173,7 @@ function ContactSection() {
                 {row.value}
               </Text>
             </View>
+            {isTouch && row.copyable ? <CopyEmailButton value={row.value} /> : null}
           </View>
         ))}
       </View>
@@ -179,7 +230,11 @@ export default function PrivacyPolicyScreen() {
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
 
-      <View style={[S.header, isTablet && { paddingHorizontal: 24, paddingTop: ph(3), paddingBottom: ph(1.5) }]}>
+      <View style={[
+        S.header,
+        isTouch && { paddingHorizontal: 24, paddingTop: ph(3), paddingBottom: ph(1.5) },
+        isPhone && { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6 },
+      ]}>
         <Text style={S.headerTitle}>Privacy Policy</Text>
         <Text style={S.headerSubtitle}>Infinity IPTV Player · Updated {LAST_UPDATED}</Text>
       </View>
@@ -190,9 +245,13 @@ export default function PrivacyPolicyScreen() {
           style={S.scroll}
           contentContainerStyle={[
             S.scrollContent,
-            isTablet && {
+            isTouch && {
               paddingHorizontal: 24,
               paddingBottom: insets.bottom + 36,
+            },
+            isPhone && {
+              paddingHorizontal: 14,
+              paddingBottom: insets.bottom + 20,
             },
           ]}
           showsVerticalScrollIndicator={false}
@@ -201,7 +260,7 @@ export default function PrivacyPolicyScreen() {
           onContentSizeChange={(_w, h) => setContentH(h)}
         >
           {/* Summary hero */}
-          <View style={[S.hero, isTablet && { padding: 18, gap: 16 }]}>
+          <View style={[S.hero, isTouch && { padding: 18, gap: 16 }, isPhone && { padding: 14, gap: 12 }]}>
             <View style={S.heroBadge}>
               <ShieldCheck size={ps(3)} color="#fff" />
             </View>
@@ -239,13 +298,13 @@ const S = StyleSheet.create({
     paddingBottom: ph(2),
   },
   headerTitle: {
-    fontSize: ps(2.6),
+    fontSize: isPhone ? 18 : ps(2.6),
     color: '#fff',
     fontWeight: '900',
     letterSpacing: 0.5,
   },
   headerSubtitle: {
-    fontSize: ps(1.1),
+    fontSize: isPhone ? 11 : ps(1.1),
     color: 'rgba(255,255,255,0.5)',
     marginTop: ph(0.6),
   },
@@ -289,14 +348,14 @@ const S = StyleSheet.create({
     flex: 1,
   },
   heroTitle: {
-    fontSize: ps(1.6),
+    fontSize: isPhone ? 13.5 : ps(1.6),
     color: '#fff',
     fontWeight: '700',
     marginBottom: ph(1),
   },
   heroBody: {
-    fontSize: ps(1.4),
-    lineHeight: ps(2.2),
+    fontSize: isPhone ? 13 : ps(1.4),
+    lineHeight: isPhone ? 18 : ps(2.2),
     color: 'rgba(255,255,255,0.65)',
   },
   // ── Document ──────────────────────────────────────────────────────────────
@@ -333,14 +392,14 @@ const S = StyleSheet.create({
   },
   sectionTitle: {
     flex: 1,
-    fontSize: ps(1.6),
+    fontSize: isPhone ? 13.5 : ps(1.6),
     color: '#FFFFFF',
     fontWeight: '700',
     letterSpacing: 0.3,
   },
   paragraph: {
-    fontSize: ps(1.2),
-    lineHeight: ps(1.9),
+    fontSize: isPhone ? 12 : ps(1.2),
+    lineHeight: isPhone ? 17 : ps(1.9),
     color: 'rgba(255,255,255,0.6)',
     marginBottom: ph(1),
   },
@@ -368,35 +427,53 @@ const S = StyleSheet.create({
   },
   bulletText: {
     flex: 1,
-    fontSize: ps(1.2),
+    fontSize: isPhone ? 12 : ps(1.2),
     color: 'rgba(255,255,255,0.75)',
   },
 
   // ── Contact ───────────────────────────────────────────────────────────────
-  /** Three abreast on TV — the document is full width, so there is room. */
+  /**
+   * Abreast on TV — the document is full width, so there is room. Stacked on a
+   * phone: two rows plus a copy button do not share 365dp without the address
+   * truncating to nothing.
+   */
   contactRows: {
-    flexDirection: 'row',
-    gap: pw(3),
+    flexDirection: isPhone ? 'column' : 'row',
+    gap: isPhone ? 12 : pw(3),
     marginTop: ph(1),
   },
   contactRow: {
-    flex: 1,
+    flex: isPhone ? 0 : 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: pw(1),
+    gap: isPhone ? 10 : pw(1),
   },
+  copyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  copyBtnDone: { backgroundColor: '#F5F5F5', borderColor: '#F5F5F5' },
+  copyBtnText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.8, color: '#fff' },
+  copyBtnTextDone: { color: '#000' },
   contactRowText: {
     flex: 1,
   },
   contactLabel: {
-    fontSize: ps(1.1),
+    fontSize: isPhone ? 11 : ps(1.1),
     color: 'rgba(255,255,255,0.35)',
     fontWeight: '600',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   contactValue: {
-    fontSize: ps(1.5),
+    fontSize: isPhone ? 13 : ps(1.5),
     color: '#fff',
     fontWeight: '700',
     marginTop: 2,

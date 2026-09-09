@@ -1,5 +1,6 @@
 import { Dimensions, Platform } from 'react-native';
 
+import { isPhone } from "../utils/phoneUtils";
 import { isTablet } from "../utils/tabletUtils";
 
 const winDims = Dimensions.get("window");
@@ -34,17 +35,65 @@ const IS_TV =
  */
 const TV_SCALE = IS_TV || isTablet ? 1.3 : 1;
 
+/**
+ * The reference canvas every `ps`/`psRaw` literal in this app was tuned against.
+ *
+ * An Android TV box reports 960x540dp for a 1080p panel, so `(960+540)/2` is the
+ * unit `ps(1)` was sized in. It is a constant rather than a live measurement
+ * because it describes the *design*, not the device.
+ */
+const REF_UNIT = (960 + 540) / 2;
+
+/**
+ * The phone tier: `ps` is renormalised so a phone renders the reference dp.
+ *
+ * `ps` is viewport-relative, which is the right behaviour between a TV and a
+ * tablet — both are landscape canvases of comparable dp, so a percentage keeps
+ * proportion. A phone is neither. Its `(W+H)/2` is roughly 633 against the
+ * box's 750, and it takes no TV bump, so every `ps` literal in the app landed a
+ * third small: `ps(1.05)`, the live-tv card label, rendered **6.6dp**, and the
+ * `ps(0.72)` badge **4.6dp**. That is not a tuning problem, it is illegible —
+ * and it is invisible from the code, because the same expression reads fine on
+ * the two device classes that had been tested.
+ *
+ * Scaling to reference dp rather than to some phone-specific ideal is the point:
+ * it means every hand-tuned `ps` value in the app keeps the physical size it was
+ * given, instead of the whole type scale needing to be re-picked for a third
+ * device. Reference dp is also generous on a handset rather than merely
+ * adequate — 10dp of TV canvas subtends about 0.24 degrees from a sofa, and
+ * 10dp of phone about 0.34 degrees at arm's length.
+ *
+ * Deriving the factor from this device's own `(W+H)/2` rather than fixing a
+ * constant is what makes it hold across the phone range: a 740x360 handset
+ * needs 1.77 where a 915x412 needs 1.47, and a single constant would leave one
+ * end of that range wrong. The consequence is that `ps` is effectively a fixed
+ * dp on phones — deliberately, since text must not shrink on a smaller handset.
+ *
+ * Exactly 1 on TV and on tablets, so this cannot move either of them.
+ *
+ * There are **two** of these and not one, which is the easy thing to get wrong:
+ * `ps` and `psRaw` are 1.3 apart on the reference canvas (9.75 against 7.50 per
+ * percent), and `TV_SCALE` is 1 on a phone, so a single normaliser lands both
+ * on 7.50 and leaves every `ps` value 23% short — a `ps(0.72)` badge at 5.4dp
+ * instead of 7.0dp, which is the illegibility this tier exists to fix, not
+ * quite fixed. Each function gets the normaliser for its own reference value.
+ */
+const PHONE_PS_NORM = isPhone ? (REF_UNIT * 1.3) / ((W + H) / 2) : 1;
+const PHONE_PSRAW_NORM = isPhone ? REF_UNIT / ((W + H) / 2) : 1;
+
 export const FONT_FAMILY = "Inter";
 
 export const pw = (pct: number) => (W * pct) / 100;
 export const ph = (pct: number) => (H * pct) / 100;
-export const ps = (pct: number) => ((pw(pct) + ph(pct)) / 2) * TV_SCALE;
+export const ps = (pct: number) =>
+  ((pw(pct) + ph(pct)) / 2) * TV_SCALE * PHONE_PS_NORM;
 /**
  * `ps` without the TV bump. Screens that predate the TV_SCALE tier are sized
  * against this — import it rather than redeclaring a local `ps`, otherwise the
  * same call renders at two different sizes depending on the file.
  */
-export const psRaw = (pct: number) => (pw(pct) + ph(pct)) / 2;
+export const psRaw = (pct: number) =>
+  ((pw(pct) + ph(pct)) / 2) * PHONE_PSRAW_NORM;
 
 /**
  * The shared artwork-card frame: radius, hairline and wash.

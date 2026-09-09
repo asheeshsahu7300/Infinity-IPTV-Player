@@ -10,12 +10,12 @@
 // channel names makes them tune in to find out.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet, View, Pressable, useWindowDimensions } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View, Pressable, useWindowDimensions } from 'react-native';
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Focusable, FocusGroup, Overlay } from "../tv";
 import { THEME, ph, ps, pw } from "../theme/tokens";
-import { isTablet } from "../utils/tabletUtils";
+import { isTouch } from "../utils/tabletUtils";
 import { epgService } from "../services/epgService";
 import { parentalControl } from "../services/parentalControl";
 import type { Channel } from "../store/portalStore";
@@ -81,22 +81,22 @@ const ZapRow = React.memo(
         {(focused) => (
           <View style={[
             S.row,
-            isTablet && { paddingVertical: 6, paddingHorizontal: 10, gap: 8 },
+            isTouch && { paddingVertical: 6, paddingHorizontal: 10, gap: 8 },
             isCurrent && S.rowCurrent,
             focused && S.rowFocused
           ]}>
             <Text style={[
               S.rowNumber,
-              isTablet && { fontSize: 11, minWidth: 20 },
+              isTouch && { fontSize: 11, minWidth: 20 },
               (focused || isCurrent) && S.rowTextFocused
             ]}>
               {displayNum}
             </Text>
 
-            <View style={[S.rowLogo, isTablet && { width: 32, height: 24 }]}>
+            <View style={[S.rowLogo, isTouch && { width: 32, height: 24 }]}>
               {locked ? (
                 <Lock
-                  size={isTablet ? 14 : ps(1.1)}
+                  size={isTouch ? 14 : ps(1.1)}
                   color={focused ? "#000" : "rgba(255,255,255,0.5)"}
                 />
               ) : channel.logo ? (
@@ -108,18 +108,18 @@ const ZapRow = React.memo(
                 />
               ) : (
                 <Tv
-                  size={isTablet ? 14 : ps(1.1)}
+                  size={isTouch ? 14 : ps(1.1)}
                   color={focused ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.2)"}
                 />
               )}
             </View>
 
             <View style={S.rowText}>
-              <Text style={[S.rowName, isTablet && { fontSize: 13 }, (focused || isCurrent) && S.rowTextActive]} numberOfLines={1}>
+              <Text style={[S.rowName, isTouch && { fontSize: 13 }, (focused || isCurrent) && S.rowTextActive]} numberOfLines={1}>
                 {displayName}
               </Text>
               {nowNext?.now?.title ? (
-                <Text style={[S.rowNow, isTablet && { fontSize: 10.5 }, (focused || isCurrent) && S.rowNowActive]} numberOfLines={1}>
+                <Text style={[S.rowNow, isTouch && { fontSize: 10.5 }, (focused || isCurrent) && S.rowNowActive]} numberOfLines={1}>
                   {nowNext.now.title}
                 </Text>
               ) : null}
@@ -127,7 +127,7 @@ const ZapRow = React.memo(
 
             {isCurrent ? (
               <View style={S.playingDot}>
-                <Volume2 size={isTablet ? 14 : ps(1)} color={(focused || isCurrent) ? "#111" : "#fff"} />
+                <Volume2 size={isTouch ? 14 : ps(1)} color={(focused || isCurrent) ? "#111" : "#fff"} />
               </View>
             ) : null}
           </View>
@@ -214,11 +214,13 @@ export function ChannelZapList({
 
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const isPortrait = isTablet && windowHeight > windowWidth;
-  const panelWidth = isTablet
+  // The same expression every other screen uses. This read `isTablet && ...`,
+  // which is never true on a phone, so a handset took the landscape branch.
+  const isPortrait = !Platform.isTV && windowHeight > windowWidth;
+  const panelWidth = isTouch
     ? (isPortrait ? Math.min(320, windowWidth * 0.8) : Math.min(320, windowWidth * 0.35))
     : pw(23);
-  const rowHeight = isTablet ? 54 : ROW_HEIGHT;
+  const rowHeight = isTouch ? 54 : ROW_HEIGHT;
 
   if (!visible) return null;
 
@@ -235,8 +237,8 @@ export function ChannelZapList({
         onPress={onClose}
         accessibilityLabel="Close channel list"
       />
-      <View style={[S.panel, isTablet && { width: panelWidth, minWidth: undefined, maxWidth: 360 }]}>
-        <View style={[S.header, isTablet && { paddingTop: Math.max(16, insets.top + 8) }]}>
+      <View style={[S.panel, isTouch && { width: panelWidth, minWidth: undefined, maxWidth: 360 }]}>
+        <View style={[S.header, isTouch && { paddingTop: Math.max(16, insets.top + 8) }]}>
           <Text style={S.headerTitle} numberOfLines={1}>
             {categoryName || "Channels"}
           </Text>
@@ -255,7 +257,7 @@ export function ChannelZapList({
               style={S.list}
               contentContainerStyle={[
                 S.listContent,
-                { paddingBottom: isTablet ? insets.bottom + 20 : Math.max(0, ph(82) - ROW_HEIGHT) },
+                { paddingBottom: isTouch ? insets.bottom + 20 : Math.max(0, ph(82) - ROW_HEIGHT) },
               ]}
               showsVerticalScrollIndicator={false}
             >
@@ -276,7 +278,7 @@ export function ChannelZapList({
           </FocusGroup>
         )}
 
-        <View style={[S.footer, isTablet && { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
+        <View style={[S.footer, isTouch && { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
           <CornerDownLeft size={ps(1)} color="rgba(255,255,255,0.4)" style={{ marginRight: ps(0.4) }} />
           <Text style={S.footerHint}>OK to tune · BACK to close</Text>
         </View>

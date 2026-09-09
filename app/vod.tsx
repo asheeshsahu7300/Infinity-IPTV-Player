@@ -14,6 +14,7 @@ import { XtreamApi } from "../src/services/xtreamApi";
 import { cacheManager } from "../src/services/cacheManager";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { TABLET_TILE_MAX_WIDTH, TILE_MAX_WIDTH, isTablet, SIDEBAR_WIDTH } from "../src/utils/tabletUtils";
+import { isPhone, PHONE_GRID_COLUMNS, PHONE_H_PAD, PHONE_SEARCH_BAR_WIDTH } from "../src/utils/phoneUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import CategorySidebar from "../src/components/CategorySidebar";
@@ -101,7 +102,7 @@ const S = StyleSheet.create({
     borderRadius: 22,
     paddingHorizontal: pw(1.4),
     height: 44,
-    width: pw(36),
+    width: isPhone ? PHONE_SEARCH_BAR_WIDTH : pw(36),
     borderWidth: 0,
     borderColor: "transparent",
   },
@@ -249,18 +250,38 @@ const S = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: 'rgba(21, 21, 18, 0.98)',
   },
+  /*
+   * The play sheet is three columns — poster, details, actions — and on a phone
+   * the third one collapses.
+   *
+   * `Overlay` renders this full width at the bottom, so the row has ~350dp to
+   * divide: 113 goes to the poster and its gap, and the 1.4/0.65 split leaves
+   * the actions column 75dp. Its own padding takes 15 and each button's
+   * horizontal padding another 29, so "EXTERNAL PLAYER" and its icon are asked
+   * to fit in 31dp.
+   *
+   * `flexWrap` is the fix rather than a full column stack. The phone sheet is
+   * three stacked bands, and each one is a wrap line: the poster beside the
+   * title block, then the description, then the actions. The two lower bands
+   * take `width: "100%"`, which cannot share a line, so they break onto their
+   * own automatically — no second container and no change to the TV layout,
+   * which stays a single unwrapped row.
+   */
   modalBody: {
-    padding: ps(2.2),
+    padding: isPhone ? PHONE_H_PAD : ps(2.2),
     flexDirection: "row",
-    alignItems: "center",
+    flexWrap: isPhone ? "wrap" : "nowrap",
+    alignItems: isPhone ? "flex-start" : "center",
   },
   modalPosterWrapper: {
-    width: pw(11),
+    // Smaller on a phone now that it only has to hold the first line beside the
+    // title, rather than stand next to the whole synopsis.
+    width: isPhone ? 72 : pw(11),
     aspectRatio: 2 / 3,
     borderRadius: ps(0.8),
     overflow: "hidden",
     backgroundColor: "rgba(255, 255, 255, 0.05)",
-    marginRight: pw(2),
+    marginRight: isPhone ? 12 : pw(2),
   },
   modalPosterImg: {
     width: "100%",
@@ -289,14 +310,34 @@ const S = StyleSheet.create({
   },
   modalLeft: {
     flex: 1.4,
-    paddingRight: ps(1.5),
+    paddingRight: isPhone ? 0 : ps(1.5),
     justifyContent: "center",
+    // The title block is shorter than the 108dp poster it now sits beside, so
+    // centre it against the poster instead of letting it hang from the top.
+    // `alignSelf` rather than the row's `alignItems`, which would also move the
+    // full-width bands below.
+    alignSelf: isPhone ? "center" : "auto",
+  },
+
+  /** The synopsis and credits as their own full-width band, phones only. */
+  modalDescBlock: {
+    width: "100%",
+    marginTop: 14,
   },
   modalRight: {
-    flex: 0.65,
-    paddingLeft: ps(1.5),
+    // `flex: 0` with a full width is what forces the wrap onto a second line.
+    flex: isPhone ? 0 : 0.65,
+    width: isPhone ? "100%" : undefined,
+    paddingLeft: isPhone ? 0 : ps(1.5),
+    // Clears the details column above, whose last line is the DIRECTOR credit.
+    //
+    // The wrap puts the actions directly under whichever of the poster or the
+    // details is taller, and with a 5-line plot plus credits it is always the
+    // details — so this margin is the whole of the gap between the director
+    // line and the first button. Without it they touch.
+    marginTop: isPhone ? 32 : 0,
     justifyContent: "center",
-    gap: ps(0.8),
+    gap: isPhone ? 10 : ps(0.8),
   },
   modalTitle: {
     color: "#FFFFFF",
@@ -769,7 +810,9 @@ export default function VODScreen() {
   const { width: SCREEN_WIDTH_VAL, height: SCREEN_HEIGHT_VAL } = useWindowDimensions();
   const isPortrait = !Platform.isTV && SCREEN_HEIGHT_VAL > SCREEN_WIDTH_VAL;
 
-  const numColumns = isPortrait ? (SCREEN_WIDTH_VAL >= 600 ? 4 : 3) : 5;
+  // In portrait `SCREEN_WIDTH_VAL` is the shortest side, so `isPhone` is the
+  // same test as a `>= 600` literal and says why. See live-tv.tsx.
+  const numColumns = isPortrait ? (isPhone ? PHONE_GRID_COLUMNS : 4) : 5;
 
   const SIDEBAR_WIDTH_VAL = isPortrait ? 0 : SIDEBAR_WIDTH;
   const GRID_H_PADDING = isPortrait ? 16 : pw(1.2) * 2;
@@ -1409,6 +1452,24 @@ export default function VODScreen() {
     return () => sub.remove();
   }, [isScreenFocused, playModalVisible, pinTarget, isSearchOpen]);
 
+  /*
+   * The play sheet's synopsis and credits, hoisted so the two layouts can put
+   * them in different places without the element being written twice.
+   *
+   * On TV and tablet they belong inside the details column, beside the poster.
+   * On a phone that column is only wide enough for the badge, the title and the
+   * meta row, so the description drops to its own full-width block underneath —
+   * see `modalDescBlock`. Only one of the two ever renders.
+   */
+  const vodMetaPanel = (
+    <MediaMetaPanel
+      meta={vodMeta}
+      fallbackPlot={selectedVod?.description}
+      plotLines={5}
+      emptyText="No description available for this title."
+    />
+  );
+
   return (
     <View style={[S.container, { paddingTop: isPortrait ? Math.max(insets.top, 24) + 8 : insets.top }]}>
       <CinematicBackground />
@@ -1608,7 +1669,9 @@ export default function VODScreen() {
             colors={['rgba(10,12,18,0.78)', 'rgba(8,8,12,0.96)', '#08080a']}
             style={StyleSheet.absoluteFillObject}
           />
-          <View style={S.modalBody}>
+          {/* The sheet sits flush to the bottom edge, so on a phone the last
+              button would otherwise land under the gesture bar. */}
+          <View style={[S.modalBody, isPhone && { paddingBottom: 10 + insets.bottom }]}>
             {/* Poster thumbnail */}
             <View style={S.modalPosterWrapper}>
               {selectedVod?.logo ? (
@@ -1668,13 +1731,11 @@ export default function VODScreen() {
                   ]}
                 />
               </View>
-              <MediaMetaPanel
-                meta={vodMeta}
-                fallbackPlot={selectedVod?.description}
-                plotLines={5}
-                emptyText="No description available for this title."
-              />
+              {!isPhone && vodMetaPanel}
             </View>
+
+            {/* Description — its own full-width row on a phone. */}
+            {isPhone && <View style={S.modalDescBlock}>{vodMetaPanel}</View>}
 
             {/* Actions */}
             <View style={S.modalRight}>
@@ -1703,18 +1764,29 @@ export default function VODScreen() {
                   </View>
                 )}
               </Focusable>
-              <Focusable
-                ringOnFocus={false}
-                onPress={() => setPlayModalVisible(false)}
-                style={S.modalBtnWrapper}
-              >
-                {(focused) => (
-                  <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
-                    <X size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
-                    <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>CLOSE</Text>
-                  </View>
-                )}
-              </Focusable>
+              {/*
+                * No Close button on a phone — the sheet already has two ways
+                * out that a handset user reaches for first. `Overlay` defaults
+                * `closeOnBack` to true and this one does not override it, so
+                * both the backdrop tap and the hardware back dismiss it. The
+                * button stays on TV, where neither of those exists: a remote
+                * has no backdrop to tap, and back is the one it needs a target
+                * for.
+                */}
+              {!isPhone && (
+                <Focusable
+                  ringOnFocus={false}
+                  onPress={() => setPlayModalVisible(false)}
+                  style={S.modalBtnWrapper}
+                >
+                  {(focused) => (
+                    <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
+                      <X size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                      <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>CLOSE</Text>
+                    </View>
+                  )}
+                </Focusable>
+              )}
             </View>
           </View>
         </BlurView>

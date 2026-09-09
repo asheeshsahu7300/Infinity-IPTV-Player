@@ -19,6 +19,24 @@ export interface CategorizedItem {
   categoryId?: string;
 }
 
+/**
+ * A category id with any portal prefix stripped.
+ *
+ * Category ids and the ids carried on items do not agree on shape: `xtreamApi`
+ * builds its categories as `live:${category_id}` but puts the bare
+ * `category_id` on every channel, and Stalker prefixes too. So any comparison
+ * between a category and an item has to happen on this value.
+ *
+ * Exported because the guide learned that the hard way — it compared the two
+ * raw, never matched, and fell through to labelling each category with its own
+ * id, so the pills read as a row of numbers.
+ */
+export const bareCategoryId = (value: unknown): string => {
+  const s = String(value ?? "").trim();
+  const i = s.indexOf(":");
+  return i >= 0 ? s.slice(i + 1) : s;
+};
+
 export const isAllCategory = (categoryId?: string): boolean => {
   if (!categoryId) return false;
   const s = String(categoryId).trim().toLowerCase();

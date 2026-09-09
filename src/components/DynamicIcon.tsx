@@ -8,7 +8,7 @@ import {
   MonitorOff, Clock, Tv, Volume2, TriangleAlert, Wifi, Pause, Server, Cloud, Layers, PlayCircle, StarOff, MoreVertical,
   Zap, FastForward, Cpu, Brush, Trash, FileText, MonitorPlay, CloudOff,
   HardDrive, Globe, Mail, Key, Delete, Copy, Activity, ChartLine, CloudDownload,
-  Aperture, Type
+  Aperture, Type, XCircle, Sparkles
 } from 'lucide-react-native';
 
 const ICON_MAP: Record<string, any> = {
@@ -28,11 +28,16 @@ const ICON_MAP: Record<string, any> = {
     "calendar": Calendar,
     "chatbubble-ellipses-outline": MessageCircle,
     "checkmark": Check,
+    "checkmark-circle": CheckCircle,
     "checkmark-circle-outline": CheckCircle,
     "chevron-down": ChevronDown,
     "chevron-forward": ChevronRight,
     "chevron-up": ChevronUp,
     "close": X,
+    // The player's "no subtitles / no audio track" option asks for this one.
+    // `XCircle` rather than plain `X`, matching `checkmark-circle-outline`
+    // above — the `-circle-outline` suffix means the ringed variant.
+    "close-circle-outline": XCircle,
     "x": X,
     "external-link": ExternalLink,
     "eye-outline": Eye,
@@ -64,6 +69,7 @@ const ICON_MAP: Record<string, any> = {
     "refresh-cw": RefreshCw,
     "return-down-back": CornerDownLeft,
     "search": Search,
+    "sparkles-outline": Sparkles,
     "search-outline": Search,
     "settings": Settings,
     "settings-outline": Settings,

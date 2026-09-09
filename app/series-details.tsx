@@ -12,7 +12,8 @@ import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
-import { isTablet } from "../src/utils/tabletUtils";
+import { isPhone, PHONE_GRID_COLUMNS, PHONE_H_PAD } from "../src/utils/phoneUtils";
+import { isTouch } from "../src/utils/tabletUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
@@ -28,6 +29,19 @@ import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import { Check, ExternalLink, Library, Play, Star, Tv, MonitorOff, X , PlayCircle} from 'lucide-react-native';
 import { Text } from '../src/components/Text';
 
+
+/**
+ * The screen's horizontal gutter, in dp.
+ *
+ * One constant because three separate things have to agree on it and they are
+ * far apart in the file: `epListContent` (the loaded state's padding),
+ * `loadingWrap` (the loading state's), and `GRID_H_PADDING` (the number
+ * `itemWidth` divides by). They were literals, and every time one moved the
+ * others did not — the grid overflowed once because the padding and the width
+ * calculation disagreed, and the hero shifted sideways when the spinner gave
+ * way to the list because the two render branches disagreed.
+ */
+const CONTENT_H_PAD = isPhone ? PHONE_H_PAD : pw(4);
 
 const cleanMeta = (s?: string | null) => {
   if (!s) return "";
@@ -440,12 +454,32 @@ export default function SeriesDetailsScreen() {
   const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = useWindowDimensions();
   const currentSeason = seasons.find((s) => s.id === selectedSeasonId);
   const isFavorite = favorites.series.includes(params.id || "");
-  const numColumns = isTablet ? (SCREEN_WIDTH < 768 ? 4 : 5) : 7;
+  // Three on a phone, the same count the poster grids use. The touch branch
+  // keys off `SCREEN_WIDTH < 768`, which a handset satisfies, so left alone it
+  // would ask for four.
+  const numColumns = isPhone
+    ? PHONE_GRID_COLUMNS
+    : isTouch
+      ? SCREEN_WIDTH < 768
+        ? 4
+        : 5
+      : 7;
 
   const CARD_SPACING = 12;
-  const GRID_H_PADDING = pw(4) * 2;
+  const GRID_H_PADDING = CONTENT_H_PAD * 2;
+  /*
+   * `itemWidth` is the tile's *outer* width, and the tile separates itself with
+   * `episodeItemWrapper`'s own `paddingHorizontal` rather than a margin — so on
+   * a phone there is nothing outside the tiles for the `CARD_SPACING` term to
+   * pay for, and subtracting it just left 38dp of dead space at the end of each
+   * row. Three tiles now divide the full content width.
+   *
+   * The term stays for TV and tablet, whose grids were laid out against it.
+   */
   const itemWidth = Math.floor(
-    (SCREEN_WIDTH - GRID_H_PADDING - (numColumns * CARD_SPACING)) / numColumns
+    isPhone
+      ? (SCREEN_WIDTH - GRID_H_PADDING) / numColumns
+      : (SCREEN_WIDTH - GRID_H_PADDING - (numColumns * CARD_SPACING)) / numColumns
   );
 
   const renderEpisode = ({ item, index }: { item: Episode; index: number }) => (
@@ -470,6 +504,53 @@ export default function SeriesDetailsScreen() {
    * poster, which is why the fallback matters more than the preference.
    */
   const heroArtwork = focusedEpisode?.still || params.logo || undefined;
+
+  /*
+   * The hero's synopsis and credits, hoisted so the two layouts can place them
+   * differently without the element existing twice.
+   *
+   * Credits come from the series either way — episodes do not carry their own
+   * cast — but the synopsis prefers the focused episode's, falling back to the
+   * series'. Same rule as the episode sheet and the player's episode list.
+   *
+   * On TV and tablet this sits in the column beside the poster. On a phone that
+   * column is far too narrow for it (see `metaContent`), so it drops to a
+   * full-width band underneath. Only one of the two ever renders.
+   */
+  const seriesMetaPanel = (
+    <MediaMetaPanel
+      meta={{
+        ...seriesMeta,
+        plot: focusedEpisode?.description || seriesMeta?.plot,
+      }}
+      fallbackPlot={params.description}
+      plotLines={5}
+      emptyText={
+        focusedEpisode
+          ? "No description available for this episode."
+          : "No description available for this series."
+      }
+    />
+  );
+
+  /*
+   * The play sheet's synopsis and credits — the episode's plot where it has
+   * one, the series' otherwise. Hoisted for the same reason as
+   * `seriesMetaPanel` above: the phone puts it in a full-width band below the
+   * poster row, TV keeps it in the column beside the poster, and only one of
+   * the two renders.
+   */
+  const episodeMetaPanel = (
+    <MediaMetaPanel
+      meta={{
+        ...seriesMeta,
+        plot: selectedEpisode?.description || seriesMeta?.plot,
+      }}
+      fallbackPlot={params.description}
+      plotLines={5}
+      emptyText="No description available for this episode."
+    />
+  );
 
   const heroAndSeasons = (
     <>
@@ -526,25 +607,12 @@ export default function SeriesDetailsScreen() {
               />
             </View>
 
-            {/* Credits come from the series either way — episodes do not carry
-                their own cast — but the synopsis prefers the focused episode's,
-                falling back to the series'. Same rule as the episode sheet and
-                the player's episode list. */}
-            <MediaMetaPanel
-              meta={{
-                ...seriesMeta,
-                plot: focusedEpisode?.description || seriesMeta?.plot,
-              }}
-              fallbackPlot={params.description}
-              plotLines={5}
-              emptyText={
-                focusedEpisode
-                  ? "No description available for this episode."
-                  : "No description available for this series."
-              }
-            />
+            {!isPhone && seriesMetaPanel}
 
           </View>
+
+          {/* Description — its own full-width band on a phone. */}
+          {isPhone && <View style={S.heroDescBlock}>{seriesMetaPanel}</View>}
         </View>
       </View>
 
@@ -592,7 +660,7 @@ export default function SeriesDetailsScreen() {
           nested inside plain ScrollViews" warning. */}
         <FocusGroup style={S.listArea} trapUp={trappingUp}>
           {isLoading ? (
-            <View style={{ flex: 1 }}>
+            <View style={S.loadingWrap}>
               {heroAndSeasons}
               <ActivityIndicator color={THEME.colors.primary} size="large" style={{ marginTop: ph(5) }} />
             </View>
@@ -642,7 +710,7 @@ export default function SeriesDetailsScreen() {
             colors={['rgba(10,12,18,0.78)', 'rgba(8,8,12,0.96)', '#08080a']}
             style={StyleSheet.absoluteFillObject}
           />
-          <View style={[S.modalTVContent, S.modalBody]}>
+          <View style={[S.modalTVContent, S.modalBody, isPhone && { paddingBottom: 10 + insets.bottom }]}>
             {/* Poster / Episode Still thumbnail */}
             <View style={S.modalPosterWrapper}>
               {(selectedEpisode?.still || params.logo) ? (
@@ -714,16 +782,11 @@ export default function SeriesDetailsScreen() {
                 />
               </View>
 
-              <MediaMetaPanel
-                meta={{
-                  ...seriesMeta,
-                  plot: selectedEpisode?.description || seriesMeta?.plot,
-                }}
-                fallbackPlot={params.description}
-                plotLines={5}
-                emptyText="No description available for this episode."
-              />
+              {!isPhone && episodeMetaPanel}
             </View>
+
+            {/* Description — its own full-width band on a phone. */}
+            {isPhone && <View style={S.modalDescBlock}>{episodeMetaPanel}</View>}
 
             {/* Actions */}
             <View style={S.modalRight}>
@@ -752,18 +815,23 @@ export default function SeriesDetailsScreen() {
                   </View>
                 )}
               </Focusable>
-              <Focusable
-                ringOnFocus={false}
-                onPress={() => setPlayModalVisible(false)}
-                style={S.modalBtnWrapper}
-              >
-                {(focused) => (
-                  <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
-                    <X size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
-                    <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>CLOSE</Text>
-                  </View>
-                )}
-              </Focusable>
+              {/* No Close on a phone — `Overlay` leaves `closeOnBack` at its
+                  default, so the backdrop tap and hardware back both dismiss.
+                  It stays on TV, where a remote has neither. Same as vod. */}
+              {!isPhone && (
+                <Focusable
+                  ringOnFocus={false}
+                  onPress={() => setPlayModalVisible(false)}
+                  style={S.modalBtnWrapper}
+                >
+                  {(focused) => (
+                    <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
+                      <X size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                      <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>CLOSE</Text>
+                    </View>
+                  )}
+                </Focusable>
+              )}
             </View>
           </View>
         </BlurView>
@@ -788,10 +856,38 @@ export default function SeriesDetailsScreen() {
 
 const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: THEME.colors.background },
-  heroSection: { padding: pw(4), marginBottom: ph(2) },
+  /*
+   * `pw` is a percentage of the *long* edge, so `pw(4)` is 35dp a side on a
+   * portrait handset — 70 of 393, before anything is laid out. An absolute
+   * gutter on a phone, matched by `episodesSection` and by `GRID_H_PADDING` so
+   * the hero, the season pills and the episode grid share one left edge.
+   */
+  // Vertical padding only on a phone — `epListContent` above owns the gutter,
+  // and this sits inside it.
+  heroSection: {
+    paddingHorizontal: isPhone ? 0 : pw(4),
+    paddingVertical: isPhone ? PHONE_H_PAD : pw(4),
+    marginBottom: ph(2),
+  },
   backBtn: { width: ps(3.5), height: ps(3.5), borderRadius: 20, backgroundColor: "rgba(255,255,255,0.05)", alignItems: "center", justifyContent: "center", marginBottom: ph(3) },
-  metaContent: { flexDirection: "row", alignItems: "flex-end", gap: pw(4) },
-  posterWrapper: { width: pw(18), aspectRatio: 2 / 3, borderRadius: 20, overflow: "hidden", elevation: 20, shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 20 },
+  /*
+   * On a phone this wraps into two bands: poster beside the title, then the
+   * description full width beneath.
+   *
+   * Unwrapped it gave the info column 131dp — 323 of content less a 157dp
+   * poster and a 35dp gap — and a five-line synopsis at 11dp in 131dp of width
+   * is about ten characters a line. The poster comes down to 100 as well, since
+   * it now only has to stand beside the title and the badges.
+   */
+  metaContent: {
+    flexDirection: "row",
+    flexWrap: isPhone ? "wrap" : "nowrap",
+    alignItems: "flex-end",
+    gap: isPhone ? 14 : pw(4),
+  },
+  /** The synopsis and credits as their own full-width band, phones only. */
+  heroDescBlock: { width: "100%" },
+  posterWrapper: { width: isPhone ? 100 : pw(18), aspectRatio: 2 / 3, borderRadius: 20, overflow: "hidden", elevation: 20, shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 20 },
   poster: { ...StyleSheet.absoluteFillObject },
   posterPlaceholder: { backgroundColor: "#1a1a20", alignItems: "center", justifyContent: "center" },
   infoArea: { flex: 1, justifyContent: "flex-end", paddingBottom: ph(0.8) },
@@ -844,7 +940,7 @@ const S = StyleSheet.create({
   },
   favoriteText: { color: "#fff", fontSize: ps(0.9), fontWeight: "800" },
 
-  episodesSection: { paddingHorizontal: pw(4) },
+  episodesSection: { paddingHorizontal: isPhone ? 0 : pw(4) },
   sectionHeader: { marginBottom: ph(2) },
   sectionTitle: { color: "#fff", fontSize: ps(1.5), fontWeight: "900", opacity: 0.9, marginBottom: ph(1.5) },
   seasonsList: { gap: 12, paddingVertical: 10, paddingBottom: ph(2), paddingRight: pw(10) },
@@ -888,7 +984,26 @@ const S = StyleSheet.create({
   seasonPillTextActive: { color: "#fff" },
 
   listArea: { flex: 1, minHeight: ph(40), marginTop: ph(2) },
-  epListContent: { paddingBottom: ph(5), paddingHorizontal: pw(4) },
+  /*
+   * The one horizontal gutter on this screen, and on a phone the only one.
+   *
+   * The hero and the seasons row are this list's `ListHeaderComponent`, so this
+   * padding wraps them too — and they were each adding their own on top of it.
+   * The left inset was `pw(4)` here plus `PHONE_H_PAD` in `heroSection`: 43dp
+   * of a 393dp screen before anything was drawn. Those two now contribute 0
+   * horizontally on a phone and this is the whole gutter.
+   */
+  epListContent: { paddingBottom: ph(5), paddingHorizontal: CONTENT_H_PAD },
+
+  /**
+   * The loading state's wrapper.
+   *
+   * It renders the same `heroAndSeasons` as the list's header does, but it is
+   * not the list — so it has to carry the gutter itself. Without it the hero
+   * sat flush against the screen edge while the spinner showed and then jumped
+   * inwards the moment the episodes arrived.
+   */
+  loadingWrap: { flex: 1, paddingHorizontal: CONTENT_H_PAD },
 
   // ── Episode tile: styled identically to VOD Movie tile ──
   episodeItemWrapper: {
@@ -979,19 +1094,29 @@ const S = StyleSheet.create({
     backgroundColor: 'rgba(10, 12, 18, 0.95)',
   },
   modalBody: {
-    padding: ps(2.2),
+    padding: isPhone ? PHONE_H_PAD : ps(2.2),
   },
+  /*
+   * Three stacked bands on a phone, exactly as the vod sheet: poster beside the
+   * title, then the description, then the actions. The lower two take
+   * `width: "100%"`, which cannot share a wrap line, so they break onto their
+   * own. Unwrapped, the 1.4/0.65 split left the actions column too narrow for
+   * "EXTERNAL PLAYER" and its icon.
+   */
   modalTVContent: {
     flexDirection: "row",
-    alignItems: "center",
+    flexWrap: isPhone ? "wrap" : "nowrap",
+    alignItems: isPhone ? "flex-start" : "center",
   },
+  /** Synopsis and credits as their own full-width band, phones only. */
+  modalDescBlock: { width: "100%", marginTop: 14 },
   modalPosterWrapper: {
-    width: pw(11),
+    width: isPhone ? 72 : pw(11),
     aspectRatio: 2 / 3,
     borderRadius: ps(0.8),
     overflow: "hidden",
     backgroundColor: "rgba(255, 255, 255, 0.05)",
-    marginRight: pw(2),
+    marginRight: isPhone ? 12 : pw(2),
   },
   modalPosterImg: {
     width: "100%",
@@ -1037,14 +1162,18 @@ const S = StyleSheet.create({
   },
   modalLeft: {
     flex: 1.4,
-    paddingRight: ps(1.5),
+    paddingRight: isPhone ? 0 : ps(1.5),
     justifyContent: "center",
+    alignSelf: isPhone ? "center" : "auto",
   },
   modalRight: {
-    flex: 0.65,
-    paddingLeft: ps(1.5),
+    // `flex: 0` with a full width is what forces the wrap onto its own line.
+    flex: isPhone ? 0 : 0.65,
+    width: isPhone ? "100%" : undefined,
+    paddingLeft: isPhone ? 0 : ps(1.5),
+    marginTop: isPhone ? 32 : 0,
     justifyContent: "center",
-    gap: ps(0.8),
+    gap: isPhone ? 10 : ps(0.8),
   },
   modalTitle: {
     color: "#FFFFFF",

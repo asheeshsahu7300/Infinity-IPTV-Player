@@ -7,12 +7,12 @@
 // how much of it you have already seen, not by what is on now.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet, View, Pressable, useWindowDimensions } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View, Pressable, useWindowDimensions } from 'react-native';
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Focusable, FocusGroup, Overlay } from "../tv";
 import { THEME, ph, ps, pw } from "../theme/tokens";
-import { isTablet } from "../utils/tabletUtils";
+import { isTouch } from "../utils/tabletUtils";
 import { resumeIndex } from "../services/resumeIndex";
 import { formatRuntime } from "../utils/duration";
 import type { QueueItem } from "../services/playbackQueue";
@@ -84,18 +84,18 @@ const QueueRow = React.memo(
         {(focused) => (
           <View style={[
             S.row,
-            isTablet && { paddingVertical: 6, paddingHorizontal: 10, gap: 10 },
+            isTouch && { paddingVertical: 6, paddingHorizontal: 10, gap: 10 },
             isCurrent && S.rowCurrent,
             focused && S.rowFocused
           ]}>
             <View style={S.numberCol}>
-              <Text style={[S.number, isTablet && { fontSize: 12 }, focused && S.onFocus]}>
+              <Text style={[S.number, isTouch && { fontSize: 12 }, focused && S.onFocus]}>
                 {item.episodeNum ?? index + 1}
               </Text>
               {watched && !isCurrent ? (
                 <DynamicIcon
                   name="checkmark-circle"
-                  size={isTablet ? 14 : ps(1)}
+                  size={isTouch ? 14 : ps(1)}
                   color={focused ? "rgba(0,0,0,0.5)" : "#34c759"}
                 />
               ) : null}
@@ -103,7 +103,7 @@ const QueueRow = React.memo(
 
             <View style={[
               isLandscapeStill ? S.thumbLandscape : S.thumbPortrait,
-              isTablet && (isLandscapeStill ? { width: 54, height: 36 } : { width: 36, height: 50 })
+              isTouch && (isLandscapeStill ? { width: 54, height: 36 } : { width: 36, height: 50 })
             ]}>
               {item.poster ? (
                 <Image
@@ -115,7 +115,7 @@ const QueueRow = React.memo(
                 />
               ) : (
                 <Film
-                  size={isTablet ? 18 : ps(1.6)}
+                  size={isTouch ? 18 : ps(1.6)}
                   color={focused ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.3)"}
                 />
               )}
@@ -123,14 +123,14 @@ const QueueRow = React.memo(
 
             <View style={S.text}>
               <Text
-                style={[S.title, isTablet && { fontSize: 13 }, focused && S.onFocus, watched && !focused && S.dimmed]}
+                style={[S.title, isTouch && { fontSize: 13 }, focused && S.onFocus, watched && !focused && S.dimmed]}
                 numberOfLines={1}
               >
                 {item.episodeName || (item.kind === "episode" ? `Episode ${item.episodeNum ?? index + 1}` : item.title)}
               </Text>
               {item.description || item.subtitle ? (
                 <Text
-                  style={[S.description, isTablet && { fontSize: 11 }, focused && { color: "rgba(0,0,0,0.6)" }]}
+                  style={[S.description, isTouch && { fontSize: 11 }, focused && { color: "rgba(0,0,0,0.6)" }]}
                   numberOfLines={1}
                 >
                   {item.description || item.subtitle}
@@ -139,7 +139,7 @@ const QueueRow = React.memo(
 
               {facts ? (
                 <Text
-                  style={[S.facts, isTablet && { fontSize: 10 }, focused && { color: "rgba(0,0,0,0.5)" }]}
+                  style={[S.facts, isTouch && { fontSize: 10 }, focused && { color: "rgba(0,0,0,0.5)" }]}
                   numberOfLines={1}
                 >
                   {facts}
@@ -212,11 +212,13 @@ export function QueueList({
 
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const isPortrait = isTablet && windowHeight > windowWidth;
-  const panelWidth = isTablet
+  // The same expression every other screen uses. This read `isTablet && ...`,
+  // which is never true on a phone, so a handset took the landscape branch.
+  const isPortrait = !Platform.isTV && windowHeight > windowWidth;
+  const panelWidth = isTouch
     ? (isPortrait ? Math.min(360, windowWidth * 0.85) : Math.min(400, windowWidth * 0.42))
     : pw(34);
-  const rowHeight = isTablet ? 68 : ROW_HEIGHT;
+  const rowHeight = isTouch ? 68 : ROW_HEIGHT;
 
   const renderItem = useCallback(
     ({ item, index }: { item: QueueItem; index: number }) => (
@@ -249,8 +251,8 @@ export function QueueList({
         onPress={onClose}
         accessibilityLabel="Close queue list"
       />
-      <View style={[S.panel, isTablet && { width: panelWidth, minWidth: undefined, maxWidth: 420 }]}>
-        <View style={[S.header, isTablet && { paddingTop: Math.max(16, insets.top + 8) }]}>
+      <View style={[S.panel, isTouch && { width: panelWidth, minWidth: undefined, maxWidth: 420 }]}>
+        <View style={[S.header, isTouch && { paddingTop: Math.max(16, insets.top + 8) }]}>
           <Text style={S.headerTitle} numberOfLines={2}>
             {title || "Up Next"}
           </Text>
@@ -265,7 +267,7 @@ export function QueueList({
             style={{ flex: 1 }}
             contentContainerStyle={[
               S.listContent,
-              isTablet && { paddingBottom: insets.bottom + 20 },
+              isTouch && { paddingBottom: insets.bottom + 20 },
             ]}
             showsVerticalScrollIndicator={true}
           >
@@ -273,7 +275,7 @@ export function QueueList({
           </ScrollView>
         </FocusGroup>
 
-        <View style={[S.footer, isTablet && { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
+        <View style={[S.footer, isTouch && { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
           <CornerDownLeft size={ps(1)} color="rgba(255,255,255,0.4)" style={{ marginRight: ps(0.4) }} />
           <Text style={S.footerHint}>OK to play · BACK to close</Text>
         </View>

@@ -24,7 +24,8 @@ import { epgService } from "../src/services/epgService";
 import { parentalControl } from "../src/services/parentalControl";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { THEME, ph, ps, pw } from "../src/theme/tokens";
-import { isTablet } from "../src/utils/tabletUtils";
+import { isPhone } from "../src/utils/phoneUtils";
+import { isTouch } from "../src/utils/tabletUtils";
 import { Focusable, FocusGroup } from "../src/tv";
 import { Gauge } from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
@@ -141,7 +142,11 @@ export default function SystemInfoScreen() {
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
 
-      <View style={[S.header, isTablet && { paddingHorizontal: 24, paddingTop: ph(3) }]}>
+      <View style={[
+        S.header,
+        isTouch && { paddingHorizontal: 24, paddingTop: ph(3) },
+        isPhone && { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 },
+      ]}>
         <Text style={S.headerTitle}>System Information</Text>
         <Text style={S.headerSubtitle}>
           Device specifications, network status and streaming capabilities
@@ -151,9 +156,14 @@ export default function SystemInfoScreen() {
       <ScrollView
         contentContainerStyle={[
           S.scroll,
-          isTablet && {
+          isTouch && {
             paddingHorizontal: 24,
             paddingBottom: insets.bottom + 36,
+          },
+          // The 14dp gutter the other two diagnostics screens use.
+          isPhone && {
+            paddingHorizontal: 14,
+            paddingBottom: insets.bottom + 20,
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -210,7 +220,7 @@ export default function SystemInfoScreen() {
                 <DynamicIcon
                   name={copied ? "checkmark" : "copy-outline"}
                   size={ps(1.4)}
-                  color={focused ? "#000" : "#fff"}
+                  color={isPhone || focused ? "#000" : "#fff"}
                 />
                 <Text style={[S.actionText, focused && S.actionTextFocused]}>
                   {copied ? "COPIED" : "COPY ALL"}
@@ -227,7 +237,7 @@ export default function SystemInfoScreen() {
           >
             {(focused) => (
               <View style={[S.action, focused && S.actionFocused]}>
-                <Gauge size={ps(1.4)} color={focused ? "#000" : "#fff"} />
+                <Gauge size={ps(1.4)} color={isPhone || focused ? "#000" : "#fff"} />
                 <Text style={[S.actionText, focused && S.actionTextFocused]}>SPEED TEST</Text>
               </View>
             )}
@@ -255,13 +265,24 @@ const S = StyleSheet.create({
     letterSpacing: 2,
     marginBottom: ph(1),
   },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: pw(1.2) },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: isPhone ? 10 : pw(1.2) },
+  /*
+   * A fixed height on a phone so the grid is even.
+   *
+   * These wrap across several rows and flex only equalises within a row, so
+   * each row sized itself to its own longest value — a field holding "Android
+   * 14" ended up shorter than the one beside it holding a resolution string,
+   * and the grid stepped up and down the page. 62 clears a label line, a value
+   * line and the padding; a value that wraps still grows past it, since this is
+   * a minimum rather than a cap.
+   */
   field: {
-    width: isTablet ? "48%" : `${100 / 3}%`,
-    minWidth: isTablet ? "46%" : pw(24),
+    width: isTouch ? "48%" : `${100 / 3}%`,
+    minWidth: isTouch ? "46%" : pw(24),
     flexGrow: 1,
-    flexBasis: isTablet ? "46%" : pw(24),
-    padding: pw(1.4),
+    flexBasis: isTouch ? "46%" : pw(24),
+    minHeight: isPhone ? 62 : undefined,
+    padding: isPhone ? 12 : pw(1.4),
     borderRadius: ps(0.9),
     backgroundColor: "rgba(255,255,255,0.035)",
     borderWidth: 1,
@@ -270,18 +291,18 @@ const S = StyleSheet.create({
   },
   fieldLabel: {
     color: "rgba(255,255,255,0.32)",
-    fontSize: ps(0.78),
+    fontSize: isPhone ? 10 : ps(0.78),
     fontWeight: "800",
     letterSpacing: 0.8,
   },
-  fieldValue: { color: "#fff", fontSize: ps(1.1), fontWeight: "700" },
+  fieldValue: { color: "#fff", fontSize: isPhone ? 13 : ps(1.1), fontWeight: "700" },
   fieldValueEmphasis: {
     color: THEME.colors.primary,
-    fontSize: ps(1.25),
+    fontSize: isPhone ? 15 : ps(1.25),
     fontVariant: ["tabular-nums"],
   },
 
-  actions: { flexDirection: "row", gap: pw(1.5), marginTop: ph(3), flexWrap: "wrap" },
+  actions: { flexDirection: "row", gap: isPhone ? 10 : pw(1.5), marginTop: ph(3), flexWrap: "wrap" },
   actionWrapper: { borderRadius: ps(1) },
   action: {
     flexDirection: "row",
@@ -290,11 +311,13 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(2.5),
     paddingVertical: ph(1.3),
     borderRadius: ps(1),
-    backgroundColor: "rgba(255,255,255,0.07)",
+    // White on a phone — the translucent fill is a resting state only a
+    // remote's focus ever lifts. Same as the speed-test actions.
+    backgroundColor: isPhone ? "#fff" : "rgba(255,255,255,0.07)",
     borderWidth: 1,
     borderColor: "transparent",
   },
   actionFocused: { backgroundColor: "#fff", borderColor: "#fff", transform: [{ scale: 1.04 }] },
-  actionText: { color: "#fff", fontSize: ps(1), fontWeight: "900", letterSpacing: 1 },
+  actionText: { color: isPhone ? "#000" : "#fff", fontSize: isPhone ? 13 : ps(1), fontWeight: "900", letterSpacing: 1 },
   actionTextFocused: { color: "#000" },
 });

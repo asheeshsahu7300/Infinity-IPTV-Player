@@ -38,7 +38,8 @@ import {
 
 import { useDialog } from "../src/components/ConfirmDialog";
 
-import { isTablet } from "../src/utils/tabletUtils";
+import { isPhone } from "../src/utils/phoneUtils";
+import { isTablet, isTouch } from "../src/utils/tabletUtils";
 
 import {
   pw,
@@ -51,6 +52,24 @@ import { Plus } from "lucide-react-native";
 import { DynamicIcon } from "../src/components/DynamicIcon";
 import { Text } from "../src/components/Text";
 
+/**
+ * Height of the DELETE PORTAL button, in dp.
+ *
+ * `ph` is a percentage of the *short* edge, so `ph(5.5)` is 30dp against a TV's
+ * 540 but only 22dp on a 393dp-wide handset — a control too short to hit. 44 is
+ * the touch minimum.
+ *
+ * A constant because two places need the same number and they are far apart:
+ * the button's own style, and `itemSize`, which sums the card, this button and
+ * the gap to work out how tall one portal row is. They were separate copies of
+ * `ph(5.5)`, so changing the button alone would have left the carousel
+ * measuring rows at the old height.
+ */
+const DELETE_BTN_HEIGHT = isPhone ? 34 : ph(5.5);
+
+/** Height of ADD NEW PORTAL, same reasoning — `ph(6.5)` is 26dp on a phone. */
+const ADD_BTN_HEIGHT = isPhone ? 38 : ph(6.5);
+
 export default function PortalsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -60,8 +79,11 @@ export default function PortalsScreen() {
     height: windowHeight,
   } = useWindowDimensions();
 
+  // `!Platform.isTV`, not `isTablet` — the same expression every other screen
+  // uses. Gated on `isTablet` this never fired on a phone, so a handset got the
+  // side-by-side landscape portal grid in a 393dp-wide viewport.
   const isPortrait =
-    isTablet && windowHeight > windowWidth;
+    !Platform.isTV && windowHeight > windowWidth;
 
   // ────────────────────────────────────────────────────────────────────────────
   // Dimensions
@@ -72,13 +94,17 @@ export default function PortalsScreen() {
     windowWidth - 48
   );
 
-  const cardWidth = isTablet
+  // `isTouch` throughout this block, not `isTablet`: these are the touch-layout
+  // dimensions, and a phone needs them at least as much as a tablet does. On
+  // `isTablet` a phone fell through to the TV branch, where `pw(28)` is 244dp
+  // of a 393dp screen and `ph(45)` taller than the viewport.
+  const cardWidth = isTouch
     ? isPortrait
       ? portraitCardWidth
       : Math.min(340, windowWidth * 0.32)
     : pw(28);
 
-  const cardMargin = isTablet
+  const cardMargin = isTouch
     ? isPortrait
       ? 0
       : 12
@@ -91,13 +117,13 @@ export default function PortalsScreen() {
    * The card scales with the available portrait height,
    * while keeping a sensible maximum.
    */
-  const cardHeight = isTablet
+  const cardHeight = isTouch
     ? isPortrait
       ? Math.min(260, Math.max(220, windowHeight * 0.30))
       : Math.min(280, windowHeight * 0.52)
     : ph(45);
 
-  const deleteButtonHeight = ph(5.5);
+  const deleteButtonHeight = DELETE_BTN_HEIGHT;
 
   const portraitItemGap = 32;
 
@@ -644,10 +670,24 @@ export default function PortalsScreen() {
     <View
       style={[
         S.header,
-        isTablet && {
+        isTouch && {
           marginTop: ph(4),
           height: ph(8),
           marginBottom: ph(1),
+        },
+        /*
+         * `ph(8)` is 31dp on a handset — shorter than the logo it has to hold,
+         * so the mark overflowed its own header.
+         *
+         * Flush: this is exactly the logo's height with 0 margins either side,
+         * so the header adds nothing of its own. It has to move in step with
+         * the `isPhone` height on the Image below — that is the only thing left
+         * that sets how much vertical space the branding takes.
+         */
+        isPhone && {
+          marginTop: 0,
+          height: 76,
+          marginBottom: 0,
         },
       ]}
     >
@@ -663,6 +703,21 @@ export default function PortalsScreen() {
                 scale: 1.4,
               },
             ],
+          },
+          /*
+           * The phone box is 3:2, the asset's own ratio, so `contain` fills it
+           * exactly and `scale: 1` leaves layout and paint in agreement.
+           *
+           * That is what the previous 200x46 got wrong: `contain` fits inside
+           * the box before the transform, and a box that wide and short is
+           * *height*-limited — so the mark rendered at 69x46 and the scale only
+           * took it to 79x53, a third of the width the box claimed. Sizing the
+           * box to the artwork instead makes the numbers here the real ones.
+           */
+          isPhone && {
+            width: 114,
+            height: 76,
+            transform: [{ scale: 1 }],
           },
         ]}
         resizeMode="contain"
@@ -701,7 +756,7 @@ export default function PortalsScreen() {
             <Plus
               size={ps(1.6)}
               color={
-                focused
+                isPhone || focused
                   ? "#000000"
                   : "#FFFFFF"
               }
@@ -730,7 +785,6 @@ export default function PortalsScreen() {
     <View
       style={[
         S.introRow,
-        isTablet &&
         isPortrait && {
           flexDirection: "column",
           gap: 20,
@@ -833,7 +887,7 @@ export default function PortalsScreen() {
           S.container,
           {
             paddingTop: insets.top,
-            paddingBottom: isTablet
+            paddingBottom: isTouch
               ? insets.bottom + 16
               : 0,
           },
@@ -862,7 +916,7 @@ export default function PortalsScreen() {
         S.container,
         {
           paddingTop: insets.top,
-          paddingBottom: isTablet
+          paddingBottom: isTouch
             ? insets.bottom + 16
             : 0,
         },
@@ -884,17 +938,19 @@ export default function PortalsScreen() {
             contentContainerStyle={[
               S.centeredGrid,
 
-              isTablet &&
               isPortrait && {
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
                 paddingHorizontal: 24,
-                paddingVertical: 24,
+                // The 24 above the first card stacked on the header's own
+                // margin and the carousel's padding, so the portal sat well
+                // down the screen with nothing between it and the logo.
+                paddingVertical: isPhone ? 8 : 24,
                 gap: portraitItemGap,
               },
 
-              isTablet &&
+              isTouch &&
               !isPortrait && {
                 flexDirection: "row",
                 alignItems: "center",
@@ -1076,13 +1132,17 @@ const S = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    height: ph(6.5),
-    paddingHorizontal: pw(3),
+    height: ADD_BTN_HEIGHT,
+    // `pw` is a percentage of the *long* edge, so `pw(3)` is 26dp a side on a
+    // handset — most of the button once the label is in it.
+    paddingHorizontal: isPhone ? 18 : pw(3),
     borderRadius: 18,
-    backgroundColor: "#17181c",
+    // White for the same reason as `deleteBtn`: the dark fill is a resting
+    // state that only a remote's focus ever lifts.
+    backgroundColor: isPhone ? "#F5F5F5" : "#17181c",
     borderWidth: 0,
     borderColor: "transparent",
-    gap: pw(0.8),
+    gap: isPhone ? 8 : pw(0.8),
   },
 
   addBtnFocused: {
@@ -1114,8 +1174,8 @@ const S = StyleSheet.create({
   },
 
   addBtnText: {
-    color: "#FFFFFF",
-    fontSize: ps(1.2),
+    color: isPhone ? "#000000" : "#FFFFFF",
+    fontSize: isPhone ? 12.5 : ps(1.2),
     fontWeight: "800",
     letterSpacing: 1.2,
   },
@@ -1129,7 +1189,7 @@ const S = StyleSheet.create({
 
   carouselContainer: {
     flex: 1,
-    paddingVertical: ph(2),
+    paddingVertical: isPhone ? 4 : ph(2),
     justifyContent: "center",
     alignItems: "stretch",
   },
@@ -1307,11 +1367,14 @@ const S = StyleSheet.create({
   },
 
   deleteBtn: {
-    height: ph(5.5),
+    height: DELETE_BTN_HEIGHT,
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#17181c",
+    // White on a phone. The dark fill is the *resting* state of a control that
+    // turns white when a remote focuses it — and a phone never focuses
+    // anything, so it would have sat dark forever.
+    backgroundColor: isPhone ? "#F5F5F5" : "#17181c",
     borderWidth: 0,
     borderColor: "transparent",
   },
@@ -1345,9 +1408,11 @@ const S = StyleSheet.create({
   },
 
   deleteBtnText: {
-    color:
-      "rgba(255, 255, 255, 0.95)",
-    fontSize: ps(1.15),
+    // Dark ink to match the white fill above; white text on it is invisible.
+    color: isPhone
+      ? "#000000"
+      : "rgba(255, 255, 255, 0.95)",
+    fontSize: isPhone ? 12.5 : ps(1.15),
     fontWeight: "700",
     letterSpacing: 1.5,
   },

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { View, StyleSheet, ScrollView, Image, BackHandler, Keyboard, useWindowDimensions } from 'react-native';
+import { View, StyleSheet, ScrollView, Image, BackHandler, Keyboard, Platform, useWindowDimensions } from 'react-native';
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Server, Cloud, List } from "lucide-react-native";
@@ -11,7 +11,8 @@ import LoadingOverlay from "../src/components/LoadingOverlay";
 import { useDialog } from "../src/components/ConfirmDialog";
 import { safeBack } from "../src/services/safeNavigation";
 import { Focusable } from "../src/tv";
-import { isTablet } from "../src/utils/tabletUtils";
+import { isPhone, PHONE_H_PAD } from "../src/utils/phoneUtils";
+import { isTouch } from "../src/utils/tabletUtils";
 
 import { pw, ph, ps } from "../src/theme/tokens";
 import { Text } from '../src/components/Text';
@@ -122,7 +123,10 @@ export default function AddPortalScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const isPortrait = isTablet && windowHeight > windowWidth;
+  // `!Platform.isTV`, not `isTablet` — the same expression every other screen
+  // uses. Gated on `isTablet` this was false on every phone, so a handset held
+  // upright rendered the two-column landscape form off the side of the screen.
+  const isPortrait = !Platform.isTV && windowHeight > windowWidth;
 
   // Selectors — see the note in live-tv.tsx.
   const addPortal = usePortalStore((s) => s.addPortal);
@@ -282,7 +286,10 @@ export default function AddPortalScreen() {
     <View style={S.step1Container}>
       <BrandHeader />
 
-      <View style={[S.cardsContainer, isTablet && isPortrait && { flexDirection: "column", gap: 16, paddingHorizontal: 16 }]}>
+      {/* The same 10 the step-2 form takes, so the type cards and the fields
+          that follow them sit on one left edge rather than stepping inward
+          between the two pages. */}
+      <View style={[S.cardsContainer, isPortrait && { flexDirection: "column", gap: 16, paddingHorizontal: 10 }]}>
         {(
           [
             {
@@ -315,7 +322,7 @@ export default function AddPortalScreen() {
               id={id}
               focusedField={focusedField}
               preferred={focusFirstCard && t === "mag"}
-              style={isTablet && isPortrait ? { width: "100%", aspectRatio: undefined, minHeight: 110 } : undefined}
+              style={isPortrait ? { width: "100%", aspectRatio: undefined, minHeight: 110 } : undefined}
               onPress={() => { setType(t); setStep(2); }}
               onFocus={() => setFocusedField(id)}
               onBlur={() => setFocusedField(null)}
@@ -348,15 +355,19 @@ export default function AddPortalScreen() {
         <BrandHeader />
 
         {/* 2-Column Split Layout */}
-        <View style={[S.ventoxTwoColRow, isTablet && isPortrait && { flexDirection: "column", alignItems: "stretch", maxWidth: "100%", paddingHorizontal: 16 }]}>
+        {/* A little more inset than the 8dp page gutter — the fields read as
+            cramped sitting almost flush to the screen edge. Applied to the row
+            rather than the field column so the headline stays aligned with the
+            inputs beneath it. */}
+        <View style={[S.ventoxTwoColRow, isPortrait && { flexDirection: "column", alignItems: "stretch", maxWidth: "100%", paddingHorizontal: 10 }]}>
           {/* Left Column */}
-          <View style={[S.ventoxLeftCol, isTablet && isPortrait && { paddingRight: 0, marginBottom: 20 }]}>
+          <View style={[S.ventoxLeftCol, isPortrait && { paddingRight: 0, marginBottom: 20 }]}>
             <Text style={S.ventoxHeadlinePre}>Start watching with</Text>
             <Text style={S.ventoxHeadlineMain}>{portalTitleMap[type]}</Text>
           </View>
 
           {/* Right Column */}
-          <View style={[S.ventoxRightCol, isTablet && isPortrait && { width: "100%" }]}>
+          <View style={[S.ventoxRightCol, isPortrait && { width: "100%" }]}>
             {/* Name input */}
             <ThemedInput isFocused={focusedField === "name"}>
               <TextInput
@@ -474,7 +485,7 @@ export default function AddPortalScreen() {
 
       <ScrollView
         style={S.content}
-        contentContainerStyle={[S.scrollContent, isTablet && { paddingBottom: insets.bottom + 36 }]}
+        contentContainerStyle={[S.scrollContent, isTouch && { paddingBottom: insets.bottom + 36 }]}
         showsVerticalScrollIndicator={false}
       >
         {step === 1 ? renderStep1() : renderStep2()}
@@ -500,28 +511,44 @@ const S = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: pw(2.4),
+    // The one gutter on a phone: `pw(2.4)` is 21dp a side and the step
+    // containers were each adding another 16 on top of it. Those now
+    // contribute 0 and this is the whole margin.
+    paddingHorizontal: isPhone ? PHONE_H_PAD : pw(2.4),
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: "center",
+    // Top-aligned on a phone. Centring is right on a TV, where the form is a
+    // short block on a wide canvas — but on a handset it pushed the brand mark
+    // into the middle of the screen with the fields trailing off the bottom.
+    justifyContent: isPhone ? "flex-start" : "center",
     alignItems: "center",
     paddingBottom: ph(4),
     width: "100%",
   },
 
   // ── Brand Header (Original Theme) ─────────────────────────────────────────
+  /*
+   * The phone logo is a 3:2 box at scale 1, so `contain` fills it exactly and
+   * the numbers here are the rendered ones.
+   *
+   * They were not before. `contain` fits the image inside the box *before* the
+   * transform, and a 349x47 box is far wider than the asset's 3:2 — so it was
+   * height-limited to 70x47 and `scale: 2.6` blew that to 184x123 inside a
+   * 47dp header: a 75dp overflow, on top of a -20dp margin already pulling the
+   * whole thing upward. Same trap as the portals and dashboard headers.
+   */
   brandHeader: {
     alignItems: "center",
     justifyContent: "center",
-    height: ph(12),
-    marginTop: -ph(5),
-    marginBottom: ph(6),
+    height: isPhone ? 100 : ph(12),
+    marginTop: isPhone ? 0 : -ph(5),
+    marginBottom: isPhone ? 16 : ph(6),
   },
   brandLogoImage: {
-    width: pw(40),
-    height: ph(12),
-    transform: [{ scale: 2.6 }],
+    width: isPhone ? 150 : pw(40),
+    height: isPhone ? 100 : ph(12),
+    transform: [{ scale: isPhone ? 1 : 2.6 }],
   },
 
   // ── Step 1 ───────────────────────────────────────────────────────────────
@@ -556,21 +583,40 @@ const S = StyleSheet.create({
     marginBottom: 8,
     textAlign: "center",
   },
+  /*
+   * Leading is a multiple of the font size, not `ph()`.
+   *
+   * `ps` is normalised to the reference canvas on a phone and `ph` is not, so a
+   * `ph()` leading against a `ps()` font size holds only on the canvas it was
+   * measured on. Here it was 1.38x the font on the box and 1.01x on a handset;
+   * the two headlines below were worse — leading *below* the font size, which
+   * clips the glyphs rather than merely crowding them. The multipliers are the
+   * ratios the box already renders, so this is identical on TV and tablet.
+   */
   darkCardDesc: {
     fontSize: ps(1.2),
     color: "#7e8299",
     textAlign: "center",
-    lineHeight: ph(3),
+    lineHeight: ps(1.2) * 1.3846,
     paddingHorizontal: 8,
   },
 
   // ── Step 2 Layout ─────────────────────────────────────────────────────────
   ventoxStep2Container: {
-    flex: 1,
+    /*
+     * Top-aligned on a phone.
+     *
+     * `scrollContent` was switched to `flex-start` for this, but it had no
+     * effect on step 2: this container is `flex: 1` inside it and centres its
+     * own children, so it stretched to the full height and re-centred the form
+     * — brand mark in the middle of the screen, fields running off the bottom.
+     * Both have to agree, so this one sizes to its content on a phone.
+     */
+    flex: isPhone ? 0 : 1,
     width: "100%",
     alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: ph(2),
+    justifyContent: isPhone ? "flex-start" : "center",
+    paddingVertical: isPhone ? 0 : ph(2),
   },
   ventoxTwoColRow: {
     flexDirection: "row",
@@ -586,18 +632,32 @@ const S = StyleSheet.create({
     marginBottom: 0,
     alignItems: "flex-start",
   },
+  /*
+   * Real leading on a phone, not the box's ratio.
+   *
+   * When these were converted off `ph()` the multipliers were chosen to
+   * reproduce exactly what the box rendered — 1.01x the font size here and
+   * 0.96x below. Preserving TV was right, but those ratios are too tight to be
+   * *correct*: a leading at or under the font size leaves no room under the
+   * baseline, and "Start watching with" has a descender, so the tail of the g
+   * was cut off. Android's `includeFontPadding` normally absorbs that, and an
+   * explicit `lineHeight` this small overrides it.
+   *
+   * TV and tablet keep the ratios they were verified at; only the phone gets
+   * the descender room.
+   */
   ventoxHeadlinePre: {
     color: "#FFFFFF",
     fontSize: ps(2.3),
     fontWeight: "700",
-    lineHeight: ph(4.2),
+    lineHeight: ps(2.3) * (isPhone ? 1.3 : 1.0114),
     textAlign: "left",
   },
   ventoxHeadlineMain: {
     color: "#FFFFFF",
     fontSize: ps(3.0),
     fontWeight: "900",
-    lineHeight: ph(5.2),
+    lineHeight: ps(3.0) * (isPhone ? 1.25 : 0.96),
     marginTop: ph(0.6),
     textAlign: "left",
   },
@@ -606,14 +666,18 @@ const S = StyleSheet.create({
   },
   inputBox: {
     width: "100%",
-    height: ph(9.8),
+    // `ph` is a percentage of the *short* edge, so `ph(9.8)` is 53dp on a TV
+    // but 39 on a handset — under the touch minimum for the one control on
+    // this screen you have to hit accurately.
+    height: isPhone ? 46 : ph(9.8),
     backgroundColor: "#17181c",
     borderRadius: 18,
     borderWidth: 1,
     borderColor: "transparent",
-    paddingHorizontal: pw(2.5),
+    // `pw(2.5)` is 22dp a side on a phone, against a field only 361 wide.
+    paddingHorizontal: isPhone ? 14 : pw(2.5),
     justifyContent: "center",
-    marginBottom: ph(2.2),
+    marginBottom: isPhone ? 12 : ph(2.2),
   },
   inputBoxFocused: {
     borderColor: "#FFFFFF",
@@ -628,7 +692,7 @@ const S = StyleSheet.create({
   },
   themeAddBtn: {
     width: "100%",
-    height: ph(9.8),
+    height: isPhone ? 46 : ph(9.8),
     backgroundColor: "#F5F5F5",
     borderRadius: 18,
     alignItems: "center",

@@ -12,6 +12,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { View, StyleSheet, Dimensions, Platform, ActivityIndicator, StatusBar, ScrollView, BackHandler, findNodeHandle, Animated, AppState, AppStateStatus, UIManager, useTVEventHandler } from 'react-native';
 import { useLocalSearchParams } from "expo-router";
+import * as ScreenOrientation from "expo-screen-orientation";
+import { isPhone } from "../src/utils/phoneUtils";
 import { PlayerAspectRatio, VLCPlayer } from "react-native-vlc-media-player";
 import { Video, ResizeMode, AVPlaybackStatus } from "expo-av";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -48,7 +50,19 @@ import { DynamicIcon } from '../src/components/DynamicIcon';
 import { Text } from '../src/components/Text';
 
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+/**
+ * The long edge of the display, feeding the shimmer sweep below.
+ *
+ * The long edge and not `window.width`, because this module evaluates once and
+ * the player is the one screen that changes orientation under itself: on a
+ * phone it locks landscape on mount (see the effect in `PlayerScreen`), so a
+ * width captured in portrait would leave the sweep stopping short of the edge
+ * for the whole session. Both orientations share a long edge.
+ */
+const SCREEN_WIDTH = (() => {
+  const d = Dimensions.get("window");
+  return Math.max(d.width, d.height);
+})();
 
 // ─── VLC availability check (native module may be absent, e.g. Expo Go) ──────
 const isVLCSupported = () => {
@@ -286,6 +300,38 @@ ShimmerBar.displayName = "ShimmerBar";
 // ─────────────────────────────────────────────────────────────────────────────
 export default function PlayerScreen() {
   useKeepAwake();
+
+  /**
+   * The player is landscape on a phone, and hands portrait back on the way out.
+   *
+   * Phones are pinned portrait for the whole app — natively, in
+   * `MainActivity.pinHandsetToPortrait`, so the layout's module-load snapshot
+   * is portrait — and this screen is the deliberate exception: video is
+   * landscape, and a 16:9 frame in a 393dp-wide viewport is a third of the
+   * screen with black either side.
+   *
+   * Restoring on unmount rather than calling `unlockAsync` is the part worth
+   * being careful about. Unlocking would leave the handset free to rotate back
+   * into a browse screen that is sized for portrait and does not reflow, so the
+   * *next* screen would be the one that looks broken — with nothing on it to
+   * suggest the player had caused it.
+   *
+   * Only phones. A TV has no orientation to set, and a tablet is unlocked by
+   * `app/_layout` on purpose: it is wide enough either way up, and taking that
+   * away here would silently narrow a tablet to landscape from the first video
+   * onwards.
+   */
+  useEffect(() => {
+    if (!isPhone) return;
+    ScreenOrientation.lockAsync(
+      ScreenOrientation.OrientationLock.LANDSCAPE
+    ).catch(() => {});
+    return () => {
+      ScreenOrientation.lockAsync(
+        ScreenOrientation.OrientationLock.PORTRAIT_UP
+      ).catch(() => {});
+    };
+  }, []);
 
   const params = useLocalSearchParams<{
     url: string;
@@ -985,6 +1031,58 @@ export default function PlayerScreen() {
       }
     },
     [duration, isSeekable, position, performSeek]
+  );
+
+  /**
+   * Touch scrubbing for the progress bar.
+   *
+   * The bar had none. Its `Focusable` maps `onPress` to `togglePlay`, and
+   * seeking came entirely from the D-pad — the two 1x1 dummy focusables either
+   * side of it translate left/right into `accumulateSeek`. On a remote that is
+   * the whole interaction; on a phone it meant the bar could be tapped but not
+   * moved, and the tap played instead of seeking.
+   *
+   * Position is set on every move so the thumb tracks the finger, but the
+   * player is only told once, on release — `performSeek` mid-drag would fire a
+   * seek per frame at whatever the finger was passing over.
+   */
+  const railWidthRef = useRef(0);
+  const scrubFromX = useCallback(
+    (x: number, commit: boolean) => {
+      const width = railWidthRef.current;
+      if (!width || isLockedRef.current || duration <= 0 || !isSeekable) return;
+      const target = Math.max(0, Math.min(x / width, 1)) * duration;
+      setPosition(target);
+      if (commit) {
+        try {
+          performSeek(target);
+        } catch (e) {
+          console.error("Scrub seek error:", e);
+          isSeeking.current = false;
+        }
+      }
+    },
+    [duration, isSeekable, performSeek]
+  );
+
+  /**
+   * Claims the touch for the bar itself, so the tap reaches this instead of the
+   * `Focusable` wrapping it — whose press is `togglePlay`. Phone only; a remote
+   * has no responder to grant and the TV path must keep its `onPress`.
+   */
+  const scrubResponder = useMemo(
+    () =>
+      isPhone
+        ? {
+            onStartShouldSetResponder: () => true,
+            onMoveShouldSetResponder: () => true,
+            onResponderTerminationRequest: () => false,
+            onResponderGrant: (e: any) => scrubFromX(e.nativeEvent.locationX, false),
+            onResponderMove: (e: any) => scrubFromX(e.nativeEvent.locationX, false),
+            onResponderRelease: (e: any) => scrubFromX(e.nativeEvent.locationX, true),
+          }
+        : null,
+    [scrubFromX]
   );
 
   /**
@@ -1936,8 +2034,25 @@ export default function PlayerScreen() {
           rate={playbackSpeed}
           volume={currentVolume}
           videoAspectRatio={ASPECT_RATIOS[aspectRatioIndex].resize}
-          audioTrack={selectedAudioTrack}
-          textTrack={selectedTextTrack}
+          /*
+           * Only sent once the viewer has actually picked a track.
+           *
+           * `audioTrack` and `textTrack` are declared native-side as plain
+           * `int` ReactProps with no `defaultInt`, and React Native's default
+           * for that is 0 — so passing `undefined`, which is what these are
+           * until someone opens the menu, called `mMediaPlayer.setAudioTrack(0)`
+           * on mount. 0 is not a track id in libVLC (ids come from
+           * `getAudioTracks()`, with -1 meaning Disable), so it deselected
+           * audio before VLC had finished parsing the stream: no sound, and
+           * `getAudioTracksCount()` reporting 0 — which is why the Audio Track
+           * sheet stayed empty, since the native side only attaches
+           * `audioTracks` to the load event when that count is above zero.
+           *
+           * Spreading keeps the props off the element entirely until they hold
+           * a real id, leaving VLC on its own default track.
+           */
+          {...(selectedAudioTrack !== undefined ? { audioTrack: selectedAudioTrack } : {})}
+          {...(selectedTextTrack !== undefined ? { textTrack: selectedTextTrack } : {})}
           onLoad={(e: any) => {
             if (isBufferingRef.current) {
               isBufferingRef.current = false;
@@ -2302,7 +2417,13 @@ export default function PlayerScreen() {
           <LinearGradient colors={["transparent", "rgba(0,0,0,0.88)"]} style={S.bottomGradient} pointerEvents="none" />
 
           {/* Bottom controls */}
-          <View style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2) }]}>
+          {/* `box-none`: the panel itself must not take touches, or it steals
+              every tap aimed at the transport buttons centred behind it. Its
+              children still receive their own. */}
+          <View
+            style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2) }]}
+            pointerEvents={isPhone ? "box-none" : "auto"}
+          >
             {/* The banner is the top half of this panel rather than a separate
                 island floating above it. It used to be pinned at a fixed
                 distance from the bottom of the screen, which left a band of
@@ -2367,7 +2488,11 @@ export default function PlayerScreen() {
                         const effFocused =
                           visualFocus || dummyLeftFocusedRef.current || dummyRightFocusedRef.current;
                         return (
-                          <View style={S.progressBarInner}>
+                          <View
+                            style={S.progressBarInner}
+                            onLayout={(e) => { railWidthRef.current = e.nativeEvent.layout.width; }}
+                            {...(scrubResponder ?? {})}
+                          >
                             <View style={[S.progressRail, effFocused && S.progressRailFocused]}>
                               {isBuffering && <ShimmerBar />}
                               <View style={[S.progressFill, { width: `${progressPercent}%` }]} />
@@ -2864,7 +2989,8 @@ function TrackSelectionModal({
       >
         {(focused: boolean) => (
           <View style={S.modalCloseInner}>
-            <X size={ps(1.2)} color={focused ? "#000000" : "#FFFFFF"} />
+            {/* Dark on the phone's white fill, or it is invisible. */}
+            <X size={isPhone ? 13 : ps(1.2)} color={isPhone || focused ? "#000000" : "#FFFFFF"} />
             <Text style={[S.modalCloseBtnText, focused && S.modalCloseBtnTextFocused]}>
               CLOSE
             </Text>
@@ -3160,6 +3286,11 @@ const S = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: pw(4),
+    // Lifts the buttons off the panel on a phone. Landscape leaves 393dp of
+    // height, and the panel takes the lower ~170 of it, so a true centre would
+    // put them on top of the title. This keeps them close to the middle while
+    // clearing it.
+    paddingBottom: isPhone ? 56 : 0,
   },
   skipBtn: {
     width: ps(4.0),
@@ -3199,6 +3330,24 @@ const S = StyleSheet.create({
     shadowOpacity: 0.9,
   },
 
+  /*
+   * In the flow on a phone, floating above it everywhere else.
+   *
+   * Absolute + `zIndex: 10` puts this panel *over* `centerRow`, which is
+   * `flex: 1` and therefore the full height of the overlay. On a TV's 540dp
+   * that is harmless — the panel is nowhere near the vertically centred
+   * transport buttons. The player is landscape on a phone, so the viewport is
+   * only 393dp tall and the panel reaches well past the middle: it covered the
+   * play / prev / next buttons, which is why they could not be tapped, and drew
+   * the title across them.
+   *
+   * It stays absolute on a phone too, so the transport buttons keep the centre
+   * of the screen — dropping it into the column pushed them into the band above
+   * the panel, which read as stuck near the top. Instead the panel is made to
+   * stop swallowing what is behind it (`pointerEvents="box-none"` at the call
+   * site, plus the banner is already `none`), and the banner is compacted below
+   * so the title no longer runs across the buttons.
+   */
   bottomOverlay: {
     position: "absolute",
     bottom: 0,
@@ -3239,7 +3388,9 @@ const S = StyleSheet.create({
     borderColor: "transparent",
   },
   progressBarInner: {
-    height: ps(2.4),
+    // Taller on a phone: this view is the scrub target, and the rail it draws
+    // is only ps(0.7) — about 7dp — which is nothing to land a thumb on.
+    height: isPhone ? 30 : ps(2.4),
     justifyContent: "center",
   },
   progressRail: {
@@ -3329,7 +3480,7 @@ const S = StyleSheet.create({
     maxWidth: ps(36),
     maxHeight: "85%",
     borderRadius: 20,
-    borderWidth: 1.5,
+    borderWidth: isPhone ? 0 : 1.5,
     borderColor: "rgba(255, 255, 255, 0.16)",
     overflow: "hidden",
     shadowColor: "#000000",
@@ -3343,7 +3494,8 @@ const S = StyleSheet.create({
     paddingTop: ph(2.6),
     paddingBottom: ph(1.6),
     paddingHorizontal: pw(2.5),
-    borderBottomWidth: 1,
+    // The header rule goes with the rest of the sheet's borders on a phone.
+    borderBottomWidth: isPhone ? 0 : 1,
     borderBottomColor: "rgba(255, 255, 255, 0.08)",
   },
   modalIconBg: {
@@ -3351,7 +3503,7 @@ const S = StyleSheet.create({
     width: ps(3.8),
     height: ps(3.8),
     borderRadius: ps(1.9),
-    borderWidth: 1,
+    borderWidth: isPhone ? 0 : 1,
     borderColor: "rgba(255, 255, 255, 0.18)",
     alignItems: "center",
     justifyContent: "center",
@@ -3370,7 +3522,7 @@ const S = StyleSheet.create({
     paddingHorizontal: ps(1.0),
     paddingVertical: ps(0.3),
     borderRadius: 100,
-    borderWidth: 1,
+    borderWidth: isPhone ? 0 : 1,
     borderColor: "rgba(255, 255, 255, 0.12)",
   },
   modalSubtitleText: {
@@ -3395,7 +3547,7 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(1.4),
     marginBottom: ph(0.6),
     backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderWidth: 1.5,
+    borderWidth: isPhone ? 0 : 1.5,
     borderColor: "rgba(255, 255, 255, 0.08)",
   },
   modalOptionSelected: {
@@ -3479,16 +3631,25 @@ const S = StyleSheet.create({
   checkBadgeFocused: {
     backgroundColor: "#000000",
   },
+  /*
+   * Solid on a phone, and tall enough to hit.
+   *
+   * The 0.08 fill and the hairline are a *resting* state: on a remote the
+   * button turns white the moment it takes focus, which is how you see it. A
+   * phone focuses nothing, so it stayed a faint chip on a dark sheet — and
+   * removing the border left it fainter still. `ph(1.3)` is 5dp of padding
+   * here too, against 7 on the box, so it was a sliver.
+   */
   modalCloseBtn: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: ph(1.3),
-    marginHorizontal: pw(1.6),
+    paddingVertical: isPhone ? 9 : ph(1.3),
+    marginHorizontal: isPhone ? 18 : pw(1.6),
     marginTop: ph(0.6),
-    marginBottom: ph(1.4),
+    marginBottom: isPhone ? 10 : ph(1.4),
     borderRadius: 14,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    borderWidth: 1.5,
+    backgroundColor: isPhone ? "#F5F5F5" : "rgba(255, 255, 255, 0.08)",
+    borderWidth: isPhone ? 0 : 1.5,
     borderColor: "rgba(255, 255, 255, 0.14)",
   },
   modalCloseBtnFocused: {
@@ -3508,8 +3669,8 @@ const S = StyleSheet.create({
     gap: ps(0.6),
   },
   modalCloseBtnText: {
-    color: "#FFFFFF",
-    fontSize: ps(1.0),
+    color: isPhone ? "#000000" : "#FFFFFF",
+    fontSize: isPhone ? 12 : ps(1.0),
     fontWeight: "900",
     letterSpacing: 2,
   },

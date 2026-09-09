@@ -16,6 +16,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { THEME, ph, ps, pw } from "../theme/tokens";
+import { isPhone } from "../utils/phoneUtils";
 import type { QueueItem } from "../services/playbackQueue";
 import { Film } from 'lucide-react-native';
 import { Text } from './Text';
@@ -178,7 +179,7 @@ export const MediaInfoBar = React.memo(function MediaInfoBar({
 
 const S = StyleSheet.create({
   wrap: { paddingHorizontal: pw(4), paddingVertical: ph(2) },
-  wrapInline: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: ph(1) },
+  wrapInline: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: isPhone ? 2 : ph(1) },
   // Bottom-aligned, not centred. The poster is much taller than the text
   // beside it, so centring left the title floating in the middle of the
   // artwork with nothing to line up against. Sitting on the poster's bottom
@@ -189,9 +190,16 @@ const S = StyleSheet.create({
   // video is playing behind a scrim, and at ps(4.4) it read as a thumbnail
   // rather than as the thing being watched. A 2:3 ratio, which is how posters
   // are delivered.
+  /*
+   * Much smaller on a phone, because here the poster sets the height of the
+   * whole bottom panel and the panel is competing with the transport buttons
+   * for a 393dp-tall landscape viewport. At `ps(9.6)` it is 94dp — a quarter of
+   * the screen — which pushed the title up across the play controls. 62 keeps
+   * the 2:3 ratio and the artwork still reads.
+   */
   posterBox: {
-    width: ps(6.4),
-    height: ps(9.6),
+    width: isPhone ? 41 : ps(6.4),
+    height: isPhone ? 62 : ps(9.6),
     borderRadius: 14,
     backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1.5,

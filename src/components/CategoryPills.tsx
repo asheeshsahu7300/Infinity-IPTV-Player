@@ -3,6 +3,7 @@ import { View, TouchableOpacity, StyleSheet, FlatList, Animated, StyleProp, View
 import { Image } from 'expo-image';
 import { Category } from '../store/portalStore';
 import { THEME } from '../theme/tokens';
+import { isPhone } from '../utils/phoneUtils';
 import { Text } from './Text';
 
 
@@ -199,25 +200,36 @@ export default function CategoryPills({
 export { CategoryPills };
 
 const styles = StyleSheet.create({
+  /*
+   * The phone tier runs about a quarter smaller throughout.
+   *
+   * This component is shared — live-tv, vod, series and epg all swap their
+   * sidebar for it in portrait — so these numbers set the pill row on every one
+   * of those screens, not just the one they were tuned on. That is intended:
+   * the rail should read the same wherever it appears.
+   *
+   * `height` is the lever rather than `paddingVertical`, because the pill fixes
+   * its height and centres its children, so the padding never decides the size.
+   */
   container: {
     backgroundColor: "transparent",
-    minHeight: 46,
+    minHeight: isPhone ? 40 : 46,
   },
 
   content: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingHorizontal: isPhone ? 12 : 16,
+    paddingVertical: isPhone ? 4 : 6,
     alignItems: "center",
   },
 
   pill: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    height: 40,
+    paddingHorizontal: isPhone ? 13 : 16,
+    paddingVertical: isPhone ? 6 : 8,
+    borderRadius: isPhone ? 17 : 20,
+    height: isPhone ? 34 : 40,
     backgroundColor: "#111827",
-    marginRight: 10,
+    marginRight: isPhone ? 8 : 10,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
@@ -225,9 +237,9 @@ const styles = StyleSheet.create({
   },
 
   pillLogo: {
-    width: 20,
-    height: 20,
-    marginRight: 8,
+    width: isPhone ? 18 : 20,
+    height: isPhone ? 18 : 20,
+    marginRight: isPhone ? 7 : 8,
     borderRadius: 4,
   },
 
@@ -243,9 +255,9 @@ const styles = StyleSheet.create({
 
   pillText: {
     color: "#888",
-    fontSize: 15,
+    fontSize: isPhone ? 13.5 : 15,
     fontWeight: "500",
-    lineHeight: 18,
+    lineHeight: isPhone ? 16 : 18,
   },
 
   /**

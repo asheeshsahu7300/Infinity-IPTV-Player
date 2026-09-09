@@ -12,6 +12,7 @@ import { XtreamApi } from "../src/services/xtreamApi";
 import { cacheManager } from "../src/services/cacheManager";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { TABLET_TILE_MAX_WIDTH, TILE_MAX_WIDTH, isTablet, SIDEBAR_WIDTH } from "../src/utils/tabletUtils";
+import { isPhone, PHONE_GRID_COLUMNS, PHONE_SEARCH_BAR_WIDTH } from "../src/utils/phoneUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import CategorySidebar from "../src/components/CategorySidebar";
 import CategoryPills from "../src/components/CategoryPills";
@@ -94,7 +95,7 @@ const S = StyleSheet.create({
     borderRadius: 22,
     paddingHorizontal: pw(1.4),
     height: 44,
-    width: pw(36),
+    width: isPhone ? PHONE_SEARCH_BAR_WIDTH : pw(36),
     borderWidth: 0,
     borderColor: "transparent",
   },
@@ -600,7 +601,9 @@ export default function SeriesScreen() {
   const { width: SCREEN_WIDTH_VAL, height: SCREEN_HEIGHT_VAL } = useWindowDimensions();
   const isPortrait = !Platform.isTV && SCREEN_HEIGHT_VAL > SCREEN_WIDTH_VAL;
 
-  const numColumns = isPortrait ? (SCREEN_WIDTH_VAL >= 600 ? 4 : 3) : 5;
+  // In portrait `SCREEN_WIDTH_VAL` is the shortest side, so `isPhone` is the
+  // same test as a `>= 600` literal and says why. See live-tv.tsx.
+  const numColumns = isPortrait ? (isPhone ? PHONE_GRID_COLUMNS : 4) : 5;
 
   const SIDEBAR_WIDTH_VAL = isPortrait ? 0 : SIDEBAR_WIDTH;
   const GRID_H_PADDING = isPortrait ? 16 : pw(1.2) * 2;

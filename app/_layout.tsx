@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import * as Linking from "expo-linking";
 import * as ScreenOrientation from "expo-screen-orientation";
+import { isPhone } from "../src/utils/phoneUtils";
 import { LinearGradient } from "expo-linear-gradient";
 import { 
   useFonts,
@@ -104,11 +105,29 @@ export default function RootLayout() {
   }, [navigationRef]);
 
   /**
-   * Allow tablets and phones to rotate freely between portrait and landscape.
-   * Skipped on TV boxes where orientation is fixed.
+   * Let a tablet rotate freely between portrait and landscape.
+   *
+   * A phone is locked strictly upright instead, and the lock is asserted here
+   * rather than left to `MainActivity.pinHandsetToPortrait` alone. The native
+   * pin is what gets the *first frame* right — it runs before the bundle, so
+   * the layout's module-load snapshot is portrait — but it is a
+   * `requestedOrientation` that any later `lockAsync`/`unlockAsync` can
+   * overwrite. Re-asserting it from JS means the app returns to portrait even
+   * if something else has moved it, which is the difference between a default
+   * and a rule.
+   *
+   * A tablet still rotates freely: both of its orientations are wide enough for
+   * the layout it already has.
+   *
+   * The player is the one screen that overrides this, and it does so for
+   * itself — landscape while it is mounted, back to portrait on the way out.
    */
   useEffect(() => {
     if (Platform.isTV) return;
+    if (isPhone) {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+      return;
+    }
     ScreenOrientation.unlockAsync().catch(() => {});
   }, []);
 

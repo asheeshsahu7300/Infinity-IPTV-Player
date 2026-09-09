@@ -19,7 +19,8 @@ import { hiddenCategories } from "../src/services/hiddenCategories";
 import type { MediaKind } from "../src/services/parentalControl";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { THEME, ph, psRaw as ps, pw, TILE_FRAME } from "../src/theme/tokens";
-import { isTablet } from "../src/utils/tabletUtils";
+import { isPhone } from "../src/utils/phoneUtils";
+import { isTouch } from "../src/utils/tabletUtils";
 import { Focusable, FocusGroup } from "../src/tv";
 import { Eye, FolderOpen , LucideIcon} from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
@@ -32,7 +33,17 @@ const KINDS: { key: MediaKind; label: string; icon: string }[] = [
   { key: "series", label: "SERIES", icon: "albums-outline" },
 ];
 
-const ROW_HEIGHT = ph(9.5);
+/*
+ * `ph` is a percentage of the *short* edge, so `ph(9.5)` is 37dp on a handset
+ * against 51 on the box — and the row's own content (a ~15dp name line inside
+ * 8.6dp of padding each side) comes to 32, leaving 5dp of air in a list row you
+ * are meant to tap. 56 is a comfortable touch row.
+ *
+ * One constant, and it has to stay that way: `rowWrapper` sets its height from
+ * this and the list's `getItemLayout` reports the same number, so a row that
+ * disagreed with it would scroll to the wrong offset.
+ */
+const ROW_HEIGHT = isPhone ? 56 : ph(9.5);
 
 const CategoryRow = React.memo(
   function CategoryRow({
@@ -159,7 +170,11 @@ export default function CategoriesScreen() {
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
 
-      <View style={[S.header, isTablet && { paddingHorizontal: 24, paddingTop: ph(3) }]}>
+      <View style={[
+        S.header,
+        isTouch && { paddingHorizontal: 24, paddingTop: ph(3) },
+        isPhone && { paddingHorizontal: 14, paddingTop: 10 },
+      ]}>
         <Text style={S.headerTitle}>Categories</Text>
         <Text style={S.headerSubtitle}>
           {categories.length === 0
@@ -171,7 +186,7 @@ export default function CategoriesScreen() {
       </View>
 
       {/* ─── Library switcher ─── */}
-      <FocusGroup style={[S.tabs, isTablet && { paddingHorizontal: 24 }]}>
+      <FocusGroup style={[S.tabs, isTouch && { paddingHorizontal: 24 }, isPhone && { paddingHorizontal: 14 }]}>
         {KINDS.map((k) => (
           <Focusable
             key={k.key}
@@ -203,7 +218,7 @@ export default function CategoriesScreen() {
       </FocusGroup>
 
       {/* ─── The list ─── */}
-      <FocusGroup style={[S.listHost, isTablet && { paddingHorizontal: 24 }]}>
+      <FocusGroup style={[S.listHost, isTouch && { paddingHorizontal: 24 }, isPhone && { paddingHorizontal: 14 }]}>
         <FlatList
           key={kind}
           data={categories}
@@ -219,7 +234,7 @@ export default function CategoriesScreen() {
           windowSize={5}
           removeClippedSubviews={false}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[S.listContent, isTablet && { paddingBottom: insets.bottom + 20 }]}
+          contentContainerStyle={[S.listContent, isTouch && { paddingBottom: insets.bottom + 20 }]}
           ListEmptyComponent={
             <View style={S.empty}>
               <FolderOpen size={ps(3)} color="rgba(255,255,255,0.1)" />
@@ -232,7 +247,11 @@ export default function CategoriesScreen() {
       </FocusGroup>
 
       {/* ─── Actions ─── */}
-      <FocusGroup style={[S.actions, isTablet && { paddingHorizontal: 24, paddingBottom: insets.bottom + 20 }]}>
+      <FocusGroup style={[
+        S.actions,
+        isTouch && { paddingHorizontal: 24, paddingBottom: insets.bottom + 20 },
+        isPhone && { paddingHorizontal: 14, gap: 10 },
+      ]}>
         <Focusable
           ringOnFocus={false}
           onPress={() => hiddenCategories.showAll(kind)}
@@ -242,7 +261,7 @@ export default function CategoriesScreen() {
         >
           {(focused) => (
             <View style={[S.action, focused && S.actionFocused, hiddenCount === 0 && S.actionDisabled]}>
-              <Eye size={ps(1.3)} color={focused ? "#000" : "#fff"} />
+              <Eye size={ps(1.3)} color={isPhone || focused ? "#000" : "#fff"} />
               <Text style={[S.actionText, focused && S.actionTextFocused]}>SHOW ALL</Text>
             </View>
           )}
@@ -261,16 +280,24 @@ const S = StyleSheet.create({
     paddingBottom: ph(1),
   },
   headerTitle: { color: "#fff", fontSize: ps(2.2), fontWeight: "900", letterSpacing: 0.5 },
-  headerSubtitle: { color: THEME.colors.textDim, fontSize: ps(1.1), marginTop: ph(0.6) },
+  headerSubtitle: { color: THEME.colors.textDim, fontSize: isPhone ? 12.5 : ps(1.1), marginTop: ph(0.6) },
 
-  tabs: { flexDirection: "row", gap: pw(1.5), paddingHorizontal: pw(8), paddingVertical: ph(2) },
+  /*
+   * The three tabs have to fit one row on a phone, and at the TV's padding they
+   * did not: `pw(3)` a side is 26dp and the row gap `pw(1.5)` is 13, so LIVE TV
+   * / MOVIES / SERIES came to 390 of a 365dp row and SERIES ran off the edge.
+   *
+   * Trimming the chip padding rather than the label, since the labels are the
+   * whole content. 291 now, which leaves room for a longer word than SERIES.
+   */
+  tabs: { flexDirection: "row", gap: isPhone ? 8 : pw(1.5), paddingHorizontal: pw(8), paddingVertical: isPhone ? 8 : ph(2) },
   tabWrapper: { borderRadius: 18 },
   tab: {
     flexDirection: "row",
     alignItems: "center",
-    gap: pw(0.8),
-    paddingHorizontal: pw(3),
-    paddingVertical: ph(1.6),
+    gap: isPhone ? 6 : pw(0.8),
+    paddingHorizontal: isPhone ? 12 : pw(3),
+    paddingVertical: isPhone ? 9 : ph(1.6),
     borderRadius: 18,
     backgroundColor: "#17181c",
     borderWidth: 0,
@@ -278,7 +305,7 @@ const S = StyleSheet.create({
   },
   tabActive: { backgroundColor: "#F5F5F5" },
   tabFocused: { backgroundColor: "#F5F5F5", borderColor: "transparent", borderWidth: 0 },
-  tabText: { color: "#fff", fontSize: ps(1.3), fontWeight: "900", letterSpacing: 1 },
+  tabText: { color: "#fff", fontSize: isPhone ? 12.5 : ps(1.3), fontWeight: "900", letterSpacing: 1 },
 
   listHost: { flex: 1, paddingHorizontal: pw(8) },
   listContent: { paddingBottom: ph(4), paddingTop: ph(1) },
@@ -287,37 +314,43 @@ const S = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: pw(1.8),
-    paddingHorizontal: pw(2.5),
-    paddingVertical: ph(2.2),
+    gap: isPhone ? 12 : pw(1.8),
+    paddingHorizontal: isPhone ? 14 : pw(2.5),
+    paddingVertical: isPhone ? 10 : ph(2.2),
     borderRadius: 18,
     borderWidth: 0,
     borderColor: "transparent",
     backgroundColor: "#17181c",
   },
   rowFocused: { backgroundColor: "#F5F5F5", borderColor: "transparent", borderWidth: 0 },
-  rowName: { flex: 1, color: "#fff", fontSize: ps(1.5), fontWeight: "700" },
+  rowName: { flex: 1, color: "#fff", fontSize: isPhone ? 14.5 : ps(1.5), fontWeight: "700" },
   rowNameHidden: { color: "rgba(255,255,255,0.35)" },
   onFocus: { color: "#000" },
 
+  /*
+   * Same absolute geometry as the settings switch, and for the same reason:
+   * the track was `ps(2)` = 15dp tall with 2dp of padding, leaving 11dp for a
+   * `ps(1.6)` = 12dp knob, so the knob was a shade larger than the space
+   * holding it. 26/3/1 leaves exactly 18 for an 18dp knob.
+   */
   switchTrack: {
-    width: ps(3.8),
-    height: ps(2),
-    borderRadius: ps(1),
+    width: isPhone ? 44 : ps(3.8),
+    height: isPhone ? 26 : ps(2),
+    borderRadius: isPhone ? 13 : ps(1),
     backgroundColor: "rgba(255,255,255,0.14)",
-    padding: 2,
+    padding: isPhone ? 3 : 2,
     justifyContent: "center",
   },
   switchTrackFocused: { backgroundColor: "rgba(0,0,0,0.15)" },
   switchTrackOn: { backgroundColor: "#4ade80" },
-  switchKnob: { width: ps(1.6), height: ps(1.6), borderRadius: ps(0.8), backgroundColor: "rgba(255,255,255,0.6)" },
+  switchKnob: { width: isPhone ? 18 : ps(1.6), height: isPhone ? 18 : ps(1.6), borderRadius: isPhone ? 9 : ps(0.8), backgroundColor: "rgba(255,255,255,0.6)" },
   switchKnobFocused: { backgroundColor: "#000" },
   switchKnobOn: { alignSelf: "flex-end", backgroundColor: "#0E0F14" },
 
   empty: { alignItems: "center", justifyContent: "center", paddingVertical: ph(10), gap: ph(1.5) },
   emptyText: {
     color: "rgba(255,255,255,0.3)",
-    fontSize: ps(1),
+    fontSize: isPhone ? 12 : ps(1),
     textAlign: "center",
     maxWidth: pw(40),
   },
@@ -331,12 +364,13 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(3),
     paddingVertical: ph(1.6),
     borderRadius: 18,
-    backgroundColor: "#17181c",
+    // White on a phone — the dark fill is a resting state only a remote lifts.
+    backgroundColor: isPhone ? "#F5F5F5" : "#17181c",
     borderWidth: 0,
     borderColor: "transparent",
   },
   actionFocused: { backgroundColor: "#fff", borderColor: "transparent", borderWidth: 0 },
   actionDisabled: { opacity: 0.45 },
-  actionText: { color: "#fff", fontSize: ps(1.3), fontWeight: "900", letterSpacing: 1 },
+  actionText: { color: isPhone ? "#000" : "#fff", fontSize: isPhone ? 13 : ps(1.3), fontWeight: "900", letterSpacing: 1 },
   actionTextFocused: { color: "#000" },
 });

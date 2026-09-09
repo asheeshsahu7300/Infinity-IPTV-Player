@@ -27,6 +27,15 @@ const { getMainActivity } = AndroidConfig.Manifest;
  * `sensorLandscape` rather than `landscape` so a tablet can be held either way
  * up — both are landscape, so the snapshot stays valid.
  *
+ * Phones are the exception and are NOT covered here, because they cannot be:
+ * `android:screenOrientation` is one static attribute on one activity and takes
+ * no resource qualifier, so there is no manifest way to say landscape on a
+ * tablet and portrait on a handset. What this plugin writes is therefore the
+ * tablet/TV answer, and `MainActivity.pinHandsetToPortrait` overrides it to
+ * portrait on a handset — before `super.onCreate`, so it still lands ahead of
+ * the bundle and the snapshot above. Read the two together; neither is the
+ * whole rule on its own.
+ *
  * MUST be listed **before** `@react-native-tvos/config-tv` in app.json, which
  * reads backwards and is the easy thing to get wrong here. Mod execution is the
  * reverse of array order: `withMod` awaits the newly-registered action and only

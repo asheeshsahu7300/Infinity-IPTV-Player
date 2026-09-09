@@ -12,7 +12,8 @@ import { epgService } from '../src/services/epgService';
 import { hiddenCategories } from '../src/services/hiddenCategories';
 import PinPrompt from '../src/components/PinPrompt';
 import { THEME, pw, ph, psRaw as ps } from '../src/theme/tokens';
-import { isTablet } from '../src/utils/tabletUtils';
+import { isPhone } from '../src/utils/phoneUtils';
+import { isTouch } from '../src/utils/tabletUtils';
 import { Focusable, FocusGroup, FocusMemory, useFocusRestore } from '../src/tv';
 import { CinematicBackground } from '../src/components/CinematicBackground';
 import { useDialog } from '../src/components/ConfirmDialog';
@@ -403,7 +404,11 @@ export default function SettingsScreen() {
       <CinematicBackground />
 
       {/* ── Header ── */}
-      <View style={[S.header, isTablet && { paddingHorizontal: 24, paddingTop: ph(3) }]}>
+      <View style={[
+        S.header,
+        isTouch && { paddingHorizontal: 24, paddingTop: ph(3) },
+        isPhone && { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8 },
+      ]}>
         <Text style={S.headerTitle}>Settings</Text>
       </View>
 
@@ -411,9 +416,17 @@ export default function SettingsScreen() {
         style={S.content}
         contentContainerStyle={[
           S.scrollContent,
-          isTablet && {
+          isTouch && {
             paddingHorizontal: 24,
             paddingBottom: insets.bottom + 36,
+          },
+          // Narrower than the tablet's 24: these rows are full-width cards, so
+          // the gutter is all that separates them from the screen edge and 24
+          // of a 393dp viewport is a lot to give away.
+          isPhone && {
+            paddingHorizontal: 14,
+            paddingTop: 8,
+            paddingBottom: insets.bottom + 20,
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -700,13 +713,13 @@ const S = StyleSheet.create({
   },
   headerTitle: {
     color: '#FFFFFF',
-    fontSize: ps(2.6),
+    fontSize: isPhone ? 20 : ps(2.6),
     fontWeight: '900',
     letterSpacing: 0.5,
   },
   headerSubtitle: {
     color: 'rgba(255,255,255,0.5)',
-    fontSize: ps(1.1),
+    fontSize: isPhone ? 12 : ps(1.1),
     marginTop: ph(0.6),
   },
 
@@ -724,7 +737,7 @@ const S = StyleSheet.create({
     marginBottom: ph(5),
   },
   sectionLabel: {
-    fontSize: ps(1.45),
+    fontSize: isPhone ? 12 : ps(1.45),
     fontWeight: '900',
     color: 'rgba(255,255,255,0.65)',
     letterSpacing: 2.5,
@@ -750,7 +763,7 @@ const S = StyleSheet.create({
   },
   portalNameText: {
     color: '#FFFFFF',
-    fontSize: ps(2.2),
+    fontSize: isPhone ? 17 : ps(2.2),
     fontWeight: '900',
   },
   portalTypeBadge: {
@@ -763,7 +776,7 @@ const S = StyleSheet.create({
   },
   portalTypeBadgeText: {
     color: 'rgba(255, 255, 255, 0.95)',
-    fontSize: ps(0.95),
+    fontSize: isPhone ? 10 : ps(0.95),
     fontWeight: '800',
     letterSpacing: 0.8,
   },
@@ -776,14 +789,14 @@ const S = StyleSheet.create({
     flex: 1,
   },
   tinyLabel: {
-    fontSize: ps(1.05),
+    fontSize: isPhone ? 11.5 : ps(1.05),
     color: 'rgba(255,255,255,0.5)',
     fontWeight: '800',
     letterSpacing: 1.2,
     marginBottom: ph(0.5),
   },
   largeValue: {
-    fontSize: ps(1.5),
+    fontSize: isPhone ? 14 : ps(1.5),
     color: '#fff',
     fontWeight: '600',
   },
@@ -815,7 +828,7 @@ const S = StyleSheet.create({
     elevation: 8,
   },
   switchBtnText: {
-    fontSize: ps(1.25),
+    fontSize: isPhone ? 12 : ps(1.25),
     fontWeight: '800',
     letterSpacing: 0.5,
     color: '#fff',
@@ -842,7 +855,7 @@ const S = StyleSheet.create({
     elevation: 8,
   },
   disconnectBtnText: {
-    fontSize: ps(1.25),
+    fontSize: isPhone ? 12 : ps(1.25),
     fontWeight: '800',
     letterSpacing: 0.5,
     color: 'rgba(255,255,255,0.7)',
@@ -883,7 +896,7 @@ const S = StyleSheet.create({
     paddingRight: pw(1),
   },
   rowTitle: {
-    fontSize: ps(1.5),
+    fontSize: isPhone ? 14 : ps(1.5),
     color: '#fff',
     fontWeight: '700',
   },
@@ -892,32 +905,53 @@ const S = StyleSheet.create({
     fontWeight: '900',
   },
   rowSubtitle: {
-    fontSize: ps(1.12),
+    fontSize: isPhone ? 12 : ps(1.12),
     color: 'rgba(255,255,255,0.6)',
     marginTop: 4,
-    lineHeight: ps(1.55),
+    lineHeight: isPhone ? 16 : ps(1.55),
   },
   rowSubtitleFocused: {
     color: 'rgba(0,0,0,0.65)',
   },
 
   // ── Data tiles ────────────────────────────────────────────────────
+  /*
+   * Two tiles a row on a phone, which the tablet's numbers did not survive.
+   *
+   * `48.5%` and a `pw(1.5)` gap are a tablet pairing: on a 393dp handset the
+   * gap is 13dp and two tiles come to 367 of a 365dp row — over by two, so the
+   * wrap put one tile per row and the section ran twice as long as it should.
+   * The percentage and the gap have to be chosen together; 48% with a 10dp gap
+   * leaves ~5dp of slack.
+   */
   tileRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: pw(1.5),
+    gap: isPhone ? 10 : pw(1.5),
   },
   tileWrapper: {
-    width: isTablet ? '48.5%' : '31.8%',
+    width: isPhone ? '48%' : isTouch ? '48.5%' : '31.8%',
     borderRadius: 18,
-    marginBottom: ph(1.5),
+    marginBottom: isPhone ? 10 : ph(1.5),
   },
+  /*
+   * The phone tile is a fixed 72dp so the grid is even.
+   *
+   * `minHeight: ph(12.5)` is 67dp on the box but only 49 on a handset — below
+   * what the contents actually need (a title line, a 2-line subtitle and 12dp
+   * of padding come to about 63), so it stopped acting as a height at all and
+   * every tile sized to its own text. Tiles stretch to match within a row, so
+   * the result was even pairs at uneven heights down the column.
+   *
+   * 72 clears the tallest content, which makes it the height of every tile
+   * rather than a floor some of them exceed.
+   */
   tile: {
     flex: 1,
-    minHeight: ph(12.5),
+    minHeight: isPhone ? 72 : ph(12.5),
     borderRadius: 18,
-    paddingHorizontal: pw(1.8),
-    paddingVertical: ph(1.6),
+    paddingHorizontal: isPhone ? 12 : pw(1.8),
+    paddingVertical: isPhone ? 10 : ph(1.6),
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#17181c',
@@ -931,7 +965,7 @@ const S = StyleSheet.create({
     transform: [{ scale: 1.035 }],
   },
   tileIcon: {
-    marginRight: pw(1.4),
+    marginRight: isPhone ? 10 : pw(1.4),
   },
   tileText: {
     flex: 1,
@@ -947,7 +981,7 @@ const S = StyleSheet.create({
     gap: pw(0.6),
   },
   tileTitle: {
-    fontSize: ps(1.35),
+    fontSize: isPhone ? 13 : ps(1.35),
     color: '#fff',
     fontWeight: '700',
     flexShrink: 1,
@@ -957,10 +991,10 @@ const S = StyleSheet.create({
     fontWeight: '900',
   },
   tileSubtitle: {
-    fontSize: ps(1.05),
+    fontSize: isPhone ? 11.5 : ps(1.05),
     color: 'rgba(255,255,255,0.6)',
     marginTop: 2,
-    lineHeight: ps(1.45),
+    lineHeight: isPhone ? 15 : ps(1.45),
   },
   tileSubtitleFocused: {
     color: 'rgba(0,0,0,0.65)',
@@ -983,22 +1017,34 @@ const S = StyleSheet.create({
   },
   valuePillText: {
     color: '#fff',
-    fontSize: ps(1.15),
+    fontSize: isPhone ? 11 : ps(1.15),
     fontWeight: '800',
     letterSpacing: 0.5,
   },
 
   // ── Switch ────────────────────────────────────────────────────────────────
+  /*
+   * The phone track is sized so the knob actually fits inside it.
+   *
+   * `pw`/`ph`/`ps` pull from three different bases, and on a handset they came
+   * apart: the track was `ph(3.2)` = 13dp tall while the knob was `ps(1.6)` =
+   * 16dp, so once the 2dp padding and 1dp border were taken there were 6.6dp of
+   * room for a 16dp knob — the knob was larger than the control containing it,
+   * and `borderRadius: ps(1.6)` rounded a 13dp track by 16. Absolute dp here,
+   * because a switch is a fixed piece of hardware-looking UI, not something
+   * that should scale with the viewport: 26 tall, 3 padding, 1 border leaves
+   * exactly 18 for an 18dp knob, and 44 wide gives it 18dp of travel.
+   */
   switchTrack: {
-    width: pw(4.2),
-    height: ph(3.2),
-    minWidth: ps(3.8),
-    borderRadius: ps(1.6),
+    width: isPhone ? 44 : pw(4.2),
+    height: isPhone ? 26 : ph(3.2),
+    minWidth: isPhone ? 44 : ps(3.8),
+    borderRadius: isPhone ? 13 : ps(1.6),
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
-    padding: 2,
+    padding: isPhone ? 3 : 2,
   },
   // When row is focused (white bg), track must go dark so it's visible
   switchTrackFocused: {
@@ -1015,9 +1061,9 @@ const S = StyleSheet.create({
     borderColor: '#22c55e',
   },
   switchKnob: {
-    width: ps(1.6),
-    height: ps(1.6),
-    borderRadius: ps(0.8),
+    width: isPhone ? 18 : ps(1.6),
+    height: isPhone ? 18 : ps(1.6),
+    borderRadius: isPhone ? 9 : ps(0.8),
     backgroundColor: 'rgba(255,255,255,0.6)',
   },
   switchKnobFocused: {
@@ -1035,13 +1081,13 @@ const S = StyleSheet.create({
     paddingBottom: ph(2),
   },
   footerText: {
-    fontSize: ps(1),
+    fontSize: isPhone ? 11 : ps(1),
     color: 'rgba(255,255,255,0.3)',
     fontWeight: '800',
     letterSpacing: 2,
   },
   footerSubtext: {
-    fontSize: ps(0.85),
+    fontSize: isPhone ? 9.5 : ps(0.85),
     color: 'rgba(255,255,255,0.18)',
     marginTop: 4,
     letterSpacing: 1,

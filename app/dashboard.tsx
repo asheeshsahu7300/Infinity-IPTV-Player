@@ -15,7 +15,8 @@ import { useDialog } from "../src/components/ConfirmDialog";
 import { useNetworkActivity } from "../src/services/networkActivity";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { safeNavigate } from "../src/services/safeNavigation";
-import { isTablet, isPhone } from "../src/utils/tabletUtils";
+import { isPhone, PHONE_H_PAD } from "../src/utils/phoneUtils";
+import { isTablet } from "../src/utils/tabletUtils";
 // This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
 import { THEME, pw, ph, psRaw as ps, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
 import { Calendar, ExternalLink, Film, Layers, LayoutGrid, LucideIcon, Play, RefreshCw, Search, Settings, Star, Tv, X } from 'lucide-react-native';
@@ -49,7 +50,11 @@ const HeroPill = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pillIconSize = !Platform.isTV ? (isPortrait ? 15 : 16) : ps(2.2);
+  // The phone pill is deliberately under the 44dp touch minimum — compactness
+  // was asked for over the guideline, and `Focusable` has no `hitSlop` to keep
+  // the tap area while shrinking the paint. Noted so it is a decision, not a
+  // drift.
+  const pillIconSize = !Platform.isTV ? (isPhone ? 12 : isPortrait ? 15 : 16) : ps(2.2);
 
   return (
     <Focusable
@@ -68,9 +73,14 @@ const HeroPill = ({
             style={[
               S.heroPillGradient,
               !Platform.isTV && {
-                paddingHorizontal: isPortrait ? 14 : (isTablet ? 18 : 14),
-                paddingVertical: isPortrait ? 9 : (isTablet ? 10 : 9),
+                paddingHorizontal: isPhone ? 8 : isPortrait ? 14 : (isTablet ? 18 : 14),
+                paddingVertical: isPhone ? 0 : isPortrait ? 9 : (isTablet ? 10 : 9),
               },
+              // Pin the height rather than deriving it from padding plus the
+              // line box, so the pill keeps matching the 36dp header circle
+              // however the label and icon are sized. `heroPillGradient`
+              // already centres its children, so the padding just goes to 0.
+              isPhone && { height: 36 },
               !focused && { backgroundColor: "#17181c" },
               focused && { backgroundColor: "#fff" }
             ]}
@@ -79,12 +89,12 @@ const HeroPill = ({
               name={icon}
               size={pillIconSize}
               color={focused ? "#000" : "#fff"}
-              style={{ marginRight: !Platform.isTV ? 8 : pw(1.0) }}
+              style={{ marginRight: isPhone ? 5 : !Platform.isTV ? 8 : pw(1.0) }}
             />
             <Text style={[
               S.heroPillText,
               !Platform.isTV && {
-                fontSize: isPortrait ? 13 : (isTablet ? 13 : 12),
+                fontSize: isPhone ? 10 : isPortrait ? 13 : (isTablet ? 13 : 12),
               },
               focused && { color: "#000" }
             ]}>
@@ -102,14 +112,41 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isPortrait = !Platform.isTV && windowHeight > windowWidth;
-  const hPad = !Platform.isTV ? (isPortrait ? 20 : (isTablet ? 32 : 24)) : RAIL_H_PAD;
-  const actionBtnSize = !Platform.isTV ? (isPortrait ? 50 : (isTablet ? 54 : 50)) : pw(4.6);
-  const actionIconSize = !Platform.isTV ? (isPortrait ? 22 : (isTablet ? 24 : 22)) : ps(2.3);
+  // `hPad` is the dashboard's side margin — the header, the hero and the browse
+  // section all take it, so this is the one number that sets the page gutter.
+  const hPad = !Platform.isTV ? (isPhone ? 14 : isPortrait ? 20 : (isTablet ? 32 : 24)) : RAIL_H_PAD;
+  // The phone tier is its own branch rather than a smaller `isPortrait` value,
+  // because a tablet held upright takes `isPortrait` too and its header has the
+  // width to keep the larger control.
+  //
+  // 36 to match the hero pill, which pins the same 36 explicitly — the two
+  // control families read as one size on a phone. 28 was tried first and read
+  // as too small. If this moves, move the pill's pinned `height` with it.
+  //
+  // Still under the 44dp touch minimum, deliberately: compactness was chosen
+  // over the guideline, and `Focusable` exposes no `hitSlop`, so the tap area
+  // shrinks with the paint. Recorded so it stays a decision rather than drift.
+  const actionBtnSize = !Platform.isTV ? (isPhone ? 36 : isPortrait ? 50 : (isTablet ? 54 : 50)) : pw(4.6);
+  const actionIconSize = !Platform.isTV ? (isPhone ? 17 : isPortrait ? 22 : (isTablet ? 24 : 22)) : ps(2.3);
 
   // Portrait card height: tall enough to look cinematic, capped so 3 fit comfortably.
   // ScrollView handles any overflow on unusually small screens.
+  //
+  // Lifted out of the clamp because the phone and the tablet now want different
+  // bands from the same measurement, and repeating the expression is how the
+  // two would drift.
+  const portraitCardSpace = Math.floor(
+    (windowHeight - insets.top - insets.bottom - 290) / 3
+  );
+  // The phone band is lower at both ends. On a ~873dp-tall handset the
+  // measurement lands around 174, so the old floor of 180 was what the card
+  // actually took — the clamp, not the space, was setting the height. A 150
+  // ceiling is the reduction; the 120 floor keeps a small handset from
+  // collapsing the artwork to a strip.
   const portraitCardHeight = isPortrait
-    ? Math.max(180, Math.min(290, Math.floor((windowHeight - insets.top - insets.bottom - 290) / 3)))
+    ? isPhone
+      ? Math.max(185, Math.min(290, portraitCardSpace))
+      : Math.max(180, Math.min(290, portraitCardSpace))
     : undefined;
   // Errors surface through an in-tree overlay — Alert.alert does not
   // reliably appear on an Android TV release build.
@@ -211,7 +248,9 @@ export default function DashboardScreen() {
       <View style={[
         S.headerBranding,
         { paddingHorizontal: hPad },
-        isPortrait ? { marginTop: 6, marginBottom: 18 } : (!Platform.isTV && { marginTop: 4, marginBottom: 10 })
+        isPortrait
+          ? { marginTop: isPhone ? 0 : 6, marginBottom: isPhone ? 4 : 18 }
+          : (!Platform.isTV && { marginTop: 4, marginBottom: 10 })
       ]}>
         <View style={S.logoRow}>
           <Image
@@ -224,12 +263,37 @@ export default function DashboardScreen() {
                 height: isPortrait ? 50 : 50,
                 marginLeft: isPortrait ? -6 : -6,
                 transform: [{ scale: isPortrait ? 2.0 : 2.1 }],
-              }
+              },
+              /*
+               * The phone logo is sized so that the layout box and the rendered
+               * image are the same thing.
+               *
+               * TV.png is 3:2, and `resizeMode="contain"` fits it inside the
+               * box before the transform applies — so a 140x50 box rendered the
+               * mark at 75x50 (height-limited), and `scale: 2.0` then blew that
+               * up to **150x100 visual** while the row still reserved only 50dp
+               * of height. The logo overflowed its own row, which is what read
+               * as "too big" far more than the width did.
+               *
+               * A 100x66 box is 3:2 already, so `contain` fills it exactly and
+               * `scale: 1` leaves layout and paint in agreement — nothing
+               * overflows and the mark is a third smaller. `marginLeft` goes to
+               * 0 with it; the -6 existed to claw back space the oversized
+               * scale was stealing.
+               */
+              isPhone && {
+                // 120x80 is 3:2, the asset's own ratio, so `contain` fills the
+                // box and these stay the rendered numbers.
+                width: 120,
+                height: 80,
+                marginLeft: 0,
+                transform: [{ scale: 1 }],
+              },
             ]}
             resizeMode="contain"
           />
         </View>
-        <View style={[S.headerActions, !Platform.isTV && { gap: 10 }]}>
+        <View style={[S.headerActions, !Platform.isTV && { gap: isPhone ? 8 : 10 }]}>
           {/* Doubles as the sync indicator. A background refresh must not raise
               the blocking LoadingOverlay — that is reserved for a refresh the
               user asked for — so in-flight traffic surfaces here instead. */}
@@ -281,8 +345,8 @@ export default function DashboardScreen() {
           flex: 0,
           flexGrow: 0,
           maxWidth: "100%",
-          marginTop: 10,
-          marginBottom: 20,
+          marginTop: isPhone ? 0 : 10,
+          marginBottom: isPhone ? 10 : 20,
         } : (!Platform.isTV && {
           flex: 0,
           flexGrow: 0,
@@ -291,19 +355,31 @@ export default function DashboardScreen() {
           marginBottom: 18,
         })
       ]}>
-        <LinearGradient
-          colors={["rgba(8, 8, 12, 0.75)", "rgba(8, 8, 12, 0.35)", "transparent"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={S.heroGradientOverlay}
-        />
+        {/*
+          * No hero card on a phone.
+          *
+          * This gradient is the hero's container — `absoluteFillObject` behind
+          * the copy and the pills, rounded, at `zIndex: -1`. On a handset it
+          * reads as a boxed panel inset from a background that is already
+          * cinematic, so the hero is drawn straight onto `CinematicBackground`
+          * instead. `heroSection` keeps `hPad`, so the copy still lines up with
+          * the browse tiles below rather than floating loose.
+          */}
+        {!isPhone && (
+          <LinearGradient
+            colors={["rgba(8, 8, 12, 0.75)", "rgba(8, 8, 12, 0.35)", "transparent"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={S.heroGradientOverlay}
+          />
+        )}
         {isPortrait && <Text style={[
           S.heroTitle,
           !Platform.isTV && {
             // Keep the title compact — the TV_SCALE=1.3 bump already made ps(3.2) ≈ 44dp
             // on tablet, which overpowers the rest of the layout on a handheld screen.
-            fontSize: isPortrait ? 18 : (isTablet ? 18 : 20),
-            marginVertical: isPortrait ? 6 : 6,
+            fontSize: isPhone ? 15 : isPortrait ? 18 : (isTablet ? 18 : 20),
+            marginVertical: isPhone ? 0 : 6,
           }
         ]}>
           Unlimited Entertainment
@@ -313,9 +389,9 @@ export default function DashboardScreen() {
           style={[
             S.heroDesc,
             !Platform.isTV && {
-              fontSize: isPortrait ? 12 : 13,
-              lineHeight: isPortrait ? 15 : 19,
-              marginBottom: isPortrait ? 18 : 14,
+              fontSize: isPhone ? 11 : isPortrait ? 12 : 13,
+              lineHeight: isPhone ? 14 : isPortrait ? 15 : 19,
+              marginBottom: isPhone ? 10 : isPortrait ? 18 : 14,
               maxWidth: isPortrait ? "100%" : (isTablet ? 560 : 480),
             }
           ]}
@@ -340,7 +416,7 @@ export default function DashboardScreen() {
         isPortrait ? {
           flex: 0,
           flexGrow: 0,
-          marginBottom: 16,
+          marginBottom: isPhone ? 0 : 16,
         } : (!Platform.isTV && {
           flex: 1,
           marginBottom: insets.bottom + (isTablet ? 16 : 12),
@@ -460,7 +536,12 @@ export default function DashboardScreen() {
               S.scrollContent,
               {
                 paddingTop: Math.max(insets.top, 14),
-                paddingBottom: insets.bottom + 20,
+                // Below `insets.bottom` there is already the gesture bar or the
+                // nav bar, so this is decoration on top of a gap the system has
+                // reserved. On a phone it is 0: the safe-area inset is the whole
+                // bottom margin, and this is the floor — anything less would
+                // put the last card under the nav bar rather than above it.
+                paddingBottom: insets.bottom + (isPhone ? 0 : 20),
               }
             ]}
             showsVerticalScrollIndicator={false}
@@ -484,12 +565,27 @@ export default function DashboardScreen() {
       </View>
 
       {/* ── Play Modal ────────────────────────────────────────────────────── */}
+      {/*
+        * A bottom sheet on a phone, the centred dialog everywhere else — the
+        * same shape the vod, series and search sheets use.
+        *
+        * `modalContainer` is genuinely in use here, unlike in those three where
+        * it is dead code, and its `width: ps(65)` is 634dp: a dialog two thirds
+        * wider than the 393dp screen it is centred on.
+        */}
       <Overlay
         visible={playModalVisible}
         onClose={() => setPlayModalVisible(false)}
-        contentStyle={S.modalContainer}
+        style={isPhone ? { justifyContent: "flex-end", backgroundColor: "transparent" } : undefined}
+        contentStyle={isPhone ? S.modalSheet : S.modalContainer}
       >
-        <View style={[S.modalTVContent, { padding: ps(3) }]}>
+        <View
+          style={[
+            S.modalTVContent,
+            { padding: ps(3) },
+            isPhone && { padding: PHONE_H_PAD, paddingBottom: 10 + insets.bottom },
+          ]}
+        >
           <View style={S.modalLeft}>
             <Text style={S.modalTitle} numberOfLines={2}>{selectedItem?.name}</Text>
             <Text style={S.modalDescription} numberOfLines={8}>
@@ -537,18 +633,22 @@ export default function DashboardScreen() {
                 </View>
               )}
             </Focusable>
-            <Focusable
-              ringOnFocus={false}
-              onPress={() => setPlayModalVisible(false)}
-              style={S.modalBtnWrapper}
-            >
-              {(focused) => (
-                <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
-                  <X size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
-                  <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>CLOSE</Text>
-                </View>
-              )}
-            </Focusable>
+            {/* No Close on a phone — the backdrop tap and hardware back both
+                dismiss. It stays on TV, where a remote has neither. */}
+            {!isPhone && (
+              <Focusable
+                ringOnFocus={false}
+                onPress={() => setPlayModalVisible(false)}
+                style={S.modalBtnWrapper}
+              >
+                {(focused) => (
+                  <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
+                    <X size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                    <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>CLOSE</Text>
+                  </View>
+                )}
+              </Focusable>
+            )}
           </View>
         </View>
       </Overlay>
@@ -783,9 +883,40 @@ const S = StyleSheet.create({
 
   // ── Play Modal ──
   modalContainer: { backgroundColor: "#111", width: ps(65), borderRadius: 24, padding: ps(.8), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
-  modalTVContent: { flexDirection: "row" },
-  modalLeft: { flex: 1.4, padding: ps(1.5) },
-  modalRight: { flex: 0.6, padding: ps(2), paddingRight: ps(4), justifyContent: "center", gap: 12 },
+  /**
+   * The phone sheet: full width, seated on the bottom edge, top corners only.
+   * Same silhouette as the other three sheets; `modalContainer`'s own colours.
+   */
+  modalSheet: {
+    width: "100%",
+    maxWidth: "100%",
+    margin: 0,
+    padding: 0,
+    backgroundColor: "#111",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: "rgba(255,255,255,0.05)",
+    overflow: "hidden",
+  },
+  /*
+   * Two bands on a phone — details, then actions — since this sheet has no
+   * poster to sit beside the title. `width: "100%"` cannot share a wrap line,
+   * so the actions break onto their own row. Unwrapped, the 1.4/0.6 split left
+   * them ~42dp once their own padding was taken, for "EXTERNAL PLAYER".
+   */
+  modalTVContent: { flexDirection: "row", flexWrap: isPhone ? "wrap" : "nowrap" },
+  modalLeft: { flex: 1.4, padding: isPhone ? 0 : ps(1.5), width: isPhone ? "100%" : undefined },
+  modalRight: {
+    flex: isPhone ? 0 : 0.6,
+    width: isPhone ? "100%" : undefined,
+    padding: isPhone ? 0 : ps(2),
+    paddingRight: isPhone ? 0 : ps(4),
+    marginTop: isPhone ? 24 : 0,
+    justifyContent: "center",
+    gap: isPhone ? 10 : 12,
+  },
   modalTitle: { color: "#fff", fontSize: ps(1.9), fontWeight: "900", marginBottom: 12 },
   modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(1.2), lineHeight: ps(1.4), marginBottom: 18 },
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },

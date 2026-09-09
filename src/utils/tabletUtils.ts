@@ -1,5 +1,7 @@
 import { Platform, Dimensions } from 'react-native';
 
+import { isPhone, PHONE_SIDEBAR_WIDTH } from './phoneUtils';
+
 /**
  * Shared tablet detection utility.
  *
@@ -45,11 +47,24 @@ export const isTablet =
 /** 12"-class tablets (iPad Pro, Tab S Ultra) — shortest side ≥ 1000dp. */
 export const isLargeTablet = isTablet && shortestSide >= LARGE_TABLET_BREAKPOINT;
 
-/** A handset: touch device below the tablet breakpoint. */
-export const isPhone =
-    !Platform.isTV &&
-    (Platform.OS === 'android' || Platform.OS === 'ios') &&
-    shortestSide < TABLET_BREAKPOINT;
+
+/**
+ * Any hand-held touch device — a tablet or a phone, never a box.
+ *
+ * Composed here rather than in `phoneUtils` so that the dependency stays
+ * one-directional — `tabletUtils` reaches into `phoneUtils`, never the other
+ * way — and so every consumer of `isTouch` and `remoteFocusEnabled` keeps the
+ * import it already has.
+ *
+ * The branch point for "touch layout or TV layout", and it exists because
+ * several screens were using `isTablet` for that question. That reads as a
+ * synonym only while the two touch classes are one, which they no longer are:
+ * `isTablet ? 10 : pw(1.2)` and `isTablet ? (isPortrait ? 5 : 7) : 7` silently
+ * routed every phone down the *TV* branch, so a handset asked for a 7-column
+ * result grid at 56dp a column. Use `isTouch` for the touch/TV question and
+ * keep `isTablet` for what is genuinely tablet-only sizing.
+ */
+export const isTouch = isTablet || isPhone;
 
 /**
  * Largest a grid tile may get on a tablet, in dp.
@@ -71,7 +86,15 @@ export const isPhone =
  */
 export const TABLET_TILE_MAX_WIDTH = 168;
 
-/** Tile-width cap for this device. Only a tablet is capped. */
+/**
+ * Tile-width cap for this device. Only a tablet is capped.
+ *
+ * A phone stays uncapped on purpose. The cap answers a surplus-width problem —
+ * a tablet's viewport divided by the same column count yields a tile larger
+ * than it should be — and a phone has the opposite one: three columns of a
+ * ~393dp portrait viewport already give a ~115dp tile, well under the ceiling,
+ * so a cap could only ever shrink it further.
+ */
 export const TILE_MAX_WIDTH = isTablet ? TABLET_TILE_MAX_WIDTH : Infinity;
 
 /**
@@ -99,8 +122,15 @@ export const tabletClamp = (value: number, maxDp: number): number =>
  *
  * 240dp on the box. On tablets, reduced to 200dp so that the category sidebar
  * remains compact and leaves ample room for the channel/media grid.
+ *
+ * The phone tier lives in `phoneUtils` with the reason it is only a fallback;
+ * this is the one place that chooses between the three.
  */
-export const SIDEBAR_WIDTH = isTablet ? 200 : 240;
+export const SIDEBAR_WIDTH = isPhone
+  ? PHONE_SIDEBAR_WIDTH
+  : isTablet
+    ? 200
+    : 240;
 
 /**
  * Whether the D-pad focus system should be live.
@@ -114,5 +144,11 @@ export const SIDEBAR_WIDTH = isTablet ? 200 : 240;
  * Deliberately scoped to *focus*, not to key handling: screens subscribe to
  * `useDPad`/`useStbKeys` directly for global keys, and a tablet can still have
  * a Bluetooth keyboard or remote attached, so those stay listening.
+ *
+ * `!isTouch`, not `!isTablet`: a phone has no remote either, and while it was
+ * only tablets that were excluded a handset drew the focus ring, grabbed
+ * initial focus and fired the focus-memory restore pulse — plus `Focusable`'s
+ * 350ms global press debounce, which exists to swallow a remote's duplicate
+ * DPAD_CENTER and on a touch screen just eats quick taps.
  */
-export const remoteFocusEnabled = !isTablet;
+export const remoteFocusEnabled = !isTouch;

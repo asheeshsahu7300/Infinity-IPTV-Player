@@ -15,7 +15,13 @@ import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay, useIsFocusTrapped, useDPad, FocusMemory } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
 import { THEME, pw, ph, ps, psRaw, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
-import { isTablet } from "../src/utils/tabletUtils";
+import {
+  isPhone,
+  PHONE_GRID_COLUMNS,
+  PHONE_H_PAD,
+  PHONE_RAIL_ITEM_WIDTH,
+} from "../src/utils/phoneUtils";
+import { isTablet, isTouch } from "../src/utils/tabletUtils";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import { playbackQueue } from "../src/services/playbackQueue";
 import { Calendar, ExternalLink, Play, Search, Star, X } from 'lucide-react-native';
@@ -151,7 +157,7 @@ const CardInner = React.memo(function CardInner({
           <View style={[StyleSheet.absoluteFillObject, S.posterFallback]}>
             <DynamicIcon
               name={isLive ? "television" : "filmstrip"}
-              size={isTablet ? (isLive ? 22 : 30) : (isLive ? ps(2.8) : ps(4.2))}
+              size={isTouch ? (isLive ? 22 : 30) : (isLive ? ps(2.8) : ps(4.2))}
               color="rgba(255,255,255,0.32)"
             />
           </View>
@@ -344,7 +350,7 @@ const ContentRail = React.memo(function ContentRail({
     if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
   }, []);
 
-  const gap = isTablet ? 10 : pw(1.2);
+  const gap = isTouch ? 10 : pw(1.2);
   const stride = itemWidth + gap;
 
   const getItemLayout = useCallback(
@@ -424,7 +430,7 @@ const ContentRail = React.memo(function ContentRail({
         contentContainerStyle={[
           S.railScrollContent,
           hPad != null && { paddingHorizontal: hPad },
-          isTablet && { gap: 10 },
+          isTouch && { gap: 10 },
         ]}
         style={{ overflow: "visible" }}
         scrollEventThrottle={16}
@@ -467,7 +473,9 @@ export default function SearchScreen() {
   const { notify, node: dialogNode } = useDialog();
 
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const isPortrait = isTablet && windowHeight > windowWidth;
+  // `!Platform.isTV`, not `isTablet` — the same expression every other screen
+  // uses; gated on `isTablet` it was never true on a phone.
+  const isPortrait = !Platform.isTV && windowHeight > windowWidth;
 
   const activePortal = usePortalStore((s) => s.activePortal);
   const channels = usePortalStore((s) => s.channels);
@@ -879,11 +887,19 @@ export default function SearchScreen() {
     }
   };
 
-  const railHPad = isTablet ? (isPortrait ? 20 : 28) : RAIL_H_PAD;
-  const RESULT_COLUMNS = isTablet ? (isPortrait ? 5 : (windowWidth > 1100 ? 8 : 7)) : 7;
+  // The phone tier is spelled out rather than folded into the tablet branch,
+  // because it is the one class where the *column count* has to change and not
+  // just the padding. Falling through to the TV branch — which is what
+  // `isTablet ? ... : ...` did here — asked a 393dp handset for a 7-column
+  // poster grid: 56dp a column, narrower than the rating badge sitting on it.
+  // Three columns is what live-tv, vod and series already use below 600dp.
+  const railHPad = isPhone ? PHONE_H_PAD : isTablet ? (isPortrait ? 20 : 28) : RAIL_H_PAD;
+  const RESULT_COLUMNS = isPhone ? PHONE_GRID_COLUMNS : isTablet ? (isPortrait ? 5 : (windowWidth > 1100 ? 8 : 7)) : 7;
   const CARD_WIDTH = (windowWidth - railHPad * 2) / RESULT_COLUMNS;
   // Sleek, compact card sizing for tablets (~112dp portrait, ~126dp landscape)
-  const RAIL_ITEM_WIDTH = isTablet ? (isPortrait ? 112 : 126) : pw(13.2);
+  // and a shade narrower on a phone, so a rail shows part of a fourth item and
+  // reads as scrollable.
+  const RAIL_ITEM_WIDTH = isPhone ? PHONE_RAIL_ITEM_WIDTH : isTablet ? (isPortrait ? 112 : 126) : pw(13.2);
 
   // Chunk flat results into rows of RESULT_COLUMNS — same pattern as vod.tsx.
   // A FocusGroup (TVFocusGuideView) wraps each row so left/right D-pad
@@ -940,6 +956,18 @@ export default function SearchScreen() {
     [CARD_WIDTH, handleResultPress, handleResultFocus, searchFocused, inputNode, firstCardRef]
   );
 
+  /*
+   * The play sheet's synopsis, hoisted so the two layouts can place it
+   * differently without the element being written twice: inside the details
+   * column on TV, in a full-width band below the poster row on a phone. Only
+   * one of the two ever renders.
+   */
+  const modalDescription = (
+    <Text style={S.modalDescription} numberOfLines={5}>
+      {selectedItem?.description || "No description available for this content."}
+    </Text>
+  );
+
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
       <View
@@ -969,8 +997,21 @@ export default function SearchScreen() {
         </View>
 
         {/* ─── Search Input Bar + Content Type Filter Tabs ─── */}
-        <View style={[S.searchControlsRow, isTablet && { paddingHorizontal: railHPad }, isPortrait && { flexWrap: "wrap", gap: 10 }]}>
-          <View style={[S.searchBarContainer, (searchFocused || clearFocused) && S.searchBarContainerFocused]}>
+        <View style={[S.searchControlsRow, isTouch && { paddingHorizontal: railHPad }, isPortrait && { flexWrap: "wrap", gap: 10 }]}>
+          {/*
+            * Full width on a phone, which `flexWrap` alone does not achieve.
+            *
+            * The row wraps, but this container is `flex: 1` — so its flex basis
+            * is 0, it always "fits" on the first line, and the filter chips are
+            * laid out beside it at their natural ~275dp. The input was left
+            * with 92dp of the 377 available. Pinning it to the full line is
+            * what pushes the chips down to a second row.
+            */}
+          <View style={[
+            S.searchBarContainer,
+            (searchFocused || clearFocused) && S.searchBarContainerFocused,
+            isPhone && { width: "100%", flex: 0 },
+          ]}>
             <Pressable onPress={() => commitSearch()} style={{ padding: 4 }}>
               <Search
                 size={ps(1.5)}
@@ -1091,7 +1132,7 @@ export default function SearchScreen() {
           <ScrollView
             style={{ flex: 1 }}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: isTablet ? insets.bottom + 24 : ph(8) }}
+            contentContainerStyle={{ paddingBottom: isTouch ? insets.bottom + 24 : ph(8) }}
           >
             {filteredRails.map((rail, idx) => (
               <ContentRail
@@ -1116,7 +1157,7 @@ export default function SearchScreen() {
         ) : (
           // ── Search Results Grid (When searching with query) ──
           <FocusGroup style={S.resultsArea}>
-            <View style={[S.sectionLabelArea, isTablet && { paddingHorizontal: railHPad }]}>
+            <View style={[S.sectionLabelArea, isTouch && { paddingHorizontal: railHPad }]}>
               <Text style={S.sectionLabelTitle}>
                 Results for "{submittedQuery}" ({filteredResults.length})
               </Text>
@@ -1141,7 +1182,7 @@ export default function SearchScreen() {
               data={chunkedResults}
               key={`results-${RESULT_COLUMNS}-${activeFilter}`}
               keyExtractor={(row: any) => row.id}
-              contentContainerStyle={{ paddingHorizontal: railHPad, paddingBottom: isTablet ? insets.bottom + 24 : ph(6) }}
+              contentContainerStyle={{ paddingHorizontal: railHPad, paddingBottom: isTouch ? insets.bottom + 24 : ph(6) }}
               removeClippedSubviews={false}
               initialNumToRender={4}
               maxToRenderPerBatch={3}
@@ -1186,7 +1227,7 @@ export default function SearchScreen() {
             colors={["rgba(10, 12, 18, 0.75)", "rgba(8, 8, 12, 0.95)", "#08080a"]}
             style={StyleSheet.absoluteFillObject}
           />
-          <View style={[S.modalTVContent, S.modalBody]}>
+          <View style={[S.modalTVContent, S.modalBody, isPhone && { paddingBottom: 10 + insets.bottom }]}>
             {/* Left: Poster Image */}
             <View style={S.modalPosterWrapper}>
               {selectedItem?.logo ? (
@@ -1234,10 +1275,11 @@ export default function SearchScreen() {
                   </View>
                 ) : null}
               </View>
-              <Text style={S.modalDescription} numberOfLines={5}>
-                {selectedItem?.description || "No description available for this content."}
-              </Text>
+              {!isPhone && modalDescription}
             </View>
+
+            {/* Description — its own full-width band on a phone. */}
+            {isPhone && <View style={S.modalDescBlock}>{modalDescription}</View>}
 
             {/* Right: Action buttons */}
             <View style={S.modalRight}>
@@ -1266,18 +1308,23 @@ export default function SearchScreen() {
                   </View>
                 )}
               </Focusable>
-              <Focusable
-                ringOnFocus={false}
-                onPress={() => setPlayModalVisible(false)}
-                style={S.modalBtnWrapper}
-              >
-                {(focused) => (
-                  <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
-                    <X size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
-                    <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>CLOSE</Text>
-                  </View>
-                )}
-              </Focusable>
+              {/* No Close on a phone — the backdrop tap and hardware back both
+                  dismiss, since `Overlay` leaves `closeOnBack` at its default.
+                  It stays on TV, where a remote has neither. */}
+              {!isPhone && (
+                <Focusable
+                  ringOnFocus={false}
+                  onPress={() => setPlayModalVisible(false)}
+                  style={S.modalBtnWrapper}
+                >
+                  {(focused) => (
+                    <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
+                      <X size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                      <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>CLOSE</Text>
+                    </View>
+                  )}
+                </Focusable>
+              )}
             </View>
           </View>
         </BlurView>
@@ -1495,13 +1542,13 @@ const S = StyleSheet.create({
     overflow: "visible",
   },
   movieCardContainer: {
-    borderRadius: isTablet ? 12 : 16,
+    borderRadius: isTouch ? 12 : 16,
     overflow: "visible",
   },
   movieCardContainerFocused: {},
   posterFrame: {
     width: "100%",
-    borderRadius: isTablet ? 12 : 18,
+    borderRadius: isTouch ? 12 : 18,
     overflow: "hidden",
     backgroundColor: "#17181c",
     borderWidth: 1,
@@ -1542,10 +1589,10 @@ const S = StyleSheet.create({
   },
   movieTitleText: {
     color: "rgba(255,255,255,0.75)",
-    fontSize: isTablet ? 12 : ps(0.92),
+    fontSize: isTouch ? 12 : ps(0.92),
     fontWeight: "700",
-    marginTop: isTablet ? 5 : 8,
-    lineHeight: isTablet ? 16 : 20,
+    marginTop: isTouch ? 5 : 8,
+    lineHeight: isTouch ? 16 : 20,
   },
   movieTitleTextFocused: {
     color: "#ffffff",
@@ -1553,7 +1600,7 @@ const S = StyleSheet.create({
   },
   movieSubText: {
     color: "rgba(255,255,255,0.45)",
-    fontSize: isTablet ? 10.5 : ps(0.8),
+    fontSize: isTouch ? 10.5 : ps(0.8),
     fontWeight: "500",
     marginTop: 2,
   },
@@ -1659,19 +1706,29 @@ const S = StyleSheet.create({
     backgroundColor: "rgba(10, 12, 18, 0.95)",
   },
   modalBody: {
-    padding: ps(2.2),
+    padding: isPhone ? PHONE_H_PAD : ps(2.2),
   },
+  /*
+   * Three stacked bands on a phone — poster beside the title, then the
+   * synopsis, then the actions — matching the vod and series sheets. The lower
+   * two take `width: "100%"`, which cannot share a wrap line, so they break
+   * onto their own. Unwrapped, the 1.4/0.65 split left the actions column too
+   * narrow for "EXTERNAL PLAYER" and its icon.
+   */
   modalTVContent: {
     flexDirection: "row",
-    alignItems: "center",
+    flexWrap: isPhone ? "wrap" : "nowrap",
+    alignItems: isPhone ? "flex-start" : "center",
   },
+  /** The synopsis as its own full-width band, phones only. */
+  modalDescBlock: { width: "100%", marginTop: 14 },
   modalPosterWrapper: {
-    width: pw(11),
+    width: isPhone ? 72 : pw(11),
     aspectRatio: 2 / 3,
     borderRadius: ps(0.8),
     overflow: "hidden",
     backgroundColor: "rgba(255, 255, 255, 0.05)",
-    marginRight: pw(2),
+    marginRight: isPhone ? 12 : pw(2),
   },
   modalPosterImg: {
     width: "100%",
@@ -1700,14 +1757,18 @@ const S = StyleSheet.create({
   },
   modalLeft: {
     flex: 1.4,
-    paddingRight: ps(1.5),
+    paddingRight: isPhone ? 0 : ps(1.5),
     justifyContent: "center",
+    alignSelf: isPhone ? "center" : "auto",
   },
   modalRight: {
-    flex: 0.65,
-    paddingLeft: ps(1.5),
+    // `flex: 0` with a full width is what forces the wrap onto its own line.
+    flex: isPhone ? 0 : 0.65,
+    width: isPhone ? "100%" : undefined,
+    paddingLeft: isPhone ? 0 : ps(1.5),
+    marginTop: isPhone ? 32 : 0,
     justifyContent: "center",
-    gap: ps(0.8),
+    gap: isPhone ? 10 : ps(0.8),
   },
   modalTitle: {
     color: "#FFFFFF",

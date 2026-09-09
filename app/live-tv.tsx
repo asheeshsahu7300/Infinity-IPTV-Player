@@ -13,6 +13,12 @@ import { StreamManager } from "../src/services/StreamManager";
 import { cacheManager } from "../src/services/cacheManager";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { TABLET_TILE_MAX_WIDTH, TILE_MAX_WIDTH, isTablet, SIDEBAR_WIDTH } from "../src/utils/tabletUtils";
+import {
+  isPhone,
+  PHONE_GRID_COLUMNS,
+  PHONE_NOTICE_MAX_WIDTH,
+  PHONE_SEARCH_BAR_WIDTH,
+} from "../src/utils/phoneUtils";
 import CategorySidebar from "../src/components/CategorySidebar";
 import CategoryPills from "../src/components/CategoryPills";
 import { Focusable, FocusGroup, FocusMemory, STB_PRIORITY, useInitialFocusPulse, useStbKeys, useIsFocusTrapped } from "../src/tv";
@@ -104,7 +110,7 @@ const S = StyleSheet.create({
     borderRadius: 22,
     paddingHorizontal: pw(1.4),
     height: 44,
-    width: pw(36),
+    width: isPhone ? PHONE_SEARCH_BAR_WIDTH : pw(36),
     borderWidth: 0,
     borderColor: "transparent",
   },
@@ -135,8 +141,8 @@ const S = StyleSheet.create({
   // ── Cards ──
   gridContent: {
     paddingHorizontal: pw(1.2),
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: isPhone ? 4 : 8,
+    paddingBottom: isPhone ? 4 : 8,
   },
   gridRow: {
     flexDirection: "row",
@@ -144,8 +150,10 @@ const S = StyleSheet.create({
   },
   cardWrapper: {
     paddingHorizontal: 5,
-    paddingTop: 4,
-    paddingBottom: 4,
+    // Halved on a phone: this padding is doubled up between rows, so 4 here is
+    // 8dp of gap between tiles.
+    paddingTop: isPhone ? 1 : 4,
+    paddingBottom: isPhone ? 1 : 4,
   },
   cardBorder: {
     borderRadius: 12,
@@ -185,13 +193,20 @@ const S = StyleSheet.create({
     alignItems: "center",
     width: "100%",
     paddingHorizontal: 6,
-    paddingBottom: 6,
+    // Trimmed on a phone so the row can shorten without the label losing room.
+    paddingBottom: isPhone ? 0 : 6,
   },
   cardTitle: {
     color: "#FFFFFF",
     fontSize: ps(0.9),
     fontWeight: "700",
     textAlign: "center",
+    // Explicit leading on the phone so the label's height is a number we know
+    // rather than whatever the font's metrics produce. The row height is fixed
+    // through `getItemLayout`, so the tighter the row gets the less the gap can
+    // afford to be an estimate — with these pinned, the label is exactly 20dp
+    // (11 + 9) and the remaining slack is real.
+    ...(isPhone ? { lineHeight: 11 } : null),
   },
   cardTitleFocused: {
     fontWeight: "900",
@@ -201,7 +216,8 @@ const S = StyleSheet.create({
     fontSize: ps(0.72),
     fontWeight: "600",
     textAlign: "center",
-    marginTop: 2,
+    marginTop: isPhone ? 0 : 2,
+    ...(isPhone ? { lineHeight: 9 } : null),
   },
   cardNumber: {
     position: "absolute",
@@ -301,7 +317,7 @@ const S = StyleSheet.create({
     backgroundColor: "rgba(21, 21, 18, 0.95)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.16)",
-    maxWidth: pw(60),
+    maxWidth: isPhone ? PHONE_NOTICE_MAX_WIDTH : pw(60),
     zIndex: 70,
   },
   noticeText: {
@@ -603,8 +619,11 @@ export default function LiveTVScreen() {
   const { width: SCREEN_WIDTH_VAL, height: SCREEN_HEIGHT_VAL } = useWindowDimensions();
   const isPortrait = !Platform.isTV && SCREEN_HEIGHT_VAL > SCREEN_WIDTH_VAL;
 
-  // Sizing: In landscape 5 columns. In portrait: 4 columns for tablets, 3 for phones
-  const numColumns = isPortrait ? (SCREEN_WIDTH_VAL >= 600 ? 4 : 3) : 5;
+  // Sizing: In landscape 5 columns. In portrait: 4 columns for tablets, 3 for
+  // phones. `isPhone` rather than a second `>= 600` literal — in portrait
+  // `SCREEN_WIDTH_VAL` is the shortest side, so the two are the same test, and
+  // the device class is the one that says why.
+  const numColumns = isPortrait ? (isPhone ? PHONE_GRID_COLUMNS : 4) : 5;
 
   const SIDEBAR_WIDTH_VAL = isPortrait ? 0 : SIDEBAR_WIDTH;
   const GRID_H_PADDING = isPortrait ? 16 : pw(1.2) * 2;
@@ -623,8 +642,23 @@ export default function LiveTVScreen() {
   // On TV, VISIBLE_ROWS (3) rows fill the viewport.
   // In landscape, 3 rows fit cleanly. In portrait, allow channel cards to scroll naturally.
   const targetVisibleRows = isTablet ? 3 : VISIBLE_ROWS;
+  // The portrait row is the tile plus room for its two label lines.
+  //
+  // The gap a viewer sees between tiles is simply `extra - label`: the wrapper
+  // padding and the leftover slack add up to whatever the label does not use.
+  //
+  // On a phone the label is pinned to exactly 20dp — `cardTitle` and
+  // `cardCategory` carry explicit `lineHeight`s (11 + 9), the category's top
+  // margin is 0 and `cardInfo`'s bottom padding is 0 — so 24 leaves 4dp of air
+  // between one tile's label and the next tile, down from ~18 at the original
+  // 48. Every dp of that came from making the label smaller or more certain,
+  // not from letting the row overlap it.
+  //
+  // 24 is close to the floor. The row height is fixed through `getItemLayout`,
+  // so anything the label overruns is clipped rather than scrolled, and only
+  // ~2dp of slack is left. Below this, shorten the label first.
   const ROW_HEIGHT = isPortrait
-    ? Math.floor(tileWidth + 48)
+    ? Math.floor(tileWidth + (isPhone ? 24 : 48))
     : Math.floor(AVAILABLE_VIEWPORT_HEIGHT / targetVisibleRows);
   const EXACT_GRID_HEIGHT = ROW_HEIGHT * targetVisibleRows + GRID_V_PADDING;
   const cardHeight = isPortrait

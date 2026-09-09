@@ -10,7 +10,7 @@
 // open settings menu, some want the reverse.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { BackHandler, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { BackHandler, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -25,7 +25,8 @@ import { safeBack } from "../src/services/safeNavigation";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import PinPrompt from "../src/components/PinPrompt";
 import { THEME, ph, psRaw as ps, pw } from "../src/theme/tokens";
-import { isTablet } from "../src/utils/tabletUtils";
+import { isPhone } from "../src/utils/phoneUtils";
+import { isTouch } from "../src/utils/tabletUtils";
 import { Focusable, FocusGroup } from "../src/tv";
 import {
   CheckCircle,
@@ -169,7 +170,9 @@ export default function ParentalControlScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const isPortrait = isTablet && windowHeight > windowWidth;
+  // The same expression every other screen uses. This read `isTablet && ...`,
+  // which is never true on a phone, so a handset took the landscape branch.
+  const isPortrait = !Platform.isTV && windowHeight > windowWidth;
   const channels = usePortalStore((s) => s.channels);
   const vodItems = usePortalStore((s) => s.vodItems);
   const series = usePortalStore((s) => s.series);
@@ -323,7 +326,11 @@ export default function ParentalControlScreen() {
       <CinematicBackground />
 
       {/* ── Header ── */}
-      <View style={[S.header, isTablet && { paddingHorizontal: 24, paddingTop: ph(3), paddingBottom: ph(2) }]}>
+      <View style={[
+        S.header,
+        isTouch && { paddingHorizontal: 24, paddingTop: ph(3), paddingBottom: ph(2) },
+        isPhone && { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8 },
+      ]}>
         <View style={S.headerTitles}>
           <Text style={S.headerTitle}>Parental Control</Text>
           <Text style={S.headerSubtitle}>
@@ -352,8 +359,8 @@ export default function ParentalControlScreen() {
       </View>
 
       {/* ── System Overview Stats ── */}
-      <View style={[S.statsRow, isTablet && { paddingHorizontal: 24 }, isTablet && isPortrait && { flexWrap: "wrap", gap: 10 }]}>
-        <View style={[S.statCard, isTablet && isPortrait && { minWidth: "48%" }]}>
+      <View style={[S.statsRow, isTouch && { paddingHorizontal: 24 }, isPhone && { paddingHorizontal: 14 }, isPortrait && { flexWrap: "wrap", gap: 10 }]}>
+        <View style={[S.statCard, isPortrait && { minWidth: "48%" }]}>
           <Text style={S.statLabel}>System State</Text>
           <Text
             style={[
@@ -364,13 +371,13 @@ export default function ParentalControlScreen() {
             {state.enabled ? "Active" : "Disabled"}
           </Text>
         </View>
-        <View style={[S.statCard, isTablet && isPortrait && { minWidth: "48%" }]}>
+        <View style={[S.statCard, isPortrait && { minWidth: "48%" }]}>
           <Text style={S.statLabel}>Manually Locked</Text>
           <Text style={S.statValue}>
             {lockedCount} {lockedCount === 1 ? "Item" : "Items"}
           </Text>
         </View>
-        <View style={[S.statCard, isTablet && isPortrait && { minWidth: "48%" }]}>
+        <View style={[S.statCard, isPortrait && { minWidth: "48%" }]}>
           <Text style={S.statLabel}>Adult Keyword Filter</Text>
           <Text
             style={[
@@ -385,7 +392,7 @@ export default function ParentalControlScreen() {
               : "Off"}
           </Text>
         </View>
-        <View style={[S.statCard, isTablet && isPortrait && { minWidth: "48%" }]}>
+        <View style={[S.statCard, isPortrait && { minWidth: "48%" }]}>
           <Text style={S.statLabel}>PIN Mode</Text>
           <Text
             style={[
@@ -400,7 +407,7 @@ export default function ParentalControlScreen() {
 
       {/* ── Default PIN Warning Banner ── */}
       {parentalControl.isDefaultPin && state.enabled ? (
-        <View style={[S.warningCard, isTablet && { marginHorizontal: 24 }]}>
+        <View style={[S.warningCard, isTouch && { marginHorizontal: 24 }, isPhone && { marginHorizontal: 14 }]}>
           <View style={S.warningIconBox}>
             <TriangleAlert size={ps(2.2)} color="#fbbf24" />
           </View>
@@ -435,7 +442,7 @@ export default function ParentalControlScreen() {
 
       {/* ── Notice Toast ── */}
       {notice ? (
-        <View style={[S.noticeBanner, isTablet && { marginHorizontal: 24 }]}>
+        <View style={[S.noticeBanner, isTouch && { marginHorizontal: 24 }, isPhone && { marginHorizontal: 14 }]}>
           <CheckCircle size={ps(1.8)} color="#4ade80" />
           <Text style={S.noticeBannerText}>{notice}</Text>
         </View>
@@ -444,9 +451,13 @@ export default function ParentalControlScreen() {
       <ScrollView
         contentContainerStyle={[
           S.scroll,
-          isTablet && {
+          isTouch && {
             paddingHorizontal: 24,
             paddingBottom: insets.bottom + 36,
+          },
+          isPhone && {
+            paddingHorizontal: 14,
+            paddingBottom: insets.bottom + 20,
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -602,7 +613,7 @@ const S = StyleSheet.create({
   },
   headerSubtitle: {
     color: "rgba(255, 255, 255, 0.55)",
-    fontSize: ps(1.15),
+    fontSize: isPhone ? 12.5 : ps(1.15),
     marginTop: ph(0.8),
   },
 
@@ -624,13 +635,13 @@ const S = StyleSheet.create({
   },
   statusBadgeTextActive: {
     color: "#4ade80",
-    fontSize: ps(1.1),
+    fontSize: isPhone ? 12.5 : ps(1.1),
     fontWeight: "800",
     letterSpacing: 1,
   },
   statusBadgeTextInactive: {
     color: "rgba(255, 255, 255, 0.5)",
-    fontSize: ps(1.1),
+    fontSize: isPhone ? 12.5 : ps(1.1),
     fontWeight: "800",
     letterSpacing: 1,
   },
@@ -654,25 +665,33 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(8),
     marginBottom: ph(3.5),
   },
+  /*
+   * A fixed height on a phone so the four stats match.
+   *
+   * They wrap two to a row here, and flex equalises only within a row — so the
+   * second pair sized itself independently of the first and the grid stepped.
+   * 68 clears a label line, a value line and the padding.
+   */
   statCard: {
     flex: 1,
+    minHeight: isPhone ? 68 : undefined,
     backgroundColor: "#17181c",
     borderRadius: ps(1.4),
-    paddingHorizontal: pw(1.8),
-    paddingVertical: ph(1.8),
+    paddingHorizontal: isPhone ? 12 : pw(1.8),
+    paddingVertical: isPhone ? 10 : ph(1.8),
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.06)",
   },
   statLabel: {
     color: "rgba(255, 255, 255, 0.45)",
-    fontSize: ps(0.88),
+    fontSize: isPhone ? 10.5 : ps(0.88),
     fontWeight: "800",
     letterSpacing: 0.8,
     textTransform: "uppercase",
   },
   statValue: {
     color: "#FFFFFF",
-    fontSize: ps(1.4),
+    fontSize: isPhone ? 14.5 : ps(1.4),
     fontWeight: "800",
     marginTop: ph(0.6),
   },
@@ -704,14 +723,14 @@ const S = StyleSheet.create({
   },
   warningTitle: {
     color: "#fbbf24",
-    fontSize: ps(1.3),
+    fontSize: isPhone ? 13 : ps(1.3),
     fontWeight: "800",
   },
   warningText: {
     color: "rgba(251, 191, 36, 0.85)",
-    fontSize: ps(1.05),
+    fontSize: isPhone ? 12 : ps(1.05),
     marginTop: ph(0.3),
-    lineHeight: ps(1.45),
+    lineHeight: isPhone ? 17 : ps(1.45),
   },
   warningBtnWrapper: {},
   warningBtn: {
@@ -726,7 +745,7 @@ const S = StyleSheet.create({
   },
   warningBtnText: {
     color: "#0E0F14",
-    fontSize: ps(1.15),
+    fontSize: isPhone ? 12.5 : ps(1.15),
     fontWeight: "900",
   },
   warningBtnTextFocused: {
@@ -748,7 +767,7 @@ const S = StyleSheet.create({
   },
   noticeBannerText: {
     color: "#86efac",
-    fontSize: ps(1.2),
+    fontSize: isPhone ? 13 : ps(1.2),
     fontWeight: "700",
     flex: 1,
   },
@@ -762,7 +781,7 @@ const S = StyleSheet.create({
     marginBottom: ph(4.5),
   },
   sectionLabel: {
-    fontSize: ps(1.35),
+    fontSize: isPhone ? 13.5 : ps(1.35),
     fontWeight: "900",
     color: "rgba(255, 255, 255, 0.65)",
     letterSpacing: 2,
@@ -822,7 +841,7 @@ const S = StyleSheet.create({
     paddingRight: pw(1),
   },
   rowTitle: {
-    fontSize: ps(1.45),
+    fontSize: isPhone ? 14.5 : ps(1.45),
     color: "#FFFFFF",
     fontWeight: "700",
   },
@@ -831,10 +850,10 @@ const S = StyleSheet.create({
     fontWeight: "900",
   },
   rowSubtitle: {
-    fontSize: ps(1.1),
+    fontSize: isPhone ? 12.5 : ps(1.1),
     color: "rgba(255, 255, 255, 0.55)",
     marginTop: 3,
-    lineHeight: ps(1.5),
+    lineHeight: isPhone ? 17 : ps(1.5),
   },
   rowSubtitleFocused: {
     color: "rgba(0, 0, 0, 0.65)",
@@ -854,7 +873,7 @@ const S = StyleSheet.create({
   },
   badgePillText: {
     color: "rgba(255, 255, 255, 0.8)",
-    fontSize: ps(1.05),
+    fontSize: isPhone ? 12 : ps(1.05),
     fontWeight: "700",
   },
   badgePillTextFocused: {
@@ -863,16 +882,22 @@ const S = StyleSheet.create({
   },
 
   // ── Switch ────────────────────────────────────────────────────────────────
+  /*
+   * Absolute geometry on a phone, same as the settings and categories
+   * switches: the track was `ph(3.2)` = 13dp tall and the knob `ps(1.6)` = 12,
+   * so after 2dp of padding and a 1dp border the knob was larger than the
+   * 6.6dp of room holding it.
+   */
   switchTrack: {
-    width: pw(4.2),
-    height: ph(3.2),
-    minWidth: ps(3.8),
-    borderRadius: ps(1.6),
+    width: isPhone ? 44 : pw(4.2),
+    height: isPhone ? 26 : ph(3.2),
+    minWidth: isPhone ? 44 : ps(3.8),
+    borderRadius: isPhone ? 13 : ps(1.6),
     backgroundColor: "rgba(255, 255, 255, 0.12)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.2)",
     justifyContent: "center",
-    padding: 2,
+    padding: isPhone ? 3 : 2,
   },
   switchTrackFocused: {
     backgroundColor: "rgba(0, 0, 0, 0.15)",
@@ -887,9 +912,9 @@ const S = StyleSheet.create({
     borderColor: "#22c55e",
   },
   switchKnob: {
-    width: ps(1.6),
-    height: ps(1.6),
-    borderRadius: ps(0.8),
+    width: isPhone ? 18 : ps(1.6),
+    height: isPhone ? 18 : ps(1.6),
+    borderRadius: isPhone ? 9 : ps(0.8),
     backgroundColor: "rgba(255, 255, 255, 0.6)",
   },
   switchKnobFocused: {
@@ -922,13 +947,13 @@ const S = StyleSheet.create({
   },
   infoCardTitle: {
     color: "#93c5fd",
-    fontSize: ps(1.2),
+    fontSize: isPhone ? 13 : ps(1.2),
     fontWeight: "800",
   },
   infoCardText: {
     color: "rgba(147, 197, 253, 0.85)",
-    fontSize: ps(1.05),
-    lineHeight: ps(1.5),
+    fontSize: isPhone ? 12 : ps(1.05),
+    lineHeight: isPhone ? 17 : ps(1.5),
     marginTop: ph(0.3),
   },
 });

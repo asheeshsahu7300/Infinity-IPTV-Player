@@ -33,7 +33,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { usePortalStore, Channel, EPGProgram, Category } from "../src/store/portalStore";
 import CategoryPills from "../src/components/CategoryPills";
-import { filterByCategory } from "../src/hooks/useCategoryContent";
+import { bareCategoryId, filterByCategory } from "../src/hooks/useCategoryContent";
 import { epgService, type EpgLoadPhase } from "../src/services/epgService";
 import { parentalControl } from "../src/services/parentalControl";
 import { hiddenCategories } from "../src/services/hiddenCategories";
@@ -47,7 +47,7 @@ import { StreamManager } from "../src/services/StreamManager";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import PinPrompt from "../src/components/PinPrompt";
 import { THEME, ph, psRaw as ps, pw } from "../src/theme/tokens";
-import { remoteFocusEnabled, isTablet } from "../src/utils/tabletUtils";
+import { remoteFocusEnabled, isTouch } from "../src/utils/tabletUtils";
 import { Focusable, FocusGroup } from "../src/tv";
 import { Calendar, ChevronDown, Filter, Lock, Play, Tv, X } from 'lucide-react-native';
 import { Text } from '../src/components/Text';
@@ -89,8 +89,8 @@ const PHASE_TEXT: Record<EpgLoadPhase, string> = {
  * across a style and a render-time ternary before, which is how the row ended
  * up painting near-black text onto a near-black background.
  */
-const ACTIVE_ROW_BG = isTablet ? "#F5F5F5" : "#22232a";
-const ACTIVE_ROW_INK = isTablet ? "#000000" : "#FFFFFF";
+const ACTIVE_ROW_BG = isTouch ? "#F5F5F5" : "#22232a";
+const ACTIVE_ROW_INK = isTouch ? "#000000" : "#FFFFFF";
 
 const CHANNEL_PANE_WIDTH = pw(30);
 const CHANNEL_ROW_HEIGHT = ph(11);
@@ -144,31 +144,31 @@ const ChannelRow = React.memo(
         {(focused) => (
           <View style={[
             S.channelRow,
-            isTablet && { paddingVertical: 8, paddingHorizontal: 10, gap: 10 },
+            isTouch && { paddingVertical: 8, paddingHorizontal: 10, gap: 10 },
             isSelected && S.channelRowSelected,
             focused && S.channelRowFocused
           ]}>
             <Text style={[
               S.channelNumber,
-              isTablet && { fontSize: 12, minWidth: 22 },
+              isTouch && { fontSize: 12, minWidth: 22 },
               focused ? S.textOnFocus : isSelected && S.textOnActive,
             ]}>{number ?? ""}</Text>
 
-            <View style={[S.channelLogo, isTablet && { width: 34, height: 26 }]}>
+            <View style={[S.channelLogo, isTouch && { width: 34, height: 26 }]}>
               {locked ? (
-                <Lock size={isTablet ? 16 : ps(1.4)}
+                <Lock size={isTouch ? 16 : ps(1.4)}
                   color={focused ? "#000000" : isSelected ? ACTIVE_ROW_INK : "rgba(255,255,255,0.6)"} />
               ) : channel.logo ? (
                 <Image source={{ uri: channel.logo }} style={S.channelLogoImage} contentFit="contain" cachePolicy="memory-disk" />
               ) : (
-                <Tv size={isTablet ? 16 : ps(1.4)}
+                <Tv size={isTouch ? 16 : ps(1.4)}
                   color={focused ? "#000000" : isSelected ? ACTIVE_ROW_INK : "rgba(255,255,255,0.2)"} />
               )}
             </View>
 
             <Text style={[
               S.channelName,
-              isTablet && { fontSize: 13 },
+              isTouch && { fontSize: 13 },
               focused ? S.textOnFocus : isSelected && S.textOnActive,
             ]} numberOfLines={1}>
               {channel.name}
@@ -221,32 +221,32 @@ const ProgramRow = React.memo(function ProgramRow({
       {(focused) => (
         <View style={[
           S.programRow,
-          isTablet && { paddingVertical: 8, paddingHorizontal: 10, gap: 10 },
+          isTouch && { paddingVertical: 8, paddingHorizontal: 10, gap: 10 },
           isNow && S.programRowNow,
           focused && S.programRowFocused
         ]}>
-          <View style={[S.programTimeCol, isTablet && { minWidth: 46 }]}>
-            <Text style={[S.programTime, isTablet && { fontSize: 12 }, focused ? { color: "#000000" } : isPast && S.dimmed]}>
+          <View style={[S.programTimeCol, isTouch && { minWidth: 46 }]}>
+            <Text style={[S.programTime, isTouch && { fontSize: 12 }, focused ? { color: "#000000" } : isPast && S.dimmed]}>
               {stbEnvironment.formatClock(program.start)}
             </Text>
-            <Text style={[S.programEnd, isTablet && { fontSize: 10.5 }, focused && { color: "rgba(0,0,0,0.5)" }]}>
+            <Text style={[S.programEnd, isTouch && { fontSize: 10.5 }, focused && { color: "rgba(0,0,0,0.5)" }]}>
               {stbEnvironment.formatClock(program.end)}
             </Text>
           </View>
 
           <View style={S.programBody}>
             <View style={S.programTitleRow}>
-              <Text style={[S.programTitle, isTablet && { fontSize: 13 }, focused ? { color: "#000000" } : isPast && S.dimmed]} numberOfLines={1}>
+              <Text style={[S.programTitle, isTouch && { fontSize: 13 }, focused ? { color: "#000000" } : isPast && S.dimmed]} numberOfLines={1}>
                 {program.title}
               </Text>
               {isNow ? (
                 <View style={[S.nowBadge, focused && { backgroundColor: "#000000" }]}>
-                  <Text style={[S.nowBadgeText, isTablet && { fontSize: 9 }, focused && { color: "#FFFFFF" }]}>ON NOW</Text>
+                  <Text style={[S.nowBadgeText, isTouch && { fontSize: 9 }, focused && { color: "#FFFFFF" }]}>ON NOW</Text>
                 </View>
               ) : null}
             </View>
             {program.description ? (
-              <Text style={[S.programDesc, isTablet && { fontSize: 11 }, focused && { color: "rgba(0,0,0,0.6)" }]} numberOfLines={1}>
+              <Text style={[S.programDesc, isTouch && { fontSize: 11 }, focused && { color: "rgba(0,0,0,0.6)" }]} numberOfLines={1}>
                 {program.description}
               </Text>
             ) : null}
@@ -279,9 +279,9 @@ export default function EPGScreen() {
   const isPortrait = !Platform.isTV && windowHeight > windowWidth;
   const channelPaneWidth = isPortrait
     ? Math.min(220, Math.max(130, windowWidth * 0.36))
-    : (isTablet ? Math.min(280, windowWidth * 0.28) : CHANNEL_PANE_WIDTH);
-  const channelRowHeight = isTablet ? 54 : CHANNEL_ROW_HEIGHT;
-  const programRowHeight = isTablet ? (isPortrait ? 76 : 70) : PROGRAM_ROW_HEIGHT;
+    : (isTouch ? Math.min(280, windowWidth * 0.28) : CHANNEL_PANE_WIDTH);
+  const channelRowHeight = isTouch ? 54 : CHANNEL_ROW_HEIGHT;
+  const programRowHeight = isTouch ? (isPortrait ? 76 : 70) : PROGRAM_ROW_HEIGHT;
 
   // Per-field selectors — see the note in live-tv.tsx.
   const activePortal = usePortalStore((s) => s.activePortal);
@@ -313,22 +313,47 @@ export default function EPGScreen() {
     // 1. Only include Live TV categories (exclude VOD and Series)
     const liveCats = (storeCategories || []).filter((c) => c.type === "live");
 
-    // 2. Also map categories directly present on the actual loaded channels
+    /*
+     * 2. Also map categories directly present on the actual loaded channels.
+     *
+     * The label is looked up in the portal's own category list before falling
+     * back to the id, and that lookup is the whole point of this block.
+     * `cName` used to be `item.category || item.categoryId`, but plenty of
+     * providers put only `category_id` on a channel and keep the readable name
+     * in the separate categories payload — so `item.category` was empty and the
+     * name became the id. When the portal list was also unusable the fallback
+     * below built the pills straight from this map, and the guide showed a row
+     * of numbers where the category names should be.
+     */
+    const catNameById = new Map<string, string>();
+    for (const c of liveCats) {
+      const n = (c.name || "").trim();
+      if (n) catNameById.set(bareCategoryId(c.id), n);
+    }
+
     const channelCatMap = new Map<string, string>();
     for (const item of allChannels) {
       const cId = item.categoryId || item.category;
-      const cName = item.category || item.categoryId;
-      if (cId && !channelCatMap.has(String(cId))) {
-        channelCatMap.set(String(cId), String(cName || cId).trim());
-      }
+      if (!cId) continue;
+      const key = bareCategoryId(cId);
+      if (!key || channelCatMap.has(key)) continue;
+      const label = String(item.category || "").trim() || catNameById.get(key) || key;
+      channelCatMap.set(key, label);
     }
 
     let cats: Category[] = [];
     if (liveCats.length > 0) {
       cats = liveCats.filter((c) => {
-        const id = String(c.id);
+        // `bareCategoryId`, because `channelCatMap` is keyed by the bare id the
+        // channels carry while `c.id` is the prefixed one. Compared raw, this
+        // matched only via the name fallback beside it — and when the channels
+        // had no label either, nothing matched and the id-named fallback below
+        // took over.
         const name = (c.name || "").trim().toLowerCase();
-        return channelCatMap.has(id) || Array.from(channelCatMap.values()).some((v) => v.toLowerCase() === name);
+        return (
+          channelCatMap.has(bareCategoryId(c.id)) ||
+          Array.from(channelCatMap.values()).some((v) => v.toLowerCase() === name)
+        );
       });
     }
 
@@ -603,7 +628,12 @@ export default function EPGScreen() {
 
       {/* ─── Header ─── */}
       <View style={[S.header, isPortrait && { paddingTop: 6, paddingBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
-        <View>
+        {/* Same bound as the schedule label below: in portrait this shares a
+            `space-between` row with the category badge, and an unbounded block
+            would push that badge off the edge once the category name grew.
+            Only in portrait — the landscape header is a column, where `flex: 1`
+            would stretch this vertically instead. */}
+        <View style={isPortrait ? { flex: 1 } : undefined}>
           <Text style={S.headerTitle}>TV Guide</Text>
           {isPortrait && selectedCategory !== "all" && (
             <Text style={S.headerSubtitle} numberOfLines={1}>
@@ -641,10 +671,10 @@ export default function EPGScreen() {
       )}
 
       {/* ─── Panes ─── */}
-      <View style={[S.panes, isPortrait ? { paddingHorizontal: 12, gap: 0 } : (isTablet && { paddingHorizontal: 20, gap: 16 })]}>
+      <View style={[S.panes, isPortrait ? { paddingHorizontal: 12, gap: 0 } : (isTouch && { paddingHorizontal: 20, gap: 16 })]}>
         {!isPortrait && (
           <FocusGroup style={{ width: channelPaneWidth }}>
-            <Text style={[S.paneLabel, isTablet && { fontSize: 11, letterSpacing: 1.5 }]}>
+            <Text style={[S.paneLabel, isTouch && { fontSize: 11, letterSpacing: 1.5 }]}>
               CHANNELS
             </Text>
             <FlatList
@@ -663,7 +693,7 @@ export default function EPGScreen() {
               removeClippedSubviews={false}
               showsVerticalScrollIndicator={false}
               decelerationRate="fast"
-              contentContainerStyle={[S.paneContent, isTablet && { paddingBottom: insets.bottom + 28 }]}
+              contentContainerStyle={[S.paneContent, isTouch && { paddingBottom: insets.bottom + 28 }]}
               onScrollToIndexFailed={(info) => {
                 setTimeout(() => {
                   try {
@@ -683,7 +713,25 @@ export default function EPGScreen() {
 
         <FocusGroup style={[S.schedulePane, isPortrait && { flex: 1, width: "100%" }]}>
           <View style={[S.scheduleHeaderRow, isPortrait && { paddingBottom: 10 }]}>
-            <Text style={[S.paneLabel, isTablet && { fontSize: 11, letterSpacing: 1.5 }, isPortrait && { paddingBottom: 0 }]}>
+            {/*
+              * `flex: 1` and a single line, because this label shares its row
+              * with the Watch Live button and carries the channel name.
+              *
+              * React Native defaults `flexShrink` to 0, unlike the web — so an
+              * unbounded Text here took its full intrinsic width and pushed the
+              * button off the right edge. A long channel name did not wrap the
+              * title, it cut the control. Truncating the name is the right
+              * trade: the button is the only thing on the row you can act on.
+              */}
+            <Text
+              numberOfLines={1}
+              style={[
+                S.paneLabel,
+                isTouch && { fontSize: 11, letterSpacing: 1.5 },
+                isPortrait && { paddingBottom: 0 },
+                { flex: 1 },
+              ]}
+            >
               {selectedChannel ? `SCHEDULE · ${selectedChannel.name.toUpperCase()}` : "SCHEDULE"}
             </Text>
             {isPortrait && selectedChannel && (
@@ -712,7 +760,7 @@ export default function EPGScreen() {
             windowSize={5}
             removeClippedSubviews={false}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[S.paneContent, isTablet && { paddingBottom: insets.bottom + 28 }]}
+            contentContainerStyle={[S.paneContent, isTouch && { paddingBottom: insets.bottom + 28 }]}
             onScrollToIndexFailed={(info) => {
               setTimeout(() => {
                 try {
@@ -1030,6 +1078,10 @@ const S = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
+    // The 180 cap and `categoryBadgeText`'s `flexShrink` were already here and
+    // do the truncating; the margin just keeps the badge off the title block
+    // now that the block is allowed to fill the row.
+    marginLeft: 10,
     maxWidth: 180,
   },
   categoryBadgeText: {
@@ -1051,6 +1103,10 @@ const S = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
+    // Never give ground to the label beside it, and keep a gap from the
+    // ellipsis when that label is truncated.
+    flexShrink: 0,
+    marginLeft: 10,
   },
   watchLiveBtnText: {
     color: "#000000",
