@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { View, StyleSheet, ActivityIndicator, Dimensions, FlatList, ScrollView, Platform, Animated, findNodeHandle, Pressable , TextInput as RNTextInput} from 'react-native';
+import { View, StyleSheet, ActivityIndicator, FlatList, ScrollView, Platform, Animated, findNodeHandle, Pressable , TextInput as RNTextInput, useWindowDimensions } from 'react-native';
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,6 +15,7 @@ import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay, useIsFocusTrapped, useDPad, FocusMemory } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
 import { THEME, pw, ph, ps, psRaw, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
+import { isTablet } from "../src/utils/tabletUtils";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import { playbackQueue } from "../src/services/playbackQueue";
 import { Calendar, ExternalLink, Play, Search, Star, X } from 'lucide-react-native';
@@ -24,7 +25,6 @@ import { TextInput } from '../src/components/TextInput';
 
 
 
-const { width: W } = Dimensions.get("window");
 const RAIL_H_PAD = pw(4.2);
 const HEADER_ELEM_HEIGHT = pw(3.8);
 
@@ -151,7 +151,7 @@ const CardInner = React.memo(function CardInner({
           <View style={[StyleSheet.absoluteFillObject, S.posterFallback]}>
             <DynamicIcon
               name={isLive ? "television" : "filmstrip"}
-              size={isLive ? ps(2.8) : ps(4.2)}
+              size={isTablet ? (isLive ? 22 : 30) : (isLive ? ps(2.8) : ps(4.2))}
               color="rgba(255,255,255,0.32)"
             />
           </View>
@@ -314,6 +314,7 @@ interface ContentRailProps {
   subtitle?: string;
   data: any[];
   itemWidth: number;
+  hPad?: number;
   onPress: (item: any) => void;
   onFocus?: (item: any) => void;
   isFirstRail?: boolean;
@@ -327,6 +328,7 @@ const ContentRail = React.memo(function ContentRail({
   subtitle,
   data,
   itemWidth,
+  hPad,
   onPress,
   onFocus,
   isFirstRail = false,
@@ -342,7 +344,7 @@ const ContentRail = React.memo(function ContentRail({
     if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
   }, []);
 
-  const gap = pw(1.2);
+  const gap = isTablet ? 10 : pw(1.2);
   const stride = itemWidth + gap;
 
   const getItemLayout = useCallback(
@@ -407,7 +409,7 @@ const ContentRail = React.memo(function ContentRail({
       trapRight
       destinations={isFirstRail && inputRef?.current ? [inputRef.current] : undefined}
     >
-      <View style={S.railHeader}>
+      <View style={[S.railHeader, hPad != null && { paddingHorizontal: hPad }]}>
         <Text style={S.railTitle}>{title}</Text>
         {subtitle ? <Text style={S.railSubtitle}>{subtitle}</Text> : null}
       </View>
@@ -419,7 +421,11 @@ const ContentRail = React.memo(function ContentRail({
         keyExtractor={(item) => `${item.type}-${item.id}`}
         getItemLayout={getItemLayout}
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={S.railScrollContent}
+        contentContainerStyle={[
+          S.railScrollContent,
+          hPad != null && { paddingHorizontal: hPad },
+          isTablet && { gap: 10 },
+        ]}
         style={{ overflow: "visible" }}
         scrollEventThrottle={16}
         removeClippedSubviews={false}
@@ -459,6 +465,9 @@ export default function SearchScreen() {
   const isScreenFocused = useIsFocused();
   const isFocusTrapped = useIsFocusTrapped();
   const { notify, node: dialogNode } = useDialog();
+
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isPortrait = isTablet && windowHeight > windowWidth;
 
   const activePortal = usePortalStore((s) => s.activePortal);
   const channels = usePortalStore((s) => s.channels);
@@ -870,10 +879,11 @@ export default function SearchScreen() {
     }
   };
 
-  const RESULT_COLUMNS = 7;
-  const CARD_WIDTH = (W - RAIL_H_PAD * 2) / RESULT_COLUMNS;
-  // Sized so that 6 cards + padding show fully and ~18-20% of the 7th card peeks on the right
-  const RAIL_ITEM_WIDTH = pw(13.2);
+  const railHPad = isTablet ? (isPortrait ? 20 : 28) : RAIL_H_PAD;
+  const RESULT_COLUMNS = isTablet ? (isPortrait ? 5 : (windowWidth > 1100 ? 8 : 7)) : 7;
+  const CARD_WIDTH = (windowWidth - railHPad * 2) / RESULT_COLUMNS;
+  // Sleek, compact card sizing for tablets (~112dp portrait, ~126dp landscape)
+  const RAIL_ITEM_WIDTH = isTablet ? (isPortrait ? 112 : 126) : pw(13.2);
 
   // Chunk flat results into rows of RESULT_COLUMNS — same pattern as vod.tsx.
   // A FocusGroup (TVFocusGuideView) wraps each row so left/right D-pad
@@ -959,7 +969,7 @@ export default function SearchScreen() {
         </View>
 
         {/* ─── Search Input Bar + Content Type Filter Tabs ─── */}
-        <View style={S.searchControlsRow}>
+        <View style={[S.searchControlsRow, isTablet && { paddingHorizontal: railHPad }, isPortrait && { flexWrap: "wrap", gap: 10 }]}>
           <View style={[S.searchBarContainer, (searchFocused || clearFocused) && S.searchBarContainerFocused]}>
             <Pressable onPress={() => commitSearch()} style={{ padding: 4 }}>
               <Search
@@ -1081,7 +1091,7 @@ export default function SearchScreen() {
           <ScrollView
             style={{ flex: 1 }}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: ph(8) }}
+            contentContainerStyle={{ paddingBottom: isTablet ? insets.bottom + 24 : ph(8) }}
           >
             {filteredRails.map((rail, idx) => (
               <ContentRail
@@ -1090,6 +1100,7 @@ export default function SearchScreen() {
                 subtitle={rail.subtitle}
                 data={rail.data}
                 itemWidth={RAIL_ITEM_WIDTH}
+                hPad={railHPad}
                 onPress={handleResultPress}
                 onFocus={(item) => {
                   handleResultFocus(item);
@@ -1105,7 +1116,7 @@ export default function SearchScreen() {
         ) : (
           // ── Search Results Grid (When searching with query) ──
           <FocusGroup style={S.resultsArea}>
-            <View style={S.sectionLabelArea}>
+            <View style={[S.sectionLabelArea, isTablet && { paddingHorizontal: railHPad }]}>
               <Text style={S.sectionLabelTitle}>
                 Results for "{submittedQuery}" ({filteredResults.length})
               </Text>
@@ -1130,7 +1141,7 @@ export default function SearchScreen() {
               data={chunkedResults}
               key={`results-${RESULT_COLUMNS}-${activeFilter}`}
               keyExtractor={(row: any) => row.id}
-              contentContainerStyle={{ paddingHorizontal: RAIL_H_PAD, paddingBottom: ph(6) }}
+              contentContainerStyle={{ paddingHorizontal: railHPad, paddingBottom: isTablet ? insets.bottom + 24 : ph(6) }}
               removeClippedSubviews={false}
               initialNumToRender={4}
               maxToRenderPerBatch={3}
@@ -1484,13 +1495,13 @@ const S = StyleSheet.create({
     overflow: "visible",
   },
   movieCardContainer: {
-    borderRadius: 16,
+    borderRadius: isTablet ? 12 : 16,
     overflow: "visible",
   },
   movieCardContainerFocused: {},
   posterFrame: {
     width: "100%",
-    borderRadius: 18,
+    borderRadius: isTablet ? 12 : 18,
     overflow: "hidden",
     backgroundColor: "#17181c",
     borderWidth: 1,
@@ -1531,10 +1542,10 @@ const S = StyleSheet.create({
   },
   movieTitleText: {
     color: "rgba(255,255,255,0.75)",
-    fontSize: ps(0.92),
+    fontSize: isTablet ? 12 : ps(0.92),
     fontWeight: "700",
-    marginTop: 8,
-    lineHeight: 20,
+    marginTop: isTablet ? 5 : 8,
+    lineHeight: isTablet ? 16 : 20,
   },
   movieTitleTextFocused: {
     color: "#ffffff",
@@ -1542,7 +1553,7 @@ const S = StyleSheet.create({
   },
   movieSubText: {
     color: "rgba(255,255,255,0.45)",
-    fontSize: ps(0.8),
+    fontSize: isTablet ? 10.5 : ps(0.8),
     fontWeight: "500",
     marginTop: 2,
   },

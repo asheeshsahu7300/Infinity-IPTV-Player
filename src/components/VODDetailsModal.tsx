@@ -1,9 +1,8 @@
 import React, { useState } from "react";
-import { View, StyleSheet, TouchableOpacity, Modal, Platform, Linking, Animated, Easing } from 'react-native';
-import * as IntentLauncher from "expo-intent-launcher";
+import { View, StyleSheet, Animated } from 'react-native';
 import { LinearGradient } from "expo-linear-gradient";
+import { Focusable, Overlay } from "../tv";
 import { THEME, pw, ph, ps } from "../theme/tokens";
-import { isTV } from "../utils/tvUtils";
 import { launchExternalPlayer } from "../utils/externalPlayer";
 import { Clock, Play, Star, Tv } from 'lucide-react-native';
 import { Text } from './Text';
@@ -79,26 +78,25 @@ function ModalButton({
         end={{ x: 1, y: 1 }}
         style={S.btnGradientBorder}
       >
-        <TouchableOpacity
+        <Focusable
+          ringOnFocus={false}
+          hasTVPreferredFocus={autoFocus}
+          accessibilityLabel={label}
+          onPress={onPress}
+          onFocus={onFocusIn}
+          onBlur={onFocusOut}
           style={[
             S.btnInner,
             variant === "filled" && S.btnFilled,
             variant === "ghost" && S.btnGhost,
             focused && variant === "filled" && S.btnFilledFocused,
           ]}
-          onPress={onPress}
-          onFocus={onFocusIn}
-          onBlur={onFocusOut}
-          // @ts-ignore
-          hasTVPreferredFocus={autoFocus}
-          focusable
-          activeOpacity={0.85}
         >
           <View style={S.btnContent}>
             {icon}
             <Text style={[S.btnText, variant === "ghost" && S.btnTextGhost]}>{label}</Text>
           </View>
-        </TouchableOpacity>
+        </Focusable>
       </LinearGradient>
     </Animated.View>
   );
@@ -129,130 +127,87 @@ export default function VODDetailsModal({
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType={isTV ? "fade" : "slide"}
-      onRequestClose={onClose}
-    >
-      <View style={S.backdrop}>
-        {/* Dismiss tap area */}
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+    <Overlay visible={visible} onClose={onClose}>
+      <View style={S.sheet}>
+        {/* Title */}
+        <Text style={S.title} numberOfLines={2}>
+          {title || "Play"}
+        </Text>
 
-        {/* Sheet */}
-        <View style={[S.sheet, isTV && S.sheetTV]}>
-          {/* Handle — mobile only */}
-          {!isTV && <View style={S.handle} />}
-
-          {/* Title */}
-          <Text style={[S.title, isTV && S.titleTV]} numberOfLines={2}>
-            {title || "Play"}
+        {/* Description */}
+        {meta?.description ? (
+          <Text style={S.description} numberOfLines={3}>
+            {meta.description}
           </Text>
+        ) : null}
 
-          {/* Description */}
-          {meta?.description ? (
-            <Text style={[S.description, isTV && S.descriptionTV]} numberOfLines={isTV ? 3 : 4}>
-              {meta.description}
-            </Text>
+        {/* Meta badges */}
+        <View style={S.metaRow}>
+          {meta?.rating ? (
+            <View style={S.badge}>
+              <Star size={ps(0.9)} color="#fbbf24" />
+              <Text style={S.badgeText}>{meta.rating}</Text>
+            </View>
           ) : null}
-
-          {/* Meta badges */}
-          <View style={S.metaRow}>
-            {meta?.rating ? (
-              <View style={S.badge}>
-                <Star size={ps(0.9)} color="#fbbf24" />
-                <Text style={S.badgeText}>{meta.rating}</Text>
-              </View>
-            ) : null}
-            {meta?.duration ? (
-              <View style={S.badge}>
-                <Clock size={ps(0.9)} color="#93c5fd" />
-                <Text style={S.badgeText}>{formatDuration(meta.duration)}</Text>
-              </View>
-            ) : null}
-          </View>
-
-          {/* Divider */}
-          <View style={S.divider} />
-
-          {/* Action Buttons */}
-          <ModalButton
-            label="Play in App"
-            icon={<Play size={ps(1.1)} color="#fff" style={{ marginRight: pw(1) }} />}
-            onPress={() => { onClose(); onPlay(); }}
-            variant="filled"
-            autoFocus
-          />
-          <ModalButton
-            label="External Player"
-            icon={<Tv size={ps(1.1)} color="rgba(255,255,255,0.7)" style={{ marginRight: pw(1) }} />}
-            onPress={handleExternalPlay}
-            variant="outline"
-          />
-          <ModalButton
-            label="Cancel"
-            onPress={onClose}
-            variant="ghost"
-          />
+          {meta?.duration ? (
+            <View style={S.badge}>
+              <Clock size={ps(0.9)} color="#93c5fd" />
+              <Text style={S.badgeText}>{formatDuration(meta.duration)}</Text>
+            </View>
+          ) : null}
         </View>
+
+        {/* Divider */}
+        <View style={S.divider} />
+
+        {/* Action Buttons */}
+        <ModalButton
+          label="Play in App"
+          icon={<Play size={ps(1.1)} color="#fff" style={{ marginRight: pw(1) }} />}
+          onPress={() => { onClose(); onPlay(); }}
+          variant="filled"
+          autoFocus
+        />
+        <ModalButton
+          label="External Player"
+          icon={<Tv size={ps(1.1)} color="rgba(255,255,255,0.7)" style={{ marginRight: pw(1) }} />}
+          onPress={handleExternalPlay}
+          variant="outline"
+        />
+        <ModalButton
+          label="Cancel"
+          onPress={onClose}
+          variant="ghost"
+        />
       </View>
-    </Modal>
+    </Overlay>
   );
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const S = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    justifyContent: "flex-end",
-  },
   sheet: {
+    width: pw(45),
     backgroundColor: "#09090f",
-    paddingHorizontal: pw(4),
-    paddingTop: ph(1.5),
+    paddingHorizontal: pw(3),
+    paddingTop: ph(2.5),
     paddingBottom: ph(3),
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.06)",
   },
-  // TV: center modal overlay instead of bottom sheet
-  sheetTV: {
-    alignSelf: "center",
-    width: pw(45),
-    borderRadius: 20,
-    marginBottom: ph(10),
-    paddingHorizontal: pw(3),
-  },
-  handle: {
-    alignSelf: "center",
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#333",
-    marginBottom: ph(1.5),
-  },
   title: {
     color: "#fff",
-    fontSize: ps(1.3),
-    fontWeight: "800",
-    marginBottom: ph(0.8),
-  },
-  titleTV: {
     fontSize: ps(1.6),
+    fontWeight: "800",
     marginBottom: ph(1),
   },
   description: {
     color: "rgba(255,255,255,0.55)",
-    fontSize: ps(0.9),
-    lineHeight: ps(1.4),
-    marginBottom: ph(1),
-    fontFamily: THEME.fonts.regular,
-  },
-  descriptionTV: {
     fontSize: ps(1),
     lineHeight: ps(1.6),
+    marginBottom: ph(1),
+    fontFamily: THEME.fonts.regular,
   },
   metaRow: {
     flexDirection: "row",

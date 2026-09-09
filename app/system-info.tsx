@@ -24,6 +24,7 @@ import { epgService } from "../src/services/epgService";
 import { parentalControl } from "../src/services/parentalControl";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { THEME, ph, ps, pw } from "../src/theme/tokens";
+import { isTablet } from "../src/utils/tabletUtils";
 import { Focusable, FocusGroup } from "../src/tv";
 import { Gauge } from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
@@ -140,14 +141,23 @@ export default function SystemInfoScreen() {
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
 
-      <View style={S.header}>
+      <View style={[S.header, isTablet && { paddingHorizontal: 24, paddingTop: ph(3) }]}>
         <Text style={S.headerTitle}>System Information</Text>
         <Text style={S.headerSubtitle}>
-          {info.appName} {info.appVersion} · build {info.buildNumber}
+          Device specifications, network status and streaming capabilities
         </Text>
       </View>
 
-      <ScrollView contentContainerStyle={S.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[
+          S.scroll,
+          isTablet && {
+            paddingHorizontal: 24,
+            paddingBottom: insets.bottom + 36,
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         <FieldGrid
           title="DEVICE"
           fields={[
@@ -247,10 +257,10 @@ const S = StyleSheet.create({
   },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: pw(1.2) },
   field: {
-    width: `${100 / 3}%`,
-    minWidth: pw(24),
+    width: isTablet ? "48%" : `${100 / 3}%`,
+    minWidth: isTablet ? "46%" : pw(24),
     flexGrow: 1,
-    flexBasis: pw(24),
+    flexBasis: isTablet ? "46%" : pw(24),
     padding: pw(1.4),
     borderRadius: ps(0.9),
     backgroundColor: "rgba(255,255,255,0.035)",

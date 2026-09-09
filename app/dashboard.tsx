@@ -1,6 +1,6 @@
 import { DynamicIcon } from '../src/components/DynamicIcon';
 import React, { useEffect, useState, useCallback } from "react";
-import { View, StyleSheet, Image, Platform, ActivityIndicator } from 'react-native';
+import { View, ScrollView, StyleSheet, Image, Platform, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,6 +15,7 @@ import { useDialog } from "../src/components/ConfirmDialog";
 import { useNetworkActivity } from "../src/services/networkActivity";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { safeNavigate } from "../src/services/safeNavigation";
+import { isTablet, isPhone } from "../src/utils/tabletUtils";
 // This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
 import { THEME, pw, ph, psRaw as ps, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
 import { Calendar, ExternalLink, Film, Layers, LayoutGrid, LucideIcon, Play, RefreshCw, Search, Settings, Star, Tv, X } from 'lucide-react-native';
@@ -30,11 +31,13 @@ const HeroPill = ({
   text,
   onPress,
   autoFocus = false,
+  isPortrait = false,
 }: {
   icon: string;
   text: string;
   onPress: () => void;
   autoFocus?: boolean;
+  isPortrait?: boolean;
 }) => {
   const [shouldFocus, setShouldFocus] = useState(autoFocus);
   useEffect(() => {
@@ -45,6 +48,8 @@ const HeroPill = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const pillIconSize = !Platform.isTV ? (isPortrait ? 15 : 16) : ps(2.2);
 
   return (
     <Focusable
@@ -57,17 +62,34 @@ const HeroPill = ({
         <View style={[
           S.heroPillContainer,
           focused && S.heroPillContainerFocused,
-          focused && { transform: [{ scale: 1.08 }] }
+          focused && { transform: [{ scale: 1.06 }] }
         ]}>
           <View
             style={[
               S.heroPillGradient,
+              !Platform.isTV && {
+                paddingHorizontal: isPortrait ? 14 : (isTablet ? 18 : 14),
+                paddingVertical: isPortrait ? 9 : (isTablet ? 10 : 9),
+              },
               !focused && { backgroundColor: "#17181c" },
               focused && { backgroundColor: "#fff" }
             ]}
           >
-            <DynamicIcon name={icon} size={ps(2.2)} color={focused ? "#000" : "#fff"} style={{ marginRight: pw(1.0) }} />
-            <Text style={[S.heroPillText, focused && { color: "#000" }]}>{text}</Text>
+            <DynamicIcon
+              name={icon}
+              size={pillIconSize}
+              color={focused ? "#000" : "#fff"}
+              style={{ marginRight: !Platform.isTV ? 8 : pw(1.0) }}
+            />
+            <Text style={[
+              S.heroPillText,
+              !Platform.isTV && {
+                fontSize: isPortrait ? 13 : (isTablet ? 13 : 12),
+              },
+              focused && { color: "#000" }
+            ]}>
+              {text}
+            </Text>
           </View>
         </View>
       )}
@@ -78,6 +100,17 @@ const HeroPill = ({
 export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isPortrait = !Platform.isTV && windowHeight > windowWidth;
+  const hPad = !Platform.isTV ? (isPortrait ? 20 : (isTablet ? 32 : 24)) : RAIL_H_PAD;
+  const actionBtnSize = !Platform.isTV ? (isPortrait ? 50 : (isTablet ? 54 : 50)) : pw(4.6);
+  const actionIconSize = !Platform.isTV ? (isPortrait ? 22 : (isTablet ? 24 : 22)) : ps(2.3);
+
+  // Portrait card height: tall enough to look cinematic, capped so 3 fit comfortably.
+  // ScrollView handles any overflow on unusually small screens.
+  const portraitCardHeight = isPortrait
+    ? Math.max(180, Math.min(260, Math.floor((windowHeight - insets.top - insets.bottom - 260) / 3)))
+    : undefined;
   // Errors surface through an in-tree overlay — Alert.alert does not
   // reliably appear on an Android TV release build.
   const { notify, node: dialogNode } = useDialog();
@@ -175,56 +208,148 @@ export default function DashboardScreen() {
   const dashboardContent = (
     <>
       {/* Cinematic Header Branding */}
-      <View style={S.headerBranding}>
+      <View style={[
+        S.headerBranding,
+        { paddingHorizontal: hPad },
+        isPortrait ? { marginTop: 6, marginBottom: 18 } : (!Platform.isTV && { marginTop: 4, marginBottom: 10 })
+      ]}>
         <View style={S.logoRow}>
-          <Image source={require("../assets/images/TV.png")} style={S.headerLogoImage} resizeMode="contain" />
+          <Image
+            source={require("../assets/images/TV.png")}
+            style={[
+              S.headerLogoImage,
+              !Platform.isTV && {
+                // Prominent logo — large layout box + scale for visual weight
+                width: isPortrait ? 140 : (isTablet ? 155 : 135),
+                height: isPortrait ? 50 : 50,
+                marginLeft: isPortrait ? -6 : -6,
+                transform: [{ scale: isPortrait ? 2.0 : 2.1 }],
+              }
+            ]}
+            resizeMode="contain"
+          />
         </View>
-        <View style={S.headerActions}>
+        <View style={[S.headerActions, !Platform.isTV && { gap: 10 }]}>
           {/* Doubles as the sync indicator. A background refresh must not raise
               the blocking LoadingOverlay — that is reserved for a refresh the
               user asked for — so in-flight traffic surfaces here instead. */}
-          <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={handleFullRefresh} style={S.roundBtn}>
+          <Focusable
+            ringOnFocus={false}
+            focusStyle={S.roundBtnFocused}
+            onPress={handleFullRefresh}
+            style={[
+              S.roundBtn,
+              !Platform.isTV && { width: actionBtnSize, height: actionBtnSize, borderRadius: actionBtnSize / 2 }
+            ]}
+          >
             {(focused) => syncing ? (
               <ActivityIndicator size="small" color={focused ? "#000" : "#fff"} />
             ) : (
-              <RefreshCw size={ps(2.3)} color={focused ? "#000" : "#fff"} />
+              <RefreshCw size={actionIconSize} color={focused ? "#000" : "#fff"} />
             )}
           </Focusable>
-          <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => safeNavigate("/portals")} style={S.roundBtn}>
-            {(focused) => <LayoutGrid size={ps(2.3)} color={focused ? "#000" : "#fff"} />}
+          <Focusable
+            ringOnFocus={false}
+            focusStyle={S.roundBtnFocused}
+            onPress={() => safeNavigate("/portals")}
+            style={[
+              S.roundBtn,
+              !Platform.isTV && { width: actionBtnSize, height: actionBtnSize, borderRadius: actionBtnSize / 2 }
+            ]}
+          >
+            {(focused) => <LayoutGrid size={actionIconSize} color={focused ? "#000" : "#fff"} />}
           </Focusable>
-          <Focusable ringOnFocus={false} focusStyle={S.roundBtnFocused} onPress={() => safeNavigate("/settings")} style={S.roundBtn}>
-            {(focused) => <Settings size={ps(2.3)} color={focused ? "#000" : "#fff"} />}
+          <Focusable
+            ringOnFocus={false}
+            focusStyle={S.roundBtnFocused}
+            onPress={() => safeNavigate("/settings")}
+            style={[
+              S.roundBtn,
+              !Platform.isTV && { width: actionBtnSize, height: actionBtnSize, borderRadius: actionBtnSize / 2 }
+            ]}
+          >
+            {(focused) => <Settings size={actionIconSize} color={focused ? "#000" : "#fff"} />}
           </Focusable>
         </View>
       </View>
 
       {/* Cinematic Hero Section */}
-      <View style={S.heroSection}>
+      <View style={[
+        S.heroSection,
+        { paddingHorizontal: hPad },
+        isPortrait ? {
+          flex: 0,
+          flexGrow: 0,
+          maxWidth: "100%",
+          marginTop: 10,
+          marginBottom: 20,
+        } : (!Platform.isTV && {
+          flex: 0,
+          flexGrow: 0,
+          maxWidth: "100%",
+          marginTop: 6,
+          marginBottom: 18,
+        })
+      ]}>
         <LinearGradient
           colors={["rgba(8, 8, 12, 0.75)", "rgba(8, 8, 12, 0.35)", "transparent"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={S.heroGradientOverlay}
         />
-        <Text style={S.heroTitle}>Unlimited Entertainment</Text>
-        <Text style={S.heroDesc}>
+        <Text style={[
+          S.heroTitle,
+          !Platform.isTV && {
+            // Keep the title compact — the TV_SCALE=1.3 bump already made ps(3.2) ≈ 44dp
+            // on tablet, which overpowers the rest of the layout on a handheld screen.
+            fontSize: isPortrait ? 18 : (isTablet ? 22 : 20),
+            marginVertical: isPortrait ? 10 : 6,
+          }
+        ]}>
+          Unlimited Entertainment
+        </Text>
+        <Text
+          numberOfLines={isPortrait ? 2 : 3}
+          style={[
+            S.heroDesc,
+            !Platform.isTV && {
+              fontSize: isPortrait ? 13 : 13,
+              lineHeight: isPortrait ? 18 : 19,
+              marginBottom: isPortrait ? 18 : 14,
+              maxWidth: isPortrait ? "100%" : (isTablet ? 560 : 480),
+            }
+          ]}
+        >
           Access thousands of channels, global movies and exclusive series directly on your screen.
         </Text>
-        <View style={S.heroButtons}>
+        <View style={[S.heroButtons, !Platform.isTV && { gap: isPortrait ? 10 : 12 }]}>
           {/* Initial focus belongs to the Live TV tile below, not here. */}
-          <HeroPill icon="search" text="Search Content" onPress={() => safeNavigate("/search")} />
+          <HeroPill icon="search" text="Search Content" onPress={() => safeNavigate("/search")} isPortrait={isPortrait} />
           {/* The guide lives here rather than behind a button in the Live TV
               header. It is a place you go, like Search — not a control on the
               channel grid — and from the remote it is still one GUIDE press
               away from anywhere. */}
-          <HeroPill icon="calendar" text="TV Guide" onPress={() => safeNavigate("/epg")} />
+          <HeroPill icon="calendar" text="TV Guide" onPress={() => safeNavigate("/epg")} isPortrait={isPortrait} />
         </View>
       </View>
 
       {/* Browse Category Cards */}
-      <View style={S.browseSection}>
-        <View style={S.browseContainer}>
+      <View style={[
+        S.browseSection,
+        { paddingHorizontal: hPad },
+        isPortrait ? {
+          flex: 0,
+          flexGrow: 0,
+          marginBottom: 16,
+        } : (!Platform.isTV && {
+          flex: 1,
+          marginBottom: insets.bottom + (isTablet ? 16 : 12),
+        })
+      ]}>
+        <View style={[
+          S.browseContainer,
+          isPortrait ? { flexDirection: "column", gap: 12 } : (!Platform.isTV && { gap: 16 })
+        ]}>
           {(
             [
               // Bundled rather than fetched: these three are the first thing on
@@ -245,33 +370,64 @@ export default function DashboardScreen() {
               // TV: no fixed height — `flex: 1` shares the row's width and
               // the height comes from the parent stretching, so the row fits
               // whatever space is left instead of overflowing the screen.
-              style={S.browseCard}
+              style={[
+                S.browseCard,
+                isPortrait && {
+                  flex: 0,
+                  height: portraitCardHeight,
+                  paddingHorizontal: 0,
+                  paddingVertical: 0,
+                },
+                !isPortrait && !Platform.isTV && {
+                  paddingHorizontal: 0,
+                  paddingVertical: 0,
+                }
+              ]}
             >
               {(focused) => (
                 <View
                   style={[
                     S.cardBorder,
+                    !Platform.isTV && { borderRadius: 16 },
                     focused && S.cardBorderFocused,
-                    focused && { transform: [{ scale: 1.04 }] }
+                    focused && { transform: [{ scale: 1.03 }] }
                   ]}
                 >
-                  <View style={S.browseCardInner}>
-                    <Image source={cat.img} resizeMode="cover" style={{ width: undefined, height: undefined, flex: 1, backgroundColor: '#0000' }} />
+                  <View style={[
+                    S.browseCardInner,
+                    !Platform.isTV && { borderRadius: 16 }
+                  ]}>
+                    <Image source={cat.img} resizeMode="cover" style={{ width: "100%", height: "100%", flex: 1, backgroundColor: '#0000' }} />
 
                     {/* Dark gradient overlay to soften poster collage and ensure maximum legibility */}
                     <LinearGradient
                       colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.35)", "rgba(8,8,12,0.92)"]}
-                      locations={[0, 0.5, 1]}
+                      locations={[0, 0.45, 1]}
                       style={StyleSheet.absoluteFillObject}
                     />
 
                     {/* Text container sitting on top at the bottom with NO icon background */}
-                    <View style={S.browseCardContent}>
+                    <View style={[
+                      S.browseCardContent,
+                      !Platform.isTV && {
+                        padding: isPortrait ? 14 : 16,
+                        paddingBottom: isPortrait ? 14 : 16,
+                        gap: 8,
+                      }
+                    ]}>
                       <DynamicIcon name={cat.icon}
-                        size={ps(2.2)}
+                        size={!Platform.isTV ? (isPortrait ? 20 : (isTablet ? 22 : 20)) : ps(2.2)}
                         color={focused ? "#FFFFFF" : "rgba(255,255,255,0.75)"}
                       />
-                      <Text style={[S.browseCardTitle, focused && S.browseCardTitleFocused]}>{cat.title}</Text>
+                      <Text style={[
+                        S.browseCardTitle,
+                        !Platform.isTV && {
+                          fontSize: isPortrait ? 16 : (isTablet ? 18 : 16),
+                        },
+                        focused && S.browseCardTitleFocused
+                      ]}>
+                        {cat.title}
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -297,7 +453,34 @@ export default function DashboardScreen() {
 
         {isLoading && <LoadingOverlay message="Refreshing your library..." />}
 
-        <View style={[S.body, { paddingTop: insets.top + ph(2) }]}>{dashboardContent}</View>
+        {isPortrait ? (
+          <ScrollView
+            style={S.body}
+            contentContainerStyle={[
+              S.scrollContent,
+              {
+                paddingTop: Math.max(insets.top, 14),
+                paddingBottom: insets.bottom + 20,
+              }
+            ]}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            {dashboardContent}
+          </ScrollView>
+        ) : (
+          <View
+            style={[
+              S.body,
+              {
+                paddingTop: insets.top + (!Platform.isTV ? (isTablet ? 12 : 8) : ph(2)),
+                paddingBottom: insets.bottom + (!Platform.isTV ? (isTablet ? 12 : 8) : 10),
+              }
+            ]}
+          >
+            {dashboardContent}
+          </View>
+        )}
       </View>
 
       {/* ── Play Modal ────────────────────────────────────────────────────── */}
@@ -380,9 +563,14 @@ const S = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000000",
   },
-  /** TV: the non-scrolling column. */
+  /** TV: the non-scrolling column. On mobile portrait it becomes the ScrollView container. */
   body: {
     flex: 1,
+  },
+  /** Flex column used as ScrollView contentContainerStyle in portrait. */
+  scrollContent: {
+    flexGrow: 1,
+    flexDirection: "column",
   },
   backgroundArea: {
     // Full-bleed. The old ph(70) cap ended the backdrop 70% down the screen and
@@ -408,7 +596,7 @@ const S = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: RAIL_H_PAD,
+    // paddingHorizontal is applied dynamically in render (hPad) to respond to orientation
     marginBottom: ph(1.8),
     marginTop: ph(1.5),
   },
@@ -462,7 +650,7 @@ const S = StyleSheet.create({
 
   // ── Hero ──
   heroSection: {
-    paddingHorizontal: RAIL_H_PAD,
+    // paddingHorizontal is applied dynamically in render (hPad)
     maxWidth: pw(72),
     position: "relative",
     flex: 1,
@@ -536,7 +724,7 @@ const S = StyleSheet.create({
 
   // Browse Section ──
   browseSection: {
-    paddingHorizontal: RAIL_H_PAD,
+    // paddingHorizontal is applied dynamically in render (hPad)
     flex: 1.6,
     marginBottom: ph(3.5),
   },

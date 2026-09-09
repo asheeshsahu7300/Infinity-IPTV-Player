@@ -1,13 +1,38 @@
 import { Dimensions, Platform } from 'react-native';
 
-const { width: W, height: H } = Dimensions.get("window");
+import { isTablet } from "../utils/tabletUtils";
+
+const winDims = Dimensions.get("window");
+
+// Baseline reference dimensions:
+// Design system tokens (pw, ph, ps) are calibrated for a landscape reference canvas (TV / tablet).
+// When the app is launched in portrait on a tablet or phone, winDims.width is the short edge and
+// winDims.height is the long edge.
+// Normalizing W to the long edge and H to the short edge ensures that launching in portrait produces
+// the exact same design-token metrics as launching in landscape, preventing layout distortion.
+const W = Math.max(winDims.width, winDims.height);
+const H = Math.min(winDims.width, winDims.height);
 
 const IS_TV =
   Platform.isTV ||
   (Platform.OS === 'android' && W > 1000) ||
   (Platform.OS === 'web' && W > 800);
 
-const TV_SCALE = IS_TV ? 1.3 : 1;
+/**
+ * The TV bump, worn by tablets too.
+ *
+ * `IS_TV` keys off `W > 1000` on Android only, so on its own it misses every
+ * iPad and every ~960dp Android tablet — those took the phone tier and
+ * rendered a third smaller than the box, for no reason a viewer could see.
+ * `isTablet` (shortest-side, so orientation-stable) covers them without
+ * teaching `IS_TV` to claim a tablet is a TV; see `utils/tabletUtils`.
+ *
+ * The multiplier is deliberately the *same* 1.3 on a tablet as on a box
+ * rather than a tablet-specific value. `ps` is viewport-relative, so an
+ * identical multiplier is precisely what makes a tablet a scaled-down TV
+ * rather than a differently-proportioned screen.
+ */
+const TV_SCALE = IS_TV || isTablet ? 1.3 : 1;
 
 export const FONT_FAMILY = "Inter";
 

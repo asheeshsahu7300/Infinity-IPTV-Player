@@ -17,6 +17,7 @@ import {
 import { FocusMemory } from "./FocusMemory";
 import { useIsFocusTrapped, InsideOverlayContext, NextFocusTags } from "./FocusTrapContext";
 import { useDPad, DPAD_PRIORITY } from "./useDPad";
+import { remoteFocusEnabled } from "../utils/tabletUtils";
 
 export interface FocusableProps {
   children?: React.ReactNode | ((focused: boolean) => React.ReactNode);
@@ -34,6 +35,7 @@ export interface FocusableProps {
   ringOnFocus?: boolean;
 
   hasTVPreferredFocus?: boolean;
+
 
   nextFocusUp?: number;
   nextFocusDown?: number;
@@ -99,6 +101,17 @@ export const Focusable = forwardRef<View, FocusableProps>(
     const [focused, setFocused] = useState(false);
     // Mirror of `focused` readable from timers without stale-closure risk.
     const focusedRef = useRef(false);
+    /**
+     * Focus as the UI should *show* it.
+     *
+     * A tablet has no remote, so it must never paint a focus ring, apply a
+     * `focusStyle`, or hand `true` to a `children(focused)` render prop — a
+     * highlighted tile there is a selection the viewer never made. Gating this
+     * one derived value covers the ring, the call-site focus styles and the
+     * `useDPad` subscription below at once, because all three read it.
+     */
+    const showFocus = remoteFocusEnabled && focused;
+
     const isFocusTrapped = useIsFocusTrapped();
     const isDisabled = disabled;
 
@@ -172,6 +185,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
     // user was somewhere else entirely. That is the focus-jumping.
     const didAutoFocusRef = useRef(false);
     React.useEffect(() => {
+      if (!remoteFocusEnabled) return;
       if (!hasTVPreferredFocus || isInert) return;
       if (didAutoFocusRef.current) return;
       didAutoFocusRef.current = true;
@@ -188,6 +202,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
     const [restorePulse, setRestorePulse] = useState(false);
 
     React.useEffect(() => {
+      if (!remoteFocusEnabled) return;
       if (isFocusTrapped) {
         wasTrappedRef.current = true;
       } else if (wasTrappedRef.current) {
@@ -263,11 +278,24 @@ export const Focusable = forwardRef<View, FocusableProps>(
     const handlePress = useCallback(() => {
       if (isInert) return;
       const now = Date.now();
-      // Global press lock: ignore any press across all components if another press occurred within 350ms
-      if (now - globalLastPressTime < 350) return;
-      // Block accidental press bleed-through when focus was acquired very recently (< 250ms)
-      // (e.g. when category or search selection auto-focuses the first grid item)
-      if (now - focusTimeRef.current < 250) return;
+      /**
+       * The first two guards are remote-only.
+       *
+       * `globalLastPressTime` is a lock shared by every Focusable in the app:
+       * after any press, all the others ignore presses for 350ms. That defends
+       * against a remote's OK key double-firing (ACTION_DOWN then ACTION_UP),
+       * which touch never does -- and under touch it is felt directly as lag,
+       * because tapping one tile deadens every other tile for a third of a
+       * second. The focus-bleed guard likewise defends against auto-focus
+       * landing a stray press, and auto-focus does not run without a remote.
+       *
+       * The per-component guard stays on both: a fast double-tap really can
+       * activate one target twice, and 200ms on a single target is not felt.
+       */
+      if (remoteFocusEnabled) {
+        if (now - globalLastPressTime < 350) return;
+        if (now - focusTimeRef.current < 250) return;
+      }
       if (now - lastPressTimeRef.current < 200) return;
       globalLastPressTime = now;
       lastPressTimeRef.current = now;
@@ -305,8 +333,10 @@ export const Focusable = forwardRef<View, FocusableProps>(
       if (isInert || !onLongPress) return;
       const now = Date.now();
       // Shares the global press lock with handlePress, so a remote that does
-      // report both cannot land a press and a long press on one hold.
-      if (now - globalLastPressTime < 350) return;
+      // report both cannot land a press and a long press on one hold. Skipped
+      // under touch for the reason given there, and because Pressable raises
+      // either onPress or onLongPress for a gesture, never both.
+      if (remoteFocusEnabled && now - globalLastPressTime < 350) return;
       globalLastPressTime = now;
       lastPressTimeRef.current = now;
       onLongPress();
@@ -332,14 +362,14 @@ export const Focusable = forwardRef<View, FocusableProps>(
       {
         // Either handler is reason enough to listen: a tile that only offers a
         // long press (favourite, context menu) would otherwise never be heard.
-        enabled: focused && !isInert && Boolean(onPress || onLongPress || hasDirectionalTraps),
+        enabled: showFocus && !isInert && Boolean(onPress || onLongPress || hasDirectionalTraps),
         priority: isInsideOverlay ? DPAD_PRIORITY.OVERLAY + 10 : (hasDirectionalTraps ? DPAD_PRIORITY.SCREEN + 2 : DPAD_PRIORITY.SCREEN),
       }
     );
 
     const content =
       typeof children === "function"
-        ? children(focused)
+        ? children(showFocus)
         : children;
 
     const resolvedSelfTag = selfTag ?? (nativeRef.current ? (findNodeHandle(nativeRef.current) ?? undefined) : undefined);
@@ -355,13 +385,25 @@ export const Focusable = forwardRef<View, FocusableProps>(
         ref={nativeRef}
         testID={testID}
         disabled={isInert}
+        /**
+         * Always the plain inert check -- never gated on `remoteFocusEnabled`.
+         *
+         * `focusable={false}` is not just a focus hint. ReactViewManager's
+         * setFocusable does `setOnClickListener(null)` and `isClickable = false`
+         * on the false branch, and RN-tvos delivers Pressability's press through
+         * onClick -- so switching it off on tablets severed touch, press and
+         * (with focus-driven scrolling also off) scrolling, all at once.
+         *
+         * Suppressing the focus *visuals* is `showFocus`'s job alone; the native
+         * focusability must stay as it is on the box.
+         */
         focusable={!isInert}
         accessible
         accessibilityRole={accessibilityRole}
         accessibilityLabel={accessibilityLabel}
         accessibilityHint={accessibilityHint}
         accessibilityState={{ disabled: isDisabled, selected }}
-        hasTVPreferredFocus={hasTVPreferredFocus || restorePulse}
+        hasTVPreferredFocus={remoteFocusEnabled && (hasTVPreferredFocus || restorePulse)}
         nextFocusUp={effUp}
         nextFocusDown={effDown}
         nextFocusLeft={effLeft}
@@ -375,8 +417,8 @@ export const Focusable = forwardRef<View, FocusableProps>(
           // it instead of resizing the element and reflowing the row.
           ringOnFocus && styles.ringReserved,
           style,
-          focused && ringOnFocus && styles.focused,
-          focused && focusStyle,
+          showFocus && ringOnFocus && styles.focused,
+          showFocus && focusStyle,
           pressed && styles.pressed,
         ]}
       >

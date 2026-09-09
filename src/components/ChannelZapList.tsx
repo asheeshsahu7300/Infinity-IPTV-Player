@@ -10,10 +10,12 @@
 // channel names makes them tune in to find out.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View, Pressable, useWindowDimensions } from 'react-native';
 import { Image } from "expo-image";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Focusable, FocusGroup, Overlay } from "../tv";
 import { THEME, ph, ps, pw } from "../theme/tokens";
+import { isTablet } from "../utils/tabletUtils";
 import { epgService } from "../services/epgService";
 import { parentalControl } from "../services/parentalControl";
 import type { Channel } from "../store/portalStore";
@@ -42,6 +44,7 @@ const ZapRow = React.memo(
     onSelect,
     onFocus,
     epgVersion,
+    rowHeight,
   }: {
     channel: Channel;
     index: number;
@@ -50,6 +53,7 @@ const ZapRow = React.memo(
     onSelect: (channel: Channel, index: number) => void;
     onFocus: (index: number) => void;
     epgVersion: number;
+    rowHeight?: number;
   }) {
     const nowNext = useMemo(
       () => epgService.nowNext(channel),
@@ -71,19 +75,28 @@ const ZapRow = React.memo(
         onFocus={() => onFocus(index)}
         hasTVPreferredFocus={preferFocus}
         ringOnFocus={false}
-        style={S.rowWrapper}
+        style={[S.rowWrapper, rowHeight != null && { height: rowHeight }]}
         accessibilityLabel={`Channel ${displayNum} ${displayName}`}
       >
         {(focused) => (
-          <View style={[S.row, isCurrent && S.rowCurrent, focused && S.rowFocused]}>
-            <Text style={[S.rowNumber, (focused || isCurrent) && S.rowTextFocused]}>
+          <View style={[
+            S.row,
+            isTablet && { paddingVertical: 6, paddingHorizontal: 10, gap: 8 },
+            isCurrent && S.rowCurrent,
+            focused && S.rowFocused
+          ]}>
+            <Text style={[
+              S.rowNumber,
+              isTablet && { fontSize: 11, minWidth: 20 },
+              (focused || isCurrent) && S.rowTextFocused
+            ]}>
               {displayNum}
             </Text>
 
-            <View style={S.rowLogo}>
+            <View style={[S.rowLogo, isTablet && { width: 32, height: 24 }]}>
               {locked ? (
                 <Lock
-                  size={ps(1.1)}
+                  size={isTablet ? 14 : ps(1.1)}
                   color={focused ? "#000" : "rgba(255,255,255,0.5)"}
                 />
               ) : channel.logo ? (
@@ -95,18 +108,18 @@ const ZapRow = React.memo(
                 />
               ) : (
                 <Tv
-                  size={ps(1.1)}
+                  size={isTablet ? 14 : ps(1.1)}
                   color={focused ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.2)"}
                 />
               )}
             </View>
 
             <View style={S.rowText}>
-              <Text style={[S.rowName, (focused || isCurrent) && S.rowTextActive]} numberOfLines={1}>
+              <Text style={[S.rowName, isTablet && { fontSize: 13 }, (focused || isCurrent) && S.rowTextActive]} numberOfLines={1}>
                 {displayName}
               </Text>
               {nowNext?.now?.title ? (
-                <Text style={[S.rowNow, (focused || isCurrent) && S.rowNowActive]} numberOfLines={1}>
+                <Text style={[S.rowNow, isTablet && { fontSize: 10.5 }, (focused || isCurrent) && S.rowNowActive]} numberOfLines={1}>
                   {nowNext.now.title}
                 </Text>
               ) : null}
@@ -114,7 +127,7 @@ const ZapRow = React.memo(
 
             {isCurrent ? (
               <View style={S.playingDot}>
-                <Volume2 size={ps(1)} color={(focused || isCurrent) ? "#111" : "#fff"} />
+                <Volume2 size={isTablet ? 14 : ps(1)} color={(focused || isCurrent) ? "#111" : "#fff"} />
               </View>
             ) : null}
           </View>
@@ -127,6 +140,7 @@ const ZapRow = React.memo(
     prev.channel?.name === next.channel?.name &&
     prev.isCurrent === next.isCurrent &&
     prev.preferFocus === next.preferFocus &&
+    prev.rowHeight === next.rowHeight &&
     prev.epgVersion === next.epgVersion
 );
 
@@ -198,6 +212,14 @@ export function ChannelZapList({
     return () => clearTimeout(timer);
   }, [visible, safeIndex, channels.length, scrollToIndex]);
 
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const isPortrait = isTablet && windowHeight > windowWidth;
+  const panelWidth = isTablet
+    ? (isPortrait ? Math.min(320, windowWidth * 0.8) : Math.min(320, windowWidth * 0.35))
+    : pw(23);
+  const rowHeight = isTablet ? 54 : ROW_HEIGHT;
+
   if (!visible) return null;
 
   return (
@@ -208,8 +230,13 @@ export function ChannelZapList({
       style={S.overlayBackdrop}
       contentStyle={S.overlayContent}
     >
-      <View style={S.panel}>
-        <View style={S.header}>
+      <Pressable
+        style={StyleSheet.absoluteFillObject}
+        onPress={onClose}
+        accessibilityLabel="Close channel list"
+      />
+      <View style={[S.panel, isTablet && { width: panelWidth, minWidth: undefined, maxWidth: 360 }]}>
+        <View style={[S.header, isTablet && { paddingTop: Math.max(16, insets.top + 8) }]}>
           <Text style={S.headerTitle} numberOfLines={1}>
             {categoryName || "Channels"}
           </Text>
@@ -228,7 +255,7 @@ export function ChannelZapList({
               style={S.list}
               contentContainerStyle={[
                 S.listContent,
-                { paddingBottom: Math.max(0, ph(82) - ROW_HEIGHT) },
+                { paddingBottom: isTablet ? insets.bottom + 20 : Math.max(0, ph(82) - ROW_HEIGHT) },
               ]}
               showsVerticalScrollIndicator={false}
             >
@@ -242,13 +269,14 @@ export function ChannelZapList({
                   onSelect={onSelect}
                   onFocus={handleItemFocus}
                   epgVersion={epgVersion}
+                  rowHeight={rowHeight}
                 />
               ))}
             </ScrollView>
           </FocusGroup>
         )}
 
-        <View style={S.footer}>
+        <View style={[S.footer, isTablet && { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
           <CornerDownLeft size={ps(1)} color="rgba(255,255,255,0.4)" style={{ marginRight: ps(0.4) }} />
           <Text style={S.footerHint}>OK to tune · BACK to close</Text>
         </View>

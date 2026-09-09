@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { View, StyleSheet, ActivityIndicator, Dimensions, Platform, FlatList, InteractionManager, BackHandler, Animated, Pressable , TextInput as RNTextInput} from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Dimensions, Platform, FlatList, InteractionManager, BackHandler, Animated, Pressable , TextInput as RNTextInput, useWindowDimensions } from 'react-native';
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -13,9 +13,11 @@ import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { cacheManager } from "../src/services/cacheManager";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { TABLET_TILE_MAX_WIDTH, TILE_MAX_WIDTH, isTablet, SIDEBAR_WIDTH } from "../src/utils/tabletUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import CategorySidebar from "../src/components/CategorySidebar";
+import CategoryPills from "../src/components/CategoryPills";
 import { AppBootManager } from "../src/services/AppBootManager";
 import { filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
 import { useNetworkActivity } from "../src/services/networkActivity";
@@ -35,8 +37,6 @@ import { Text } from '../src/components/Text';
 import { TextInput } from '../src/components/TextInput';
 
 
-
-const { width: SCREEN_WIDTH_VAL, height: SCREEN_HEIGHT_VAL } = Dimensions.get("window");
 
 /** Namespace for this screen's focus memory. */
 const SCREEN_KEY = "vod";
@@ -114,6 +114,11 @@ const S = StyleSheet.create({
     textAlignVertical: "center",
   },
   body: { flex: 1, flexDirection: "row", marginTop: 10 },
+  portraitPillsWrapper: {
+    paddingVertical: 4,
+    marginBottom: 6,
+  },
+  /** Pills above the grid instead of a sidebar beside it. */
   gridArea: { flex: 1, overflow: "hidden" },
   list: { paddingHorizontal: pw(1.2), paddingTop: 8, paddingBottom: 8 },
   movieRow: { flexDirection: "row", overflow: "visible" },
@@ -124,6 +129,15 @@ const S = StyleSheet.create({
     overflow: "visible",
   },
   movieCardContainer: {
+    // The tile, capped and centred on a tablet.
+    //
+    // The cap sits here rather than on `posterFrame` because the title is a
+    // sibling of the poster, not a child: capping only the poster left the
+    // title spanning the full 201dp slot and overhanging it either side.
+    // Capping the container moves poster and title together, and the slack
+    // becomes even gap instead of piling up at the end of the row.
+    width: isTablet ? TABLET_TILE_MAX_WIDTH : "100%",
+    alignSelf: "center",
     borderRadius: 16,
     overflow: "visible",
   },
@@ -370,6 +384,7 @@ const MovieItem = React.memo(function MovieItem({
   onFavoritePress,
   isFavorite,
   itemWidth,
+  tileWidth,
   posterHeight,
   isFocusedItem,
   locked,
@@ -383,6 +398,7 @@ const MovieItem = React.memo(function MovieItem({
   onFavoritePress: (item: VODItem) => void;
   isFavorite: boolean;
   itemWidth: number;
+  tileWidth: number;
   posterHeight: number;
   isFocusedItem?: boolean;
   locked?: boolean;
@@ -445,7 +461,15 @@ const MovieItem = React.memo(function MovieItem({
         accessibilityHint={isFavorite ? "In favourites. Hold to remove" : "Hold to add to favourites"}
       >
         {(focused) => (
-          <View style={[S.movieCardContainer, focused && S.movieCardContainerFocused]}>
+          <View
+            style={[
+              S.movieCardContainer,
+              // Overrides the style's landscape cap: in portrait the column
+              // count already sizes the tile, so it fills its slot.
+              { width: tileWidth },
+              focused && S.movieCardContainerFocused,
+            ]}
+          >
             <View
               style={[
                 S.posterFrame,
@@ -510,6 +534,7 @@ const MovieItem = React.memo(function MovieItem({
     prevProps.isFocusedItem === nextProps.isFocusedItem &&
     prevProps.isFavorite === nextProps.isFavorite &&
     prevProps.itemWidth === nextProps.itemWidth &&
+    prevProps.tileWidth === nextProps.tileWidth &&
     prevProps.posterHeight === nextProps.posterHeight &&
     prevProps.locked === nextProps.locked &&
     prevProps.resumeVersion === nextProps.resumeVersion &&
@@ -526,6 +551,7 @@ interface MovieRowProps {
   totalRows: number;
   numColumns: number;
   itemWidth: number;
+  tileWidth: number;
   posterHeight: number;
   rowHeight: number;
   onPress: (item: VODItem) => void;
@@ -542,6 +568,7 @@ const MovieRow = React.memo(function MovieRow({
   totalRows,
   numColumns,
   itemWidth,
+  tileWidth,
   posterHeight,
   rowHeight,
   onPress,
@@ -568,6 +595,7 @@ const MovieRow = React.memo(function MovieRow({
             onFavoritePress={onFavoritePress}
             isFavorite={favorites.includes(movie.id)}
             itemWidth={itemWidth}
+            tileWidth={tileWidth}
             posterHeight={posterHeight}
             isFocusedItem={isTargetFocus}
             locked={parentalControl.isRestricted("vod", movie)}
@@ -582,6 +610,7 @@ const MovieRow = React.memo(function MovieRow({
   if (prev.row !== next.row) return false;
   if (prev.rowIndex !== next.rowIndex) return false;
   if (prev.totalRows !== next.totalRows) return false;
+  if (prev.tileWidth !== next.tileWidth) return false;
   if (prev.itemWidth !== next.itemWidth) return false;
   if (prev.posterHeight !== next.posterHeight) return false;
   if (prev.rowHeight !== next.rowHeight) return false;
@@ -737,23 +766,37 @@ export default function VODScreen() {
     if (trapTimeoutRef.current) clearTimeout(trapTimeoutRef.current);
   }, []);
 
-  const numColumns = 5;
-  const SIDEBAR_WIDTH_VAL = 240;
-  const GRID_H_PADDING = pw(1.2) * 2;
+  const { width: SCREEN_WIDTH_VAL, height: SCREEN_HEIGHT_VAL } = useWindowDimensions();
+  const isPortrait = !Platform.isTV && SCREEN_HEIGHT_VAL > SCREEN_WIDTH_VAL;
+
+  const numColumns = isPortrait ? (SCREEN_WIDTH_VAL >= 600 ? 4 : 3) : 5;
+
+  const SIDEBAR_WIDTH_VAL = isPortrait ? 0 : SIDEBAR_WIDTH;
+  const GRID_H_PADDING = isPortrait ? 16 : pw(1.2) * 2;
   const itemWidth = Math.floor(
     (SCREEN_WIDTH_VAL - SIDEBAR_WIDTH_VAL - GRID_H_PADDING) / numColumns
   );
 
-  // Exactly 2 rows visible in viewport
+  const tileWidth = Math.min(itemWidth - 10, TILE_MAX_WIDTH);
+
+  // Exactly 2 rows visible in viewport in landscape
   const HEADER_HEIGHT_VAL = 56;
   const BODY_MARGIN_TOP = 10;
   const GRID_V_PADDING = 16;
   const AVAILABLE_VIEWPORT_HEIGHT =
     SCREEN_HEIGHT_VAL - insets.top - insets.bottom - HEADER_HEIGHT_VAL - BODY_MARGIN_TOP - GRID_V_PADDING;
-  const ROW_HEIGHT = Math.floor(AVAILABLE_VIEWPORT_HEIGHT / 2);
-  const EXACT_GRID_HEIGHT = ROW_HEIGHT * 2 + GRID_V_PADDING;
   const TITLE_SPACE = 28;
-  const posterHeight = Math.floor(ROW_HEIGHT - TITLE_SPACE - 8);
+
+  // In landscape, 2 rows fill the viewport cleanly.
+  // In portrait, compute posterHeight from tileWidth (2:3 poster aspect ratio) and allow natural scrolling.
+  const targetVisibleRows = 2;
+  const posterHeight = isPortrait
+    ? Math.floor(tileWidth * 1.5)
+    : Math.floor(Math.floor(AVAILABLE_VIEWPORT_HEIGHT / targetVisibleRows) - TITLE_SPACE - 8);
+  const ROW_HEIGHT = isPortrait
+    ? posterHeight + TITLE_SPACE + 14
+    : Math.floor(AVAILABLE_VIEWPORT_HEIGHT / targetVisibleRows);
+  const EXACT_GRID_HEIGHT = ROW_HEIGHT * targetVisibleRows + GRID_V_PADDING;
 
   const [playModalVisible, setPlayModalVisible] = useState(false);
   const [selectedVod, setSelectedVod] = useState<VODItem | null>(null);
@@ -1264,6 +1307,7 @@ export default function VODScreen() {
         totalRows={chunkedMovies.length}
         numColumns={numColumns}
         itemWidth={itemWidth}
+        tileWidth={tileWidth}
         posterHeight={posterHeight}
         rowHeight={ROW_HEIGHT}
         onPress={handleVodPress}
@@ -1274,7 +1318,7 @@ export default function VODScreen() {
         parentalVersion={parentalVersion}
       />
     ),
-    [chunkedMovies.length, numColumns, itemWidth, posterHeight, ROW_HEIGHT, handleVodPress, handleVodFocus, handleFavoritePress, favorites.vod, resumeVersion, parentalVersion]
+    [chunkedMovies.length, numColumns, itemWidth, tileWidth, posterHeight, ROW_HEIGHT, handleVodPress, handleVodFocus, handleFavoritePress, favorites.vod, resumeVersion, parentalVersion]
   );
 
 
@@ -1366,7 +1410,7 @@ export default function VODScreen() {
   }, [isScreenFocused, playModalVisible, pinTarget, isSearchOpen]);
 
   return (
-    <View style={[S.container, { paddingTop: insets.top }]}>
+    <View style={[S.container, { paddingTop: isPortrait ? Math.max(insets.top, 24) + 8 : insets.top }]}>
       <CinematicBackground />
 
       <View
@@ -1461,27 +1505,41 @@ export default function VODScreen() {
           </View>
         </View>
 
-        <View style={[S.body, { height: EXACT_GRID_HEIGHT }]}>
-          <FocusGroup style={{ width: SIDEBAR_WIDTH_VAL, height: EXACT_GRID_HEIGHT }}>
-            <CategorySidebar
+        {/* ─── Category Pills (Portrait Mode) ─── */}
+        {isPortrait && (
+          <View style={S.portraitPillsWrapper}>
+            <CategoryPills
               categories={sidebarCategories}
               selectedId={selectedCategory || (sidebarCategories[0]?.id ?? "")}
               onSelect={handleCategorySelect}
-              onFocus={handleCategoryFocus}
-              width={SIDEBAR_WIDTH_VAL}
-              height={EXACT_GRID_HEIGHT}
-              autoFocusFirst={focusSidebar}
             />
-          </FocusGroup>
-          <View style={[S.gridArea, { height: EXACT_GRID_HEIGHT }]}>
+          </View>
+        )}
+
+        <View style={[S.body, isPortrait ? { flex: 1, height: undefined, flexDirection: "column", marginTop: 2 } : { height: EXACT_GRID_HEIGHT }]}>
+          {!isPortrait && (
+            <FocusGroup style={{ width: SIDEBAR_WIDTH_VAL, height: EXACT_GRID_HEIGHT }}>
+              <CategorySidebar
+                categories={sidebarCategories}
+                selectedId={selectedCategory || (sidebarCategories[0]?.id ?? "")}
+                onSelect={handleCategorySelect}
+                onFocus={handleCategoryFocus}
+                width={SIDEBAR_WIDTH_VAL}
+                height={EXACT_GRID_HEIGHT}
+                autoFocusFirst={focusSidebar}
+              />
+            </FocusGroup>
+          )}
+
+          <View style={[S.gridArea, isPortrait ? { flex: 1, height: undefined } : { height: EXACT_GRID_HEIGHT }]}>
             <FlatList
               ref={flatListRef}
               data={chunkedMovies}
               renderItem={renderRow}
               keyExtractor={(item) => item.id}
               getItemLayout={getItemLayout}
-              style={{ height: EXACT_GRID_HEIGHT, overflow: "hidden" }}
-              contentContainerStyle={[S.list, { paddingBottom: ROW_HEIGHT }, (isLoading || chunkedMovies.length === 0) && { flexGrow: 1 }]}
+              style={isPortrait ? { flex: 1 } : { height: EXACT_GRID_HEIGHT, overflow: "hidden" }}
+              contentContainerStyle={[S.list, { paddingBottom: insets.bottom + 24 }, (isLoading || chunkedMovies.length === 0) && { flexGrow: 1 }]}
               removeClippedSubviews={false}
               extraData={filteredMovies.length}
               initialNumToRender={6}

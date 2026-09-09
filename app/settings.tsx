@@ -12,6 +12,7 @@ import { epgService } from '../src/services/epgService';
 import { hiddenCategories } from '../src/services/hiddenCategories';
 import PinPrompt from '../src/components/PinPrompt';
 import { THEME, pw, ph, psRaw as ps } from '../src/theme/tokens';
+import { isTablet } from '../src/utils/tabletUtils';
 import { Focusable, FocusGroup, FocusMemory, useFocusRestore } from '../src/tv';
 import { CinematicBackground } from '../src/components/CinematicBackground';
 import { useDialog } from '../src/components/ConfirmDialog';
@@ -402,13 +403,19 @@ export default function SettingsScreen() {
       <CinematicBackground />
 
       {/* ── Header ── */}
-      <View style={S.header}>
+      <View style={[S.header, isTablet && { paddingHorizontal: 24, paddingTop: ph(3) }]}>
         <Text style={S.headerTitle}>Settings</Text>
       </View>
 
       <ScrollView
         style={S.content}
-        contentContainerStyle={S.scrollContent}
+        contentContainerStyle={[
+          S.scrollContent,
+          isTablet && {
+            paddingHorizontal: 24,
+            paddingBottom: insets.bottom + 36,
+          },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         removeClippedSubviews={false}
@@ -901,7 +908,7 @@ const S = StyleSheet.create({
     gap: pw(1.5),
   },
   tileWrapper: {
-    width: '31.8%',
+    width: isTablet ? '48.5%' : '31.8%',
     borderRadius: 18,
     marginBottom: ph(1.5),
   },

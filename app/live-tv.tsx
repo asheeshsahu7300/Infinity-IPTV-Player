@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { View, StyleSheet, ActivityIndicator, Dimensions, FlatList, Platform, InteractionManager, BackHandler, Pressable , TextInput as RNTextInput} from 'react-native';
+import { View, StyleSheet, ActivityIndicator, FlatList, Platform, InteractionManager, BackHandler, Pressable , TextInput as RNTextInput, useWindowDimensions } from 'react-native';
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,7 +12,9 @@ import { XtreamApi } from "../src/services/xtreamApi";
 import { StreamManager } from "../src/services/StreamManager";
 import { cacheManager } from "../src/services/cacheManager";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { TABLET_TILE_MAX_WIDTH, TILE_MAX_WIDTH, isTablet, SIDEBAR_WIDTH } from "../src/utils/tabletUtils";
 import CategorySidebar from "../src/components/CategorySidebar";
+import CategoryPills from "../src/components/CategoryPills";
 import { Focusable, FocusGroup, FocusMemory, STB_PRIORITY, useInitialFocusPulse, useStbKeys, useIsFocusTrapped } from "../src/tv";
 import { useNetworkActivity } from "../src/services/networkActivity";
 import { AppBootManager } from "../src/services/AppBootManager";
@@ -32,8 +34,6 @@ import { Text } from '../src/components/Text';
 import { TextInput } from '../src/components/TextInput';
 
 
-
-const { width: SCREEN_WIDTH_VAL, height: SCREEN_HEIGHT_VAL } = Dimensions.get("window");
 
 /** Namespace for this screen's focus memory. */
 const SCREEN_KEY = "live-tv";
@@ -122,6 +122,11 @@ const S = StyleSheet.create({
     flexDirection: "row",
     marginTop: 10,
   },
+  portraitPillsWrapper: {
+    paddingVertical: 4,
+    marginBottom: 6,
+  },
+  /** Pills above the grid instead of a sidebar beside it. */
   gridArea: {
     flex: 1,
     overflow: "hidden",
@@ -317,6 +322,7 @@ const ChannelCard = React.memo(function ChannelCard({
   onFocus,
   isFocusedItem,
   itemWidth,
+  tileWidth,
   cardHeight,
   channelNumber,
   locked,
@@ -329,6 +335,7 @@ const ChannelCard = React.memo(function ChannelCard({
   onFocus?: (item: Channel, index?: number) => void;
   isFocusedItem?: boolean;
   itemWidth: number;
+  tileWidth: number;
   cardHeight: number;
   channelNumber?: number;
   locked?: boolean;
@@ -369,7 +376,12 @@ const ChannelCard = React.memo(function ChannelCard({
           <View
             style={[
               S.cardBorder,
-              { height: cardHeight, width: itemWidth - 10 },
+              {
+                height: cardHeight,
+                // Capped and centred on a tablet, as with the poster grids.
+                width: tileWidth,
+                alignSelf: "center",
+              },
               focused && S.cardBorderFocused,
             ]}
           >
@@ -428,6 +440,7 @@ const ChannelCard = React.memo(function ChannelCard({
     prevProps.item.name === nextProps.item.name &&
     prevProps.isFocusedItem === nextProps.isFocusedItem &&
     prevProps.itemWidth === nextProps.itemWidth &&
+    prevProps.tileWidth === nextProps.tileWidth &&
     prevProps.cardHeight === nextProps.cardHeight &&
     prevProps.channelNumber === nextProps.channelNumber &&
     prevProps.locked === nextProps.locked &&
@@ -444,6 +457,7 @@ interface ChannelRowProps {
   totalRows: number;
   numColumns: number;
   itemWidth: number;
+  tileWidth: number;
   cardHeight: number;
   rowHeight: number;
   focusedId: string;
@@ -462,6 +476,7 @@ const ChannelRow = React.memo(function ChannelRow({
   totalRows,
   numColumns,
   itemWidth,
+  tileWidth,
   cardHeight,
   rowHeight,
   focusedId,
@@ -487,6 +502,7 @@ const ChannelRow = React.memo(function ChannelRow({
             item={channel}
             index={itemIndex}
             itemWidth={itemWidth}
+            tileWidth={tileWidth}
             cardHeight={cardHeight}
             channelNumber={channel.num && channel.num > 0 ? channel.num : channelNumbers.get(id)}
             locked={parentalControl.isChannelRestricted(channel)}
@@ -504,6 +520,7 @@ const ChannelRow = React.memo(function ChannelRow({
   if (prev.row !== next.row) return false;
   if (prev.rowIndex !== next.rowIndex) return false;
   if (prev.totalRows !== next.totalRows) return false;
+  if (prev.tileWidth !== next.tileWidth) return false;
   if (prev.itemWidth !== next.itemWidth) return false;
   if (prev.cardHeight !== next.cardHeight) return false;
   if (prev.rowHeight !== next.rowHeight) return false;
@@ -583,22 +600,36 @@ export default function LiveTVScreen() {
     }
   }, [searchQuery]);
 
-  // Sizing: 3 Rows full viewport height
-  const numColumns = 5;
-  const SIDEBAR_WIDTH_VAL = 240;
-  const GRID_H_PADDING = pw(1.2) * 2;
+  const { width: SCREEN_WIDTH_VAL, height: SCREEN_HEIGHT_VAL } = useWindowDimensions();
+  const isPortrait = !Platform.isTV && SCREEN_HEIGHT_VAL > SCREEN_WIDTH_VAL;
+
+  // Sizing: In landscape 5 columns. In portrait: 4 columns for tablets, 3 for phones
+  const numColumns = isPortrait ? (SCREEN_WIDTH_VAL >= 600 ? 4 : 3) : 5;
+
+  const SIDEBAR_WIDTH_VAL = isPortrait ? 0 : SIDEBAR_WIDTH;
+  const GRID_H_PADDING = isPortrait ? 16 : pw(1.2) * 2;
   const itemWidth = Math.floor(
     (SCREEN_WIDTH_VAL - SIDEBAR_WIDTH_VAL - GRID_H_PADDING) / numColumns
   );
+
+  const tileWidth = Math.min(itemWidth - 10, TILE_MAX_WIDTH);
 
   const HEADER_HEIGHT_VAL = 56;
   const BODY_MARGIN_TOP = 10;
   const GRID_V_PADDING = 16;
   const AVAILABLE_VIEWPORT_HEIGHT =
     SCREEN_HEIGHT_VAL - insets.top - insets.bottom - HEADER_HEIGHT_VAL - BODY_MARGIN_TOP - GRID_V_PADDING;
-  const ROW_HEIGHT = Math.floor(AVAILABLE_VIEWPORT_HEIGHT / VISIBLE_ROWS);
-  const EXACT_GRID_HEIGHT = ROW_HEIGHT * VISIBLE_ROWS + GRID_V_PADDING;
-  const cardHeight = Math.floor(ROW_HEIGHT - 12);
+
+  // On TV, VISIBLE_ROWS (3) rows fill the viewport.
+  // In landscape, 3 rows fit cleanly. In portrait, allow channel cards to scroll naturally.
+  const targetVisibleRows = isTablet ? 3 : VISIBLE_ROWS;
+  const ROW_HEIGHT = isPortrait
+    ? Math.floor(tileWidth + 48)
+    : Math.floor(AVAILABLE_VIEWPORT_HEIGHT / targetVisibleRows);
+  const EXACT_GRID_HEIGHT = ROW_HEIGHT * targetVisibleRows + GRID_V_PADDING;
+  const cardHeight = isPortrait
+    ? Math.floor(tileWidth)
+    : Math.floor(ROW_HEIGHT - 12);
 
   const PAGE_SIZE = numColumns * Math.ceil(28 / numColumns);
 
@@ -1281,6 +1312,7 @@ export default function LiveTVScreen() {
         totalRows={chunkedChannels.length}
         numColumns={numColumns}
         itemWidth={itemWidth}
+        tileWidth={tileWidth}
         cardHeight={cardHeight}
         rowHeight={ROW_HEIGHT}
         focusedId={focusedIdRef.current}
@@ -1293,7 +1325,7 @@ export default function LiveTVScreen() {
         parentalVersion={parentalVersion}
       />
     ),
-    [chunkedChannels.length, numColumns, itemWidth, cardHeight, ROW_HEIGHT, handleChannelPress, handleChannelLongPress, handleChannelFocus, channelNumbers, tunedFocusId, parentalVersion]
+    [chunkedChannels.length, numColumns, itemWidth, tileWidth, cardHeight, ROW_HEIGHT, handleChannelPress, handleChannelLongPress, handleChannelFocus, channelNumbers, tunedFocusId, parentalVersion]
   );
 
 
@@ -1312,7 +1344,7 @@ export default function LiveTVScreen() {
   }, []);
 
   return (
-    <View style={[S.container, { paddingTop: insets.top }]}>
+    <View style={[S.container, { paddingTop: isPortrait ? Math.max(insets.top, 24) + 8 : insets.top }]}>
       {/* ─── Header ─── */}
       <View style={S.header}>
         {/* Left spacer matching VOD & Series */}
@@ -1404,23 +1436,36 @@ export default function LiveTVScreen() {
         </View>
       </View>
 
-      {/* ─── Body: Sidebar + Grid (Exact 3 Rows Height) ─── */}
-      <View style={[S.body, { height: EXACT_GRID_HEIGHT }]}>
-        {/* Left sidebar */}
-        <FocusGroup style={{ width: SIDEBAR_WIDTH_VAL, height: EXACT_GRID_HEIGHT }}>
-          <CategorySidebar
+      {/* ─── Category Pills (Portrait Mode) ─── */}
+      {isPortrait && (
+        <View style={S.portraitPillsWrapper}>
+          <CategoryPills
             categories={sidebarCategories}
             selectedId={selectedCategory || (sidebarCategories[0]?.id ?? "")}
             onSelect={handleCategorySelect}
-            onFocus={handleCategoryFocus}
-            width={SIDEBAR_WIDTH_VAL}
-            height={EXACT_GRID_HEIGHT}
-            autoFocusFirst={focusSidebar}
           />
-        </FocusGroup>
+        </View>
+      )}
+
+      {/* ─── Body: Sidebar + Grid ─── */}
+      <View style={[S.body, isPortrait ? { flex: 1, height: undefined, flexDirection: "column", marginTop: 2 } : { height: EXACT_GRID_HEIGHT }]}>
+        {/* Left sidebar (Landscape only) */}
+        {!isPortrait && (
+          <FocusGroup style={{ width: SIDEBAR_WIDTH_VAL, height: EXACT_GRID_HEIGHT }}>
+            <CategorySidebar
+              categories={sidebarCategories}
+              selectedId={selectedCategory || (sidebarCategories[0]?.id ?? "")}
+              onSelect={handleCategorySelect}
+              onFocus={handleCategoryFocus}
+              width={SIDEBAR_WIDTH_VAL}
+              height={EXACT_GRID_HEIGHT}
+              autoFocusFirst={focusSidebar}
+            />
+          </FocusGroup>
+        )}
 
         {/* Right channel grid */}
-        <View style={[S.gridArea, { height: EXACT_GRID_HEIGHT }]}>
+        <View style={[S.gridArea, isPortrait ? { flex: 1, height: undefined } : { height: EXACT_GRID_HEIGHT }]}>
           <FlatList
             ref={flatListRef}
             data={chunkedChannels}
@@ -1430,10 +1475,10 @@ export default function LiveTVScreen() {
             onEndReachedThreshold={0.5}
             removeClippedSubviews={false}
             showsVerticalScrollIndicator={false}
-            style={{ height: EXACT_GRID_HEIGHT, overflow: "hidden" }}
+            style={isPortrait ? { flex: 1 } : { height: EXACT_GRID_HEIGHT, overflow: "hidden" }}
             contentContainerStyle={[
               S.gridContent,
-              { paddingBottom: ROW_HEIGHT * 3 },
+              { paddingBottom: insets.bottom + 24 },
               (isLoading || chunkedChannels.length === 0) && { flexGrow: 1 },
             ]}
             extraData={filteredChannels.length}

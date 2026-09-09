@@ -7,10 +7,12 @@
 // how much of it you have already seen, not by what is on now.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View, Pressable, useWindowDimensions } from 'react-native';
 import { Image } from "expo-image";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Focusable, FocusGroup, Overlay } from "../tv";
 import { THEME, ph, ps, pw } from "../theme/tokens";
+import { isTablet } from "../utils/tabletUtils";
 import { resumeIndex } from "../services/resumeIndex";
 import { formatRuntime } from "../utils/duration";
 import type { QueueItem } from "../services/playbackQueue";
@@ -41,6 +43,7 @@ const QueueRow = React.memo(
     preferFocus,
     onSelect,
     resumeVersion,
+    rowHeight,
   }: {
     item: QueueItem;
     index: number;
@@ -48,6 +51,7 @@ const QueueRow = React.memo(
     preferFocus: boolean;
     onSelect: (item: QueueItem, index: number) => void;
     resumeVersion: number;
+    rowHeight?: number;
   }) {
     const progress = useMemo(
       () => (item?.id ? resumeIndex.progressFor(item.id) : 0),
@@ -74,25 +78,33 @@ const QueueRow = React.memo(
         onPress={handlePress}
         hasTVPreferredFocus={preferFocus}
         ringOnFocus={false}
-        style={S.rowWrapper}
+        style={[S.rowWrapper, rowHeight != null && { height: rowHeight }]}
         accessibilityLabel={`${item.title || "Episode"}${watched ? ", watched" : ""}`}
       >
         {(focused) => (
-          <View style={[S.row, isCurrent && S.rowCurrent, focused && S.rowFocused]}>
+          <View style={[
+            S.row,
+            isTablet && { paddingVertical: 6, paddingHorizontal: 10, gap: 10 },
+            isCurrent && S.rowCurrent,
+            focused && S.rowFocused
+          ]}>
             <View style={S.numberCol}>
-              <Text style={[S.number, focused && S.onFocus]}>
+              <Text style={[S.number, isTablet && { fontSize: 12 }, focused && S.onFocus]}>
                 {item.episodeNum ?? index + 1}
               </Text>
               {watched && !isCurrent ? (
                 <DynamicIcon
                   name="checkmark-circle"
-                  size={ps(1)}
+                  size={isTablet ? 14 : ps(1)}
                   color={focused ? "rgba(0,0,0,0.5)" : "#34c759"}
                 />
               ) : null}
             </View>
 
-            <View style={isLandscapeStill ? S.thumbLandscape : S.thumbPortrait}>
+            <View style={[
+              isLandscapeStill ? S.thumbLandscape : S.thumbPortrait,
+              isTablet && (isLandscapeStill ? { width: 54, height: 36 } : { width: 36, height: 50 })
+            ]}>
               {item.poster ? (
                 <Image
                   source={{ uri: item.poster }}
@@ -103,7 +115,7 @@ const QueueRow = React.memo(
                 />
               ) : (
                 <Film
-                  size={ps(1.6)}
+                  size={isTablet ? 18 : ps(1.6)}
                   color={focused ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.3)"}
                 />
               )}
@@ -111,27 +123,23 @@ const QueueRow = React.memo(
 
             <View style={S.text}>
               <Text
-                style={[S.title, focused && S.onFocus, watched && !focused && S.dimmed]}
+                style={[S.title, isTablet && { fontSize: 13 }, focused && S.onFocus, watched && !focused && S.dimmed]}
                 numberOfLines={1}
               >
                 {item.episodeName || (item.kind === "episode" ? `Episode ${item.episodeNum ?? index + 1}` : item.title)}
               </Text>
               {item.description || item.subtitle ? (
                 <Text
-                  style={[S.description, focused && { color: "rgba(0,0,0,0.6)" }]}
+                  style={[S.description, isTablet && { fontSize: 11 }, focused && { color: "rgba(0,0,0,0.6)" }]}
                   numberOfLines={1}
                 >
                   {item.description || item.subtitle}
                 </Text>
               ) : null}
 
-              {/* Runtime, resolution and audio language, carried through on the
-                  queue item — the player never sees the Episode objects the
-                  details screen worked from. Renders nothing where the portal
-                  supplied none, which is most of them. */}
               {facts ? (
                 <Text
-                  style={[S.facts, focused && { color: "rgba(0,0,0,0.5)" }]}
+                  style={[S.facts, isTablet && { fontSize: 10 }, focused && { color: "rgba(0,0,0,0.5)" }]}
                   numberOfLines={1}
                 >
                   {facts}
@@ -202,6 +210,14 @@ export function QueueList({
     return () => clearTimeout(timer);
   }, [visible, currentIndex, items.length]);
 
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const isPortrait = isTablet && windowHeight > windowWidth;
+  const panelWidth = isTablet
+    ? (isPortrait ? Math.min(360, windowWidth * 0.85) : Math.min(400, windowWidth * 0.42))
+    : pw(34);
+  const rowHeight = isTablet ? 68 : ROW_HEIGHT;
+
   const renderItem = useCallback(
     ({ item, index }: { item: QueueItem; index: number }) => (
       <QueueRow
@@ -212,35 +228,15 @@ export function QueueList({
         preferFocus={index === currentIndex}
         onSelect={onSelect}
         resumeVersion={resumeVersion}
+        rowHeight={rowHeight}
       />
     ),
-    [currentIndex, onSelect, resumeVersion]
+    [currentIndex, onSelect, resumeVersion, rowHeight]
   );
 
   if (!visible) return null;
 
   return (
-    /**
-     * A real Overlay, not a bare absolute panel.
-     *
-     * As a plain View this leaked focus in every direction. Arrow keys still
-     * reached the player's own D-pad handlers, and worse, the player's control
-     * buttons stayed focusable — so navigating out of the list landed on one,
-     * its navRowFocusHandlers.onFocus called resetControlsTimeout(), and the
-     * controls appeared. That is why "focus leaves the list" and "the controls
-     * come up" were the same bug.
-     *
-     * Overlay closes all of it at once: it registers the focus trap (which
-     * makes every background Focusable inert), traps all four directions on
-     * its TVFocusGuideView, chains these rows with nextFocus tags whose ends
-     * pin to themselves, and outranks the player on the D-pad bus
-     * (OVERLAY 100 vs PLAYER 10) so the player stops seeing the keys at all.
-     *
-     * It also has to be Overlay specifically rather than a hand-rolled
-     * FocusTrap.register(): useIsFocusTrapped() tells inside from outside by
-     * InsideOverlayContext, so trapping without providing that context would
-     * have made these rows inert along with everything else.
-     */
     <Overlay
       visible={visible}
       axis="vertical"
@@ -248,8 +244,13 @@ export function QueueList({
       style={S.overlayBackdrop}
       contentStyle={S.overlayContent}
     >
-      <View style={S.panel}>
-        <View style={S.header}>
+      <Pressable
+        style={StyleSheet.absoluteFillObject}
+        onPress={onClose}
+        accessibilityLabel="Close queue list"
+      />
+      <View style={[S.panel, isTablet && { width: panelWidth, minWidth: undefined, maxWidth: 420 }]}>
+        <View style={[S.header, isTablet && { paddingTop: Math.max(16, insets.top + 8) }]}>
           <Text style={S.headerTitle} numberOfLines={2}>
             {title || "Up Next"}
           </Text>
@@ -258,21 +259,21 @@ export function QueueList({
           </View>
         </View>
 
-        {/* No autoFocus: it grabs the *first* child, which fought the current
-            episode's hasTVPreferredFocus and left focus on Episode 1 whatever
-            was playing. The row that is playing claims focus on its own. */}
         <FocusGroup trapLeft trapRight style={S.list}>
           <ScrollView
             ref={scrollRef}
             style={{ flex: 1 }}
-            contentContainerStyle={S.listContent}
+            contentContainerStyle={[
+              S.listContent,
+              isTablet && { paddingBottom: insets.bottom + 20 },
+            ]}
             showsVerticalScrollIndicator={true}
           >
             {items.map((item, index) => renderItem({ item, index }))}
           </ScrollView>
         </FocusGroup>
 
-        <View style={S.footer}>
+        <View style={[S.footer, isTablet && { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
           <CornerDownLeft size={ps(1)} color="rgba(255,255,255,0.4)" style={{ marginRight: ps(0.4) }} />
           <Text style={S.footerHint}>OK to play · BACK to close</Text>
         </View>

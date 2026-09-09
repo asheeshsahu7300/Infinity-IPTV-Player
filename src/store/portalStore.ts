@@ -141,6 +141,7 @@ export interface Category {
   id: string;
   name: string;
   type: "live" | "vod" | "series";
+  logo?: string;
 }
 
 export interface EPGProgram {

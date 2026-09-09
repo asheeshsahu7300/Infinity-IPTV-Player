@@ -4,7 +4,6 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Focusable, Overlay } from "../tv";
 import { ph, psRaw as ps, pw } from "../theme/tokens";
-import { isTV } from "../utils/tvUtils";
 
 import { HelpCircle, AlertCircle, CheckCircle, LucideIcon } from "lucide-react-native";
 import { Text } from './Text';
@@ -286,8 +285,7 @@ const S = StyleSheet.create({
     justifyContent: "center",
   },
   card: {
-    width: isTV ? pw(44) : pw(86),
-    maxWidth: pw(92),
+    width: pw(44),
     alignItems: "center",
     paddingVertical: ps(3.5),
     paddingHorizontal: ps(3.5),
@@ -309,15 +307,15 @@ const S = StyleSheet.create({
     marginBottom: ph(2),
   },
   title: {
-    fontSize: isTV ? ps(2.1) : ps(1.9),
+    fontSize: ps(2.1),
     fontWeight: "700",
     color: "#fff",
     textAlign: "center",
     letterSpacing: 0.3,
   },
   message: {
-    fontSize: isTV ? ps(1.3) : ps(1.15),
-    lineHeight: isTV ? ps(1.9) : ps(1.7),
+    fontSize: ps(1.3),
+    lineHeight: ps(1.9),
     color: "rgba(255,255,255,0.6)",
     textAlign: "center",
     marginTop: ph(1.2),
@@ -350,7 +348,7 @@ const S = StyleSheet.create({
     opacity: 0.45,
   },
   actionText: {
-    fontSize: isTV ? ps(1.3) : ps(1.2),
+    fontSize: ps(1.3),
     fontWeight: "700",
     letterSpacing: 0.5,
   },

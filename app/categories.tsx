@@ -19,6 +19,7 @@ import { hiddenCategories } from "../src/services/hiddenCategories";
 import type { MediaKind } from "../src/services/parentalControl";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { THEME, ph, psRaw as ps, pw, TILE_FRAME } from "../src/theme/tokens";
+import { isTablet } from "../src/utils/tabletUtils";
 import { Focusable, FocusGroup } from "../src/tv";
 import { Eye, FolderOpen , LucideIcon} from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
@@ -158,7 +159,7 @@ export default function CategoriesScreen() {
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
 
-      <View style={S.header}>
+      <View style={[S.header, isTablet && { paddingHorizontal: 24, paddingTop: ph(3) }]}>
         <Text style={S.headerTitle}>Categories</Text>
         <Text style={S.headerSubtitle}>
           {categories.length === 0
@@ -170,7 +171,7 @@ export default function CategoriesScreen() {
       </View>
 
       {/* ─── Library switcher ─── */}
-      <FocusGroup style={S.tabs}>
+      <FocusGroup style={[S.tabs, isTablet && { paddingHorizontal: 24 }]}>
         {KINDS.map((k) => (
           <Focusable
             key={k.key}
@@ -202,7 +203,7 @@ export default function CategoriesScreen() {
       </FocusGroup>
 
       {/* ─── The list ─── */}
-      <FocusGroup style={S.listHost}>
+      <FocusGroup style={[S.listHost, isTablet && { paddingHorizontal: 24 }]}>
         <FlatList
           key={kind}
           data={categories}
@@ -218,7 +219,7 @@ export default function CategoriesScreen() {
           windowSize={5}
           removeClippedSubviews={false}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={S.listContent}
+          contentContainerStyle={[S.listContent, isTablet && { paddingBottom: insets.bottom + 20 }]}
           ListEmptyComponent={
             <View style={S.empty}>
               <FolderOpen size={ps(3)} color="rgba(255,255,255,0.1)" />
@@ -231,7 +232,7 @@ export default function CategoriesScreen() {
       </FocusGroup>
 
       {/* ─── Actions ─── */}
-      <FocusGroup style={S.actions}>
+      <FocusGroup style={[S.actions, isTablet && { paddingHorizontal: 24, paddingBottom: insets.bottom + 20 }]}>
         <Focusable
           ringOnFocus={false}
           onPress={() => hiddenCategories.showAll(kind)}

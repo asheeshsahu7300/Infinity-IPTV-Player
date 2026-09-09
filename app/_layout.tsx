@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Stack, useRouter, useNavigationContainerRef } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import {
@@ -13,8 +12,10 @@ import {
   Image as RNImage,
   View,
   BackHandler,
+  StatusBar as RNStatusBar,
 } from "react-native";
 import * as Linking from "expo-linking";
+import * as ScreenOrientation from "expo-screen-orientation";
 import { LinearGradient } from "expo-linear-gradient";
 import { 
   useFonts,
@@ -35,8 +36,7 @@ import { stbEnvironment } from "../src/services/stbEnvironment";
 import { parentalControl } from "../src/services/parentalControl";
 import { DeepLink } from "../src/services/DeepLink";
 import { PlaybackState } from "../src/services/PlaybackState";
-import { isTV } from "../src/utils/tvUtils";
-import { THEME, ps, ph, pw } from "../src/theme/tokens";
+import { ph, pw } from "../src/theme/tokens";
 import { safeStorage } from "../src/services/safeStorage";
 import { setSafeNavigationRef, safeBack } from "../src/services/safeNavigation";
 
@@ -77,15 +77,11 @@ function SplashScreen() {
     <LinearGradient colors={["#0F1014", "#000000"]} style={styles.splash}>
       <Animated.View style={[styles.splashContent, { opacity: fadeAnim }]}>
         <Animated.View
-          style={[
-            isTV ? styles.splashLogoTVWrapper : styles.splashLogoWrapper,
-            { transform: [{ scale: pulseAnim }] }
-          ]}
+          style={[styles.splashLogoWrapper, { transform: [{ scale: pulseAnim }] }]}
         >
           <RNImage
-            source={isTV ? require("../assets/images/TV.png") : require("../assets/images/TV.png")}
+            source={require("../assets/images/TV.png")}
             style={styles.logoImage}
-
           />
         </Animated.View>
       </Animated.View>
@@ -106,6 +102,15 @@ export default function RootLayout() {
       setSafeNavigationRef(navigationRef);
     }
   }, [navigationRef]);
+
+  /**
+   * Allow tablets and phones to rotate freely between portrait and landscape.
+   * Skipped on TV boxes where orientation is fixed.
+   */
+  useEffect(() => {
+    if (Platform.isTV) return;
+    ScreenOrientation.unlockAsync().catch(() => {});
+  }, []);
 
   // Global remote hardware BackHandler:
   // Catches any unhandled back press and pops to the previous DISTINCT screen,
@@ -213,6 +218,11 @@ export default function RootLayout() {
       });
   }, []);
 
+  // Ensure status bar is hidden (immersive full-screen is handled natively by MainActivity)
+  useEffect(() => {
+    RNStatusBar.setHidden(true, "none");
+  }, []);
+
   // Links that arrive while the app is already running.
   useEffect(() => {
     const sub = Linking.addEventListener("url", ({ url }) => DeepLink.push(url));
@@ -257,9 +267,9 @@ export default function RootLayout() {
       <ErrorBoundary>
         <ThemeProvider>
           <SafeAreaProvider>
-            <GestureHandlerRootView style={styles.container}>
+            <View style={styles.container}>
               <SplashScreen />
-            </GestureHandlerRootView>
+            </View>
           </SafeAreaProvider>
         </ThemeProvider>
       </ErrorBoundary>
@@ -270,43 +280,41 @@ export default function RootLayout() {
     <ErrorBoundary>
       <ThemeProvider>
         <SafeAreaProvider>
-          <GestureHandlerRootView style={styles.container}>
-            <View style={{ flex: 1, padding: overscanPadding }}>
-              <StatusBar style="light" />
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  contentStyle: { backgroundColor: "transparent" },
-                  animation: isTV ? "none" : "slide_from_right",
-                  // Inactive screens keep their scroll/focus state but stop
-                  // re-rendering, so backgrounded grids don't compete with the
-                  // foreground screen (or the player) for the JS thread.
-                  freezeOnBlur: true,
-                }}
-                initialRouteName="index"
-              >
-                <Stack.Screen name="index" />
-                <Stack.Screen name="portals" />
-                <Stack.Screen name="add-portal" />
-                <Stack.Screen name="dashboard" />
-                <Stack.Screen name="live-tv" options={{ contentStyle: { backgroundColor: "#000000" } }} />
-                <Stack.Screen name="vod" />
-                <Stack.Screen name="series" />
-                <Stack.Screen name="series-details" />
-                <Stack.Screen name="player" options={{ animation: "fade" }} />
-                <Stack.Screen name="search" />
-                <Stack.Screen name="settings" />
-                <Stack.Screen name="privacy-policy" />
-                {/* Set-top-box screens. The guide has always been on disk but
-                    was never registered here, so nothing could route to it. */}
-                <Stack.Screen name="epg" />
-                <Stack.Screen name="speed-test" />
-                <Stack.Screen name="parental-control" />
-                <Stack.Screen name="system-info" />
-                <Stack.Screen name="categories" />
-              </Stack>
-            </View>
-          </GestureHandlerRootView>
+          <View style={[styles.container, { padding: overscanPadding }]}>
+            <StatusBar style="light" hidden={true} />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: "transparent" },
+                animation: "none",
+                // Inactive screens keep their scroll/focus state but stop
+                // re-rendering, so backgrounded grids don't compete with the
+                // foreground screen (or the player) for the JS thread.
+                freezeOnBlur: true,
+              }}
+              initialRouteName="index"
+            >
+              <Stack.Screen name="index" />
+              <Stack.Screen name="portals" />
+              <Stack.Screen name="add-portal" />
+              <Stack.Screen name="dashboard" />
+              <Stack.Screen name="live-tv" options={{ contentStyle: { backgroundColor: "#000000" } }} />
+              <Stack.Screen name="vod" />
+              <Stack.Screen name="series" />
+              <Stack.Screen name="series-details" />
+              <Stack.Screen name="player" options={{ animation: "fade" }} />
+              <Stack.Screen name="search" />
+              <Stack.Screen name="settings" />
+              <Stack.Screen name="privacy-policy" />
+              {/* Set-top-box screens. The guide has always been on disk but
+                  was never registered here, so nothing could route to it. */}
+              <Stack.Screen name="epg" />
+              <Stack.Screen name="speed-test" />
+              <Stack.Screen name="parental-control" />
+              <Stack.Screen name="system-info" />
+              <Stack.Screen name="categories" />
+            </Stack>
+          </View>
         </SafeAreaProvider>
       </ThemeProvider>
     </ErrorBoundary>
@@ -317,15 +325,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#08080a" },
   splash: { flex: 1, justifyContent: "center", alignItems: "center" },
   splashContent: { alignItems: "center", justifyContent: "center" },
-  splashLogoWrapper: { width: pw(30), height: pw(30), marginBottom: ph(3) },
-  splashLogoTVWrapper: { width: pw(40), height: ph(20), marginBottom: ph(2) },
+  splashLogoWrapper: { width: pw(40), height: ph(20), marginBottom: ph(2) },
   logoImage: { width: "100%", height: "100%" },
-  splashTextGroup: { alignItems: "center", marginBottom: ph(2), justifyContent: "flex-end" },
-  splashTitle: { color: "#ffffff", fontSize: ps(2.5), fontWeight: "400", letterSpacing: pw(0.8) },
-  splashTitleTV: { fontSize: ps(3.5), letterSpacing: pw(1.2) },
-  tagline: { color: THEME.colors.primary, fontSize: ps(1), fontWeight: "600", letterSpacing: pw(0.4), marginTop: ph(1), opacity: 0.9 },
-  taglineTV: { fontSize: ps(1.4), letterSpacing: pw(0.6), marginTop: ph(1.5) },
-  loaderGroup: { alignItems: "center", position: "absolute", bottom: ph(8) },
-  splashSubtext: { color: "rgba(255,255,255,0.4)", fontSize: ps(0.8), fontWeight: "400", marginTop: ph(2), letterSpacing: pw(0.1) },
-  splashSubtextTV: { fontSize: ps(1), marginTop: ph(2.5) },
 });

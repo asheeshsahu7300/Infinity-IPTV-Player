@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { View, StyleSheet, ScrollView, Linking, Platform, TouchableOpacity, Dimensions, StatusBar, ActivityIndicator, FlatList } from 'react-native';
+import { View, StyleSheet, ScrollView, Linking, Platform, TouchableOpacity, Dimensions, StatusBar, ActivityIndicator, FlatList, useWindowDimensions } from 'react-native';
 import { Image } from "expo-image";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,6 +12,7 @@ import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { isTablet } from "../src/utils/tabletUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
@@ -27,8 +28,6 @@ import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import { Check, ExternalLink, Library, Play, Star, Tv, MonitorOff, X , PlayCircle} from 'lucide-react-native';
 import { Text } from '../src/components/Text';
 
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 const cleanMeta = (s?: string | null) => {
   if (!s) return "";
@@ -438,9 +437,10 @@ export default function SeriesDetailsScreen() {
     [seasons]
   );
 
+  const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = useWindowDimensions();
   const currentSeason = seasons.find((s) => s.id === selectedSeasonId);
   const isFavorite = favorites.series.includes(params.id || "");
-  const numColumns = 7;
+  const numColumns = isTablet ? (SCREEN_WIDTH < 768 ? 4 : 5) : 7;
 
   const CARD_SPACING = 12;
   const GRID_H_PADDING = pw(4) * 2;

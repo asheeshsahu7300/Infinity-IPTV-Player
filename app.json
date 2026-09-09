@@ -46,12 +46,13 @@
           "backgroundColor": "#000000"
         }
       ],
+      "./plugins/withTabletLandscape",
       [
         "@react-native-tvos/config-tv",
         {
           "isTV": true,
           "androidTVBanner": "./assets/images/splash-icon.png",
-          "androidTVRequired": true
+          "androidTVRequired": false
         }
       ]
     ],

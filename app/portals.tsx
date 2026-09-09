@@ -1,107 +1,294 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { View, StyleSheet, Pressable, Dimensions, Animated, Platform, Image } from 'react-native';
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
+
+import {
+  View,
+  StyleSheet,
+  Animated,
+  Platform,
+  Image,
+  ScrollView,
+  useWindowDimensions,
+} from "react-native";
+
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { usePortalStore, Portal } from "../src/store/portalStore";
+
+import {
+  usePortalStore,
+  Portal,
+} from "../src/store/portalStore";
+
 import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
+
 import LoadingOverlay from "../src/components/LoadingOverlay";
-import { CinematicBackground } from "../src/components/CinematicBackground";
+
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
-import MaskedView from "@react-native-masked-view/masked-view";
-import { Focusable, FocusGroup } from "../src/tv";
+
+import {
+  Focusable,
+  FocusGroup,
+} from "../src/tv";
+
 import { useDialog } from "../src/components/ConfirmDialog";
-// Sized against the un-bumped scale — see psRaw in tokens.ts.
-import { THEME, pw, ph, psRaw as ps, CARD_FRAME, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
-import { Plus } from 'lucide-react-native';
-import { DynamicIcon } from '../src/components/DynamicIcon';
-import { Text } from '../src/components/Text';
 
+import { isTablet } from "../src/utils/tabletUtils";
 
-const { width: W } = Dimensions.get("window");
+import {
+  pw,
+  ph,
+  psRaw as ps,
+  CARD_FRAME,
+} from "../src/theme/tokens";
 
-// ─── Carousel geometry (all percentage-based) ────────────────────────────────
-const CARD_WIDTH = pw(28);
-const CARD_MARGIN = pw(1.5);
-const ITEM_SIZE = CARD_WIDTH + CARD_MARGIN * 2;
-const SPACER_WIDTH = (W - ITEM_SIZE) / 2;
+import { Plus } from "lucide-react-native";
+import { DynamicIcon } from "../src/components/DynamicIcon";
+import { Text } from "../src/components/Text";
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
 export default function PortalsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const portals = usePortalStore((s) => s.portals);
-  const activePortal = usePortalStore((s) => s.activePortal);
-  const loadPortals = usePortalStore((s) => s.loadPortals);
-  const setActivePortal = usePortalStore((s) => s.setActivePortal);
-  const updatePortal = usePortalStore((s) => s.updatePortal);
-  const deletePortal = usePortalStore((s) => s.deletePortal);
+  const {
+    width: windowWidth,
+    height: windowHeight,
+  } = useWindowDimensions();
 
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState("");
-  const [focusedPortalId, setFocusedPortalId] = useState<string | null>(null);
-  const [focusedHeader, setFocusedHeader] = useState<"back" | "add" | null>(null);
+  const isPortrait =
+    isTablet && windowHeight > windowWidth;
 
-  const { open: openDialog, notify, close: closeDialog, node: dialogNode } = useDialog();
+  // ────────────────────────────────────────────────────────────────────────────
+  // Dimensions
+  // ────────────────────────────────────────────────────────────────────────────
 
-  const scrollX = useRef(new Animated.Value(0)).current;
+  const portraitCardWidth = Math.max(
+    0,
+    windowWidth - 48
+  );
+
+  const cardWidth = isTablet
+    ? isPortrait
+      ? portraitCardWidth
+      : Math.min(340, windowWidth * 0.32)
+    : pw(28);
+
+  const cardMargin = isTablet
+    ? isPortrait
+      ? 0
+      : 12
+    : pw(1.5);
+
+  /*
+   * Portrait card height:
+   *
+   * Do not use a fixed 200px.
+   * The card scales with the available portrait height,
+   * while keeping a sensible maximum.
+   */
+  const cardHeight = isTablet
+    ? isPortrait
+      ? Math.min(260, Math.max(220, windowHeight * 0.30))
+      : Math.min(280, windowHeight * 0.52)
+    : ph(45);
+
+  const deleteButtonHeight = ph(5.5);
+
+  const portraitItemGap = 32;
+
+  /*
+   * Complete vertical space occupied by one portrait item:
+   *
+   * card
+   * + delete button margin
+   * + delete button
+   * + gap before next item
+   */
+  const itemSize = isPortrait
+    ? cardHeight +
+    ph(1.5) +
+    deleteButtonHeight +
+    portraitItemGap
+    : cardWidth + cardMargin * 2;
+
+  const spacerWidth = Math.max(
+    0,
+    (windowWidth - cardWidth) / 2
+  );
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Store
+  // ────────────────────────────────────────────────────────────────────────────
+
+  const portals = usePortalStore(
+    (s) => s.portals
+  );
+
+  const activePortal = usePortalStore(
+    (s) => s.activePortal
+  );
+
+  const loadPortals = usePortalStore(
+    (s) => s.loadPortals
+  );
+
+  const setActivePortal = usePortalStore(
+    (s) => s.setActivePortal
+  );
+
+  const updatePortal = usePortalStore(
+    (s) => s.updatePortal
+  );
+
+  const deletePortal = usePortalStore(
+    (s) => s.deletePortal
+  );
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // State
+  // ────────────────────────────────────────────────────────────────────────────
+
+  const [isLoading, setIsLoading] =
+    useState(false);
+
+  const [loadingMessage, setLoadingMessage] =
+    useState("");
+
+  const [focusedPortalId, setFocusedPortalId] =
+    useState<string | null>(null);
+
+  const {
+    open: openDialog,
+    notify,
+    close: closeDialog,
+    node: dialogNode,
+  } = useDialog();
+
+  /*
+   * scrollX is kept as the existing animated value.
+   *
+   * Landscape:
+   *   X axis is used.
+   *
+   * Portrait:
+   *   Scrolling is native vertical and does not
+   *   drive the carousel animation.
+   */
+  const scrollX = useRef(
+    new Animated.Value(0)
+  ).current;
+
   const flatListRef = useRef<any>(null);
 
-  const focusedPortalIdRef = useRef<string | null>(null);
-  const focusedHeaderRef = useRef<"back" | "add" | null>(null);
+  const [
+    shouldAutoTargetFirstPortal,
+    setShouldAutoTargetFirstPortal,
+  ] = useState(true);
 
-  // Temporary state to ensure TV preferred focus only happens on initial mount
-  const [shouldAutoTargetFirstPortal, setShouldAutoTargetFirstPortal] = useState(true);
   useEffect(() => {
-    const timer = setTimeout(() => setShouldAutoTargetFirstPortal(false), 500);
+    const timer = setTimeout(() => {
+      setShouldAutoTargetFirstPortal(false);
+    }, 500);
+
     return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => { focusedPortalIdRef.current = focusedPortalId; }, [focusedPortalId]);
-  useEffect(() => { focusedHeaderRef.current = focusedHeader; }, [focusedHeader]);
-  useEffect(() => { loadPortals(); }, []);
+  useEffect(() => {
+    loadPortals();
+  }, []);
 
-  // ── Connect ────────────────────────────────────────────────────────────────
-  const connectToPortal = async (portal: Portal) => {
-    if (activePortal?.id === portal.id) { router.replace("/dashboard"); return; }
+  // ────────────────────────────────────────────────────────────────────────────
+  // Connect
+  // ────────────────────────────────────────────────────────────────────────────
+
+  const connectToPortal = async (
+    portal: Portal
+  ) => {
+    if (activePortal?.id === portal.id) {
+      router.replace("/dashboard");
+      return;
+    }
 
     setIsLoading(true);
     setLoadingMessage("Connecting...");
+
     try {
       if (portal.type === "m3u") {
-        const api = new M3UApi({ url: portal.config.url });
+        const api = new M3UApi({
+          url: portal.config.url,
+        });
+
         const result = await api.login();
-        if (!result.ok) throw new Error(result.error);
+
+        if (!result.ok) {
+          throw new Error(result.error);
+        }
+
         await setActivePortal(portal);
         router.replace("/dashboard");
         return;
       }
+
       if (portal.type === "xtream") {
         const api = new XtreamApi({
           url: portal.config.url,
           username: portal.config.username!,
           password: portal.config.password!,
         });
+
         await api.login();
+
         await setActivePortal(portal);
         router.replace("/dashboard");
         return;
       }
-      const { token, serverInfo } = await portalApi.authenticate(portal);
-      await updatePortal(portal.id, { config: { ...portal.config, token, serverInfo } });
-      await setActivePortal({ ...portal, config: { ...portal.config, token, serverInfo } });
+
+      const {
+        token,
+        serverInfo,
+      } = await portalApi.authenticate(
+        portal
+      );
+
+      await updatePortal(portal.id, {
+        config: {
+          ...portal.config,
+          token,
+          serverInfo,
+        },
+      });
+
+      await setActivePortal({
+        ...portal,
+        config: {
+          ...portal.config,
+          token,
+          serverInfo,
+        },
+      });
+
       router.replace("/dashboard");
     } catch (e: any) {
-      notify("Connection Failed", e?.message || "Unable to connect to this portal.", "danger");
+      notify(
+        "Connection Failed",
+        e?.message ||
+        "Unable to connect to this portal.",
+        "danger"
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
+  // Delete
+  // ────────────────────────────────────────────────────────────────────────────
+
   const handleDeletePortal = useCallback(
     (portal: Portal) => {
       openDialog({
@@ -109,7 +296,8 @@ export default function PortalsScreen() {
         tone: "danger",
         icon: "trash-outline",
         title: "Delete Portal",
-        message: `"${portal.name}" will be removed from this device. This cannot be undone.`,
+        message:
+          `"${portal.name}" will be removed from this device. This cannot be undone.`,
         confirmLabel: "Delete",
         onConfirm: async () => {
           await deletePortal(portal.id);
@@ -117,29 +305,65 @@ export default function PortalsScreen() {
         },
       });
     },
-    [deletePortal, openDialog, closeDialog]
+    [
+      deletePortal,
+      openDialog,
+      closeDialog,
+    ]
   );
 
-  const getPortalTypeInfo = (type: string): { icon: string } => {
+  // ────────────────────────────────────────────────────────────────────────────
+  // Portal type
+  // ────────────────────────────────────────────────────────────────────────────
+
+  const getPortalTypeInfo = (
+    type: string
+  ): { icon: string } => {
     switch (type) {
-      case "m3u": return { icon: "list" };
-      case "xtream": return { icon: "cloud" };
-      case "mag": return { icon: "server" };
-      default: return { icon: "server" };
+      case "m3u":
+        return { icon: "list" };
+
+      case "xtream":
+        return { icon: "cloud" };
+
+      case "mag":
+        return { icon: "server" };
+
+      default:
+        return { icon: "server" };
     }
   };
 
-  // ── Card ───────────────────────────────────────────────────────────────────
-  const renderCardContent = (item: Portal, isActive: boolean, isFocused: boolean) => {
+  // ────────────────────────────────────────────────────────────────────────────
+  // Card content
+  // ────────────────────────────────────────────────────────────────────────────
+
+  const renderCardContent = (
+    item: Portal,
+    isActive: boolean,
+    isFocused: boolean
+  ) => {
     const config = item.config || {};
-    const detail = (config as any).url || (config as any).mac || "--";
+
+    const detail =
+      (config as any).url ||
+      (config as any).mac ||
+      "--";
 
     return (
       <LinearGradient
         colors={
           isFocused
-            ? ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)", "rgba(255,255,255,0.02)"]
-            : ["rgba(255,255,255,0.05)", "rgba(255,255,255,0.02)", "rgba(255,255,255,0.0)"]
+            ? [
+              "rgba(255,255,255,0.12)",
+              "rgba(255,255,255,0.06)",
+              "rgba(255,255,255,0.02)",
+            ]
+            : [
+              "rgba(255,255,255,0.05)",
+              "rgba(255,255,255,0.02)",
+              "rgba(255,255,255,0.0)",
+            ]
         }
         locations={[0, 0.5, 1]}
         style={S.portalCardGradient}
@@ -147,23 +371,85 @@ export default function PortalsScreen() {
         <View style={S.cardHeader}>
           <View style={S.cardIconBox}>
             <DynamicIcon
-              name={getPortalTypeInfo(item.type).icon}
+              name={
+                getPortalTypeInfo(
+                  item.type
+                ).icon
+              }
               size={ps(3.2)}
-              color={isFocused ? "#FFFFFF" : isActive ? "#FFFFFF" : "rgba(255,255,255,0.75)"}
+              color={
+                isFocused
+                  ? "#FFFFFF"
+                  : isActive
+                    ? "#FFFFFF"
+                    : "rgba(255,255,255,0.75)"
+              }
             />
           </View>
+
           {isActive && (
-            <View style={[S.activeBadge, isFocused && S.activeBadgeFocused]}>
-              <View style={[S.badgeDot, isFocused && S.badgeDotFocused]} />
-              <Text style={[S.activeBadgeText, isFocused && S.activeBadgeTextFocused]}>ACTIVE</Text>
+            <View
+              style={[
+                S.activeBadge,
+                isFocused &&
+                S.activeBadgeFocused,
+              ]}
+            >
+              <View
+                style={[
+                  S.badgeDot,
+                  isFocused &&
+                  S.badgeDotFocused,
+                ]}
+              />
+
+              <Text
+                style={[
+                  S.activeBadgeText,
+                  isFocused &&
+                  S.activeBadgeTextFocused,
+                ]}
+              >
+                ACTIVE
+              </Text>
             </View>
           )}
         </View>
 
         <View style={S.cardMain}>
-          <Text style={[S.cardName, isFocused && { color: "#FFFFFF" }]} numberOfLines={1}>{item.name}</Text>
-          <Text style={[S.cardDetailText, isFocused && { color: "rgba(255,255,255,0.9)" }]} numberOfLines={1}>{detail}</Text>
-          <Text style={[S.cardTypeLabel, isFocused && { color: "#FFFFFF" }]}>
+          <Text
+            style={[
+              S.cardName,
+              isFocused && {
+                color: "#FFFFFF",
+              },
+            ]}
+            numberOfLines={1}
+          >
+            {item.name}
+          </Text>
+
+          <Text
+            style={[
+              S.cardDetailText,
+              isFocused && {
+                color:
+                  "rgba(255,255,255,0.9)",
+              },
+            ]}
+            numberOfLines={1}
+          >
+            {detail}
+          </Text>
+
+          <Text
+            style={[
+              S.cardTypeLabel,
+              isFocused && {
+                color: "#FFFFFF",
+              },
+            ]}
+          >
             {item.type === "m3u"
               ? "M3U PLAYLIST"
               : item.type === "xtream"
@@ -175,18 +461,55 @@ export default function PortalsScreen() {
     );
   };
 
-  const renderPortal = ({ item, index }: { item: Portal; index: number }) => {
-    const isColFocused = focusedPortalId === item.id;
-    const isActive = activePortal?.id === item.id;
+  // ────────────────────────────────────────────────────────────────────────────
+  // Portal item
+  // ────────────────────────────────────────────────────────────────────────────
 
-    // Disable TV preferred focus after initial mount to prevent stealing focus on re-renders
-    const shouldFocus = index === 0 && shouldAutoTargetFirstPortal;
+  const renderPortal = ({
+    item,
+    index,
+  }: {
+    item: Portal;
+    index: number;
+  }) => {
+    const isColFocused =
+      focusedPortalId === item.id;
 
-    const inputRange = [(index - 1) * ITEM_SIZE, index * ITEM_SIZE, (index + 1) * ITEM_SIZE];
-    const scale = scrollX.interpolate({ inputRange, outputRange: [0.95, 1.05, 0.95], extrapolate: "clamp" });
-    const opacity = scrollX.interpolate({ inputRange, outputRange: [0.7, 1, 0.7], extrapolate: "clamp" });
+    const isActive =
+      activePortal?.id === item.id;
 
-    const useStaticFocus = portals.length <= 3;
+    const shouldFocus =
+      index === 0 &&
+      shouldAutoTargetFirstPortal;
+
+    const inputRange = [
+      (index - 1) * itemSize,
+      index * itemSize,
+      (index + 1) * itemSize,
+    ];
+
+    const scale = scrollX.interpolate({
+      inputRange,
+      outputRange: [
+        0.95,
+        1.05,
+        0.95,
+      ],
+      extrapolate: "clamp",
+    });
+
+    const opacity = scrollX.interpolate({
+      inputRange,
+      outputRange: [
+        0.7,
+        1,
+        0.7,
+      ],
+      extrapolate: "clamp",
+    });
+
+    const useStaticFocus =
+      portals.length <= 3;
 
     return (
       <Animated.View
@@ -194,33 +517,80 @@ export default function PortalsScreen() {
         style={[
           S.cardWrapper,
           {
-            transform: [{ scale: useStaticFocus ? (isColFocused ? 1.04 : 1) : scale }],
-            opacity: useStaticFocus ? (isColFocused ? 1 : 0.85) : opacity,
-            zIndex: isColFocused ? 100 : index,
+            width: cardWidth,
+            marginHorizontal: cardMargin,
+            height: cardHeight,
+
+            transform: [
+              {
+                scale: useStaticFocus
+                  ? isColFocused
+                    ? 1.04
+                    : 1
+                  : scale,
+              },
+            ],
+
+            opacity: useStaticFocus
+              ? isColFocused
+                ? 1
+                : 0.85
+              : opacity,
+
+            zIndex: isColFocused
+              ? 100
+              : index,
           },
         ]}
       >
-        <FocusGroup style={{ flex: 1 }}>
+        <FocusGroup
+          style={{
+            flex: 1,
+          }}
+        >
           <Focusable
-            hasTVPreferredFocus={shouldFocus}
+            hasTVPreferredFocus={
+              shouldFocus
+            }
             screenKey="portals"
             focusKey={`card-${item.id}`}
             onFocus={() => {
-              setFocusedPortalId(item.id);
-              flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+              setFocusedPortalId(
+                item.id
+              );
+
+              flatListRef.current?.scrollToIndex(
+                {
+                  index,
+                  animated: true,
+                  viewPosition: 0.5,
+                }
+              );
             }}
-            onPress={() => connectToPortal(item)}
+            onPress={() =>
+              connectToPortal(item)
+            }
             ringOnFocus={false}
             style={S.pressable}
           >
             {(focused) => (
-              <View style={[
-                S.portalCard,
-                focused && S.portalCardFocused,
-                isActive && S.portalCardActive,
-                isActive && focused && S.portalCardActiveFocused,
-              ]}>
-                {renderCardContent(item, isActive, focused)}
+              <View
+                style={[
+                  S.portalCard,
+                  focused &&
+                  S.portalCardFocused,
+                  isActive &&
+                  S.portalCardActive,
+                  isActive &&
+                  focused &&
+                  S.portalCardActiveFocused,
+                ]}
+              >
+                {renderCardContent(
+                  item,
+                  isActive,
+                  focused
+                )}
               </View>
             )}
           </Focusable>
@@ -229,18 +599,33 @@ export default function PortalsScreen() {
             screenKey="portals"
             focusKey={`delete-${item.id}`}
             onFocus={() => {
-              setFocusedPortalId(item.id);
+              setFocusedPortalId(
+                item.id
+              );
             }}
-            onPress={() => handleDeletePortal(item)}
-            style={S.deleteBtnWrapper}
+            onPress={() =>
+              handleDeletePortal(item)
+            }
+            style={
+              S.deleteBtnWrapper
+            }
             ringOnFocus={false}
           >
             {(focusedBtn) => (
-              <View style={[
-                S.deleteBtn,
-                focusedBtn && S.deleteBtnFocused,
-              ]}>
-                <Text style={[S.deleteBtnText, focusedBtn && S.deleteBtnTextFocused]}>
+              <View
+                style={[
+                  S.deleteBtn,
+                  focusedBtn &&
+                  S.deleteBtnFocused,
+                ]}
+              >
+                <Text
+                  style={[
+                    S.deleteBtnText,
+                    focusedBtn &&
+                    S.deleteBtnTextFocused,
+                  ]}
+                >
                   DELETE PORTAL
                 </Text>
               </View>
@@ -251,64 +636,156 @@ export default function PortalsScreen() {
     );
   };
 
-  // ── Header ─────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
+  // Header
+  // ────────────────────────────────────────────────────────────────────────────
+
   const renderHeader = () => (
-    <View style={S.header}>
-      <Image source={require("../assets/images/TV.png")} style={S.headerLogoImage} resizeMode="contain" />
+    <View
+      style={[
+        S.header,
+        isTablet && {
+          marginTop: ph(4),
+          height: ph(8),
+          marginBottom: ph(1),
+        },
+      ]}
+    >
+      <Image
+        source={require("../assets/images/TV.png")}
+        style={[
+          S.headerLogoImage,
+          isTablet && {
+            width: 400,
+            height: 90,
+            transform: [
+              {
+                scale: 1.4,
+              },
+            ],
+          },
+        ]}
+        resizeMode="contain"
+      />
     </View>
   );
 
-  // ── Add Button ─────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
+  // Add button
+  // ────────────────────────────────────────────────────────────────────────────
+
   const renderAddButton = () => (
     <FocusGroup style={S.actionArea}>
       <Focusable
         screenKey="portals"
         focusKey="add-portal-btn"
         ringOnFocus={false}
-        onPress={() => router.push("/add-portal")}
-        style={{ borderRadius: 18, overflow: "visible" }}
+        onPress={() =>
+          router.push(
+            "/add-portal"
+          )
+        }
+        style={{
+          borderRadius: 18,
+          overflow: "visible",
+        }}
       >
         {(focused) => (
           <View
             style={[
               S.addBtn,
-              focused && S.addBtnFocused,
+              focused &&
+              S.addBtnFocused,
             ]}
           >
-            <Plus size={ps(1.6)} color={focused ? "#000000" : "#FFFFFF"} />
-            <Text style={[S.addBtnText, focused && S.addBtnTextFocused]}>ADD NEW PORTAL</Text>
+            <Plus
+              size={ps(1.6)}
+              color={
+                focused
+                  ? "#000000"
+                  : "#FFFFFF"
+              }
+            />
+
+            <Text
+              style={[
+                S.addBtnText,
+                focused &&
+                S.addBtnTextFocused,
+              ]}
+            >
+              ADD NEW PORTAL
+            </Text>
           </View>
         )}
       </Focusable>
     </FocusGroup>
   );
 
-  // ── Empty state ────────────────────────────────────────────────────────────
-  const renderEmptyState = () => (
-    <View style={S.introRow}>
-      <View style={S.introCopy}>
-        <Image source={require("../assets/images/TV.png")} style={S.introLogo} resizeMode="cover" />
+  // ────────────────────────────────────────────────────────────────────────────
+  // Empty state
+  // ────────────────────────────────────────────────────────────────────────────
 
-        <Text style={S.introTitle}>Unlimited Entertainment</Text>
+  const renderEmptyState = () => (
+    <View
+      style={[
+        S.introRow,
+        isTablet &&
+        isPortrait && {
+          flexDirection: "column",
+          gap: 20,
+          paddingVertical: 24,
+        },
+      ]}
+    >
+      <View style={S.introCopy}>
+        <Image
+          source={require("../assets/images/TV.png")}
+          style={S.introLogo}
+          resizeMode="cover"
+        />
+
+        <Text style={S.introTitle}>
+          Unlimited Entertainment
+        </Text>
+
         <Text style={S.introBody}>
-          Connect your first streaming source to reach thousands of channels, global movies and exclusive series —
+          Connect your first streaming source
+          to reach thousands of channels,
+          global movies and exclusive series —
           all on this screen.
         </Text>
 
         <Focusable
           hasTVPreferredFocus
           ringOnFocus={false}
-          onPress={() => router.push("/add-portal")}
-          style={S.getStartedWrapper}
+          onPress={() =>
+            router.push(
+              "/add-portal"
+            )
+          }
+          style={
+            S.getStartedWrapper
+          }
         >
           {(focused) => (
             <View
               style={[
                 S.addButtonLarge,
-                focused && S.addButtonLargeFocused,
+                focused &&
+                S.addButtonLargeFocused,
               ]}
             >
-              <Text style={[S.addButtonText, focused && { color: "#000" }]}>GET STARTED</Text>
+              <Text
+                style={[
+                  S.addButtonText,
+                  focused && {
+                    color: "#000",
+                  },
+                ]}
+              >
+                GET STARTED
+              </Text>
             </View>
           )}
         </Focusable>
@@ -317,84 +794,258 @@ export default function PortalsScreen() {
       <View style={S.introArt}>
         <Image
           source={require("../assets/images/series.png")}
-          style={[S.introArtLayer, S.introArtBack]}
+          style={[
+            S.introArtLayer,
+            S.introArtBack,
+          ]}
           resizeMode="cover"
         />
+
         <Image
           source={require("../assets/images/movies.png")}
-          style={[S.introArtLayer, S.introArtMid]}
+          style={[
+            S.introArtLayer,
+            S.introArtMid,
+          ]}
           resizeMode="cover"
         />
+
         <Image
           source={require("../assets/images/livetv.png")}
-          style={[S.introArtLayer, S.introArtFront]}
+          style={[
+            S.introArtLayer,
+            S.introArtFront,
+          ]}
           resizeMode="cover"
         />
       </View>
     </View>
   );
 
-  // ── Root ───────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
+  // Empty
+  // ────────────────────────────────────────────────────────────────────────────
+
   if (portals.length === 0) {
     return (
-      <View style={S.container}>
-        {isLoading && <LoadingOverlay message={loadingMessage} />}
+      <View
+        style={[
+          S.container,
+          {
+            paddingTop: insets.top,
+            paddingBottom: isTablet
+              ? insets.bottom + 16
+              : 0,
+          },
+        ]}
+      >
+        {isLoading && (
+          <LoadingOverlay
+            message={loadingMessage}
+          />
+        )}
+
         {renderEmptyState()}
+
         {dialogNode}
       </View>
     );
   }
 
+  // ────────────────────────────────────────────────────────────────────────────
+  // Root
+  // ────────────────────────────────────────────────────────────────────────────
+
   return (
-    <View style={S.container}>
-      {isLoading && <LoadingOverlay message={loadingMessage} />}
+    <View
+      style={[
+        S.container,
+        {
+          paddingTop: insets.top,
+          paddingBottom: isTablet
+            ? insets.bottom + 16
+            : 0,
+        },
+      ]}
+    >
+      {isLoading && (
+        <LoadingOverlay
+          message={loadingMessage}
+        />
+      )}
 
       {renderHeader()}
 
-      <View style={S.carouselContainer}>
+      <View
+        style={S.carouselContainer}
+      >
         {portals.length <= 3 ? (
-          <View style={S.centeredGrid}>
-            {portals.map((item, index) => renderPortal({ item, index }))}
-          </View>
+          <ScrollView
+            contentContainerStyle={[
+              S.centeredGrid,
+
+              isTablet &&
+              isPortrait && {
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingHorizontal: 24,
+                paddingVertical: 24,
+                gap: portraitItemGap,
+              },
+
+              isTablet &&
+              !isPortrait && {
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                flexGrow: 1,
+              },
+            ]}
+            showsVerticalScrollIndicator={
+              false
+            }
+          >
+            {portals.map(
+              (item, index) =>
+                renderPortal({
+                  item,
+                  index,
+                })
+            )}
+          </ScrollView>
         ) : (
           <Animated.FlatList
             ref={flatListRef}
             data={portals}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={ITEM_SIZE}
+
+            /*
+             * Landscape:
+             * horizontal carousel.
+             *
+             * Portrait:
+             * vertical scrolling list.
+             */
+            horizontal={!isPortrait}
+
+            showsHorizontalScrollIndicator={
+              false
+            }
+
+            showsVerticalScrollIndicator={
+              false
+            }
+
+            /*
+             * Snap only in landscape.
+             */
+            snapToInterval={
+              isPortrait
+                ? undefined
+                : itemSize
+            }
+
             decelerationRate="fast"
+
             contentContainerStyle={[
               S.carouselList,
-              { paddingHorizontal: SPACER_WIDTH, flexGrow: 1 }
+
+              isPortrait
+                ? {
+                  width: "100%",
+                  alignItems: "center",
+                  paddingHorizontal: 24,
+                  paddingVertical: 24,
+                  gap: portraitItemGap,
+                }
+                : {
+                  flexGrow: 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingHorizontal: spacerWidth,
+                },
             ]}
-            onScroll={Animated.event(
-              [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-              { useNativeDriver: true }
-            )}
-            renderItem={renderPortal}
-            keyExtractor={(item) => item.id}
-            getItemLayout={(_, index) => ({ length: ITEM_SIZE, offset: ITEM_SIZE * index, index })}
+
+            /*
+             * Animated X scrolling is only needed
+             * for the landscape carousel.
+             *
+             * Portrait uses normal native vertical
+             * scrolling, which fixes vertical scrolling
+             * and avoids using the wrong axis.
+             */
+            onScroll={
+              isPortrait
+                ? undefined
+                : Animated.event(
+                  [
+                    {
+                      nativeEvent: {
+                        contentOffset: {
+                          x: scrollX,
+                        },
+                      },
+                    },
+                  ],
+                  {
+                    useNativeDriver: true,
+                  }
+                )
+            }
+
+            scrollEventThrottle={16}
+
+            renderItem={
+              renderPortal
+            }
+
+            keyExtractor={(item) =>
+              item.id
+            }
+
+            /*
+             * Let FlatList calculate portrait
+             * positions naturally because the
+             * portrait item contains the card,
+             * delete button and spacing.
+             */
+            getItemLayout={
+              isPortrait
+                ? undefined
+                : (_, index) => ({
+                  length: itemSize,
+                  offset:
+                    itemSize *
+                    index,
+                  index,
+                })
+            }
           />
         )}
       </View>
-      {portals.length > 0 && renderAddButton()}
+
+      {portals.length > 0 &&
+        renderAddButton()}
 
       {dialogNode}
     </View>
   );
 }
 
-// ─── StyleSheet ───────────────────────────────────────────────────────────────
-const S = StyleSheet.create({
+// ───────────────────────────────────────────────────────────────────────────────
+// Styles
+// ───────────────────────────────────────────────────────────────────────────────
 
+const S = StyleSheet.create({
   // ── Root ──────────────────────────────────────────────────────────────────
+
   container: {
     flex: 1,
     backgroundColor: "#000000",
   },
 
   // ── Header ────────────────────────────────────────────────────────────────
+
   header: {
     alignItems: "center",
     justifyContent: "center",
@@ -402,76 +1053,104 @@ const S = StyleSheet.create({
     marginTop: ph(9.5),
     marginBottom: ph(2),
   },
+
   headerLogoImage: {
     width: pw(46),
     height: ph(11),
-    transform: [{ scale: 2.6 }],
+    transform: [
+      {
+        scale: 2.6,
+      },
+    ],
   },
+
+  // ── Add button ────────────────────────────────────────────────────────────
+
   actionArea: {
     alignItems: "center",
     paddingBottom: ph(5),
     marginTop: ph(1.5),
   },
+
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     height: ph(6.5),
-    paddingHorizontal: pw(3.0),
+    paddingHorizontal: pw(3),
     borderRadius: 18,
     backgroundColor: "#17181c",
     borderWidth: 0,
     borderColor: "transparent",
     gap: pw(0.8),
   },
+
   addBtnFocused: {
     backgroundColor: "#F5F5F5",
     borderColor: "transparent",
     borderWidth: 0,
-    transform: [{ scale: 1.04 }],
+
+    transform: [
+      {
+        scale: 1.04,
+      },
+    ],
+
     ...Platform.select({
       ios: {
         shadowColor: "#FFFFFF",
-        shadowOffset: { width: 0, height: 0 },
+        shadowOffset: {
+          width: 0,
+          height: 0,
+        },
         shadowOpacity: 0.8,
         shadowRadius: 16,
       },
+
       android: {
         elevation: 10,
       },
     }),
   },
+
   addBtnText: {
     color: "#FFFFFF",
     fontSize: ps(1.2),
     fontWeight: "800",
     letterSpacing: 1.2,
   },
+
   addBtnTextFocused: {
     color: "#000000",
     fontWeight: "900",
   },
 
   // ── Carousel ──────────────────────────────────────────────────────────────
+
   carouselContainer: {
     flex: 1,
     paddingVertical: ph(2),
     justifyContent: "center",
+    alignItems: "stretch",
   },
+
   carouselList: {
     alignItems: "center",
   },
+
   centeredGrid: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     width: "100%",
   },
+
+  // ── Card wrapper ──────────────────────────────────────────────────────────
+
   cardWrapper: {
-    width: CARD_WIDTH,
-    height: ph(45),
-    marginHorizontal: CARD_MARGIN,
+    alignSelf: "center",
   },
+
   pressable: {
     flex: 1,
     borderRadius: 18,
@@ -479,6 +1158,7 @@ const S = StyleSheet.create({
   },
 
   // ── Portal card ───────────────────────────────────────────────────────────
+
   portalCard: {
     flex: 1,
     borderRadius: 18,
@@ -487,41 +1167,58 @@ const S = StyleSheet.create({
     borderWidth: 1,
     borderColor: "transparent",
   },
+
   portalCardFocused: {
     borderColor: "#FFFFFF",
     borderWidth: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor:
+      "rgba(255, 255, 255, 0.12)",
+
     ...Platform.select({
       ios: {
         shadowColor: "#FFFFFF",
-        shadowOffset: { width: 0, height: 0 },
+        shadowOffset: {
+          width: 0,
+          height: 0,
+        },
         shadowOpacity: 0.6,
         shadowRadius: 16,
       },
+
       android: {
         elevation: 6,
       },
     }),
   },
+
   portalCardActive: {
-    borderColor: "rgba(255, 255, 255, 0.25)",
+    borderColor:
+      "rgba(255, 255, 255, 0.25)",
   },
+
   portalCardActiveFocused: {
     borderColor: "#FFFFFF",
     borderWidth: 2,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor:
+      "rgba(255, 255, 255, 0.12)",
+
     ...Platform.select({
       ios: {
         shadowColor: "#FFFFFF",
-        shadowOffset: { width: 0, height: 0 },
+        shadowOffset: {
+          width: 0,
+          height: 0,
+        },
         shadowOpacity: 0.6,
         shadowRadius: 16,
       },
+
       android: {
         elevation: 6,
       },
     }),
   },
+
   portalCardGradient: {
     flex: 1,
     padding: ps(2.6),
@@ -533,42 +1230,51 @@ const S = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+
   cardIconBox: {
     justifyContent: "center",
     alignItems: "center",
   },
 
   // ── Active badge ──────────────────────────────────────────────────────────
+
   activeBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: pw(0.5),
   },
+
   activeBadgeFocused: {},
+
   badgeDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
     backgroundColor: "#4ADE80",
   },
+
   badgeDotFocused: {
     backgroundColor: "#4ADE80",
   },
+
   activeBadgeText: {
     color: "#FFFFFF",
     fontSize: ps(1.05),
     fontWeight: "800",
     letterSpacing: 1.2,
   },
+
   activeBadgeTextFocused: {
     color: "#FFFFFF",
   },
 
   // ── Card body ─────────────────────────────────────────────────────────────
+
   cardMain: {
     flex: 1.5,
     justifyContent: "center",
   },
+
   cardName: {
     fontSize: ps(2.8),
     fontWeight: "800",
@@ -576,6 +1282,7 @@ const S = StyleSheet.create({
     marginBottom: ph(0.6),
     letterSpacing: 0.5,
   },
+
   cardDetailText: {
     fontSize: ps(1.3),
     color: "rgba(255, 255, 255, 0.65)",
@@ -583,6 +1290,7 @@ const S = StyleSheet.create({
     marginBottom: ph(1.2),
     letterSpacing: 0.3,
   },
+
   cardTypeLabel: {
     fontSize: ps(1.1),
     color: "rgba(255, 255, 255, 0.5)",
@@ -590,12 +1298,14 @@ const S = StyleSheet.create({
     letterSpacing: 2,
   },
 
-  // ── Delete Button ─────────────────────────────────────────────────────────
+  // ── Delete button ─────────────────────────────────────────────────────────
+
   deleteBtnWrapper: {
     marginTop: ph(1.5),
     borderRadius: 18,
     overflow: "visible",
   },
+
   deleteBtn: {
     height: ph(5.5),
     borderRadius: 18,
@@ -605,35 +1315,50 @@ const S = StyleSheet.create({
     borderWidth: 0,
     borderColor: "transparent",
   },
+
   deleteBtnFocused: {
     backgroundColor: "#F5F5F5",
     borderColor: "transparent",
     borderWidth: 0,
-    transform: [{ scale: 1.03 }],
+
+    transform: [
+      {
+        scale: 1.03,
+      },
+    ],
+
     ...Platform.select({
       ios: {
         shadowColor: "#FFFFFF",
-        shadowOffset: { width: 0, height: 0 },
+        shadowOffset: {
+          width: 0,
+          height: 0,
+        },
         shadowOpacity: 0.6,
         shadowRadius: 12,
       },
+
       android: {
         elevation: 6,
       },
     }),
   },
+
   deleteBtnText: {
-    color: "rgba(255, 255, 255, 0.75)",
+    color:
+      "rgba(255, 255, 255, 0.95)",
     fontSize: ps(1.15),
     fontWeight: "700",
     letterSpacing: 1.5,
   },
+
   deleteBtnTextFocused: {
     color: "#000000",
     fontWeight: "900",
   },
 
-  // ── Empty state (two-column intro) ────────────────────────────────────────
+  // ── Empty state ───────────────────────────────────────────────────────────
+
   introRow: {
     flex: 1,
     flexDirection: "row",
@@ -643,21 +1368,25 @@ const S = StyleSheet.create({
     paddingVertical: ph(4),
     gap: pw(5),
   },
+
   introCopy: {
     flex: 1,
     alignItems: "flex-start",
   },
+
   introLogo: {
     width: pw(20),
     height: pw(20) / 3.31,
     marginBottom: ph(3),
   },
+
   introTitle: {
     fontSize: ps(3),
     color: "#F5F5F7",
     fontWeight: "600",
     letterSpacing: 0.5,
   },
+
   introBody: {
     fontSize: ps(1.4),
     lineHeight: ps(2.2),
@@ -665,36 +1394,43 @@ const S = StyleSheet.create({
     marginTop: ph(2),
     maxWidth: pw(38),
   },
+
   getStartedWrapper: {
     borderRadius: 18,
     overflow: "visible",
     alignSelf: "flex-start",
     marginTop: ph(5),
   },
+
   introArt: {
     flex: 1.1,
     aspectRatio: 16 / 10,
   },
+
   introArtLayer: {
     position: "absolute",
     width: "88%",
     height: "80%",
     ...CARD_FRAME,
   },
+
   introArtBack: {
     top: 0,
     left: "12%",
     opacity: 0.45,
   },
+
   introArtMid: {
     top: "10%",
     left: "6%",
     opacity: 0.75,
   },
+
   introArtFront: {
     top: "20%",
     left: 0,
   },
+
   addButtonLarge: {
     paddingHorizontal: pw(2.5),
     paddingVertical: ph(1.5),
@@ -705,23 +1441,35 @@ const S = StyleSheet.create({
     borderWidth: 0,
     borderColor: "transparent",
   },
+
   addButtonLargeFocused: {
     backgroundColor: "#F5F5F5",
     borderColor: "transparent",
     borderWidth: 0,
-    transform: [{ scale: 1.06 }],
+
+    transform: [
+      {
+        scale: 1.06,
+      },
+    ],
+
     ...Platform.select({
       ios: {
         shadowColor: "#FFFFFF",
-        shadowOffset: { width: 0, height: 0 },
+        shadowOffset: {
+          width: 0,
+          height: 0,
+        },
         shadowOpacity: 0.6,
         shadowRadius: 14,
       },
+
       android: {
         elevation: 8,
       },
     }),
   },
+
   addButtonText: {
     color: "#F5F5F7",
     fontSize: ps(1.4),

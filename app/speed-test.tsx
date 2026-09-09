@@ -10,7 +10,7 @@
 // that would help, rather than leaving the viewer to find that setting.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { usePortalStore } from "../src/store/portalStore";
@@ -24,6 +24,7 @@ import {
 import { BUFFER_PROFILES, stbEnvironment } from "../src/services/stbEnvironment";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { THEME, ph, psRaw as ps, pw } from "../src/theme/tokens";
+import { isTablet } from "../src/utils/tabletUtils";
 import { Focusable, FocusGroup } from "../src/tv";
 import { AlertCircle, RefreshCw, SlidersHorizontal , LucideIcon} from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
@@ -42,14 +43,16 @@ function Stat({
   label,
   value,
   hint,
+  style,
 }: {
   icon: string;
   label: string;
   value: string;
   hint?: string;
+  style?: any;
 }) {
   return (
-    <View style={S.stat}>
+    <View style={[S.stat, style]}>
       <DynamicIcon name={icon} size={ps(1.6)} color="rgba(255,255,255,0.35)" />
       <Text style={S.statLabel}>{label}</Text>
       <Text style={S.statValue}>{value}</Text>
@@ -60,6 +63,8 @@ function Stat({
 
 export default function SpeedTestScreen() {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isPortrait = isTablet && windowHeight > windowWidth;
   const activePortal = usePortalStore((s) => s.activePortal);
 
   const [progress, setProgress] = useState<SpeedTestProgress>({ phase: "idle", progress: 0 });
@@ -102,12 +107,9 @@ export default function SpeedTestScreen() {
     }
   }, [activePortal]);
 
-  // Running on arrival is the behaviour of the equivalent STB tool, and it is
-  // the only thing anyone opens this screen to do.
   useEffect(() => {
     start();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [start]);
 
   const applySmootherBuffer = useCallback(async () => {
     await stbEnvironment.update({ bufferProfile: "smooth" });
@@ -125,7 +127,7 @@ export default function SpeedTestScreen() {
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
 
-      <View style={S.header}>
+      <View style={[S.header, isTablet && { paddingHorizontal: 24, paddingTop: ph(3) }]}>
         <Text style={S.headerTitle}>Connection Test</Text>
         <Text style={S.headerSubtitle}>
           {activePortal
@@ -134,7 +136,16 @@ export default function SpeedTestScreen() {
         </Text>
       </View>
 
-      <ScrollView contentContainerStyle={S.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[
+          S.scroll,
+          isTablet && {
+            paddingHorizontal: 24,
+            paddingBottom: insets.bottom + 36,
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* ── Headline ── */}
         <View style={S.headline}>
           <Text style={[S.headlineValue, { color: result ? gradeColor : "#fff" }]}>
@@ -162,8 +173,9 @@ export default function SpeedTestScreen() {
         </View>
 
         {/* ── Numbers ── */}
-        <View style={S.statRow}>
+        <View style={[S.statRow, isTablet && isPortrait && { flexWrap: "wrap" }]}>
           <Stat
+            style={isTablet && isPortrait ? { minWidth: "48%" } : undefined}
             icon="pulse-outline"
             label="LATENCY"
             value={
@@ -176,18 +188,21 @@ export default function SpeedTestScreen() {
             hint="Time to reach the server"
           />
           <Stat
+            style={isTablet && isPortrait ? { minWidth: "48%" } : undefined}
             icon="analytics-outline"
             label="JITTER"
             value={result ? `${result.jitterMs} ms` : "—"}
             hint="Steadiness — what breaks live TV"
           />
           <Stat
+            style={isTablet && isPortrait ? { minWidth: "48%" } : undefined}
             icon="cloud-download-outline"
             label="TRANSFERRED"
             value={result ? formatBytes(result.bytes) : "—"}
             hint={result ? `in ${(result.durationMs / 1000).toFixed(1)}s` : undefined}
           />
           <Stat
+            style={isTablet && isPortrait ? { minWidth: "48%" } : undefined}
             icon="wifi-outline"
             label="CONNECTION"
             value={result ? result.connectionType.toUpperCase() : "—"}

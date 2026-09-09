@@ -10,7 +10,7 @@
 // open settings menu, some want the reverse.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { BackHandler, ScrollView, StyleSheet, View } from "react-native";
+import { BackHandler, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -25,6 +25,7 @@ import { safeBack } from "../src/services/safeNavigation";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import PinPrompt from "../src/components/PinPrompt";
 import { THEME, ph, psRaw as ps, pw } from "../src/theme/tokens";
+import { isTablet } from "../src/utils/tabletUtils";
 import { Focusable, FocusGroup } from "../src/tv";
 import {
   CheckCircle,
@@ -167,6 +168,8 @@ function Row({
 export default function ParentalControlScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isPortrait = isTablet && windowHeight > windowWidth;
   const channels = usePortalStore((s) => s.channels);
   const vodItems = usePortalStore((s) => s.vodItems);
   const series = usePortalStore((s) => s.series);
@@ -320,7 +323,7 @@ export default function ParentalControlScreen() {
       <CinematicBackground />
 
       {/* ── Header ── */}
-      <View style={S.header}>
+      <View style={[S.header, isTablet && { paddingHorizontal: 24, paddingTop: ph(3), paddingBottom: ph(2) }]}>
         <View style={S.headerTitles}>
           <Text style={S.headerTitle}>Parental Control</Text>
           <Text style={S.headerSubtitle}>
@@ -349,8 +352,8 @@ export default function ParentalControlScreen() {
       </View>
 
       {/* ── System Overview Stats ── */}
-      <View style={S.statsRow}>
-        <View style={S.statCard}>
+      <View style={[S.statsRow, isTablet && { paddingHorizontal: 24 }, isTablet && isPortrait && { flexWrap: "wrap", gap: 10 }]}>
+        <View style={[S.statCard, isTablet && isPortrait && { minWidth: "48%" }]}>
           <Text style={S.statLabel}>System State</Text>
           <Text
             style={[
@@ -361,13 +364,13 @@ export default function ParentalControlScreen() {
             {state.enabled ? "Active" : "Disabled"}
           </Text>
         </View>
-        <View style={S.statCard}>
+        <View style={[S.statCard, isTablet && isPortrait && { minWidth: "48%" }]}>
           <Text style={S.statLabel}>Manually Locked</Text>
           <Text style={S.statValue}>
             {lockedCount} {lockedCount === 1 ? "Item" : "Items"}
           </Text>
         </View>
-        <View style={S.statCard}>
+        <View style={[S.statCard, isTablet && isPortrait && { minWidth: "48%" }]}>
           <Text style={S.statLabel}>Adult Keyword Filter</Text>
           <Text
             style={[
@@ -382,7 +385,7 @@ export default function ParentalControlScreen() {
               : "Off"}
           </Text>
         </View>
-        <View style={S.statCard}>
+        <View style={[S.statCard, isTablet && isPortrait && { minWidth: "48%" }]}>
           <Text style={S.statLabel}>PIN Mode</Text>
           <Text
             style={[
@@ -397,7 +400,7 @@ export default function ParentalControlScreen() {
 
       {/* ── Default PIN Warning Banner ── */}
       {parentalControl.isDefaultPin && state.enabled ? (
-        <View style={S.warningCard}>
+        <View style={[S.warningCard, isTablet && { marginHorizontal: 24 }]}>
           <View style={S.warningIconBox}>
             <TriangleAlert size={ps(2.2)} color="#fbbf24" />
           </View>
@@ -432,14 +435,20 @@ export default function ParentalControlScreen() {
 
       {/* ── Notice Toast ── */}
       {notice ? (
-        <View style={S.noticeBanner}>
+        <View style={[S.noticeBanner, isTablet && { marginHorizontal: 24 }]}>
           <CheckCircle size={ps(1.8)} color="#4ade80" />
           <Text style={S.noticeBannerText}>{notice}</Text>
         </View>
       ) : null}
 
       <ScrollView
-        contentContainerStyle={S.scroll}
+        contentContainerStyle={[
+          S.scroll,
+          isTablet && {
+            paddingHorizontal: 24,
+            paddingBottom: insets.bottom + 36,
+          },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >

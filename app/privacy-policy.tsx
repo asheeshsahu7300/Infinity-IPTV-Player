@@ -3,8 +3,8 @@ import { Animated, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CinematicBackground } from '../src/components/CinematicBackground';
 import { ph, psRaw as ps, pw, THEME } from '../src/theme/tokens';
+import { isTablet } from '../src/utils/tabletUtils';
 import { useDPad } from '../src/tv';
-import { isTV } from '../src/utils/tvUtils';
 import { MessageCircle, ShieldCheck } from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
 import { Text } from '../src/components/Text';
@@ -162,7 +162,7 @@ export default function PrivacyPolicyScreen() {
     [maxOffset]
   );
 
-  // The page holds no focusable content, so on TV the D-pad drives the document
+  // The page holds no focusable content, so the D-pad drives the document
   // directly instead of walking a list of fake focus targets. The back button
   // keeps its own OK handler — `useDPad` dispatches per key, not per subscriber.
   useDPad(
@@ -172,14 +172,14 @@ export default function PrivacyPolicyScreen() {
       onPageUp: () => scrollBy(-viewportH),
       onPageDown: () => scrollBy(viewportH),
     },
-    { enabled: isTV && canScroll }
+    { enabled: canScroll }
   );
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
       <CinematicBackground />
 
-      <View style={S.header}>
+      <View style={[S.header, isTablet && { paddingHorizontal: 24, paddingTop: ph(3), paddingBottom: ph(1.5) }]}>
         <Text style={S.headerTitle}>Privacy Policy</Text>
         <Text style={S.headerSubtitle}>Infinity IPTV Player · Updated {LAST_UPDATED}</Text>
       </View>
@@ -188,14 +188,20 @@ export default function PrivacyPolicyScreen() {
         <Animated.ScrollView
           ref={scrollRef}
           style={S.scroll}
-          contentContainerStyle={S.scrollContent}
+          contentContainerStyle={[
+            S.scrollContent,
+            isTablet && {
+              paddingHorizontal: 24,
+              paddingBottom: insets.bottom + 36,
+            },
+          ]}
           showsVerticalScrollIndicator={false}
           onScroll={onScroll}
           scrollEventThrottle={16}
           onContentSizeChange={(_w, h) => setContentH(h)}
         >
           {/* Summary hero */}
-          <View style={S.hero}>
+          <View style={[S.hero, isTablet && { padding: 18, gap: 16 }]}>
             <View style={S.heroBadge}>
               <ShieldCheck size={ps(3)} color="#fff" />
             </View>
@@ -259,9 +265,9 @@ const S = StyleSheet.create({
 
   // ── Hero ──────────────────────────────────────────────────────────────────
   hero: {
-    flexDirection: isTV ? 'row' : 'column',
-    alignItems: isTV ? 'flex-start' : 'stretch',
-    gap: isTV ? pw(2.5) : ph(2),
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: pw(2.5),
     padding: ps(3),
     borderRadius: 18,
     backgroundColor: '#17181c',
@@ -283,14 +289,14 @@ const S = StyleSheet.create({
     flex: 1,
   },
   heroTitle: {
-    fontSize: isTV ? ps(1.6) : ps(1.4),
+    fontSize: ps(1.6),
     color: '#fff',
     fontWeight: '700',
     marginBottom: ph(1),
   },
   heroBody: {
-    fontSize: isTV ? ps(1.4) : ps(1.15),
-    lineHeight: isTV ? ps(2.2) : ps(1.8),
+    fontSize: ps(1.4),
+    lineHeight: ps(2.2),
     color: 'rgba(255,255,255,0.65)',
   },
   // ── Document ──────────────────────────────────────────────────────────────
@@ -327,14 +333,14 @@ const S = StyleSheet.create({
   },
   sectionTitle: {
     flex: 1,
-    fontSize: isTV ? ps(1.6) : ps(1.4),
+    fontSize: ps(1.6),
     color: '#FFFFFF',
     fontWeight: '700',
     letterSpacing: 0.3,
   },
   paragraph: {
-    fontSize: isTV ? ps(1.2) : ps(1),
-    lineHeight: isTV ? ps(1.9) : ps(1.6),
+    fontSize: ps(1.2),
+    lineHeight: ps(1.9),
     color: 'rgba(255,255,255,0.6)',
     marginBottom: ph(1),
   },
@@ -348,7 +354,7 @@ const S = StyleSheet.create({
     rowGap: ph(0.9),
   },
   bulletRow: {
-    width: isTV ? '50%' : '100%',
+    width: '50%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: pw(1),
@@ -362,19 +368,19 @@ const S = StyleSheet.create({
   },
   bulletText: {
     flex: 1,
-    fontSize: isTV ? ps(1.2) : ps(1),
+    fontSize: ps(1.2),
     color: 'rgba(255,255,255,0.75)',
   },
 
   // ── Contact ───────────────────────────────────────────────────────────────
   /** Three abreast on TV — the document is full width, so there is room. */
   contactRows: {
-    flexDirection: isTV ? 'row' : 'column',
-    gap: isTV ? pw(3) : ph(1.5),
+    flexDirection: 'row',
+    gap: pw(3),
     marginTop: ph(1),
   },
   contactRow: {
-    flex: isTV ? 1 : undefined,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: pw(1),
@@ -383,14 +389,14 @@ const S = StyleSheet.create({
     flex: 1,
   },
   contactLabel: {
-    fontSize: isTV ? ps(1.1) : ps(0.95),
+    fontSize: ps(1.1),
     color: 'rgba(255,255,255,0.35)',
     fontWeight: '600',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   contactValue: {
-    fontSize: isTV ? ps(1.5) : ps(1.35),
+    fontSize: ps(1.5),
     color: '#fff',
     fontWeight: '700',
     marginTop: 2,

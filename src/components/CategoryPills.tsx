@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { View, TouchableOpacity, StyleSheet, FlatList, Animated } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, FlatList, Animated, StyleProp, ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import { Category } from '../store/portalStore';
 import { THEME } from '../theme/tokens';
 import { Text } from './Text';
@@ -9,6 +10,8 @@ interface CategoryPillsProps {
   categories: Category[];
   selectedId: string;
   onSelect: (id: string) => void;
+  style?: StyleProp<ViewStyle>;
+  contentContainerStyle?: StyleProp<ViewStyle>;
 }
 
 const PillItem = React.memo(({ item, isActive, isFocused, onSelect, onFocus, onBlur, index }: {
@@ -55,11 +58,19 @@ const PillItem = React.memo(({ item, isActive, isFocused, onSelect, onFocus, onB
         onFocus={handleFocus}
         onBlur={onBlur}
       >
+        {item.logo ? (
+          <Image
+            source={{ uri: item.logo }}
+            style={styles.pillLogo}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+          />
+        ) : null}
         <Text
           style={[
             styles.pillText,
             isActive && styles.pillTextActive,
-            isFocused && styles.pillTextActive,
+            isFocused && styles.pillTextFocused,
           ]}
           numberOfLines={1}
         >
@@ -71,6 +82,8 @@ const PillItem = React.memo(({ item, isActive, isFocused, onSelect, onFocus, onB
 }, (prevProps, nextProps) => {
   return (
     prevProps.item.id === nextProps.item.id &&
+    prevProps.item.name === nextProps.item.name &&
+    prevProps.item.logo === nextProps.item.logo &&
     prevProps.isActive === nextProps.isActive &&
     prevProps.isFocused === nextProps.isFocused &&
     prevProps.index === nextProps.index
@@ -79,7 +92,13 @@ const PillItem = React.memo(({ item, isActive, isFocused, onSelect, onFocus, onB
 
 PillItem.displayName = "PillItem";
 
-export default function CategoryPills({ categories, selectedId, onSelect }: CategoryPillsProps) {
+export default function CategoryPills({
+  categories,
+  selectedId,
+  onSelect,
+  style,
+  contentContainerStyle,
+}: CategoryPillsProps) {
   const flatListRef = useRef<FlatList>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const focusedIdRef = useRef<string | null>(null);
@@ -141,7 +160,7 @@ export default function CategoryPills({ categories, selectedId, onSelect }: Cate
   }, []);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, style]}>
       <FlatList
         ref={flatListRef}
         data={categories}
@@ -156,42 +175,60 @@ export default function CategoryPills({ categories, selectedId, onSelect }: Cate
             onBlur={handleBlur}
           />
         ), [selectedId, focusedId, onSelect, handleFocus, handleBlur])}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => String(item.id)}
         horizontal
-        contentContainerStyle={styles.content}
-        initialNumToRender={8}
-        maxToRenderPerBatch={6}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[styles.content, contentContainerStyle]}
+        initialNumToRender={10}
+        maxToRenderPerBatch={8}
         windowSize={5}
         updateCellsBatchingPeriod={50}
         removeClippedSubviews={false}
+        onScrollToIndexFailed={(info) => {
+          setTimeout(() => {
+            try {
+              flatListRef.current?.scrollToIndex({ index: info.index, animated: false, viewPosition: 0.5 });
+            } catch {}
+          }, 100);
+        }}
       />
     </View>
   );
 }
 
+export { CategoryPills };
+
 const styles = StyleSheet.create({
   container: {
     backgroundColor: "transparent",
-    minHeight: 60,
+    minHeight: 46,
   },
 
   content: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 6,
     alignItems: "center",
   },
 
   pill: {
+    flexDirection: "row",
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
     height: 40,
     backgroundColor: "#111827",
-    marginRight: 12,
+    marginRight: 10,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
     borderColor: "transparent",
+  },
+
+  pillLogo: {
+    width: 20,
+    height: 20,
+    marginRight: 8,
+    borderRadius: 4,
   },
 
   pillActive: {
@@ -211,7 +248,17 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
+  /**
+   * The active pill's ink: dark, because `pillActive` fills it with
+   * `THEME.colors.primary` -- which is #F5F5F5. This was #fff on that white
+   * fill, so the selected category was legible only by its silhouette.
+   */
   pillTextActive: {
+    color: THEME.colors.selectedText,
+  },
+
+  /** The focused pill is filled #1f2937 instead, so its ink stays light. */
+  pillTextFocused: {
     color: "#fff",
   },
 });

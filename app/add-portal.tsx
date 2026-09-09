@@ -1,11 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { View, StyleSheet, ScrollView, Dimensions, TouchableOpacity, Platform, KeyboardAvoidingView, Image, BackHandler, Keyboard , TextInput as RNTextInput} from 'react-native';
+import { View, StyleSheet, ScrollView, Image, BackHandler, Keyboard, useWindowDimensions } from 'react-native';
 import { useRouter } from "expo-router";
-import { Server, Cloud, List } from "lucide-react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
-import MaskedView from "@react-native-masked-view/masked-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Server, Cloud, List } from "lucide-react-native";
 import { usePortalStore } from "../src/store/portalStore";
 import { portalApi, formatMac } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
@@ -14,8 +11,9 @@ import LoadingOverlay from "../src/components/LoadingOverlay";
 import { useDialog } from "../src/components/ConfirmDialog";
 import { safeBack } from "../src/services/safeNavigation";
 import { Focusable } from "../src/tv";
+import { isTablet } from "../src/utils/tabletUtils";
 
-import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { pw, ph, ps } from "../src/theme/tokens";
 import { Text } from '../src/components/Text';
 import { TextInput } from '../src/components/TextInput';
 
@@ -32,6 +30,7 @@ const GradientBorderCard = ({
   onFocus,
   onBlur,
   children,
+  style,
 }: {
   id: string;
   focusedField: string | null;
@@ -41,6 +40,7 @@ const GradientBorderCard = ({
   onFocus: () => void;
   onBlur: () => void;
   children: React.ReactNode;
+  style?: any;
 }) => {
   const focused = focusedField === id;
   const RADIUS = 18;
@@ -62,6 +62,7 @@ const GradientBorderCard = ({
           borderColor: "transparent",
           overflow: "hidden",
         },
+        style,
         focused && {
           transform: [{ scale: 1.05 }],
         },
@@ -120,6 +121,9 @@ const BrandHeader = () => (
 export default function AddPortalScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isPortrait = isTablet && windowHeight > windowWidth;
+
   // Selectors — see the note in live-tv.tsx.
   const addPortal = usePortalStore((s) => s.addPortal);
   const setActivePortal = usePortalStore((s) => s.setActivePortal);
@@ -136,7 +140,6 @@ export default function AddPortalScreen() {
   const [loadingMessage, setLoadingMessage] = useState("");
 
   const [focusedField, setFocusedField] = useState<string | null>(null);
-  const focusedFieldRef = useRef<string | null>(null);
 
   // Hands step 1's initial focus to the M3U card. Seeded from `step` rather than
   // raised in the effect, because the native focus engine reads the tree as the
@@ -154,26 +157,14 @@ export default function AddPortalScreen() {
     return () => clearTimeout(timer);
   }, [step]);
 
-  const nameInputRef = useRef<RNTextInput>(null);
-  const urlInputRef = useRef<RNTextInput>(null);
-  const userInputRef = useRef<RNTextInput>(null);
-  const passInputRef = useRef<RNTextInput>(null);
-  const macInputRef = useRef<RNTextInput>(null);
-
   // `Alert.alert` is unusable here: on an Android TV release build it does not
   // reliably surface, and the D-pad cannot reach its buttons — so a failed
   // validation looked like the Connect button was simply dead.
   const { notify, node: dialogNode } = useDialog();
 
-  useEffect(() => {
-    focusedFieldRef.current = focusedField;
-  }, [focusedField]);
-
-  /** Surfaces a blocking message. The keyboard is dismissed first so the
-   *  dialog is not hidden behind it on phones. */
+  /** Surfaces a blocking message. */
   const showError = useCallback(
     (message: string, title = "Check Your Details") => {
-      Keyboard.dismiss();
       notify(title, message, "danger");
     },
     [notify]
@@ -258,7 +249,6 @@ export default function AddPortalScreen() {
   // hardware-back while the keyboard is open is NOT intercepted — Android
   // will dismiss the keyboard first (its default behaviour).
   const keyboardVisibleRef = useRef(false);
-  const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     const show = Keyboard.addListener("keyboardDidShow", () => {
@@ -292,7 +282,7 @@ export default function AddPortalScreen() {
     <View style={S.step1Container}>
       <BrandHeader />
 
-      <View style={S.cardsContainer}>
+      <View style={[S.cardsContainer, isTablet && isPortrait && { flexDirection: "column", gap: 16, paddingHorizontal: 16 }]}>
         {(
           [
             {
@@ -325,6 +315,7 @@ export default function AddPortalScreen() {
               id={id}
               focusedField={focusedField}
               preferred={focusFirstCard && t === "mag"}
+              style={isTablet && isPortrait ? { width: "100%", aspectRatio: undefined, minHeight: 110 } : undefined}
               onPress={() => { setType(t); setStep(2); }}
               onFocus={() => setFocusedField(id)}
               onBlur={() => setFocusedField(null)}
@@ -357,19 +348,18 @@ export default function AddPortalScreen() {
         <BrandHeader />
 
         {/* 2-Column Split Layout */}
-        <View style={S.ventoxTwoColRow}>
+        <View style={[S.ventoxTwoColRow, isTablet && isPortrait && { flexDirection: "column", alignItems: "stretch", maxWidth: "100%", paddingHorizontal: 16 }]}>
           {/* Left Column */}
-          <View style={S.ventoxLeftCol}>
+          <View style={[S.ventoxLeftCol, isTablet && isPortrait && { paddingRight: 0, marginBottom: 20 }]}>
             <Text style={S.ventoxHeadlinePre}>Start watching with</Text>
             <Text style={S.ventoxHeadlineMain}>{portalTitleMap[type]}</Text>
           </View>
 
           {/* Right Column */}
-          <View style={S.ventoxRightCol}>
+          <View style={[S.ventoxRightCol, isTablet && isPortrait && { width: "100%" }]}>
             {/* Name input */}
             <ThemedInput isFocused={focusedField === "name"}>
               <TextInput
-                ref={nameInputRef}
                 style={S.textInput}
                 placeholder="TV"
                 placeholderTextColor="rgba(255, 255, 255, 0.65)"
@@ -377,18 +367,14 @@ export default function AddPortalScreen() {
                 onChangeText={setName}
                 onFocus={() => handleInputFocus("name")}
                 onBlur={() => setFocusedField((cur) => (cur === "name" ? null : cur))}
-                returnKeyType="default"
                 autoCorrect={false}
                 autoCapitalize="words"
-                spellCheck={false}
-                autoComplete="off"
               />
             </ThemedInput>
 
             {/* URL input */}
             <ThemedInput isFocused={focusedField === "url"}>
               <TextInput
-                ref={urlInputRef}
                 style={S.textInput}
                 placeholder={type === "m3u" ? "http://livebox.pro/playlist.m3u" : "http://livebox.pro/"}
                 placeholderTextColor="rgba(255, 255, 255, 0.65)"
@@ -396,11 +382,8 @@ export default function AddPortalScreen() {
                 onChangeText={setUrl}
                 onFocus={() => handleInputFocus("url")}
                 onBlur={() => setFocusedField((cur) => (cur === "url" ? null : cur))}
-                returnKeyType="default"
                 autoCorrect={false}
                 autoCapitalize="none"
-                spellCheck={false}
-                autoComplete="off"
               />
             </ThemedInput>
 
@@ -409,7 +392,6 @@ export default function AddPortalScreen() {
               <>
                 <ThemedInput isFocused={focusedField === "username"}>
                   <TextInput
-                    ref={userInputRef}
                     style={S.textInput}
                     placeholder="Username"
                     placeholderTextColor="rgba(255, 255, 255, 0.65)"
@@ -417,17 +399,13 @@ export default function AddPortalScreen() {
                     onChangeText={setUsername}
                     onFocus={() => handleInputFocus("username")}
                     onBlur={() => setFocusedField((cur) => (cur === "username" ? null : cur))}
-                    returnKeyType="default"
                     autoCorrect={false}
                     autoCapitalize="none"
-                    spellCheck={false}
-                    autoComplete="off"
                   />
                 </ThemedInput>
 
                 <ThemedInput isFocused={focusedField === "password"}>
                   <TextInput
-                    ref={passInputRef}
                     style={S.textInput}
                     placeholder="Password"
                     placeholderTextColor="rgba(255, 255, 255, 0.65)"
@@ -436,11 +414,8 @@ export default function AddPortalScreen() {
                     onChangeText={setPassword}
                     onFocus={() => handleInputFocus("password")}
                     onBlur={() => setFocusedField((cur) => (cur === "password" ? null : cur))}
-                    returnKeyType="default"
                     autoCorrect={false}
                     autoCapitalize="none"
-                    spellCheck={false}
-                    autoComplete="off"
                   />
                 </ThemedInput>
               </>
@@ -450,7 +425,6 @@ export default function AddPortalScreen() {
             {type === "mag" && (
               <ThemedInput isFocused={focusedField === "mac"}>
                 <TextInput
-                  ref={macInputRef}
                   style={S.textInput}
                   placeholder="00:1a:79:bc:ad:4a"
                   placeholderTextColor="rgba(255, 255, 255, 0.65)"
@@ -461,11 +435,8 @@ export default function AddPortalScreen() {
                     setFocusedField((cur) => (cur === "mac" ? null : cur));
                     setMac((prev) => (prev ? formatMac(prev) : ""));
                   }}
-                  returnKeyType="default"
                   autoCorrect={false}
                   autoCapitalize="characters"
-                  spellCheck={false}
-                  autoComplete="off"
                 />
               </ThemedInput>
             )}
@@ -497,17 +468,14 @@ export default function AddPortalScreen() {
   };
 
   // ── Root ─────────────────────────────────────────────────────────────────────
-  const rootStyle = [S.container, { paddingTop: insets.top }];
   const inner = (
     <>
       {isLoading && <LoadingOverlay message={loadingMessage} />}
 
       <ScrollView
-        ref={scrollRef}
         style={S.content}
-        contentContainerStyle={S.scrollContent}
+        contentContainerStyle={[S.scrollContent, isTablet && { paddingBottom: insets.bottom + 36 }]}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
       >
         {step === 1 ? renderStep1() : renderStep2()}
       </ScrollView>
@@ -518,7 +486,7 @@ export default function AddPortalScreen() {
   );
 
   return (
-    <View style={rootStyle}>{inner}</View>
+    <View style={[S.container, { paddingTop: insets.top }]}>{inner}</View>
   );
 }
 

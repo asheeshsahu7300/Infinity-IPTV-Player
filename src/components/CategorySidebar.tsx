@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useCallback, useMemo } from "react";
 import { View, StyleSheet, FlatList, Dimensions, Animated } from 'react-native';
 import { pw, ps, THEME } from "../theme/tokens";
 import { Focusable } from "../tv";
+import { remoteFocusEnabled, SIDEBAR_WIDTH } from "../utils/tabletUtils";
 import { Text } from './Text';
 
 
@@ -118,7 +119,15 @@ const CategoryItem = React.memo(
                 style={[
                   {
                     height: pillHeight,
-                    width: (focused || isActive) ? "100%" : "90%",
+                    // The 90/100 split is a focus affordance: the focused pill
+                    // grows out to meet the edge while its neighbours sit
+                    // inset. With no remote there is no focus to signal, so
+                    // the split degrades into a ragged column with the active
+                    // pill merely wider than the rest -- every pill takes the
+                    // full width there. The active one is still distinguished,
+                    // by its background, not its size.
+                    width:
+                      !remoteFocusEnabled || focused || isActive ? "100%" : "90%",
                     alignSelf: "center",
                     borderRadius: 18,
                     justifyContent: "center",
@@ -181,7 +190,7 @@ export default function CategorySidebar({
   selectedId,
   onSelect,
   onFocus,
-  width = 240,
+  width = SIDEBAR_WIDTH,
   height,
   autoFocusFirst = false,
 }: CategorySidebarProps) {
@@ -245,6 +254,7 @@ export default function CategorySidebar({
   }, [selectedId]);
 
   const lastScrolledIdRef = useRef<string | null>(null);
+  const didInitialScrollRef = useRef(false);
   useEffect(() => {
     if (!selectedId || categories.length === 0) return;
     if (lastScrolledIdRef.current === selectedId) return;
@@ -252,6 +262,23 @@ export default function CategorySidebar({
 
     const index = categories.findIndex((c) => isCategoryActive(c.id));
     if (index === -1) return;
+
+    /**
+     * With a remote, every selection change re-anchors the list: selection
+     * follows the D-pad, and the focused pill belongs at slot 0.
+     *
+     * On touch only the *first* positioning is wanted -- it reveals the
+     * category restored from a previous session. After that a tap must not
+     * move the list: the viewer scrolled it there themselves and the pill they
+     * tapped is under their finger, so re-anchoring it to the top drags the
+     * whole column away from the tap. This effect, not the focus handler, is
+     * the path a tap takes -- it fires because `selectedId` changed.
+     */
+    if (!remoteFocusEnabled) {
+      if (didInitialScrollRef.current) return;
+      didInitialScrollRef.current = true;
+    }
+
     const timer = setTimeout(() => scrollToIndex(index, true), 100);
     return () => clearTimeout(timer);
   }, [selectedId, categories.length, scrollToIndex, isCategoryActive]);
@@ -264,7 +291,10 @@ export default function CategorySidebar({
 
   const handleItemFocus = useCallback(
     (id: string, index: number) => {
-      scrollToIndex(index, false);
+      // Anchoring the focused pill at slot 0 is a D-pad affordance. Guarded
+      // rather than assumed unreachable: the row stays natively focusable, so
+      // a keyboard or stray Android focus could still land here.
+      if (remoteFocusEnabled) scrollToIndex(index, false);
       onFocus?.(id);
     },
     [scrollToIndex, onFocus]

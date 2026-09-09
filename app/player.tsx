@@ -10,12 +10,10 @@
 //     loses the extra IPTV-hardening features in that case.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { View, StyleSheet, Dimensions, Platform, ActivityIndicator, StatusBar, GestureResponderEvent, PanResponder, ScrollView, BackHandler, findNodeHandle, Animated, AppState, AppStateStatus, UIManager, useTVEventHandler } from 'react-native';
+import { View, StyleSheet, Dimensions, Platform, ActivityIndicator, StatusBar, ScrollView, BackHandler, findNodeHandle, Animated, AppState, AppStateStatus, UIManager, useTVEventHandler } from 'react-native';
 import { useLocalSearchParams } from "expo-router";
 import { PlayerAspectRatio, VLCPlayer } from "react-native-vlc-media-player";
 import { Video, ResizeMode, AVPlaybackStatus } from "expo-av";
-import * as ScreenOrientation from "expo-screen-orientation";
-import * as Brightness from "expo-brightness";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { safeStorage } from "../src/services/safeStorage";
 import { LinearGradient } from "expo-linear-gradient";
@@ -24,7 +22,6 @@ import { useKeepAwake } from "expo-keep-awake";
 import { StreamManager } from "../src/services/StreamManager";
 import { PlaybackState } from "../src/services/PlaybackState";
 import { usePortalStore, Channel } from "../src/store/portalStore";
-import { isTV } from "../src/utils/tvUtils";
 import { THEME, ps, pw, ph } from "../src/theme/tokens";
 import { Focusable, FocusGroup, Overlay, useDPad, DPAD_PRIORITY, useStbKeys, STB_PRIORITY } from "../src/tv";
 import NetInfo from "@react-native-community/netinfo";
@@ -46,7 +43,7 @@ import QueueList from "../src/components/QueueList";
 import UpNextCard from "../src/components/UpNextCard";
 import { ChannelTunerReadout } from "../src/components/ChannelTunerOverlay";
 import PinPrompt from "../src/components/PinPrompt";
-import { AlertCircle, Check, ChevronDown, ChevronUp, Film, Gauge, Info, List, Monitor, Music, Settings, SkipBack, SkipForward, StepBack, StepForward, Subtitles, Sun, TriangleAlert, Volume2, Wifi, X } from 'lucide-react-native';
+import { AlertCircle, Check, ChevronDown, ChevronUp, Film, Gauge, Info, List, Monitor, Music, Settings, SkipBack, SkipForward, StepBack, StepForward, Subtitles, TriangleAlert, Wifi, X } from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
 import { Text } from '../src/components/Text';
 
@@ -328,7 +325,6 @@ export default function PlayerScreen() {
   const [isRetrying, setIsRetrying] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
   const [aspectRatioIndex, setAspectRatioIndex] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -353,9 +349,7 @@ export default function PlayerScreen() {
   const [textTracks, setTextTracks] = useState<any[]>([]);
   const [selectedTextTrack, setSelectedTextTrack] = useState<number | undefined>(undefined);
   const [seekIndicator, setSeekIndicator] = useState<string | null>(null);
-  const [volumeIndicator, setVolumeIndicator] = useState<number | null>(null);
-  const [brightnessIndicator, setBrightnessIndicator] = useState<number | null>(null);
-  const [currentVolume, setCurrentVolume] = useState(100);
+  const [currentVolume] = useState(100);
 
   // ── Set-top-box layer ─────────────────────────────────────────────────────
   /**
@@ -490,7 +484,6 @@ export default function PlayerScreen() {
   const mountedRef = useRef(true);
   const vlcPlayerRef = useRef<any>(null);
   const expoVideoRef = useRef<Video>(null);
-  const progressViewRef = useRef<any>(null);
   const actionsRowRef = useRef<any>(null);
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bufferingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -498,9 +491,6 @@ export default function PlayerScreen() {
   const liveReconnectIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seekTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const tapTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastTapTime = useRef(0);
-  const initialTouch = useRef({ x: 0, y: 0, val: 0, bright: 0 });
   const lastProgressTimeRef = useRef(Date.now());
   const lastProgressPositionRef = useRef(0);
   const bufferingStartedRef = useRef<number | null>(null);
@@ -511,13 +501,9 @@ export default function PlayerScreen() {
   const lastAccumulateTime = useRef(0);
 
   const isSeeking = useRef(false);
-  const isScrubbing = useRef(false);
-  const isAdjustingVolume = useRef(false);
-  const isAdjustingBrightness = useRef(false);
   const isRetryingRef = useRef(false);
   const lastVlcErrorTimeRef = useRef(0);
   const hasStartedPlayingRef = useRef(false);
-  const brightnessPermissionRequestInProgress = useRef(false);
 
   const targetSeekPosition = useRef<number | null>(null);
   const vlcSeekTargetRef = useRef<number | null>(null);
@@ -525,8 +511,6 @@ export default function PlayerScreen() {
   const hasSetInitialPosition = useRef(false);
   const savedResumePosition = useRef(0);
   const retryCount = useRef(0);
-  const brightnessRef = useRef(0.5);
-  const volumeRef = useRef(100);
 
   // Ref mirrors (stable captures for timers/effects without stale closures)
   const isPlayingRef = useRef(isPlaying);
@@ -537,7 +521,6 @@ export default function PlayerScreen() {
   const showAudioModalRef = useRef(showAudioModal);
   const showSubtitleModalRef = useRef(showSubtitleModal);
   const seekBarFocusedRef = useRef(seekBarFocused);
-  const isFullscreenRef = useRef(isFullscreen);
   const showZapListRef = useRef(false);
 
   useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
@@ -549,7 +532,6 @@ export default function PlayerScreen() {
   const dummyRightFocusedRef = useRef(false);
   const isNavRowFocusedRef = useRef(false);
   const accumulateSeekRef = useRef<(delta: number, commitAfterMs?: number) => void>(() => { });
-  const handleTapRef = useRef<(x: number) => void>(() => { });
   const handleSilentRetryRef = useRef<() => void>(() => { });
   // The zap helpers are defined further down but the D-pad handlers above need
   // them, so they are reached through refs. Assigned where they are defined.
@@ -571,7 +553,6 @@ export default function PlayerScreen() {
   useEffect(() => { showAudioModalRef.current = showAudioModal; }, [showAudioModal]);
   useEffect(() => { showSubtitleModalRef.current = showSubtitleModal; }, [showSubtitleModal]);
   useEffect(() => { seekBarFocusedRef.current = seekBarFocused; }, [seekBarFocused]);
-  useEffect(() => { isFullscreenRef.current = isFullscreen; }, [isFullscreen]);
   useEffect(() => { showZapListRef.current = showZapList; }, [showZapList]);
   useEffect(() => { showQueueListRef.current = showQueueList; }, [showQueueList]);
   useEffect(() => { showBannerRef.current = showBanner; }, [showBanner]);
@@ -885,7 +866,7 @@ export default function PlayerScreen() {
           setDummyLeftNode(left);
           setDummyRightNode(right);
           setActionsRowNode(row);
-        } else if (isTV) {
+        } else {
           requestAnimationFrame(attachNodes);
         }
       };
@@ -905,38 +886,10 @@ export default function PlayerScreen() {
     }
   }, [showVideoModal, showAudioModal, showSubtitleModal, resetControlsTimeout]);
 
-  // ── Orientation + brightness ──────────────────────────────────────────────
+  // ── Save position on unmount ──────────────────────────────────────────────
   useEffect(() => {
     if (Platform.OS === "web") return;
-    ScreenOrientation.unlockAsync().catch(() => { });
-    if (!isTV) {
-      Brightness.getBrightnessAsync()
-        .then((b) => {
-          if (!isNaN(b)) brightnessRef.current = b;
-        })
-        .catch(() => { });
-
-      const reqPerm = async () => {
-        if (brightnessPermissionRequestInProgress.current) return;
-        try {
-          brightnessPermissionRequestInProgress.current = true;
-          const perm = await Brightness.getPermissionsAsync().catch(() => null);
-          if (perm && !perm.granted && perm.canAskAgain) {
-            await Brightness.requestPermissionsAsync().catch(() => { });
-          }
-        } catch {
-          // Ignore permission request error
-        } finally {
-          brightnessPermissionRequestInProgress.current = false;
-        }
-      };
-      reqPerm();
-    }
     return () => {
-      if (!isTV) {
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => { });
-        Brightness.restoreSystemBrightnessAsync().catch(() => { });
-      }
       // The tuned/queued id, not the launch id: after stepping to episode three
       // this would otherwise write episode three's position over episode one's.
       const watchingId = activeContentIdRef.current || params.contentId;
@@ -958,11 +911,6 @@ export default function PlayerScreen() {
       }
       if (showQueueListRef.current) {
         setShowQueueList(false);
-        return true;
-      }
-      if (isFullscreenRef.current) {
-        setIsFullscreen(false);
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
         return true;
       }
       if (showControlsRef.current) {
@@ -1013,75 +961,6 @@ export default function PlayerScreen() {
     load();
   }, [params.contentId, params.type, performSeek]);
 
-  // ── Pan responder (swipe gestures) ────────────────────────────────────────
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) =>
-        !isLockedRef.current && (Math.abs(g.dx) > 10 || Math.abs(g.dy) > 10),
-      onPanResponderGrant: (evt) => {
-        initialTouch.current = {
-          x: evt.nativeEvent.pageX,
-          y: evt.nativeEvent.pageY,
-          val: volumeRef.current,
-          bright: brightnessRef.current,
-        };
-        resetControlsTimeout();
-      },
-      onPanResponderMove: (_, g) => {
-        if (isLockedRef.current) return;
-        const { dx, dy } = g;
-        if (!isScrubbing.current && !isAdjustingVolume.current && !isAdjustingBrightness.current) {
-          if (Math.abs(dx) > Math.abs(dy) && isSeekableRef.current && durationRef.current > 0) {
-            isScrubbing.current = true;
-          } else if (Math.abs(dy) > Math.abs(dx)) {
-            if (initialTouch.current.x > SCREEN_WIDTH / 2) isAdjustingVolume.current = true;
-            else isAdjustingBrightness.current = true;
-          }
-        }
-        if (isAdjustingVolume.current || isAdjustingBrightness.current) {
-          const delta = -dy / 250;
-          if (isAdjustingVolume.current) {
-            const newVol = Math.min(100, Math.max(0, initialTouch.current.val + delta * 100));
-            volumeRef.current = newVol;
-            setCurrentVolume(newVol);
-            setVolumeIndicator(newVol);
-          } else {
-            const newBright = Math.min(1, Math.max(0, initialTouch.current.bright + delta));
-            brightnessRef.current = newBright;
-            setBrightnessIndicator(newBright);
-            Brightness.setBrightnessAsync(newBright).catch(() => { });
-          }
-        } else if (isScrubbing.current) {
-          const amt = Math.round(dx / 10) * 1000;
-          setSeekIndicator(`${amt > 0 ? "+" : ""}${amt / 1000}s`);
-        }
-      },
-      onPanResponderRelease: (_, g) => {
-        setVolumeIndicator(null);
-        setBrightnessIndicator(null);
-        if (isScrubbing.current) {
-          const amt = Math.round(g.dx / 10) * 1000;
-          accumulateSeekRef.current(amt);
-        } else {
-          setSeekIndicator(null);
-        }
-        isScrubbing.current = false;
-        isAdjustingVolume.current = false;
-        isAdjustingBrightness.current = false;
-        if (Math.abs(g.dx) < 10 && Math.abs(g.dy) < 10) handleTapRef.current(g.x0);
-      },
-      onPanResponderTerminate: () => {
-        setVolumeIndicator(null);
-        setBrightnessIndicator(null);
-        setSeekIndicator(null);
-        isScrubbing.current = false;
-        isAdjustingVolume.current = false;
-        isAdjustingBrightness.current = false;
-      },
-    })
-  ).current;
-
   // ── Action handlers ───────────────────────────────────────────────────────
   const cycleAspectRatio = useCallback(() => {
     if (isLockedRef.current) return;
@@ -1107,33 +986,6 @@ export default function PlayerScreen() {
     },
     [duration, isSeekable, position, performSeek]
   );
-
-  const handleTap = useCallback(
-    (x: number) => {
-      const now = Date.now();
-      if (now - lastTapTime.current < 300) {
-        if (tapTimeout.current) clearTimeout(tapTimeout.current);
-        if (isLockedRef.current) return;
-        if (isSeekableRef.current && params.type !== "live") {
-          const isRight = x > SCREEN_WIDTH / 2;
-          seek(isRight ? 10000 : -10000);
-          setSeekIndicator(isRight ? "+10s" : "-10s");
-          setTimeout(() => setSeekIndicator(null), 500);
-        }
-      } else {
-        tapTimeout.current = setTimeout(() => {
-          setShowControls((p) => {
-            const next = !p;
-            if (next) resetControlsTimeout();
-            return next;
-          });
-        }, 300);
-      }
-      lastTapTime.current = now;
-    },
-    [params.type, seek, resetControlsTimeout]
-  );
-  useEffect(() => { handleTapRef.current = handleTap; }, [handleTap]);
 
   /**
    * Moves the seek target by `delta` and commits once the presses stop.
@@ -1361,14 +1213,6 @@ export default function PlayerScreen() {
     setSeekIndicator(`${next.toFixed(2)}x Speed`);
     setTimeout(() => setSeekIndicator(null), 1000);
     resetControlsTimeout();
-  };
-
-  const handleProgressPress = (e: GestureResponderEvent) => {
-    if (isLockedRef.current || isTV) return;
-    progressViewRef.current?.measure((_x: any, _y: any, width: any, _h: any, pageX: any) => {
-      const frac = Math.max(0, Math.min(1, (e.nativeEvent.pageX - pageX) / width));
-      seek(frac * duration - position);
-    });
   };
 
   const formatTime = (ms: number) => {
@@ -2068,7 +1912,7 @@ export default function PlayerScreen() {
   // Render
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <View style={S.container} {...panResponder.panHandlers}>
+    <View style={S.container}>
       {/* ── Player: VLC when the native module is available, expo-av otherwise ── */}
       {usingVLC && streamUrl && /^(https?|rtsp|mms):\/\//i.test(streamUrl) ? (
         // @ts-ignore
@@ -2378,28 +2222,6 @@ export default function PlayerScreen() {
         </View>
       )}
 
-      {/* ── Volume indicator ─────────────────────────────────────────────── */}
-      {volumeIndicator !== null && (
-        <View style={S.centerIndicator} pointerEvents="none">
-          <Volume2 size={40} color="#fff" />
-          <Text style={S.indicatorText}>{Math.round(volumeIndicator)}%</Text>
-          <View style={S.barContainer}>
-            <View style={[S.barFill, { width: `${volumeIndicator}%` }]} />
-          </View>
-        </View>
-      )}
-
-      {/* ── Brightness indicator ─────────────────────────────────────────── */}
-      {brightnessIndicator !== null && (
-        <View style={S.centerIndicator} pointerEvents="none">
-          <Sun size={40} color="#fff" />
-          <Text style={S.indicatorText}>{Math.round(brightnessIndicator * 100)}%</Text>
-          <View style={S.barContainer}>
-            <View style={[S.barFill, { width: `${brightnessIndicator * 100}%` }]} />
-          </View>
-        </View>
-      )}
-
       {/* ── Seek / speed indicator ───────────────────────────────────────── */}
       {seekIndicator !== null && (
         <View style={S.seekIndicatorOverlay} pointerEvents="none">
@@ -2430,7 +2252,7 @@ export default function PlayerScreen() {
             <View
               style={[
                 S.centerRow,
-                (seekIndicator !== null || volumeIndicator !== null || brightnessIndicator !== null) && { opacity: 0 },
+                seekIndicator !== null && { opacity: 0 },
               ]}
               pointerEvents={seekIndicator !== null ? "none" : "auto"}
             >
@@ -2500,7 +2322,7 @@ export default function PlayerScreen() {
               )}
 
               {/* Progress bar — VOD only */}
-              {(!isLocked || isTV) && !isLive && duration > 0 && (
+              {!isLive && duration > 0 && (
                 <View style={S.progressSection}>
                   <View style={S.timeRow}>
                     <Text style={S.timeText}>
@@ -2512,26 +2334,24 @@ export default function PlayerScreen() {
                     )}
                   </View>
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    {isTV && (
-                      <Focusable
-                        ref={dummyLeftRef}
-                        ringOnFocus={false}
-                        nextFocusRight={seekBarNode}
-                        nextFocusUp={seekBarNode}
-                        nextFocusDown={seekBarNode}
-                        nextFocusLeft={seekBarNode}
-                        style={{ width: 1, height: 1, backgroundColor: "transparent", position: "absolute", left: 0 }}
-                        onPress={togglePlay}
-                        onFocus={() => {
-                          if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
-                          dummyLeftFocusedRef.current = true;
-                          setVisualFocus(true);
-                          accumulateSeek(-ARROW_SEEK_MS, ARROW_SEEK_COMMIT_MS);
-                          seekBarRef.current?.focus();
-                        }}
-                        onBlur={() => { dummyLeftFocusedRef.current = false; handleSeekBlur(); }}
-                      />
-                    )}
+                    <Focusable
+                      ref={dummyLeftRef}
+                      ringOnFocus={false}
+                      nextFocusRight={seekBarNode}
+                      nextFocusUp={seekBarNode}
+                      nextFocusDown={seekBarNode}
+                      nextFocusLeft={seekBarNode}
+                      style={{ width: 1, height: 1, backgroundColor: "transparent", position: "absolute", left: 0 }}
+                      onPress={togglePlay}
+                      onFocus={() => {
+                        if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
+                        dummyLeftFocusedRef.current = true;
+                        setVisualFocus(true);
+                        accumulateSeek(-ARROW_SEEK_MS, ARROW_SEEK_COMMIT_MS);
+                        seekBarRef.current?.focus();
+                      }}
+                      onBlur={() => { dummyLeftFocusedRef.current = false; handleSeekBlur(); }}
+                    />
                     <Focusable
                       ref={seekBarRef}
                       ringOnFocus={false}
@@ -2544,12 +2364,11 @@ export default function PlayerScreen() {
                       onPress={togglePlay}
                     >
                       {() => {
-                        const effFocused = isTV
-                          ? visualFocus || dummyLeftFocusedRef.current || dummyRightFocusedRef.current
-                          : true;
+                        const effFocused =
+                          visualFocus || dummyLeftFocusedRef.current || dummyRightFocusedRef.current;
                         return (
                           <View style={S.progressBarInner}>
-                            <View ref={progressViewRef} style={[S.progressRail, effFocused && S.progressRailFocused]} onTouchEnd={handleProgressPress}>
+                            <View style={[S.progressRail, effFocused && S.progressRailFocused]}>
                               {isBuffering && <ShimmerBar />}
                               <View style={[S.progressFill, { width: `${progressPercent}%` }]} />
                             </View>
@@ -2558,140 +2377,136 @@ export default function PlayerScreen() {
                         );
                       }}
                     </Focusable>
-                    {isTV && (
-                      <Focusable
-                        ref={dummyRightRef}
-                        ringOnFocus={false}
-                        nextFocusLeft={seekBarNode}
-                        nextFocusUp={seekBarNode}
-                        nextFocusDown={seekBarNode}
-                        nextFocusRight={seekBarNode}
-                        style={{ width: 1, height: 1, backgroundColor: "transparent", position: "absolute", right: 0 }}
-                        onPress={togglePlay}
-                        onFocus={() => {
-                          if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
-                          dummyRightFocusedRef.current = true;
-                          setVisualFocus(true);
-                          accumulateSeek(ARROW_SEEK_MS, ARROW_SEEK_COMMIT_MS);
-                          seekBarRef.current?.focus();
-                        }}
-                        onBlur={() => { dummyRightFocusedRef.current = false; handleSeekBlur(); }}
-                      />
-                    )}
+                    <Focusable
+                      ref={dummyRightRef}
+                      ringOnFocus={false}
+                      nextFocusLeft={seekBarNode}
+                      nextFocusUp={seekBarNode}
+                      nextFocusDown={seekBarNode}
+                      nextFocusRight={seekBarNode}
+                      style={{ width: 1, height: 1, backgroundColor: "transparent", position: "absolute", right: 0 }}
+                      onPress={togglePlay}
+                      onFocus={() => {
+                        if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
+                        dummyRightFocusedRef.current = true;
+                        setVisualFocus(true);
+                        accumulateSeek(ARROW_SEEK_MS, ARROW_SEEK_COMMIT_MS);
+                        seekBarRef.current?.focus();
+                      }}
+                      onBlur={() => { dummyRightFocusedRef.current = false; handleSeekBlur(); }}
+                    />
                   </View>
                 </View>
               )}
 
               {/* Actions row */}
               <FocusGroup ref={actionsRowRef} style={S.actionsRow}>
-                {(!isLocked || isTV) && (
-                  <View style={S.actionsRight}>
-                    {/* No LIVE dot or quality chip here.
-                        The banner directly above already carries both as
-                        badges, and it is now always visible whenever these
-                        controls are — so repeating them put "LIVE  4K" on
-                        screen twice, one line apart, which is what made the
-                        two rows read as competing panels rather than one. */}
+                <View style={S.actionsRight}>
+                  {/* No LIVE dot or quality chip here.
+                      The banner directly above already carries both as
+                      badges, and it is now always visible whenever these
+                      controls are — so repeating them put "LIVE  4K" on
+                      screen twice, one line apart, which is what made the
+                      two rows read as competing panels rather than one. */}
 
-                    {/* Set-top controls. These duplicate remote keys that most
-                        Android TV builds never deliver to JS at all, so on that
-                        hardware they are the only way to zap. */}
-                    {!isLive && canStepQueue && (
-                      <>
-                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => setShowQueueList(true)} accessibilityLabel="Episode list" {...navRowFocusHandlers}>
-                          {(focused) => (
-                            <List size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
-                          )}
-                        </Focusable>
-                        {playbackQueue.size > 1 && (
-                          <>
-                            <Focusable
-                              ringOnFocus={false}
-                              focusStyle={S.iconChipFocused}
-                              style={[S.settingBtn, !hasPrevEpisode && { opacity: 0.35 }]}
-                              disabled={!hasPrevEpisode}
-                              onPress={() => stepQueue(-1)}
-                              accessibilityLabel="Previous episode"
-                              {...navRowFocusHandlers}
-                            >
-                              {(focused) => (
-                                <StepBack size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
-                              )}
-                            </Focusable>
-                            <Focusable
-                              ringOnFocus={false}
-                              focusStyle={S.iconChipFocused}
-                              style={[S.settingBtn, !hasNextEpisode && { opacity: 0.35 }]}
-                              disabled={!hasNextEpisode}
-                              onPress={() => stepQueue(1)}
-                              accessibilityLabel="Next episode"
-                              {...navRowFocusHandlers}
-                            >
-                              {(focused) => (
-                                <StepForward size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
-                              )}
-                            </Focusable>
-                          </>
-                        )}
-                      </>
-                    )}
-                    {isLive && canZap && (
-                      <>
-                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { setShowZapList(true); }} accessibilityLabel="Channel list" {...navRowFocusHandlers}>
-                          {(focused) => (
-                            <List size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
-                          )}
-                        </Focusable>
-                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => zapBy(1)} accessibilityLabel="Channel up" {...navRowFocusHandlers}>
-                          {(focused) => (
-                            <ChevronUp size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
-                          )}
-                        </Focusable>
-                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => zapBy(-1)} accessibilityLabel="Channel down" {...navRowFocusHandlers}>
-                          {(focused) => (
-                            <ChevronDown size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
-                          )}
-                        </Focusable>
-                        <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => flashBanner()} accessibilityLabel="Channel info" {...navRowFocusHandlers}>
-                          {(focused) => (
-                            <Info size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
-                          )}
-                        </Focusable>
-                      </>
-                    )}
-                    {!isLive && (
-                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cyclePlaybackSpeed} {...navRowFocusHandlers}>
+                  {/* Set-top controls. These duplicate remote keys that most
+                      Android TV builds never deliver to JS at all, so on that
+                      hardware they are the only way to zap. */}
+                  {!isLive && canStepQueue && (
+                    <>
+                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => setShowQueueList(true)} accessibilityLabel="Episode list" {...navRowFocusHandlers}>
                         {(focused) => (
-                          <Gauge size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                          <List size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                         )}
                       </Focusable>
-                    )}
-                    {usingVLC && !isLive && videoTracks.length > 1 && (
-                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowVideoModal(true); }} {...navRowFocusHandlers}>
+                      {playbackQueue.size > 1 && (
+                        <>
+                          <Focusable
+                            ringOnFocus={false}
+                            focusStyle={S.iconChipFocused}
+                            style={[S.settingBtn, !hasPrevEpisode && { opacity: 0.35 }]}
+                            disabled={!hasPrevEpisode}
+                            onPress={() => stepQueue(-1)}
+                            accessibilityLabel="Previous episode"
+                            {...navRowFocusHandlers}
+                          >
+                            {(focused) => (
+                              <StepBack size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                            )}
+                          </Focusable>
+                          <Focusable
+                            ringOnFocus={false}
+                            focusStyle={S.iconChipFocused}
+                            style={[S.settingBtn, !hasNextEpisode && { opacity: 0.35 }]}
+                            disabled={!hasNextEpisode}
+                            onPress={() => stepQueue(1)}
+                            accessibilityLabel="Next episode"
+                            {...navRowFocusHandlers}
+                          >
+                            {(focused) => (
+                              <StepForward size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                            )}
+                          </Focusable>
+                        </>
+                      )}
+                    </>
+                  )}
+                  {isLive && canZap && (
+                    <>
+                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { setShowZapList(true); }} accessibilityLabel="Channel list" {...navRowFocusHandlers}>
                         {(focused) => (
-                          <Settings size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                          <List size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                         )}
                       </Focusable>
-                    )}
-                    {!isLive && (
-                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowSubtitleModal(true); }} {...navRowFocusHandlers}>
+                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => zapBy(1)} accessibilityLabel="Channel up" {...navRowFocusHandlers}>
                         {(focused) => (
-                          <Subtitles size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                          <ChevronUp size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                         )}
                       </Focusable>
-                    )}
-                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowAudioModal(true); }} {...navRowFocusHandlers}>
+                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => zapBy(-1)} accessibilityLabel="Channel down" {...navRowFocusHandlers}>
+                        {(focused) => (
+                          <ChevronDown size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                        )}
+                      </Focusable>
+                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => flashBanner()} accessibilityLabel="Channel info" {...navRowFocusHandlers}>
+                        {(focused) => (
+                          <Info size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                        )}
+                      </Focusable>
+                    </>
+                  )}
+                  {!isLive && (
+                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cyclePlaybackSpeed} {...navRowFocusHandlers}>
                       {(focused) => (
-                        <Music size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                        <Gauge size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                       )}
                     </Focusable>
-                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cycleAspectRatio} {...navRowFocusHandlers}>
+                  )}
+                  {usingVLC && !isLive && videoTracks.length > 1 && (
+                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowVideoModal(true); }} {...navRowFocusHandlers}>
                       {(focused) => (
-                        <Monitor size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                        <Settings size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                       )}
                     </Focusable>
-                  </View>
-                )}
+                  )}
+                  {!isLive && (
+                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowSubtitleModal(true); }} {...navRowFocusHandlers}>
+                      {(focused) => (
+                        <Subtitles size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                      )}
+                    </Focusable>
+                  )}
+                  <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowAudioModal(true); }} {...navRowFocusHandlers}>
+                    {(focused) => (
+                      <Music size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                    )}
+                  </Focusable>
+                  <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cycleAspectRatio} {...navRowFocusHandlers}>
+                    {(focused) => (
+                      <Monitor size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                    )}
+                  </Focusable>
+                </View>
               </FocusGroup>
             </View>
           </View>
@@ -3248,39 +3063,6 @@ const S = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  centerIndicator: {
-    position: "absolute",
-    top: "42%",
-    alignSelf: "center",
-    backgroundColor: "rgba(14, 15, 20, 0.95)",
-    paddingHorizontal: ps(2.8),
-    paddingVertical: ps(1.8),
-    borderRadius: 22,
-    borderWidth: 1.5,
-    borderColor: "rgba(255, 255, 255, 0.22)",
-    alignItems: "center",
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
-    elevation: 20,
-    zIndex: 100,
-  },
-  indicatorText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-    marginTop: 10,
-  },
-  barContainer: {
-    height: 4,
-    width: 100,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: 2,
-    marginTop: 15,
-  },
-  barFill: { height: "100%", backgroundColor: "#F5F5F5", borderRadius: 2 },
-
   retryBtn: {
     marginTop: 20,
     paddingHorizontal: 32,
@@ -3457,35 +3239,35 @@ const S = StyleSheet.create({
     borderColor: "transparent",
   },
   progressBarInner: {
-    height: isTV ? ps(2.4) : 32,
+    height: ps(2.4),
     justifyContent: "center",
   },
   progressRail: {
-    height: isTV ? ps(0.7) : 8,
+    height: ps(0.7),
     width: "100%",
     backgroundColor: "rgba(255, 255, 255, 0.22)",
-    borderRadius: isTV ? ps(0.35) : 4,
+    borderRadius: ps(0.35),
     overflow: "hidden",
   },
   progressRailFocused: {
-    height: isTV ? ps(0.85) : 10,
-    borderRadius: isTV ? ps(0.42) : 5,
+    height: ps(0.85),
+    borderRadius: ps(0.42),
     backgroundColor: "rgba(255, 255, 255, 0.32)",
   },
   progressFill: {
     height: "100%",
-    borderRadius: isTV ? ps(0.35) : 4,
+    borderRadius: ps(0.35),
     overflow: "hidden",
     backgroundColor: "#F5F5F5",
   },
   scrubber: {
     position: "absolute",
     top: "50%",
-    width: isTV ? ps(1.4) : 20,
-    height: isTV ? ps(1.4) : 20,
-    marginTop: isTV ? -ps(0.7) : -10,
-    marginLeft: isTV ? -ps(0.7) : -10,
-    borderRadius: isTV ? ps(0.7) : 10,
+    width: ps(1.4),
+    height: ps(1.4),
+    marginTop: -ps(0.7),
+    marginLeft: -ps(0.7),
+    borderRadius: ps(0.7),
     backgroundColor: "#F5F5F5",
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: 2 },
@@ -3543,7 +3325,7 @@ const S = StyleSheet.create({
   //     for. See the note on THEME.fonts in src/theme/tokens.ts.
   modalContent: {
     backgroundColor: "rgba(14, 15, 20, 0.96)",
-    width: isTV ? "42%" : "84%",
+    width: "42%",
     maxWidth: ps(36),
     maxHeight: "85%",
     borderRadius: 20,
