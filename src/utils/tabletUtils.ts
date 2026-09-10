@@ -1,6 +1,10 @@
-import { Platform, Dimensions } from 'react-native';
-
-import { isPhone, PHONE_SIDEBAR_WIDTH } from './phoneUtils';
+import {
+  hasMeasuredDisplay,
+  isPhone,
+  isTouchPlatform,
+  PHONE_SIDEBAR_WIDTH,
+  shortestSide,
+} from './phoneUtils';
 
 /**
  * Shared tablet detection utility.
@@ -21,31 +25,36 @@ import { isPhone, PHONE_SIDEBAR_WIDTH } from './phoneUtils';
  * react-native-web populates.
  */
 
-const screenDims = Dimensions.get('screen');
-const windowDims = Dimensions.get('window');
-
-/** Shortest side of the physical display, in dp. */
-export const shortestSide = Math.min(
-    screenDims.width || windowDims.width,
-    screenDims.height || windowDims.height
-);
+/**
+ * Re-exported from `phoneUtils`, which owns the one measurement of the display.
+ * It used to be derived again here from its own `Dimensions` read, which is how
+ * the two could disagree.
+ */
+export { shortestSide };
 
 /** Android's tablet breakpoints, in dp of shortest side. */
 export const TABLET_BREAKPOINT = 600;
 export const LARGE_TABLET_BREAKPOINT = 1000;
 
 /**
- * True on phones/tablets that are tablet-sized. Never true on a TV: a box
- * reports a large display too, and letting it answer `true` here is exactly the
- * conflation this file exists to avoid.
+ * True on tablets. Never true on a TV: a box reports a large display too, and
+ * letting it answer `true` here is exactly the conflation this file exists to
+ * avoid.
+ *
+ * Defined as "a touch device that is not a handset" rather than as
+ * `shortestSide >= 600`, which makes tablet the **fallback** of the pair. When
+ * the display cannot be measured — `Dimensions` not yet populated as the bundle
+ * evaluates — the old form answered false here and true in `isPhone`, so an
+ * unmeasurable tablet became a phone. Now neither a missing measurement nor a
+ * future change to the breakpoint can leave a touch device classified as
+ * something it is not, and the two flags stay mutually exclusive by
+ * construction rather than by both being kept in step.
  */
-export const isTablet =
-    !Platform.isTV &&
-    (Platform.OS === 'android' || Platform.OS === 'ios') &&
-    shortestSide >= TABLET_BREAKPOINT;
+export const isTablet = isTouchPlatform && !isPhone;
 
 /** 12"-class tablets (iPad Pro, Tab S Ultra) — shortest side ≥ 1000dp. */
-export const isLargeTablet = isTablet && shortestSide >= LARGE_TABLET_BREAKPOINT;
+export const isLargeTablet =
+  isTablet && hasMeasuredDisplay && shortestSide >= LARGE_TABLET_BREAKPOINT;
 
 
 /**

@@ -24,11 +24,33 @@ import { Platform, Dimensions } from 'react-native';
 const screenDims = Dimensions.get('screen');
 const windowDims = Dimensions.get('window');
 
-/** Shortest side of the physical display, in dp. */
-const shortestSide = Math.min(
-    screenDims.width || windowDims.width,
-    screenDims.height || windowDims.height
-);
+/** First value that is an actual measurement rather than a zero placeholder. */
+const firstPositive = (...values: (number | undefined)[]): number =>
+    values.find((v) => typeof v === 'number' && v > 0) ?? 0;
+
+const displayWidth = firstPositive(screenDims.width, windowDims.width);
+const displayHeight = firstPositive(screenDims.height, windowDims.height);
+
+/**
+ * Shortest side of the physical display in dp, or 0 when it could not be read.
+ *
+ * The zero matters. This module is evaluated as the bundle loads, and if
+ * neither `screen` nor `window` has been populated yet both axes come back 0 —
+ * so the previous `Math.min(screen.width || window.width, ...)` produced 0, and
+ * every "is it small" test below answered *yes*. A tablet then classified as a
+ * handset: phone styles on every screen, and `app/_layout` locking it to
+ * portrait so it could not be turned. Distinguishing "small" from "unknown" is
+ * the whole point of keeping the 0 rather than folding it into the comparison.
+ */
+export const shortestSide =
+    displayWidth > 0 && displayHeight > 0 ? Math.min(displayWidth, displayHeight) : 0;
+
+/** False when the display reported nothing, so callers can refuse to guess. */
+export const hasMeasuredDisplay = shortestSide > 0;
+
+/** A hand-held platform: phone or tablet, never a TV and never the web. */
+export const isTouchPlatform =
+    !Platform.isTV && (Platform.OS === 'android' || Platform.OS === 'ios');
 
 /**
  * The handset ceiling, in dp of shortest side.
@@ -47,8 +69,8 @@ export const PHONE_MAX_SHORTEST_SIDE = 600;
  * a box reports its own display and must not be turned upright.
  */
 export const isPhone =
-    !Platform.isTV &&
-    (Platform.OS === 'android' || Platform.OS === 'ios') &&
+    isTouchPlatform &&
+    hasMeasuredDisplay &&
     shortestSide < PHONE_MAX_SHORTEST_SIDE;
 
 /**

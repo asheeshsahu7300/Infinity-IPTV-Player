@@ -785,14 +785,27 @@ export default function PortalsScreen() {
     <View
       style={[
         S.introRow,
+        /*
+         * Portrait stacks the copy above the artwork.
+         *
+         * `alignItems: "stretch"` matters as much as the direction: the base
+         * row centres its children, and a centred column child sizes to its
+         * content rather than to the column, which leaves the artwork free to
+         * be as wide as its aspect ratio asks for. See `introArt` below.
+         */
         isPortrait && {
           flexDirection: "column",
-          gap: 20,
+          alignItems: "stretch",
+          // The gap is the only thing between the GET STARTED button and the
+          // top of the artwork stack — the copy block ends flush with the
+          // button, and the back layer of the stack starts at `top: 0`.
+          gap: 40,
           paddingVertical: 24,
+          paddingHorizontal: 24,
         },
       ]}
     >
-      <View style={S.introCopy}>
+      <View style={[S.introCopy, isPortrait && { flex: 0, width: "100%" }]}>
         <Image
           source={require("../assets/images/TV.png")}
           style={S.introLogo}
@@ -845,7 +858,18 @@ export default function PortalsScreen() {
         </Focusable>
       </View>
 
-      <View style={S.introArt}>
+      {/*
+        * `flex: 0` and a full width in portrait, so the aspect ratio derives
+        * the height from the width instead of the other way round.
+        *
+        * `introArt` is `flex: 1.1` with `aspectRatio: 16/10`. In the landscape
+        * row that shares the width and the ratio gives a height. Turned into a
+        * column it shares the *height* instead — a tall portrait screen hands
+        * it a large one — and the ratio then asks for 1.6x that in width, so
+        * the artwork ran off both edges and took its absolutely-positioned
+        * layers with it.
+        */}
+      <View style={[S.introArt, isPortrait && { flex: 0, width: "100%" }]}>
         <Image
           source={require("../assets/images/series.png")}
           style={[
