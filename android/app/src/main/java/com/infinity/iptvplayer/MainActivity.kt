@@ -1,4 +1,4 @@
-package com.infinity.iptvplayertv
+package com.infinity.iptvplayer
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

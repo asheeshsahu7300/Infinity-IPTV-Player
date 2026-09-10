@@ -1,4 +1,4 @@
-package com.infinity.iptvplayertv
+package com.infinity.iptvplayer
 
 import android.app.Application
 import android.content.res.Configuration

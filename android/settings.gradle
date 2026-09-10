@@ -56,7 +56,7 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
 }
 expoAutolinking.useExpoModules()
 
-rootProject.name = 'Infinity IPTV Player TV'
+rootProject.name = 'Infinity IPTV Player'
 
 expoAutolinking.useExpoVersionCatalog()
 

@@ -54,7 +54,8 @@
           "androidTVBanner": "./assets/images/splash-icon.png",
           "androidTVRequired": false
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
@@ -62,8 +63,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "49fdc846-27f9-4fee-98af-e9e9753d6a3c"
+        "projectId": "9bf901df-8bd7-41a3-b109-d291ac6443f8"
       }
-    }
+    },
+    "owner": "asheeshsahu7300"
   }
 }
