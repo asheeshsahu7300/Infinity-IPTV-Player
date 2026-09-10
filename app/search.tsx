@@ -21,7 +21,7 @@ import {
   PHONE_H_PAD,
   PHONE_RAIL_ITEM_WIDTH,
 } from "../src/utils/phoneUtils";
-import { isTablet, isTouch } from "../src/utils/tabletUtils";
+import { isTablet, isTouch, TABLET_TILE_MAX_WIDTH } from "../src/utils/tabletUtils";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import { playbackQueue } from "../src/services/playbackQueue";
 import { Calendar, ExternalLink, Play, Search, Star, X } from 'lucide-react-native';
@@ -893,13 +893,37 @@ export default function SearchScreen() {
   // `isTablet ? ... : ...` did here — asked a 393dp handset for a 7-column
   // poster grid: 56dp a column, narrower than the rating badge sitting on it.
   // Three columns is what live-tv, vod and series already use below 600dp.
-  const railHPad = isPhone ? PHONE_H_PAD : isTablet ? (isPortrait ? 20 : 28) : RAIL_H_PAD;
+  // 28 was a fine gutter on a 1280 panel and a thin one on a 1506; the floor
+  // keeps the smaller tablets exactly where they were.
+  const railHPad = isPhone
+    ? PHONE_H_PAD
+    : isTablet
+      ? (isPortrait ? 20 : Math.round(Math.max(28, windowWidth * 0.025)))
+      : RAIL_H_PAD;
   const RESULT_COLUMNS = isPhone ? PHONE_GRID_COLUMNS : isTablet ? (isPortrait ? 5 : (windowWidth > 1100 ? 8 : 7)) : 7;
   const CARD_WIDTH = (windowWidth - railHPad * 2) / RESULT_COLUMNS;
   // Sleek, compact card sizing for tablets (~112dp portrait, ~126dp landscape)
   // and a shade narrower on a phone, so a rail shows part of a fourth item and
   // reads as scrollable.
-  const RAIL_ITEM_WIDTH = isPhone ? PHONE_RAIL_ITEM_WIDTH : isTablet ? (isPortrait ? 112 : 126) : pw(13.2);
+  /*
+   * The rail item follows the panel, like the grids' tiles do.
+   *
+   * It was a flat 126 on every landscape tablet. The result cards below it are
+   * derived from the width, so on a 1506 panel they are 181 and the rails sat
+   * at 126 — a third smaller than both the cards beside them and the 179 tile
+   * the vod grid shows for the same artwork.
+   *
+   * Bounded by the same `TABLET_TILE_MAX_WIDTH` the grids cap at, so a rail
+   * item and a grid tile stay the same size on any given panel, and floored at
+   * the old 126 so the smaller tablets are unchanged.
+   */
+  const RAIL_ITEM_WIDTH = isPhone
+    ? PHONE_RAIL_ITEM_WIDTH
+    : isTablet
+      ? (isPortrait
+          ? 112
+          : Math.round(Math.min(TABLET_TILE_MAX_WIDTH, Math.max(126, windowWidth * 0.12))))
+      : pw(13.2);
 
   // Chunk flat results into rows of RESULT_COLUMNS — same pattern as vod.tsx.
   // A FocusGroup (TVFocusGuideView) wraps each row so left/right D-pad

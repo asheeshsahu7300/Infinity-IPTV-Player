@@ -623,7 +623,31 @@ export default function LiveTVScreen() {
   // phones. `isPhone` rather than a second `>= 600` literal — in portrait
   // `SCREEN_WIDTH_VAL` is the shortest side, so the two are the same test, and
   // the device class is the one that says why.
-  const numColumns = isPortrait ? (isPhone ? PHONE_GRID_COLUMNS : 4) : 5;
+  /*
+   * Landscape column count follows the panel on a tablet.
+   *
+   * It was a fixed 5. The tile is capped at `TABLET_TILE_MAX_WIDTH`, so on a
+   * wide panel the surplus had nowhere to go but the gaps: a 1506dp tablet got
+   * a 239dp cell holding a 168dp poster — 71dp of dead space between every
+   * column, against the 10 the box has — and a 1920 one got 146. The grid read
+   * as scattered rather than as a grid.
+   *
+   * Dividing by the capped tile plus that 10dp gutter keeps the gutter at
+   * exactly 10 everywhere and spends the width on more posters instead, which
+   * is what `tabletClamp` says the surplus is for. `max(5, ...)` holds the
+   * floor for smaller tablets, which already sit under the cap and are
+   * unchanged; TV does not take this branch at all.
+   */
+  const numColumns = isPortrait
+    ? (isPhone ? PHONE_GRID_COLUMNS : 4)
+    : isTablet
+      ? Math.max(
+          5,
+          Math.ceil(
+            (SCREEN_WIDTH_VAL - SIDEBAR_WIDTH - pw(1.2) * 2) / (TABLET_TILE_MAX_WIDTH + 10)
+          )
+        )
+      : 5;
 
   const SIDEBAR_WIDTH_VAL = isPortrait ? 0 : SIDEBAR_WIDTH;
   const GRID_H_PADDING = isPortrait ? 16 : pw(1.2) * 2;
@@ -636,8 +660,22 @@ export default function LiveTVScreen() {
   const HEADER_HEIGHT_VAL = 56;
   const BODY_MARGIN_TOP = 10;
   const GRID_V_PADDING = 16;
+  /*
+   * `insets.bottom` is deliberately NOT subtracted here.
+   *
+   * The grid's own `contentContainerStyle` already carries
+   * `paddingBottom: insets.bottom + 24`, so the safe area is reserved inside
+   * the scrollable content where it belongs. Taking it off the viewport as
+   * well reserved it twice: the body ends up `screen - insets.bottom` tall and
+   * the remainder is bare container underneath — a black band across the foot
+   * of the screen with the rows squeezed to make room for it. Work the
+   * arithmetic through and the leftover is exactly `insets.bottom`.
+   *
+   * `insets.top` is still subtracted, because the container pads by it rather
+   * than any child doing so.
+   */
   const AVAILABLE_VIEWPORT_HEIGHT =
-    SCREEN_HEIGHT_VAL - insets.top - insets.bottom - HEADER_HEIGHT_VAL - BODY_MARGIN_TOP - GRID_V_PADDING;
+    SCREEN_HEIGHT_VAL - insets.top - HEADER_HEIGHT_VAL - BODY_MARGIN_TOP - GRID_V_PADDING;
 
   // On TV, VISIBLE_ROWS (3) rows fill the viewport.
   // In landscape, 3 rows fit cleanly. In portrait, allow channel cards to scroll naturally.
@@ -657,10 +695,30 @@ export default function LiveTVScreen() {
   // 24 is close to the floor. The row height is fixed through `getItemLayout`,
   // so anything the label overruns is clipped rather than scrolled, and only
   // ~2dp of slack is left. Below this, shorten the label first.
+  /*
+   * The channel card keeps its shape on every panel.
+   *
+   * Landscape took the row height from `AVAILABLE / rows` while the tile width
+   * was capped at `TABLET_TILE_MAX_WIDTH`, so a taller tablet made a taller
+   * card against a fixed width: 168x274 on a 1506x941 panel, against 129x140
+   * on the box. Bounding the row by the card's own proportion instead keeps
+   * the shape and turns the extra height into more rows.
+   *
+   * 1.085 is the ratio the box already renders (140 over 129), so the two
+   * bounds are equal there and this changes nothing on TV.
+   */
+  const CARD_ASPECT = 1.085;
   const ROW_HEIGHT = isPortrait
     ? Math.floor(tileWidth + (isPhone ? 24 : 48))
-    : Math.floor(AVAILABLE_VIEWPORT_HEIGHT / targetVisibleRows);
-  const EXACT_GRID_HEIGHT = ROW_HEIGHT * targetVisibleRows + GRID_V_PADDING;
+    : Math.min(
+        Math.floor(AVAILABLE_VIEWPORT_HEIGHT / targetVisibleRows),
+        Math.round(tileWidth * CARD_ASPECT) + 12
+      );
+  // Fills the viewport even when the rows no longer divide it exactly, so a
+  // shorter row cannot reopen the black band at the foot of the screen.
+  const EXACT_GRID_HEIGHT = isPortrait
+    ? ROW_HEIGHT * targetVisibleRows + GRID_V_PADDING
+    : AVAILABLE_VIEWPORT_HEIGHT + GRID_V_PADDING;
   const cardHeight = isPortrait
     ? Math.floor(tileWidth)
     : Math.floor(ROW_HEIGHT - 12);

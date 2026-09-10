@@ -1,15 +1,16 @@
 import React from "react";
 import {
   BackHandler,
+  Platform,
   StyleProp,
   StyleSheet,
   Pressable,
   View,
   ViewStyle,
   Animated,
-  TVFocusGuideView,
   findNodeHandle,
 } from "react-native";
+import * as ReactNative from "react-native";
 import { useDPad, DPAD_PRIORITY } from "./useDPad";
 import {
   InsideOverlayContext,
@@ -20,6 +21,32 @@ import {
 import { lastFocusedRef } from "./Focusable";
 import { useReducedMotion } from "./useReducedMotion";
 import { FocusMemory } from "./FocusMemory";
+
+/**
+ * The overlay's outermost node.
+ *
+ * `TVFocusGuideView` traps D-pad movement inside the dialog. It is a
+ * remote-focus construct: on a phone or tablet there is no D-pad, so it
+ * contributes nothing but a wrapper.
+ *
+ * It is also **not in react-native's TypeScript surface** — `types/index.d.ts`
+ * does not declare it, while `index.js` does define it as a getter — so a
+ * named `import { TVFocusGuideView } from "react-native"` is a type error, and
+ * on a build where that getter is absent it silently yields `undefined`.
+ * Rendering `undefined` is what killed every dialog in the app with "Element
+ * type is invalid", blamed on `Overlay` because `Overlay` is what rendered it.
+ *
+ * Reading it off the namespace keeps the compiler honest about the fact that
+ * this member is not guaranteed, and the `?? View` makes the absence
+ * survivable instead of fatal. Off TV it is not consulted at all.
+ */
+const TVFocusGuideView = (
+  ReactNative as unknown as { TVFocusGuideView?: React.ComponentType<any> }
+).TVFocusGuideView;
+
+const FocusGuide: React.ComponentType<any> = Platform.isTV
+  ? TVFocusGuideView ?? View
+  : View;
 
 export interface OverlayProps {
   visible: boolean;
@@ -176,12 +203,16 @@ export function Overlay({
   if (!render) return null;
 
   return (
-    <TVFocusGuideView
+    <FocusGuide
       style={styles.root}
-      trapFocusUp={trapFocus && visible}
-      trapFocusDown={trapFocus && visible}
-      trapFocusLeft={trapFocus && visible}
-      trapFocusRight={trapFocus && visible}
+      {...(Platform.isTV
+        ? {
+            trapFocusUp: trapFocus && visible,
+            trapFocusDown: trapFocus && visible,
+            trapFocusLeft: trapFocus && visible,
+            trapFocusRight: trapFocus && visible,
+          }
+        : null)}
     >
       <Animated.View style={[styles.backdrop, style, { opacity }]} pointerEvents={visible ? "auto" : "none"}>
         <Pressable
@@ -199,7 +230,7 @@ export function Overlay({
           </View>
         </InsideOverlayContext.Provider>
       </Animated.View>
-    </TVFocusGuideView>
+    </FocusGuide>
   );
 }
 

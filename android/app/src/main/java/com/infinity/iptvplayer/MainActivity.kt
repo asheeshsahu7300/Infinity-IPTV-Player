@@ -2,6 +2,10 @@ package com.infinity.iptvplayer
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
+import android.app.UiModeManager
+import android.content.Context
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.os.Bundle
 
 import com.facebook.react.ReactActivity
@@ -13,6 +17,7 @@ import expo.modules.ReactActivityDelegateWrapper
 
 class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
+    pinHandsetToPortrait()
     // Set the theme to AppTheme BEFORE onCreate to support
     // coloring the background, status bar, and navigation bar.
     // This is required for expo-splash-screen.
@@ -110,5 +115,21 @@ class MainActivity : ReactActivity() {
     } catch (e: Exception) {
       false
     }
+  }
+
+  /**
+   * Strictly upright on a handset. Injected by plugins/withHandsetPortrait.js —
+   * edit the plugin, not this file, or the next prebuild will drop the change.
+   */
+  private fun pinHandsetToPortrait() {
+    try {
+      val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+      val isTelevision =
+        uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+      val isHandset = resources.configuration.smallestScreenWidthDp < 480
+      if (!isTelevision && isHandset) {
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+      }
+    } catch (e: Exception) {}
   }
 }

@@ -16,7 +16,34 @@ import { useNetworkActivity } from "../src/services/networkActivity";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { safeNavigate } from "../src/services/safeNavigation";
 import { isPhone, PHONE_H_PAD } from "../src/utils/phoneUtils";
-import { isTablet } from "../src/utils/tabletUtils";
+import { isTablet, TABLET_PANEL_SCALE as TPS } from "../src/utils/tabletUtils";
+
+/*
+ * Every `isTablet ? N : M` below used to end at a flat N, all of them picked
+ * on an 853x533 panel. `ps()` will not rescale them — the tablet type scale is
+ * panel-independent by design — so on a 1506x941 they were the same physical
+ * size on a screen three times the area, which is the whole of what "too small
+ * on a large tablet" means here. `tps` is 1 on the 853, so every one of those
+ * numbers is preserved exactly where it was chosen.
+ */
+const tps = (n: number) => Math.round(n * TPS);
+
+/*
+ * Vertical chrome above the browse row, interpolated across the tablet range
+ * instead of fixed.
+ *
+ * The browse cards are `flex: 1` in landscape — they get whatever height the
+ * header and hero leave them. Those margins were flat dp, so they cost the
+ * same 300-odd dp on every tablet: 58% of an 853x533 panel and 43% of a
+ * 1506x941 one, which is why the cards look squat on the small tablet and
+ * generous on the large one for identical code.
+ *
+ * `small` is the 853x533 value and `large` the 1506x941 one, TPS being 1 and
+ * 1.45 at those two points. Every `large` below is what the screen renders
+ * today, so the big panel does not move; the small one reclaims about 50dp.
+ */
+const vGap = (small: number, large: number) =>
+  Math.round(small + (large - small) * Math.min(1, Math.max(0, (TPS - 1) / 0.45)));
 // This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
 import { THEME, pw, ph, psRaw as ps, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
 import { Calendar, ExternalLink, Film, Layers, LayoutGrid, LucideIcon, Play, RefreshCw, Search, Settings, Star, Tv, X } from 'lucide-react-native';
@@ -54,7 +81,7 @@ const HeroPill = ({
   // was asked for over the guideline, and `Focusable` has no `hitSlop` to keep
   // the tap area while shrinking the paint. Noted so it is a decision, not a
   // drift.
-  const pillIconSize = !Platform.isTV ? (isPhone ? 12 : isPortrait ? 15 : 16) : ps(2.2);
+  const pillIconSize = !Platform.isTV ? (isPhone ? 12 : isPortrait ? 15 : isTablet ? tps(18) : 16) : ps(2.2);
 
   return (
     <Focusable
@@ -73,8 +100,8 @@ const HeroPill = ({
             style={[
               S.heroPillGradient,
               !Platform.isTV && {
-                paddingHorizontal: isPhone ? 8 : isPortrait ? 14 : (isTablet ? 18 : 14),
-                paddingVertical: isPhone ? 0 : isPortrait ? 9 : (isTablet ? 10 : 9),
+                paddingHorizontal: isPhone ? 8 : isPortrait ? 14 : (isTablet ? tps(22) : 14),
+                paddingVertical: isPhone ? 0 : isPortrait ? 9 : (isTablet ? vGap(10, 20) : 9),
               },
               // Pin the height rather than deriving it from padding plus the
               // line box, so the pill keeps matching the 36dp header circle
@@ -94,7 +121,7 @@ const HeroPill = ({
             <Text style={[
               S.heroPillText,
               !Platform.isTV && {
-                fontSize: isPhone ? 10 : isPortrait ? 13 : (isTablet ? 13 : 12),
+                fontSize: isPhone ? 10 : isPortrait ? 13 : (isTablet ? tps(15) : 12),
               },
               focused && { color: "#000" }
             ]}>
@@ -114,7 +141,7 @@ export default function DashboardScreen() {
   const isPortrait = !Platform.isTV && windowHeight > windowWidth;
   // `hPad` is the dashboard's side margin — the header, the hero and the browse
   // section all take it, so this is the one number that sets the page gutter.
-  const hPad = !Platform.isTV ? (isPhone ? 14 : isPortrait ? 20 : (isTablet ? 32 : 24)) : RAIL_H_PAD;
+  const hPad = !Platform.isTV ? (isPhone ? 14 : isPortrait ? 20 : (isTablet ? tps(32) : 24)) : RAIL_H_PAD;
   // The phone tier is its own branch rather than a smaller `isPortrait` value,
   // because a tablet held upright takes `isPortrait` too and its header has the
   // width to keep the larger control.
@@ -126,8 +153,8 @@ export default function DashboardScreen() {
   // Still under the 44dp touch minimum, deliberately: compactness was chosen
   // over the guideline, and `Focusable` exposes no `hitSlop`, so the tap area
   // shrinks with the paint. Recorded so it stays a decision rather than drift.
-  const actionBtnSize = !Platform.isTV ? (isPhone ? 36 : isPortrait ? 50 : (isTablet ? 54 : 50)) : pw(4.6);
-  const actionIconSize = !Platform.isTV ? (isPhone ? 17 : isPortrait ? 22 : (isTablet ? 24 : 22)) : ps(2.3);
+  const actionBtnSize = !Platform.isTV ? (isPhone ? 36 : isPortrait ? 50 : (isTablet ? tps(54) : 50)) : pw(4.6);
+  const actionIconSize = !Platform.isTV ? (isPhone ? 17 : isPortrait ? 22 : (isTablet ? tps(24) : 22)) : ps(2.3);
 
   // Portrait card height: tall enough to look cinematic, capped so 3 fit comfortably.
   // ScrollView handles any overflow on unusually small screens.
@@ -250,19 +277,35 @@ export default function DashboardScreen() {
         { paddingHorizontal: hPad },
         isPortrait
           ? { marginTop: isPhone ? 0 : 6, marginBottom: isPhone ? 4 : 18 }
-          : (!Platform.isTV && { marginTop: 4, marginBottom: 10 })
+          : (!Platform.isTV && { marginTop: 4, marginBottom: isTablet ? vGap(6, 10) : 10 })
       ]}>
         <View style={S.logoRow}>
           <Image
             source={require("../assets/images/TV.png")}
             style={[
               S.headerLogoImage,
+              /*
+               * A 3:2 box at scale 1, so the box is what actually renders.
+               *
+               * This was a 155x50 box (140x50 in portrait) at scale 2.1.
+               * `resizeMode="contain"` fits the 3:2 asset inside the box
+               * *before* the transform, so 155x50 was height-limited to 75x50
+               * and the scale blew that up to 158x105 — while the row still
+               * reserved only the 50dp box. The mark overlapped whatever sat
+               * beneath it, by 55dp. Same trap as the phone block below and as
+               * the portals and add-portal headers.
+               *
+               * 150x100 keeps the size it was visually rendering at; the
+               * difference is that the layout now knows about it.
+               */
               !Platform.isTV && {
-                // Prominent logo — large layout box + scale for visual weight
-                width: isPortrait ? 140 : (isTablet ? 155 : 135),
-                height: isPortrait ? 50 : 50,
-                marginLeft: isPortrait ? -6 : -6,
-                transform: [{ scale: isPortrait ? 2.0 : 2.1 }],
+                // 3:2 like the asset, so `contain` fills the box exactly and
+                // these stay the rendered numbers — scaling them together is
+                // what keeps that true.
+                width: tps(150),
+                height: tps(100),
+                marginLeft: 0,
+                transform: [{ scale: 1 }],
               },
               /*
                * The phone logo is sized so that the layout box and the rendered
@@ -351,8 +394,8 @@ export default function DashboardScreen() {
           flex: 0,
           flexGrow: 0,
           maxWidth: "100%",
-          marginTop: 6,
-          marginBottom: 18,
+          marginTop: isTablet ? vGap(2, 6) : 6,
+          marginBottom: isTablet ? vGap(10, 18) : 18,
         })
       ]}>
         {/*
@@ -373,26 +416,32 @@ export default function DashboardScreen() {
             style={S.heroGradientOverlay}
           />
         )}
-        {isPortrait && <Text style={[
+       <Text style={[
           S.heroTitle,
           !Platform.isTV && {
             // Keep the title compact — the TV_SCALE=1.3 bump already made ps(3.2) ≈ 44dp
             // on tablet, which overpowers the rest of the layout on a handheld screen.
-            fontSize: isPhone ? 15 : isPortrait ? 18 : (isTablet ? 18 : 20),
-            marginVertical: isPhone ? 0 : 6,
+            // These `!Platform.isTV` overrides were written for handsets and
+            // then applied to every non-TV device, so a 1506dp tablet was
+            // reading the same 20dp title as a 393dp phone. The tablet gets its
+            // own step now.
+            fontSize: isPhone ? 15 : isPortrait ? 18 : (isTablet ? tps(28) : 20),
+            marginVertical: isPhone ? 0 : isTablet && !isPortrait ? vGap(2, 6) : 6,
           }
         ]}>
           Unlimited Entertainment
-        </Text>}
+        </Text>
         <Text
           numberOfLines={isPortrait ? 1 : 3}
           style={[
             S.heroDesc,
             !Platform.isTV && {
-              fontSize: isPhone ? 11 : isPortrait ? 12 : 13,
-              lineHeight: isPhone ? 14 : isPortrait ? 15 : 19,
-              marginBottom: isPhone ? 10 : isPortrait ? 18 : 14,
-              maxWidth: isPortrait ? "100%" : (isTablet ? 560 : 480),
+              fontSize: isPhone ? 11 : isPortrait ? 12 : (isTablet ? tps(15) : 13),
+              lineHeight: isPhone ? 14 : isPortrait ? 15 : (isTablet ? tps(22) : 19),
+              marginBottom: isPhone ? 10 : isPortrait ? 18 : (isTablet ? vGap(10, 26) : 14),
+              // A measure, not a width: 560 was chosen against a 1280 panel and
+              // is a short line on a 1506 one.
+              maxWidth: isPortrait ? "100%" : (isTablet ? tps(680) : 480),
             }
           ]}
         >
@@ -419,7 +468,12 @@ export default function DashboardScreen() {
           marginBottom: isPhone ? 0 : 16,
         } : (!Platform.isTV && {
           flex: 1,
-          marginBottom: insets.bottom + (isTablet ? 16 : 12),
+          // No `insets.bottom` here: the body this sits inside already pads by
+          // it (see the landscape branch below). Adding it again reserved the
+          // safe area twice and left a black band across the foot of the
+          // screen with the browse cards squeezed to make room — the same
+          // double-count the grid screens had.
+          marginBottom: isTablet ? vGap(0, 15) : 12,
         })
       ]}>
         <View style={[
@@ -492,13 +546,13 @@ export default function DashboardScreen() {
                       }
                     ]}>
                       <DynamicIcon name={cat.icon}
-                        size={!Platform.isTV ? (isPortrait ? 20 : (isTablet ? 22 : 20)) : ps(2.2)}
+                        size={!Platform.isTV ? (isPortrait ? 20 : (isTablet ? tps(22) : 20)) : ps(2.2)}
                         color={focused ? "#FFFFFF" : "rgba(255,255,255,0.75)"}
                       />
                       <Text style={[
                         S.browseCardTitle,
                         !Platform.isTV && {
-                          fontSize: isPortrait ? 16 : (isTablet ? 18 : 16),
+                          fontSize: isPortrait ? 16 : (isTablet ? tps(18) : 16),
                         },
                         focused && S.browseCardTitleFocused
                       ]}>
@@ -554,8 +608,8 @@ export default function DashboardScreen() {
             style={[
               S.body,
               {
-                paddingTop: insets.top + (!Platform.isTV ? (isTablet ? 12 : 8) : ph(2)),
-                paddingBottom: insets.bottom + (!Platform.isTV ? (isTablet ? 12 : 8) : 10),
+                paddingTop: insets.top + (!Platform.isTV ? (isTablet ? vGap(8, 12) : 8) : ph(2)),
+                paddingBottom: insets.bottom + (!Platform.isTV ? (isTablet ? vGap(8, 12) : 8) : 10),
               }
             ]}
           >

@@ -47,6 +47,7 @@
         }
       ],
       "./plugins/withTabletLandscape",
+      "./plugins/withHandsetPortrait",
       [
         "@react-native-tvos/config-tv",
         {

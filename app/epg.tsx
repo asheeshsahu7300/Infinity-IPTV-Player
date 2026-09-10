@@ -48,6 +48,7 @@ import { CinematicBackground } from "../src/components/CinematicBackground";
 import PinPrompt from "../src/components/PinPrompt";
 import { THEME, ph, psRaw as ps, pw } from "../src/theme/tokens";
 import { remoteFocusEnabled, isTouch } from "../src/utils/tabletUtils";
+import { isPhone } from "../src/utils/phoneUtils";
 import { Focusable, FocusGroup } from "../src/tv";
 import { Calendar, ChevronDown, Filter, Lock, Play, Tv, X } from 'lucide-react-native';
 import { Text } from '../src/components/Text';
@@ -92,6 +93,27 @@ const PHASE_TEXT: Record<EpgLoadPhase, string> = {
 const ACTIVE_ROW_BG = isTouch ? "#F5F5F5" : "#22232a";
 const ACTIVE_ROW_INK = isTouch ? "#000000" : "#FFFFFF";
 
+/*
+ * The touch type scale for the guide.
+ *
+ * Raw dp, bypassing `ps()` — deliberately, because the row heights these sit
+ * in are raw dp too, and a percentage type scale inside a fixed-dp box only
+ * agrees with it on the panel it was measured on.
+ *
+ * The phone column is the new part. Both classes were sharing one set of
+ * numbers picked on a tablet, and `isTouch` is true for both: a 13dp programme
+ * title and a 9dp badge read fine at a tablet's arm's length, and do not on a
+ * handset with a third of the width, whatever the viewing distance.
+ */
+const TOUCH_TYPE = {
+  programTime: isPhone ? 13 : 12,
+  programEnd: isPhone ? 11.5 : 10.5,
+  programTitle: isPhone ? 15 : 13,
+  programDesc: isPhone ? 12.5 : 11,
+  nowBadge: isPhone ? 10 : 9,
+  paneLabel: isPhone ? 12 : 11,
+};
+
 const CHANNEL_PANE_WIDTH = pw(30);
 const CHANNEL_ROW_HEIGHT = ph(11);
 const PROGRAM_ROW_HEIGHT = ph(14);
@@ -99,6 +121,35 @@ const PROGRAM_ROW_HEIGHT = ph(14);
 // ─────────────────────────────────────────────────────────────────────────────
 // Rows
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Channel-pane sizing, resolved once per panel and handed down whole.
+ *
+ * Passed as one memoised object rather than nine props because `ChannelRow`
+ * has a hand-written comparator: one reference to check, and it only changes
+ * when the row height does.
+ */
+type PaneMetrics = {
+  padV: number;
+  padH: number;
+  gap: number;
+  logoW: number;
+  logoH: number;
+  icon: number;
+  numberSize: number;
+  numberWidth: number;
+  nameSize: number;
+  labelSize: number;
+  progPadV: number;
+  progPadH: number;
+  progGap: number;
+  progTimeCol: number;
+  progTime: number;
+  progEnd: number;
+  progTitle: number;
+  progDesc: number;
+  progBadge: number;
+};
 
 const ChannelRow = React.memo(
   function ChannelRow({
@@ -112,6 +163,7 @@ const ChannelRow = React.memo(
     epgVersion,
     index,
     rowHeight,
+    metrics,
   }: {
     channel: Channel;
     number?: number;
@@ -123,6 +175,7 @@ const ChannelRow = React.memo(
     epgVersion: number;
     index: number;
     rowHeight?: number;
+    metrics: PaneMetrics;
   }) {
     const nowNext = useMemo(
       () => epgService.nowNext(channel),
@@ -144,31 +197,31 @@ const ChannelRow = React.memo(
         {(focused) => (
           <View style={[
             S.channelRow,
-            isTouch && { paddingVertical: 8, paddingHorizontal: 10, gap: 10 },
+            isTouch && { paddingVertical: metrics.padV, paddingHorizontal: metrics.padH, gap: metrics.gap },
             isSelected && S.channelRowSelected,
             focused && S.channelRowFocused
           ]}>
             <Text style={[
               S.channelNumber,
-              isTouch && { fontSize: 12, minWidth: 22 },
+              isTouch && { fontSize: metrics.numberSize, minWidth: metrics.numberWidth },
               focused ? S.textOnFocus : isSelected && S.textOnActive,
             ]}>{number ?? ""}</Text>
 
-            <View style={[S.channelLogo, isTouch && { width: 34, height: 26 }]}>
+            <View style={[S.channelLogo, isTouch && { width: metrics.logoW, height: metrics.logoH }]}>
               {locked ? (
-                <Lock size={isTouch ? 16 : ps(1.4)}
+                <Lock size={isTouch ? metrics.icon : ps(1.4)}
                   color={focused ? "#000000" : isSelected ? ACTIVE_ROW_INK : "rgba(255,255,255,0.6)"} />
               ) : channel.logo ? (
                 <Image source={{ uri: channel.logo }} style={S.channelLogoImage} contentFit="contain" cachePolicy="memory-disk" />
               ) : (
-                <Tv size={isTouch ? 16 : ps(1.4)}
+                <Tv size={isTouch ? metrics.icon : ps(1.4)}
                   color={focused ? "#000000" : isSelected ? ACTIVE_ROW_INK : "rgba(255,255,255,0.2)"} />
               )}
             </View>
 
             <Text style={[
               S.channelName,
-              isTouch && { fontSize: 13 },
+              isTouch && { fontSize: metrics.nameSize },
               focused ? S.textOnFocus : isSelected && S.textOnActive,
             ]} numberOfLines={1}>
               {channel.name}
@@ -185,6 +238,7 @@ const ChannelRow = React.memo(
     prev.locked === next.locked &&
     prev.number === next.number &&
     prev.rowHeight === next.rowHeight &&
+    prev.metrics === next.metrics &&
     prev.epgVersion === next.epgVersion
 );
 
@@ -196,6 +250,7 @@ const ProgramRow = React.memo(function ProgramRow({
   onPlay,
   preferFocus,
   rowHeight,
+  metrics,
 }: {
   program: EPGProgram;
   isNow: boolean;
@@ -204,6 +259,7 @@ const ProgramRow = React.memo(function ProgramRow({
   onPlay: () => void;
   preferFocus: boolean;
   rowHeight?: number;
+  metrics: PaneMetrics;
 }) {
   const progress = isNow
     ? Math.min(1, Math.max(0, (Date.now() - program.start) / Math.max(1, program.end - program.start)))
@@ -221,32 +277,32 @@ const ProgramRow = React.memo(function ProgramRow({
       {(focused) => (
         <View style={[
           S.programRow,
-          isTouch && { paddingVertical: 8, paddingHorizontal: 10, gap: 10 },
+          isTouch && { paddingVertical: metrics.progPadV, paddingHorizontal: metrics.progPadH, gap: metrics.progGap },
           isNow && S.programRowNow,
           focused && S.programRowFocused
         ]}>
-          <View style={[S.programTimeCol, isTouch && { minWidth: 46 }]}>
-            <Text style={[S.programTime, isTouch && { fontSize: 12 }, focused ? { color: "#000000" } : isPast && S.dimmed]}>
+          <View style={[S.programTimeCol, isTouch && { minWidth: metrics.progTimeCol }]}>
+            <Text style={[S.programTime, isTouch && { fontSize: metrics.progTime }, focused ? { color: "#000000" } : isPast && S.dimmed]}>
               {stbEnvironment.formatClock(program.start)}
             </Text>
-            <Text style={[S.programEnd, isTouch && { fontSize: 10.5 }, focused && { color: "rgba(0,0,0,0.5)" }]}>
+            <Text style={[S.programEnd, isTouch && { fontSize: metrics.progEnd }, focused && { color: "rgba(0,0,0,0.5)" }]}>
               {stbEnvironment.formatClock(program.end)}
             </Text>
           </View>
 
           <View style={S.programBody}>
             <View style={S.programTitleRow}>
-              <Text style={[S.programTitle, isTouch && { fontSize: 13 }, focused ? { color: "#000000" } : isPast && S.dimmed]} numberOfLines={1}>
+              <Text style={[S.programTitle, isTouch && { fontSize: metrics.progTitle }, focused ? { color: "#000000" } : isPast && S.dimmed]} numberOfLines={1}>
                 {program.title}
               </Text>
               {isNow ? (
                 <View style={[S.nowBadge, focused && { backgroundColor: "#000000" }]}>
-                  <Text style={[S.nowBadgeText, isTouch && { fontSize: 9 }, focused && { color: "#FFFFFF" }]}>ON NOW</Text>
+                  <Text style={[S.nowBadgeText, isTouch && { fontSize: metrics.progBadge }, focused && { color: "#FFFFFF" }]}>ON NOW</Text>
                 </View>
               ) : null}
             </View>
             {program.description ? (
-              <Text style={[S.programDesc, isTouch && { fontSize: 11 }, focused && { color: "rgba(0,0,0,0.6)" }]} numberOfLines={1}>
+              <Text style={[S.programDesc, isTouch && { fontSize: metrics.progDesc }, focused && { color: "rgba(0,0,0,0.6)" }]} numberOfLines={1}>
                 {program.description}
               </Text>
             ) : null}
@@ -277,11 +333,91 @@ export default function EPGScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isPortrait = !Platform.isTV && windowHeight > windowWidth;
+  /*
+   * The channel pane, sized off the panel rather than off a ceiling.
+   *
+   * It was `min(280, width * 0.28)`, which stops growing at a 1000dp panel: a
+   * 1506dp tablet was handed the same 280dp pane as a 1000dp one — 18% of the
+   * width where the smaller tablet gets its full 28% — and the rows inside it
+   * kept the 54dp height, 34x26 logo and 12/13dp labels that were picked for
+   * an 853x533 panel. Same shape as `SIDEBAR_WIDTH` in tabletUtils, which the
+   * category sidebars on the grid screens already follow.
+   *
+   * Every bound below floors at its old value, so an 853x533 tablet renders
+   * exactly what it did. Note also that the pane is landscape-only (see the
+   * `!isPortrait` gate at the render site), so `isTouch` in here and in
+   * `ChannelRow` can only ever mean tablet — a handset is pinned upright and
+   * gets the channel pill row instead.
+   */
   const channelPaneWidth = isPortrait
     ? Math.min(220, Math.max(130, windowWidth * 0.36))
-    : (isTouch ? Math.min(280, windowWidth * 0.28) : CHANNEL_PANE_WIDTH);
-  const channelRowHeight = isTouch ? 54 : CHANNEL_ROW_HEIGHT;
-  const programRowHeight = isTouch ? (isPortrait ? 76 : 70) : PROGRAM_ROW_HEIGHT;
+    : (isTouch
+        ? Math.round(Math.min(360, Math.max(240, windowWidth * 0.26)))
+        : CHANNEL_PANE_WIDTH);
+  const channelRowHeight = isTouch
+    ? Math.round(Math.min(88, Math.max(54, windowHeight / 11)))
+    : CHANNEL_ROW_HEIGHT;
+  /*
+   * Portrait: 76 left the stacked title/description/progress column about 1dp
+   * of slack once the phone type sizes grew, and `programRowWrapper` is a
+   * fixed height — it would have spilled rather than grown, the same way the
+   * pills did.
+   *
+   * Landscape: a flat 70 has the same defect the channel rows had, so it takes
+   * the same treatment and the two panes stay in step with each other.
+   */
+  const programRowHeight = isTouch
+    ? (isPortrait ? 84 : Math.round(Math.min(112, Math.max(70, windowHeight / 8.6))))
+    : PROGRAM_ROW_HEIGHT;
+  // The gutter the pane sits in, and its gap to the schedule beside it. Flat
+  // 20/16 before, which is a fair margin on an 853 panel and a hairline on a
+  // 1506 one.
+  const paneGutter = Math.round(Math.max(20, windowWidth * 0.02));
+  const paneGap = Math.round(Math.max(16, windowWidth * 0.014));
+
+  /*
+   * Two scales, not one, and the difference matters.
+   *
+   * Box geometry tracks the row height directly. Type is damped, because the
+   * tablet type scale is otherwise panel-independent by design
+   * (`TABLET_PS_TARGET` in theme/tokens gives every tablet the same 11.5dp per
+   * percent) and text here should not end up at twice the size of the same
+   * label elsewhere in the app. 0.8 rather than the 0.45 this started at: at
+   * 0.45 the rows grew 1.6x and the labels 1.25x, and a 16dp name in an 86dp
+   * pill reads as fine print no matter how correct the ratio is on paper.
+   *
+   * Guarded to landscape because that is the only orientation with a channel
+   * pane. A phone is portrait-pinned, and its `windowHeight` is a long edge —
+   * feeding that into the row height would hand handsets a 1.5x type bump on
+   * the schedule side, which is the one part of this shared by both.
+   */
+  const paneBoxScale =
+    isTouch && !isPortrait ? Math.min(1.6, Math.max(1, channelRowHeight / 54)) : 1;
+  const paneMetrics = useMemo<PaneMetrics>(() => {
+    const box = paneBoxScale;
+    const type = Math.min(1.5, Math.max(1, 1 + (box - 1) * 0.8));
+    return {
+      padV: Math.round(8 * box),
+      padH: Math.round(10 * box),
+      gap: Math.round(10 * box),
+      logoW: Math.round(34 * box),
+      logoH: Math.round(26 * box),
+      icon: Math.round(16 * box),
+      numberSize: Math.round(12 * type),
+      numberWidth: Math.round(22 * type),
+      nameSize: Math.round(13 * type),
+      labelSize: Math.round(TOUCH_TYPE.paneLabel * type),
+      progPadV: Math.round(8 * box),
+      progPadH: Math.round(10 * box),
+      progGap: Math.round(10 * box),
+      progTimeCol: Math.round(46 * type),
+      progTime: Math.round(TOUCH_TYPE.programTime * type * 2) / 2,
+      progEnd: Math.round(TOUCH_TYPE.programEnd * type * 2) / 2,
+      progTitle: Math.round(TOUCH_TYPE.programTitle * type * 2) / 2,
+      progDesc: Math.round(TOUCH_TYPE.programDesc * type * 2) / 2,
+      progBadge: Math.round(TOUCH_TYPE.nowBadge * type * 2) / 2,
+    };
+  }, [paneBoxScale]);
 
   // Per-field selectors — see the note in live-tv.tsx.
   const activePortal = usePortalStore((s) => s.activePortal);
@@ -597,9 +733,10 @@ export default function EPGScreen() {
         onPlay={playChannel}
         epgVersion={epgVersion}
         rowHeight={channelRowHeight}
+        metrics={paneMetrics}
       />
     ),
-    [channelNumbers, selectedChannel?.id, handleChannelFocus, playChannel, epgVersion, channelRowHeight]
+    [channelNumbers, selectedChannel?.id, handleChannelFocus, playChannel, epgVersion, channelRowHeight, paneMetrics]
   );
 
   const renderProgram = useCallback(
@@ -612,9 +749,10 @@ export default function EPGScreen() {
         onFocusProgram={setSelectedProgram}
         onPlay={() => selectedChannel && playChannel(selectedChannel)}
         rowHeight={programRowHeight}
+        metrics={paneMetrics}
       />
     ),
-    [nowIndex, selectedChannel, playChannel, programRowHeight]
+    [nowIndex, selectedChannel, playChannel, programRowHeight, paneMetrics]
   );
 
   const guideStatus = epgService.status;
@@ -648,13 +786,13 @@ export default function EPGScreen() {
             onPress={() => setCategoryModalVisible(true)}
             activeOpacity={0.7}
           >
-            <Filter size={13} color="#FFFFFF" style={{ marginRight: 6 }} />
+            <Filter size={isPhone ? 14 : 13} color="#FFFFFF" style={{ marginRight: 6 }} />
             <Text style={S.categoryBadgeText} numberOfLines={1}>
               {selectedCategory === "all"
                 ? "All Categories"
                 : (epgCategories.find((c) => String(c.id) === String(selectedCategory))?.name || "Category")}
             </Text>
-            <ChevronDown size={14} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />
+            <ChevronDown size={isPhone ? 15 : 14} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />
           </TouchableOpacity>
         )}
       </View>
@@ -671,10 +809,10 @@ export default function EPGScreen() {
       )}
 
       {/* ─── Panes ─── */}
-      <View style={[S.panes, isPortrait ? { paddingHorizontal: 12, gap: 0 } : (isTouch && { paddingHorizontal: 20, gap: 16 })]}>
+      <View style={[S.panes, isPortrait ? { paddingHorizontal: 12, gap: 0 } : (isTouch && { paddingHorizontal: paneGutter, gap: paneGap })]}>
         {!isPortrait && (
           <FocusGroup style={{ width: channelPaneWidth }}>
-            <Text style={[S.paneLabel, isTouch && { fontSize: 11, letterSpacing: 1.5 }]}>
+            <Text style={[S.paneLabel, isTouch && { fontSize: paneMetrics.labelSize, letterSpacing: 1.5 }]}>
               CHANNELS
             </Text>
             <FlatList
@@ -727,7 +865,7 @@ export default function EPGScreen() {
               numberOfLines={1}
               style={[
                 S.paneLabel,
-                isTouch && { fontSize: 11, letterSpacing: 1.5 },
+                isTouch && { fontSize: paneMetrics.labelSize, letterSpacing: 1.5 },
                 isPortrait && { paddingBottom: 0 },
                 { flex: 1 },
               ]}
@@ -740,7 +878,7 @@ export default function EPGScreen() {
                 onPress={() => playChannel(selectedChannel)}
                 activeOpacity={0.8}
               >
-                <Play size={11} color="#000000" fill="#000000" style={{ marginRight: 4 }} />
+                <Play size={isPhone ? 12 : 11} color="#000000" fill="#000000" style={{ marginRight: 4 }} />
                 <Text style={S.watchLiveBtnText}>Watch Live</Text>
               </TouchableOpacity>
             )}
@@ -975,16 +1113,28 @@ const S = StyleSheet.create({
     elevation: 8,
   },
   channelNumber: {
+    // Fixed column; the name beside it is what gives way.
+    flexShrink: 0,
     minWidth: ps(2.2),
     color: "rgba(255,255,255,0.5)",
     fontSize: ps(1.2),
     fontWeight: "900",
     fontVariant: ["tabular-nums"],
   },
-  channelLogo: { width: ps(4.5), height: ps(3.4), alignItems: "center", justifyContent: "center" },
+  channelLogo: { width: ps(4.5), height: ps(3.4), alignItems: "center", justifyContent: "center", flexShrink: 0 },
   channelLogoImage: { width: "100%", height: "100%" },
   channelText: { flex: 1 },
-  channelName: { color: "#FFFFFF", fontSize: ps(1.6), fontWeight: "800", letterSpacing: 0.2 },
+  /*
+   * `flexShrink` is the whole fix for names painting outside the row.
+   *
+   * RN defaults it to 0, unlike the web, so this Text was laid out at its full
+   * intrinsic width no matter how narrow the pane was -- "PB | PTC PUNJABI |
+   * AIRTEL" simply carried on past the rounded edge. numberOfLines={1} cannot
+   * help while nothing tells the text it is short of room. minWidth undoes the
+   * implicit auto floor that would otherwise stop the shrink at the longest
+   * unbreakable run.
+   */
+  channelName: { color: "#FFFFFF", fontSize: ps(1.6), fontWeight: "800", letterSpacing: 0.2, flexShrink: 1, minWidth: 0 },
   channelNow: { color: "rgba(255,255,255,0.5)", fontSize: ps(1), fontWeight: "600" },
   /**
    * The active (selected) channel: white.
@@ -1086,7 +1236,7 @@ const S = StyleSheet.create({
   },
   categoryBadgeText: {
     color: "#FFFFFF",
-    fontSize: 12,
+    fontSize: isPhone ? 13 : 12,
     fontWeight: "700",
     flexShrink: 1,
   },
@@ -1110,7 +1260,7 @@ const S = StyleSheet.create({
   },
   watchLiveBtnText: {
     color: "#000000",
-    fontSize: 11,
+    fontSize: isPhone ? 12 : 11,
     fontWeight: "900",
     letterSpacing: 0.4,
   },
@@ -1141,7 +1291,7 @@ const S = StyleSheet.create({
   },
   modalTitle: {
     color: "#FFFFFF",
-    fontSize: 17,
+    fontSize: isPhone ? 18 : 17,
     fontWeight: "800",
   },
   categoryModalItem: {
@@ -1158,7 +1308,7 @@ const S = StyleSheet.create({
   },
   categoryModalItemText: {
     color: "rgba(255,255,255,0.7)",
-    fontSize: 14,
+    fontSize: isPhone ? 15 : 14,
     fontWeight: "600",
   },
   categoryModalItemTextSelected: {

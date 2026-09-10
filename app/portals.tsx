@@ -101,7 +101,7 @@ export default function PortalsScreen() {
   const cardWidth = isTouch
     ? isPortrait
       ? portraitCardWidth
-      : Math.min(340, windowWidth * 0.32)
+      : Math.min(480, Math.max(273, windowWidth * 0.32))
     : pw(28);
 
   const cardMargin = isTouch
@@ -120,8 +120,42 @@ export default function PortalsScreen() {
   const cardHeight = isTouch
     ? isPortrait
       ? Math.min(260, Math.max(220, windowHeight * 0.30))
-      : Math.min(280, windowHeight * 0.52)
+      : Math.min(465, Math.max(277, windowHeight * 0.52))
     : ph(45);
+
+  /*
+   * How far this panel is past the one the card was drawn for.
+   *
+   * The two caps above used to be flat 340 and 280, which both bite at around
+   * a 1060dp panel: a 1506dp tablet was given the same 340x280 card as a
+   * 1060dp one, so the card stopped being a third of the screen and became a
+   * fifth of it, marooned in black. The 0.32/0.52 proportions were right, it
+   * was only the ceilings that were not — they are now floors as well, so an
+   * 853x533 tablet keeps the exact 273x277 it has, and the ceiling sits high
+   * enough that roughly three cards still span the row on any panel.
+   *
+   * Type is damped against the box, the same trade as the guide: the tablet
+   * type scale is panel-independent by design (`TABLET_PS_TARGET`), and card
+   * text at the full 1.75x would tower over the same label everywhere else.
+   * Undamped it would also be the wrong fix — the card grew because the panel
+   * did, not because the words got longer.
+   */
+  const cardBoxScale =
+    isTouch && !isPortrait ? Math.min(1.75, Math.max(1, cardWidth / 273)) : 1;
+  const cardTypeScale = Math.min(1.4, Math.max(1, 1 + (cardBoxScale - 1) * 0.7));
+
+  /*
+   * The wordmark, against the short edge rather than a constant.
+   *
+   * `ph(8)` already grows the header it sits in, but the image box under it
+   * was a flat 400x90, so the mark went from about three times the header's
+   * height on an 853x533 panel to under twice on a 1506x941 one — it reads as
+   * having shrunk even though nothing changed. Short edge, not `windowHeight`,
+   * so a tablet held upright would not take a long edge as its measure.
+   */
+  const brandScale = isTablet
+    ? Math.min(1.55, Math.max(1, Math.min(windowWidth, windowHeight) / 533))
+    : 1;
 
   const deleteButtonHeight = DELETE_BTN_HEIGHT;
 
@@ -392,7 +426,7 @@ export default function PortalsScreen() {
             ]
         }
         locations={[0, 0.5, 1]}
-        style={S.portalCardGradient}
+        style={[S.portalCardGradient, { padding: ps(2.6) * cardBoxScale }]}
       >
         <View style={S.cardHeader}>
           <View style={S.cardIconBox}>
@@ -402,7 +436,7 @@ export default function PortalsScreen() {
                   item.type
                 ).icon
               }
-              size={ps(3.2)}
+              size={ps(3.2) * cardTypeScale}
               color={
                 isFocused
                   ? "#FFFFFF"
@@ -432,6 +466,7 @@ export default function PortalsScreen() {
               <Text
                 style={[
                   S.activeBadgeText,
+                  { fontSize: ps(1.05) * cardTypeScale },
                   isFocused &&
                   S.activeBadgeTextFocused,
                 ]}
@@ -446,6 +481,7 @@ export default function PortalsScreen() {
           <Text
             style={[
               S.cardName,
+              { fontSize: ps(2.8) * cardTypeScale },
               isFocused && {
                 color: "#FFFFFF",
               },
@@ -458,6 +494,7 @@ export default function PortalsScreen() {
           <Text
             style={[
               S.cardDetailText,
+              { fontSize: ps(1.3) * cardTypeScale },
               isFocused && {
                 color:
                   "rgba(255,255,255,0.9)",
@@ -471,6 +508,7 @@ export default function PortalsScreen() {
           <Text
             style={[
               S.cardTypeLabel,
+              { fontSize: ps(1.1) * cardTypeScale },
               isFocused && {
                 color: "#FFFFFF",
               },
@@ -648,6 +686,7 @@ export default function PortalsScreen() {
                 <Text
                   style={[
                     S.deleteBtnText,
+                    !isPhone && { fontSize: ps(1.15) * cardTypeScale },
                     focusedBtn &&
                     S.deleteBtnTextFocused,
                   ]}
@@ -696,8 +735,8 @@ export default function PortalsScreen() {
         style={[
           S.headerLogoImage,
           isTablet && {
-            width: 400,
-            height: 90,
+            width: Math.round(400 * brandScale),
+            height: Math.round(90 * brandScale),
             transform: [
               {
                 scale: 1.4,
@@ -765,6 +804,7 @@ export default function PortalsScreen() {
             <Text
               style={[
                 S.addBtnText,
+                !isPhone && { fontSize: ps(1.2) * cardTypeScale },
                 focused &&
                 S.addBtnTextFocused,
               ]}

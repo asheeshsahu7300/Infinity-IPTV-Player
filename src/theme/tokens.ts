@@ -81,19 +81,48 @@ const REF_UNIT = (960 + 540) / 2;
 const PHONE_PS_NORM = isPhone ? (REF_UNIT * 1.3) / ((W + H) / 2) : 1;
 const PHONE_PSRAW_NORM = isPhone ? REF_UNIT / ((W + H) / 2) : 1;
 
+/**
+ * The canvas the tablet tier was tuned against: a 1280x800 panel.
+ *
+ * That is the size every tablet value in this app was chosen on — it is the
+ * number `tabletClamp` cites when it explains why tablet metrics needed
+ * capping ("1280x800 against 960x540").
+ */
+const TABLET_REF_UNIT = (1280 + 800) / 2;
+
+/**
+ * The tablet tier, normalised the same way the phone tier is.
+ *
+ * `ps` is viewport-relative, so "tablet" was never one size: a 1280x800 panel
+ * gives 13.52 per percent while an 853x533 one — a common 10" tablet at ~2.25
+ * density — gives 9.01, a third smaller, and *below* even the 9.75 of the TV
+ * canvas. Every tablet value in the app was picked on the larger panel, so on
+ * the smaller one the whole type scale reads shrunken.
+ *
+ * `Math.max(1, ...)` makes this a floor rather than a rescale: a small tablet
+ * is brought up to the canvas its values were designed for, and a tablet at or
+ * above 1280x800 is left exactly as it was. Nothing gets smaller than it is
+ * today, on any device.
+ *
+ * Exactly 1 on phones and TV.
+ */
+const TABLET_PS_NORM = isTablet
+  ? Math.max(1, TABLET_REF_UNIT / ((W + H) / 2))
+  : 1;
+
 export const FONT_FAMILY = "Inter";
 
 export const pw = (pct: number) => (W * pct) / 100;
 export const ph = (pct: number) => (H * pct) / 100;
 export const ps = (pct: number) =>
-  ((pw(pct) + ph(pct)) / 2) * TV_SCALE * PHONE_PS_NORM;
+  ((pw(pct) + ph(pct)) / 2) * TV_SCALE * PHONE_PS_NORM * TABLET_PS_NORM;
 /**
  * `ps` without the TV bump. Screens that predate the TV_SCALE tier are sized
  * against this — import it rather than redeclaring a local `ps`, otherwise the
  * same call renders at two different sizes depending on the file.
  */
 export const psRaw = (pct: number) =>
-  ((pw(pct) + ph(pct)) / 2) * PHONE_PSRAW_NORM;
+  ((pw(pct) + ph(pct)) / 2) * PHONE_PSRAW_NORM * TABLET_PS_NORM;
 
 /**
  * The shared artwork-card frame: radius, hairline and wash.

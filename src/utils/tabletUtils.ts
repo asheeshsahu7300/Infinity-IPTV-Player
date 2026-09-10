@@ -2,6 +2,8 @@ import {
   hasMeasuredDisplay,
   isPhone,
   isTouchPlatform,
+  longestSide,
+  PHONE_MAX_SHORTEST_SIDE,
   PHONE_SIDEBAR_WIDTH,
   shortestSide,
 } from './phoneUtils';
@@ -33,8 +35,10 @@ import {
 export { shortestSide };
 
 /** Android's tablet breakpoints, in dp of shortest side. */
-export const TABLET_BREAKPOINT = 600;
+/** Must equal `phoneUtils.PHONE_MAX_SHORTEST_SIDE` — see the note there. */
+export const TABLET_BREAKPOINT = PHONE_MAX_SHORTEST_SIDE;
 export const LARGE_TABLET_BREAKPOINT = 1000;
+
 
 /**
  * True on tablets. Never true on a TV: a box reports a large display too, and
@@ -76,6 +80,30 @@ export const isLargeTablet =
 export const isTouch = isTablet || isPhone;
 
 /**
+ * How much bigger this tablet's panel is than the one the layouts were drawn
+ * against, for the raw-dp numbers that `ps()` deliberately will not scale.
+ *
+ * The tablet type scale is panel-independent on purpose — `TABLET_PS_TARGET`
+ * in theme/tokens hands every tablet the same 11.5dp per percent — so a screen
+ * built from `ps()` reads identically on an 853x533 and a 1506x941 panel. That
+ * is right for body copy and wrong for chrome: header marks, hero titles,
+ * pills and round icon buttons were each given a flat dp number tuned on the
+ * 853, and on a panel three times the area they read as having shrunk.
+ *
+ * 533 is that reference short edge, so this is exactly 1 there and every
+ * existing number survives untouched. Damped to 0.75 of the true ratio and
+ * capped, because chrome should grow *with* the panel, not *like* it — at the
+ * full ratio a hero title on a large tablet ends up TV-sized.
+ *
+ * Short edge, like `isTablet` itself, so it cannot flip under rotation. Must
+ * stay below `isTablet`'s own declaration: these are `const`, so reading it
+ * from higher up the file is a TDZ error at module load, not a compile one.
+ */
+export const TABLET_PANEL_SCALE = isTablet
+  ? Math.min(1.45, Math.max(1, 1 + (shortestSide / 533 - 1) * 0.75))
+  : 1;
+
+/**
  * Largest a grid tile may get on a tablet, in dp.
  *
  * The grids keep their 5 columns everywhere; this caps how big each tile may
@@ -89,11 +117,20 @@ export const isTouch = isTablet || isPhone;
  * should read on a touch screen; at a 2:3 poster that lands on 168x252, which
  * matches its 167.5x251 almost exactly.
  *
- * An absolute dp cap rather than a percentage, deliberately: a tile has an
- * intrinsic physical size, and percentage sizing that reads well on one panel
- * is exactly what blows it up on a larger one.
+ * It is now a *bounded* share of the panel rather than a flat 168, because a
+ * flat cap has the opposite failure at the other end: on a 1506dp panel it
+ * held tiles at 152 while the sidebar and type had both grown, so the artwork
+ * read undersized. The bounds are what keep the original objection true —
+ * percentage sizing alone is what blows a tile up on a larger panel, so the
+ * 240 ceiling stops it, and the 168 floor holds every tablet at or above the
+ * size this comment describes.
+ *
+ * 853 and 1280 panels sit on the floor and are unchanged; only panels wide
+ * enough to leave the tile looking small are affected.
  */
-export const TABLET_TILE_MAX_WIDTH = 168;
+export const TABLET_TILE_MAX_WIDTH = Math.round(
+  Math.min(240, Math.max(168, longestSide * 0.13))
+);
 
 /**
  * Tile-width cap for this device. Only a tablet is capped.
@@ -129,8 +166,19 @@ export const tabletClamp = (value: number, maxDp: number): number =>
 /**
  * Category sidebar width, in dp.
  *
- * 240dp on the box. On tablets, reduced to 200dp so that the category sidebar
- * remains compact and leaves ample room for the channel/media grid.
+ * 240dp on the box. On tablets it is a share of the panel's breadth rather
+ * than a fixed 200: 200 was picked against a 1280x800 tablet, where it is 16%
+ * of the width, but the same number is 13% of a 1506dp panel — the sidebar
+ * looked squeezed and the category names ran out of room, while on an 853dp
+ * tablet it was a roomy 23%.
+ *
+ * 22%, raised from a first pass at 18% which still read narrow on a large
+ * panel. The pill inside is `width: "100%"` less the list's `pw(1.2)` gutter
+ * either side, so this number is what the pill's width follows.
+ *
+ * The floor keeps the small tablet exactly where it is today (0.22 x 853 is
+ * under 200, so it clamps up) and the ceiling stops a very wide panel from
+ * spending a third of itself on a list of genre names.
  *
  * The phone tier lives in `phoneUtils` with the reason it is only a fallback;
  * this is the one place that chooses between the three.
@@ -138,7 +186,7 @@ export const tabletClamp = (value: number, maxDp: number): number =>
 export const SIDEBAR_WIDTH = isPhone
   ? PHONE_SIDEBAR_WIDTH
   : isTablet
-    ? 200
+    ? Math.round(Math.min(360, Math.max(200, longestSide * 0.22)))
     : 240;
 
 /**

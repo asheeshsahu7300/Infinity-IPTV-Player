@@ -45,6 +45,15 @@ const displayHeight = firstPositive(screenDims.height, windowDims.height);
 export const shortestSide =
     displayWidth > 0 && displayHeight > 0 ? Math.min(displayWidth, displayHeight) : 0;
 
+/**
+ * Longest side of the physical display in dp, or 0 when it could not be read.
+ *
+ * In landscape — which is where tablets are locked — this is the width, so it
+ * is what anything sized against the panel's breadth should scale from.
+ */
+export const longestSide =
+    displayWidth > 0 && displayHeight > 0 ? Math.max(displayWidth, displayHeight) : 0;
+
 /** False when the display reported nothing, so callers can refuse to guess. */
 export const hasMeasuredDisplay = shortestSide > 0;
 
@@ -55,14 +64,28 @@ export const isTouchPlatform =
 /**
  * The handset ceiling, in dp of shortest side.
  *
- * The same boundary as `tabletUtils.TABLET_BREAKPOINT`, and the same number as
- * `MainActivity.pinHandsetToPortrait`'s `smallestScreenWidthDp < 600`. All
- * three must agree: the native pin decides that a device launches portrait and
- * `isPhone` decides that it is laid out for portrait, so a device that only one
- * of them called a phone would be pinned to an orientation it was not sized
- * for, or sized for one it was not pinned to.
+ * 480, not Android's usual 600. `sw600dp` is measured in *dp*, so it is a
+ * statement about density as much as size: a 1920x1200 tablet at ~2.25 density
+ * reports 853x533dp and falls under 600, and Android itself then treats it as
+ * phone-class. One did exactly that here — every screen took the phone tier
+ * and `app/_layout` locked it upright, so the tablet could not go landscape.
+ *
+ * 480 separates the two populations with room on both sides: the largest
+ * handsets sit around 412-430dp and the tablet above is 533. It is also
+ * Android's own `sw480dp` "large screen" bucket rather than an invented number.
+ * A device between 480 and 600 is therefore a tablet here even though
+ * `sw600dp` resources would call it a phone — deliberately, because this app's
+ * tablet layout fits it and its phone layout does not.
+ *
+ * This value, `tabletUtils.TABLET_BREAKPOINT`, and
+ * `withHandsetPortrait`'s `smallestScreenWidthDp <` test must agree. The
+ * native pin decides that a device *launches* portrait and `isPhone` decides
+ * that it is *laid out* for portrait; a device only one of them called a phone
+ * would be pinned to an orientation it was not sized for, or sized for one it
+ * was not pinned to. That is not hypothetical — it is the bug this comment
+ * exists because of.
  */
-export const PHONE_MAX_SHORTEST_SIDE = 600;
+export const PHONE_MAX_SHORTEST_SIDE = 480;
 
 /**
  * A handset: a touch device below the tablet breakpoint. Never true on a TV —

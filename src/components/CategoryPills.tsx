@@ -74,6 +74,12 @@ const PillItem = React.memo(({ item, isActive, isFocused, onSelect, onFocus, onB
             isFocused && styles.pillTextFocused,
           ]}
           numberOfLines={1}
+          /*
+           * The pill grows with the text now, but only so far before a row of
+           * them stops being a row. Small accessibility font settings are
+           * honoured; the extremes are not.
+           */
+          maxFontSizeMultiplier={1.2}
         >
           {String(item.name)}
         </Text>
@@ -208,8 +214,17 @@ const styles = StyleSheet.create({
    * of those screens, not just the one they were tuned on. That is intended:
    * the rail should read the same wherever it appears.
    *
-   * `height` is the lever rather than `paddingVertical`, because the pill fixes
-   * its height and centres its children, so the padding never decides the size.
+   * `minHeight` is the lever rather than `paddingVertical`, because the pill
+   * sets its own height and centres its children, so the padding never decides
+   * the size.
+   *
+   * It is `minHeight` and not `height` because a fixed height does not clip an
+   * overlong child, it lets it paint outside the rounded rect -- the pill kept
+   * its 34dp and the label sat across the border. There were only about 2dp of
+   * vertical slack (34 - 4 border - 12 padding = 18, against an 16dp line), so
+   * anything that grew the line box at all spilled: the OS "large text" setting
+   * first of all. Below, the line box is given room to be its natural size and
+   * the pill grows to meet it instead of being overrun.
    */
   container: {
     backgroundColor: "transparent",
@@ -227,7 +242,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: isPhone ? 13 : 16,
     paddingVertical: isPhone ? 6 : 8,
     borderRadius: isPhone ? 17 : 20,
-    height: isPhone ? 34 : 40,
+    minHeight: isPhone ? 34 : 40,
+    /*
+     * The guide's pills are channels, not categories -- "128. Sky Sports Main
+     * Event HD" rather than "Sports" -- and nothing upstream bounds them, so a
+     * single pill could run wider than the screen. The label truncates at this
+     * width instead. Categories are short and never reach it.
+     */
+    maxWidth: isPhone ? 210 : 280,
     backgroundColor: "#111827",
     marginRight: isPhone ? 8 : 10,
     justifyContent: "center",
@@ -241,6 +263,8 @@ const styles = StyleSheet.create({
     height: isPhone ? 18 : 20,
     marginRight: isPhone ? 7 : 8,
     borderRadius: 4,
+    // Against `maxWidth` above, the label yields and the logo does not.
+    flexShrink: 0,
   },
 
   pillActive: {
@@ -257,7 +281,36 @@ const styles = StyleSheet.create({
     color: "#888",
     fontSize: isPhone ? 13.5 : 15,
     fontWeight: "500",
-    lineHeight: isPhone ? 16 : 18,
+    /*
+     * 16/18 was below Inter's own line box (about 1.21x the font size, so 16.4
+     * and 18.2 are the minimums here) and clipped the descenders of g, y and p
+     * from underneath. Set at 1.3x, which clears the metrics and still fits the
+     * pill exactly: 18 + 12 padding + 4 border is the 34 above.
+     */
+    lineHeight: isPhone ? 18 : 20,
+    /*
+     * The actual reason the label sat outside the pill on Android.
+     *
+     * RN Android leaves `includeFontPadding` on by default, which adds the
+     * font's own ascent/descent padding *on top of* the line box. The measured
+     * Text is then several dp taller than the `lineHeight` above says it is,
+     * and it is not symmetric -- so in a container this tight the glyphs are
+     * both pushed past the pill's edge and knocked off centre while doing it.
+     * With it off the line box is exactly `lineHeight`, which is what every
+     * number here was worked out against. iOS never had the padding.
+     */
+    includeFontPadding: false,
+    textAlignVertical: "center",
+    /*
+     * RN defaults flexShrink to 0, unlike the web. Without this the label is
+     * laid out at its full natural width and simply paints past the pill's
+     * right edge once `maxWidth` bounds the parent -- numberOfLines never gets
+     * the chance to ellipsize, because nothing ever tells the text it is short
+     * of room. minWidth undoes the implicit auto floor that would otherwise
+     * stop the shrink at the longest unbreakable word.
+     */
+    flexShrink: 1,
+    minWidth: 0,
   },
 
   /**

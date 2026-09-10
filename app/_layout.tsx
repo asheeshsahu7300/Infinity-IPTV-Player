@@ -105,30 +105,45 @@ export default function RootLayout() {
   }, [navigationRef]);
 
   /**
-   * Let a tablet rotate freely between portrait and landscape.
+   * Each device class is locked to the one orientation its layout was sized
+   * for. Neither is left to the system.
    *
-   * A phone is locked strictly upright instead, and the lock is asserted here
-   * rather than left to `MainActivity.pinHandsetToPortrait` alone. The native
-   * pin is what gets the *first frame* right — it runs before the bundle, so
-   * the layout's module-load snapshot is portrait — but it is a
+   * A tablet is locked landscape. It used to call `unlockAsync()` here, and
+   * that single line caused both of the tablet complaints:
+   *
+   *  - `unlockAsync` sets `SCREEN_ORIENTATION_UNSPECIFIED`, handing the
+   *    activity to the system. With auto-rotate switched off the tablet then
+   *    settles into its *natural* orientation, which on most tablets is
+   *    portrait — so the app "would not go landscape" no matter how the device
+   *    was held.
+   *  - With auto-rotate on it could rotate to portrait, and because every
+   *    screen and `theme/tokens` size themselves from a single
+   *    `Dimensions.get("window")` read taken as the bundle evaluated, the UI
+   *    stayed sized for landscape. That is what "tablet styles get disturbed
+   *    in portrait" was.
+   *
+   * Unlocking directly contradicted the manifest pin `withTabletLandscape`
+   * exists to establish — see that plugin, which explains why the snapshot
+   * makes the pin load-bearing rather than cosmetic.
+   *
+   * A phone is locked strictly upright for the same reason, and both locks are
+   * asserted here rather than left to the manifest and
+   * `MainActivity.pinHandsetToPortrait`. Those get the *first frame* right —
+   * they run before the bundle, so the snapshot is correct — but they are a
    * `requestedOrientation` that any later `lockAsync`/`unlockAsync` can
-   * overwrite. Re-asserting it from JS means the app returns to portrait even
-   * if something else has moved it, which is the difference between a default
-   * and a rule.
-   *
-   * A tablet still rotates freely: both of its orientations are wide enough for
-   * the layout it already has.
+   * overwrite. Re-asserting from JS is the difference between a default and a
+   * rule.
    *
    * The player is the one screen that overrides this, and it does so for
-   * itself — landscape while it is mounted, back to portrait on the way out.
+   * itself — landscape while mounted, back to portrait on the way out.
    */
   useEffect(() => {
     if (Platform.isTV) return;
-    if (isPhone) {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
-      return;
-    }
-    ScreenOrientation.unlockAsync().catch(() => {});
+    ScreenOrientation.lockAsync(
+      isPhone
+        ? ScreenOrientation.OrientationLock.PORTRAIT_UP
+        : ScreenOrientation.OrientationLock.LANDSCAPE
+    ).catch(() => {});
   }, []);
 
   // Global remote hardware BackHandler:

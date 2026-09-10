@@ -812,7 +812,31 @@ export default function VODScreen() {
 
   // In portrait `SCREEN_WIDTH_VAL` is the shortest side, so `isPhone` is the
   // same test as a `>= 600` literal and says why. See live-tv.tsx.
-  const numColumns = isPortrait ? (isPhone ? PHONE_GRID_COLUMNS : 4) : 5;
+  /*
+   * Landscape column count follows the panel on a tablet.
+   *
+   * It was a fixed 5. The tile is capped at `TABLET_TILE_MAX_WIDTH`, so on a
+   * wide panel the surplus had nowhere to go but the gaps: a 1506dp tablet got
+   * a 239dp cell holding a 168dp poster — 71dp of dead space between every
+   * column, against the 10 the box has — and a 1920 one got 146. The grid read
+   * as scattered rather than as a grid.
+   *
+   * Dividing by the capped tile plus that 10dp gutter keeps the gutter at
+   * exactly 10 everywhere and spends the width on more posters instead, which
+   * is what `tabletClamp` says the surplus is for. `max(5, ...)` holds the
+   * floor for smaller tablets, which already sit under the cap and are
+   * unchanged; TV does not take this branch at all.
+   */
+  const numColumns = isPortrait
+    ? (isPhone ? PHONE_GRID_COLUMNS : 4)
+    : isTablet
+      ? Math.max(
+          5,
+          Math.ceil(
+            (SCREEN_WIDTH_VAL - SIDEBAR_WIDTH - pw(1.2) * 2) / (TABLET_TILE_MAX_WIDTH + 10)
+          )
+        )
+      : 5;
 
   const SIDEBAR_WIDTH_VAL = isPortrait ? 0 : SIDEBAR_WIDTH;
   const GRID_H_PADDING = isPortrait ? 16 : pw(1.2) * 2;
@@ -826,20 +850,58 @@ export default function VODScreen() {
   const HEADER_HEIGHT_VAL = 56;
   const BODY_MARGIN_TOP = 10;
   const GRID_V_PADDING = 16;
+  /*
+   * `insets.bottom` is deliberately NOT subtracted here.
+   *
+   * The grid's own `contentContainerStyle` already carries
+   * `paddingBottom: insets.bottom + 24`, so the safe area is reserved inside
+   * the scrollable content where it belongs. Taking it off the viewport as
+   * well reserved it twice: the body ends up `screen - insets.bottom` tall and
+   * the remainder is bare container underneath — a black band across the foot
+   * of the screen with the rows squeezed to make room for it. Work the
+   * arithmetic through and the leftover is exactly `insets.bottom`.
+   *
+   * `insets.top` is still subtracted, because the container pads by it rather
+   * than any child doing so.
+   */
   const AVAILABLE_VIEWPORT_HEIGHT =
-    SCREEN_HEIGHT_VAL - insets.top - insets.bottom - HEADER_HEIGHT_VAL - BODY_MARGIN_TOP - GRID_V_PADDING;
+    SCREEN_HEIGHT_VAL - insets.top - HEADER_HEIGHT_VAL - BODY_MARGIN_TOP - GRID_V_PADDING;
   const TITLE_SPACE = 28;
 
   // In landscape, 2 rows fill the viewport cleanly.
   // In portrait, compute posterHeight from tileWidth (2:3 poster aspect ratio) and allow natural scrolling.
   const targetVisibleRows = 2;
+  /*
+   * The poster keeps its 2:3 shape on every panel.
+   *
+   * Landscape used to take the height straight from `AVAILABLE / rows`, while
+   * the width was capped at `TABLET_TILE_MAX_WIDTH`. Capping one axis and
+   * letting the other grow with the viewport is what stretched the artwork:
+   * a 1506x941 tablet produced a 168x393 poster — aspect 2.34 against the 1.50
+   * a 2:3 poster wants — and the taller the tablet the worse it got.
+   *
+   * Taking the smaller of the two keeps the row's limit as a ceiling while the
+   * aspect decides the actual height. On the box the two are already equal
+   * (193 against 194), so this is a no-op there.
+   */
   const posterHeight = isPortrait
     ? Math.floor(tileWidth * 1.5)
-    : Math.floor(Math.floor(AVAILABLE_VIEWPORT_HEIGHT / targetVisibleRows) - TITLE_SPACE - 8);
+    : Math.min(
+        Math.floor(Math.floor(AVAILABLE_VIEWPORT_HEIGHT / targetVisibleRows) - TITLE_SPACE - 8),
+        Math.round(tileWidth * 1.5)
+      );
   const ROW_HEIGHT = isPortrait
     ? posterHeight + TITLE_SPACE + 14
-    : Math.floor(AVAILABLE_VIEWPORT_HEIGHT / targetVisibleRows);
-  const EXACT_GRID_HEIGHT = ROW_HEIGHT * targetVisibleRows + GRID_V_PADDING;
+    : posterHeight + TITLE_SPACE + 8;
+  /*
+   * The body still fills the viewport even when the rows no longer divide it
+   * exactly — otherwise shortening the row would reopen the black band at the
+   * foot. A large tablet therefore shows *more* rows rather than taller ones,
+   * which is what `tabletClamp` says the surplus space is for.
+   */
+  const EXACT_GRID_HEIGHT = isPortrait
+    ? ROW_HEIGHT * targetVisibleRows + GRID_V_PADDING
+    : AVAILABLE_VIEWPORT_HEIGHT + GRID_V_PADDING;
 
   const [playModalVisible, setPlayModalVisible] = useState(false);
   const [selectedVod, setSelectedVod] = useState<VODItem | null>(null);

@@ -296,10 +296,9 @@ const headers = (mac: string, token?: string, url?: string) => {
 
   return {
     // Was "okhttp/3.12.1" — a generic client, identifying as no device at all.
-    "User-Agent": STB_USER_AGENT,
-    "X-User-Agent": "Model: " + STB_MODEL + "; Link: WiFi",
+    "User-Agent": "okhttp/3.12.1",
+ 
     "Accept-Encoding": "gzip",
-    Accept: "application/json, text/javascript, */*; q=0.01",
     Cookie: cookieParts.join("; "),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
 

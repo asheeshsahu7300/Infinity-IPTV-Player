@@ -13,7 +13,7 @@ import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
 import { isPhone, PHONE_GRID_COLUMNS, PHONE_H_PAD } from "../src/utils/phoneUtils";
-import { isTouch } from "../src/utils/tabletUtils";
+import { isTouch, isTablet, TABLET_TILE_MAX_WIDTH } from "../src/utils/tabletUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
@@ -457,16 +457,37 @@ export default function SeriesDetailsScreen() {
   // Three on a phone, the same count the poster grids use. The touch branch
   // keys off `SCREEN_WIDTH < 768`, which a handset satisfies, so left alone it
   // would ask for four.
-  const numColumns = isPhone
-    ? PHONE_GRID_COLUMNS
-    : isTouch
-      ? SCREEN_WIDTH < 768
-        ? 4
-        : 5
-      : 7;
-
   const CARD_SPACING = 12;
   const GRID_H_PADDING = CONTENT_H_PAD * 2;
+
+  /*
+   * Tablets derive the count from the tile cap rather than naming it.
+   *
+   * The old branch was `SCREEN_WIDTH < 768 ? 4 : 5`, i.e. five columns on every
+   * tablet from 768dp upwards, with the tile taking whatever width fell out of
+   * that. On a 1506dp panel that is a 265x370 episode tile — against the 196dp
+   * cap the series grid two screens back applies to the very same artwork — and
+   * a single row of them is most of the viewport, so the row below the fold was
+   * cut through its titles.
+   *
+   * `TABLET_TILE_MAX_WIDTH` is the cap live-tv, vod and series already size
+   * their grids against, so asking how many of those fit keeps an episode tile
+   * and a series tile the same size. `Math.max(5, ...)` holds the old floor, so
+   * a 853x533 tablet still comes out at five columns and the identical 144dp
+   * tile it has now; only the panels the fixed 5 was never chosen for move.
+   */
+  const numColumns = isPhone
+    ? PHONE_GRID_COLUMNS
+    : isTablet
+      ? Math.max(
+          5,
+          Math.ceil((SCREEN_WIDTH - GRID_H_PADDING) / (TABLET_TILE_MAX_WIDTH + CARD_SPACING))
+        )
+      : isTouch
+        ? SCREEN_WIDTH < 768
+          ? 4
+          : 5
+        : 7;
   /*
    * `itemWidth` is the tile's *outer* width, and the tile separates itself with
    * `episodeItemWrapper`'s own `paddingHorizontal` rather than a margin — so on

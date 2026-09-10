@@ -205,7 +205,37 @@ export default function CategorySidebar({
   }, []);
 
   const totalHeight = height && height > 0 ? height : DEFAULT_SIDEBAR_H;
-  const itemTotalHeight = Math.floor(totalHeight / 8.3);
+  /*
+   * A row is a fixed height, not a fraction of the panel.
+   *
+   * This was `totalHeight / 8.3` — always 8.3 rows on screen, whatever the
+   * screen. On the box that is a 57dp row, which is what the pill was designed
+   * at; on a 1506x941 tablet the same expression gives 105, so every category
+   * became a 91dp pill with the label floating in the middle of it. The
+   * sidebar looked stretched because it was.
+   *
+   * Bounding it means a taller panel shows *more* categories rather than
+   * taller ones — the same correction the channel grid needed, and what
+   * `tabletClamp` says the surplus space is for.
+   *
+   * A range rather than a single cap, and the ceiling took two goes to place.
+   * Pinned at 58 — the box's own row — a large tablet got a 44dp pill, which
+   * read undersized against a 1506dp-wide panel; 72 gave 58 and still read
+   * small. 88 gives a 74dp pill, near the 91 the unbounded
+   * `totalHeight / 8.3` produced before any of this, but reached by a bound
+   * rather than by scaling with the panel — so it stops there instead of
+   * growing again on a 1920.
+   *
+   * The floor keeps a short panel from collapsing the row. TV (57) and the
+   * 853dp tablet (56) fall inside the range untouched; only panels tall enough
+   * to inflate the row are affected.
+   */
+  const MIN_ITEM_HEIGHT = 56;
+  const MAX_ITEM_HEIGHT = 88;
+  const itemTotalHeight = Math.min(
+    MAX_ITEM_HEIGHT,
+    Math.max(MIN_ITEM_HEIGHT, Math.floor(totalHeight / 8.3))
+  );
   const itemGap = Math.max(14, Math.floor(itemTotalHeight * 0.12));
   const pillHeight = itemTotalHeight - itemGap;
 
