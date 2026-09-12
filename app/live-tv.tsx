@@ -572,7 +572,23 @@ export default function LiveTVScreen() {
   const setChannels = usePortalStore((s) => s.setChannels);
   const setCategories = usePortalStore((s) => s.setCategories);
 
-  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [selectedCategory, setSelectedCategory] = useState<string>(() => {
+    const cats = (usePortalStore.getState().categories || []).filter((c) => c.type === "live");
+    const valid = cats.filter((c) => {
+      const lower = (c.name || "").trim().toLowerCase();
+      const idLower = String(c.id).trim().toLowerCase();
+      return (
+        lower !== "all" &&
+        lower !== "all channels" &&
+        lower !== "all live" &&
+        lower !== "all live channels" &&
+        idLower !== "all" &&
+        idLower !== "all channels" &&
+        idLower !== "*"
+      );
+    });
+    return valid[0]?.id ? String(valid[0].id) : "";
+  });
   const [displayChannels, setDisplayChannels] = useState<Channel[]>([]);
   const displayChannelsRef = useRef<Channel[]>([]);
   displayChannelsRef.current = displayChannels;
@@ -1374,6 +1390,13 @@ export default function LiveTVScreen() {
 
   useEffect(() => {
     if (sidebarCategories.length === 0) return;
+    if (!hasInitializedCategoryRef.current) {
+      hasInitializedCategoryRef.current = true;
+      const firstCat = sidebarCategories[0].id;
+      setSelectedCategory(firstCat);
+      FocusMemory.set("category-sidebar", firstCat);
+      return;
+    }
     if (
       selectedCategory &&
       selectedCategory !== "all" &&
@@ -1381,14 +1404,9 @@ export default function LiveTVScreen() {
     ) {
       return;
     }
-    if (hasInitializedCategoryRef.current && selectedCategory && selectedCategory !== "all") return;
-    hasInitializedCategoryRef.current = true;
-
-    const remembered = FocusMemory.get("category-sidebar");
-    const matchRemembered =
-      remembered && remembered !== "all" && sidebarCategories.find((c) => isSameCat(c.id, remembered));
-    const defaultCat = matchRemembered ? matchRemembered.id : sidebarCategories[0].id;
+    const defaultCat = sidebarCategories[0].id;
     setSelectedCategory(defaultCat);
+    FocusMemory.set("category-sidebar", defaultCat);
   }, [sidebarCategories, selectedCategory, isSameCat]);
 
   const focusSidebar = useInitialFocusPulse(sidebarCategories.length > 0);

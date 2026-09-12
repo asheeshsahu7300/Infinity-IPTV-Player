@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tablets (sw >= 480dp): ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE (6) -->
+    <integer name="screen_orientation">6</integer>
+</resources>

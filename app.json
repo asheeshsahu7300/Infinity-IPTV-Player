@@ -3,7 +3,7 @@
     "name": "Infinity IPTV Player",
     "slug": "infinity-iptv-player",
     "version": "1.0.0",
-    "orientation": "landscape",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "infinityiptv",
     "userInterfaceStyle": "automatic",
