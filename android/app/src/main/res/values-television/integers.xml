@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Android TV: ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE (6) -->
-    <integer name="screen_orientation">6</integer>
-</resources>

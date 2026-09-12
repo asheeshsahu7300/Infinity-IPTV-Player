@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Default (Handsets / Phones): ActivityInfo.SCREEN_ORIENTATION_PORTRAIT (1) -->
-    <integer name="screen_orientation">1</integer>
-</resources>

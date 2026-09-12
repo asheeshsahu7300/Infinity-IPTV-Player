@@ -44,7 +44,7 @@ const { getMainActivity } = AndroidConfig.Manifest;
  * looks right, applies cleanly, and silently loses — config-tv then runs second
  * and deletes the attribute again.
  */
-const withTabletLandscape = (config, { orientation = '@integer/screen_orientation' } = {}) =>
+const withTabletLandscape = (config, { orientation = 'unspecified' } = {}) =>
   withAndroidManifest(config, (config) => {
     const mainActivity = getMainActivity(config.modResults);
     if (mainActivity?.$) {
