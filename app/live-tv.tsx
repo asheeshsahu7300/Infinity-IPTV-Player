@@ -739,7 +739,7 @@ export default function LiveTVScreen() {
   const numberedListRef = useRef<(list: Channel[]) => Channel[]>((l) => l);
 
   const xtreamApiRef = useRef<XtreamApi | null>(null);
-  const allChannelsCacheRef = useRef<Channel[]>([]);
+  const allChannelsCacheRef = useRef<Channel[]>(storeChannels || []);
   const fullListRef = useRef<Channel[]>([]);
   const prevCategoryIdRef = useRef<string | undefined>(undefined);
 
@@ -981,7 +981,6 @@ export default function LiveTVScreen() {
   // Category change
   useEffect(() => {
     if (!activePortal || prevCategoryIdRef.current === selectedCategory || !selectedCategory) return;
-    setIsLoading(true);
     setPage(1);
     prevCategoryIdRef.current = selectedCategory;
     focusedIdRef.current = "";
@@ -992,9 +991,13 @@ export default function LiveTVScreen() {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
 
     if (activePortal.type === "xtream" || activePortal.type === "m3u") {
-      if (allChannelsCacheRef.current.length > 0) {
+      const sourceList = allChannelsCacheRef.current.length > 0 ? allChannelsCacheRef.current : storeChannels;
+      if (sourceList.length > 0) {
+        if (allChannelsCacheRef.current.length === 0) {
+          allChannelsCacheRef.current = sourceList;
+        }
         const filtered = filterByCategory(
-          allChannelsCacheRef.current,
+          sourceList,
           selectedCategory,
           storeCategories
         );
@@ -1003,11 +1006,13 @@ export default function LiveTVScreen() {
         setDisplayChannels(sliced);
         setHasMore(filtered.length > sliced.length);
         setIsLoading(false);
-      } else {
-        setHasMore(true);
-        loadChannels(selectedCategory, 1, true);
+        return;
       }
+      setIsLoading(true);
+      setHasMore(true);
+      loadChannels(selectedCategory, 1, true);
     } else {
+      setIsLoading(true);
       setHasMore(true);
       loadChannels(selectedCategory, 1, true);
     }
@@ -1439,7 +1444,6 @@ export default function LiveTVScreen() {
     <View style={[S.container, { paddingTop: isPortrait ? Math.max(insets.top, 24) + 8 : insets.top }]}>
       {/* ─── Header ─── */}
       <View style={S.header}>
-        {/* Left spacer matching VOD & Series */}
         <View style={{ width: 38 }} />
 
         <View style={S.headerCenterTitleWrapper}>

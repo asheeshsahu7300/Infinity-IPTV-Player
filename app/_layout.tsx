@@ -18,14 +18,14 @@ import * as Linking from "expo-linking";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { isPhone } from "../src/utils/phoneUtils";
 import { LinearGradient } from "expo-linear-gradient";
-import { 
+import {
   useFonts,
   Inter_400Regular,
   Inter_500Medium,
   Inter_600SemiBold,
   Inter_700Bold,
   Inter_800ExtraBold,
-  Inter_900Black 
+  Inter_900Black
 } from "@expo-google-fonts/inter";
 import { Audio } from "expo-av";
 
@@ -81,8 +81,9 @@ function SplashScreen() {
           style={[styles.splashLogoWrapper, { transform: [{ scale: pulseAnim }] }]}
         >
           <RNImage
-            source={require("../assets/images/TV.png")}
+            source={require("../assets/images/TV.webp")}
             style={styles.logoImage}
+            resizeMode="contain"
           />
         </Animated.View>
       </Animated.View>
@@ -143,7 +144,7 @@ export default function RootLayout() {
       isPhone
         ? ScreenOrientation.OrientationLock.PORTRAIT_UP
         : ScreenOrientation.OrientationLock.LANDSCAPE
-    ).catch(() => {});
+    ).catch(() => { });
   }, []);
 
   // Global remote hardware BackHandler:
@@ -186,52 +187,39 @@ export default function RootLayout() {
     })();
   }, [router]);
 
-  // Boot the app via AppBootManager. Capture the launch URL first so
-  // app/index.tsx can replay it once the store is hydrated.
+  // Boot the app via AppBootManager. Splash audio plays concurrently with a max 1s hold
   useEffect(() => {
-    const soundDelay = new Promise<void>(async (resolve) => {
-      let sound: Audio.Sound | null = null;
-
-      const finish = () => {
-        resolve();
-        if (sound) {
-          // Unload a little after it finishes to prevent audio cutoff glitches
-          setTimeout(() => {
-            try {
-              sound!.unloadAsync();
-            } catch (e) { }
-          }, 1000);
+    const soundDelay = new Promise<void>((resolve) => {
+      let resolved = false;
+      const done = () => {
+        if (!resolved) {
+          resolved = true;
+          resolve();
         }
       };
 
-      // 5s max safety fallback in case audio fails to play or report completion
-      let fallbackTimer = setTimeout(finish, 5000);
+      // Cap splash screen hold to 1000ms max so app boot isn't blocked
+      const maxSplashTimer = setTimeout(done, 1000);
 
-      try {
-        const { sound: s } = await Audio.Sound.createAsync(
-          require("../assets/sounds/splash.wav")
-        );
-        sound = s;
-
+      Audio.Sound.createAsync(
+        require("../assets/sounds/splash.wav")
+      ).then(({ sound }) => {
+        sound.playAsync().catch(() => { });
         sound.setOnPlaybackStatusUpdate((status) => {
           if (status.isLoaded && status.didJustFinish) {
-            clearTimeout(fallbackTimer);
-            finish();
+            clearTimeout(maxSplashTimer);
+            done();
+            setTimeout(() => {
+              try { sound.unloadAsync(); } catch (e) { }
+            }, 1000);
           }
         });
-
-        await sound.playAsync();
-      } catch (e) {
-        console.warn("Failed to play splash sound:", e);
-        clearTimeout(fallbackTimer);
-        finish();
-      }
+      }).catch(() => {
+        clearTimeout(maxSplashTimer);
+        done();
+      });
     });
 
-    // Both are read synchronously all over the app — the player asks for the
-    // buffer depth before its first frame, and every channel list asks whether
-    // a row is locked while rendering — so they are warmed during boot rather
-    // than awaited at each use site.
     const stbProcess = Promise.all([
       stbEnvironment.load().catch(() => { }),
       parentalControl.load().catch(() => { }),
@@ -319,8 +307,8 @@ export default function RootLayout() {
             <Stack
               screenOptions={{
                 headerShown: false,
-                contentStyle: { backgroundColor: "transparent" },
-                animation: "none",
+                contentStyle: { backgroundColor: "#08080a" },
+                animation: Platform.isTV ? "none" : "slide_from_right",
                 // Inactive screens keep their scroll/focus state but stop
                 // re-rendering, so backgrounded grids don't compete with the
                 // foreground screen (or the player) for the JS thread.
@@ -357,8 +345,14 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#08080a" },
-  splash: { flex: 1, justifyContent: "center", alignItems: "center" },
-  splashContent: { alignItems: "center", justifyContent: "center" },
-  splashLogoWrapper: { width: pw(40), height: ph(20), marginBottom: ph(2) },
-  logoImage: { width: "100%", height: "100%" },
+  splash: { flex: 1, justifyContent: "center", alignItems: "center", width: "100%", height: "100%" },
+  splashContent: { alignItems: "center", justifyContent: "center", width: "100%" },
+  splashLogoWrapper: {
+    width: isPhone ? "65%" : pw(32),
+    maxWidth: 380,
+    aspectRatio: 1.5,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  logoImage: { width: "100%", height: "100%", resizeMode: "contain" },
 });

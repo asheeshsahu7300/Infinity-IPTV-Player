@@ -281,7 +281,7 @@ export default function DashboardScreen() {
       ]}>
         <View style={S.logoRow}>
           <Image
-            source={require("../assets/images/TV.png")}
+            source={require("../assets/images/TV.webp")}
             style={[
               S.headerLogoImage,
               /*
@@ -416,7 +416,7 @@ export default function DashboardScreen() {
             style={S.heroGradientOverlay}
           />
         )}
-       <Text style={[
+        <Text style={[
           S.heroTitle,
           !Platform.isTV && {
             // Keep the title compact — the TV_SCALE=1.3 bump already made ps(3.2) ≈ 44dp
@@ -485,9 +485,9 @@ export default function DashboardScreen() {
               // Bundled rather than fetched: these three are the first thing on
               // screen, and a cold TV start used to show empty cards until the
               // remote images arrived.
-              { id: "cat-live", title: "Live TV", icon: "tv", img: require("../assets/images/livetv.png"), route: "/live-tv" },
-              { id: "cat-movies", title: "Movies", icon: "film", img: require("../assets/images/movies.png"), route: "/vod" },
-              { id: "cat-series", title: "Series", icon: "layers", img: require("../assets/images/series.png"), route: "/series" },
+              { id: "cat-live", title: "Live TV", icon: "tv", img: require("../assets/images/livetv.webp"), route: "/live-tv" },
+              { id: "cat-movies", title: "Movies", icon: "film", img: require("../assets/images/movies.webp"), route: "/vod" },
+              { id: "cat-series", title: "Series", icon: "layers", img: require("../assets/images/series.webp"), route: "/series" },
             ]
           ).map((cat) => (
             <Focusable

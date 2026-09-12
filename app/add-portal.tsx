@@ -111,7 +111,7 @@ const ThemedInput = ({
 const BrandHeader = () => (
   <View style={S.brandHeader}>
     <Image
-      source={require("../assets/images/TV.png")}
+      source={require("../assets/images/TV.webp")}
       style={S.brandLogoImage}
       resizeMode="contain"
     />

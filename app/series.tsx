@@ -1112,9 +1112,6 @@ export default function SeriesScreen() {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
     const cat = selectedCategory;
 
-    setIsLoading(true);
-    setDisplaySeries([]);
-
     if (activePortal?.type === "m3u" || activePortal?.type === "xtream") {
       const sourceList = allSeriesCacheRef.current.length > 0 ? allSeriesCacheRef.current : storeSeries;
       if (sourceList.length > 0) {
@@ -1123,18 +1120,16 @@ export default function SeriesScreen() {
         }
         const filtered = filterByCategory(sourceList, cat, categories);
         fullListRef.current = filtered;
-        const timer = setTimeout(() => {
-          setDisplaySeries(filtered);
-          setIsLoading(false);
-          restoreFocusPosition(filtered);
-        }, 120);
-        return () => clearTimeout(timer);
-      } else {
-        loadSeries(selectedCategory, true);
+        setDisplaySeries(filtered);
+        setIsLoading(false);
+        restoreFocusPosition(filtered);
+        return;
       }
-    } else {
-      loadSeries(selectedCategory, true);
     }
+
+    setIsLoading(true);
+    setDisplaySeries([]);
+    loadSeries(selectedCategory, true);
   }, [selectedCategory, activePortal?.id, categories]);
 
   const focusSidebar = useInitialFocusPulse(sidebarCategories.length > 0);

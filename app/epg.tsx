@@ -766,11 +766,6 @@ export default function EPGScreen() {
 
       {/* ─── Header ─── */}
       <View style={[S.header, isPortrait && { paddingTop: 6, paddingBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
-        {/* Same bound as the schedule label below: in portrait this shares a
-            `space-between` row with the category badge, and an unbounded block
-            would push that badge off the edge once the category name grew.
-            Only in portrait — the landscape header is a column, where `flex: 1`
-            would stretch this vertically instead. */}
         <View style={isPortrait ? { flex: 1 } : undefined}>
           <Text style={S.headerTitle}>TV Guide</Text>
           {isPortrait && selectedCategory !== "all" && (

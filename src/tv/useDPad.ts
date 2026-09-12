@@ -1,7 +1,11 @@
 import React from "react";
-import { Platform, TVEventHandler } from "react-native";
+import { Platform } from "react-native";
+import * as ReactNative from "react-native";
 
 import { isKeyPress, resetKeyPressState } from "./keyPress";
+
+// TVEventHandler is provided on TV-enabled builds; on standard react-native it may be absent.
+const TVEventHandler: any = (ReactNative as any).TVEventHandler;
 
 export type DPadEventType =
   | "up"

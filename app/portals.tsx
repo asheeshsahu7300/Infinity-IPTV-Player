@@ -731,7 +731,7 @@ export default function PortalsScreen() {
       ]}
     >
       <Image
-        source={require("../assets/images/TV.png")}
+        source={require("../assets/images/TV.webp")}
         style={[
           S.headerLogoImage,
           isTablet && {
@@ -847,9 +847,9 @@ export default function PortalsScreen() {
     >
       <View style={[S.introCopy, isPortrait && { flex: 0, width: "100%" }]}>
         <Image
-          source={require("../assets/images/TV.png")}
+          source={require("../assets/images/TV.webp")}
           style={S.introLogo}
-          resizeMode="cover"
+          resizeMode="contain"
         />
 
         <Text style={S.introTitle}>
@@ -911,7 +911,7 @@ export default function PortalsScreen() {
         */}
       <View style={[S.introArt, isPortrait && { flex: 0, width: "100%" }]}>
         <Image
-          source={require("../assets/images/series.png")}
+          source={require("../assets/images/series.webp")}
           style={[
             S.introArtLayer,
             S.introArtBack,
@@ -920,7 +920,7 @@ export default function PortalsScreen() {
         />
 
         <Image
-          source={require("../assets/images/movies.png")}
+          source={require("../assets/images/movies.webp")}
           style={[
             S.introArtLayer,
             S.introArtMid,
@@ -929,7 +929,7 @@ export default function PortalsScreen() {
         />
 
         <Image
-          source={require("../assets/images/livetv.png")}
+          source={require("../assets/images/livetv.webp")}
           style={[
             S.introArtLayer,
             S.introArtFront,
@@ -1504,8 +1504,8 @@ const S = StyleSheet.create({
   },
 
   introLogo: {
-    width: pw(20),
-    height: pw(20) / 3.31,
+    width: isPhone ? 180 : pw(20),
+    height: (isPhone ? 180 : pw(20)) / 1.5,
     marginBottom: ph(3),
   },
 

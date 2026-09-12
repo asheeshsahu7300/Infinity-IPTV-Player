@@ -123,8 +123,19 @@ export function safeBack(): boolean {
  */
 export function safeNavigate(route: string, params?: Record<string, any>) {
   const now = Date.now();
-  if (now - lastNavTimestamp < 400) return;
+  if (now - lastNavTimestamp < 200) return;
   lastNavTimestamp = now;
+
+  // Prevent pushing the identical screen if already on it
+  try {
+    if (navigationRef && navigationRef.isReady && navigationRef.isReady()) {
+      const currentRoute = navigationRef.getCurrentRoute();
+      const targetName = route.replace(/^\//, "").split("?")[0];
+      if (currentRoute && currentRoute.name === targetName && !params) {
+        return;
+      }
+    }
+  } catch {}
 
   if (params) {
     router.push({ pathname: route as any, params });

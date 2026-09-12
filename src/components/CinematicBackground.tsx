@@ -5,7 +5,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 // This file sits two levels down, so the project-root assets folder is `../../`
 // from here — not the `../` that screens in app/ use.
-import fallbackBackground from '../../assets/images/cinematic-fallback.png';
 
 /**
  * A remote URL, or the module id `require()` returns for a bundled asset —
@@ -28,4 +27,4 @@ export const CinematicBackground = React.memo(function CinematicBackground({ uri
 });
 
 // Helper function retained for API compatibility
-export const updateCinematicBackground = (_uri?: CinematicSource, _blurRadius?: number) => {};
+export const updateCinematicBackground = (_uri?: CinematicSource, _blurRadius?: number) => { };

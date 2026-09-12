@@ -1051,10 +1051,6 @@ export default function VODScreen() {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
     const cat = selectedCategory;
 
-    // Show loader immediately on category switch
-    setIsLoading(true);
-    setDisplayVodItems([]);
-
     if (activePortal?.type === "m3u" || activePortal?.type === "xtream") {
       const sourceList = allVodCacheRef.current.length > 0 ? allVodCacheRef.current : storeVodItems;
       if (sourceList.length > 0) {
@@ -1063,18 +1059,16 @@ export default function VODScreen() {
         }
         const filtered = filterByCategory(sourceList, cat, categories);
         fullListRef.current = filtered;
-        const timer = setTimeout(() => {
-          setDisplayVodItems(filtered);
-          setIsLoading(false);
-          restoreFocusPosition(filtered);
-        }, 120);
-        return () => clearTimeout(timer);
-      } else {
-        loadVodItems(selectedCategory, true);
+        setDisplayVodItems(filtered);
+        setIsLoading(false);
+        restoreFocusPosition(filtered);
+        return;
       }
-    } else {
-      loadVodItems(selectedCategory, true);
     }
+
+    setIsLoading(true);
+    setDisplayVodItems([]);
+    loadVodItems(selectedCategory, true);
   }, [selectedCategory, activePortal?.id, categories]);
 
   const vodRequestIdRef = useRef(0);

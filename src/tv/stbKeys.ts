@@ -30,9 +30,13 @@
 // module existed, and claiming it in both registries delivers every press
 // twice.
 // ─────────────────────────────────────────────────────────────────────────────
-import { Platform, TVEventHandler } from "react-native";
+import { Platform } from "react-native";
+import * as ReactNative from "react-native";
 
 import { isKeyPress, resetKeyPressState } from "./keyPress";
+
+// TVEventHandler is provided on TV-enabled builds; on standard react-native it may be absent.
+const TVEventHandler: any = (ReactNative as any).TVEventHandler;
 
 export type StbKey =
   | "digit"

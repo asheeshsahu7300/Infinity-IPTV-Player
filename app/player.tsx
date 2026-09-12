@@ -10,7 +10,7 @@
 //     loses the extra IPTV-hardening features in that case.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { View, StyleSheet, Dimensions, Platform, ActivityIndicator, StatusBar, ScrollView, BackHandler, findNodeHandle, Animated, AppState, AppStateStatus, UIManager, useTVEventHandler } from 'react-native';
+import { View, StyleSheet, Dimensions, Platform, ActivityIndicator, StatusBar, ScrollView, BackHandler, findNodeHandle, Animated, AppState, AppStateStatus, UIManager } from 'react-native';
 import { useLocalSearchParams } from "expo-router";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { isPhone } from "../src/utils/phoneUtils";
@@ -1267,8 +1267,8 @@ export default function PlayerScreen() {
       onAny: () => {
         if (!showControlsRef.current) {
           setShowControls(true);
-          resetControlsTimeout();
         }
+        resetControlsTimeout();
       },
     },
     {
@@ -1281,22 +1281,6 @@ export default function PlayerScreen() {
       priority: DPAD_PRIORITY.PLAYER,
     }
   );
-
-  // ── Native TV remote event listener (guarantees controls wake up on any remote event) ──
-  useTVEventHandler((evt: any) => {
-    if (!evt || !evt.eventType || evt.eventType === "focus" || evt.eventType === "blur") return;
-    if (evt.eventType === "back" || evt.eventType === "hardwareBackPress") return;
-    const action = evt?.eventKeyAction;
-    if (action === 1 || action === "1" || action === "up") return;
-    if (showAudioModalRef.current || showSubtitleModalRef.current || showVideoModalRef.current) return;
-
-    if (!showControlsRef.current) {
-      setShowControls(true);
-      resetControlsTimeout();
-    } else {
-      resetControlsTimeout();
-    }
-  });
 
   const cyclePlaybackSpeed = () => {
     if (isLockedRef.current) return;
