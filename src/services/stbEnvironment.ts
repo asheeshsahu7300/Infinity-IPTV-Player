@@ -53,22 +53,22 @@ export const BUFFER_PROFILES: Record<BufferProfile, BufferTuning & { label: stri
   instant: {
     label: "Instant",
     detail: "Fastest channel change. Needs a steady connection.",
-    liveCacheMs: 600,
-    vodCacheMs: 500,
+    liveCacheMs: 1500,
+    vodCacheMs: 1200,
     stallTimeoutMs: 10000,
   },
   balanced: {
     label: "Balanced",
     detail: "Fast zapping with enough buffer to absorb minor network variance.",
-    liveCacheMs: 1000,
-    vodCacheMs: 800,
-    stallTimeoutMs: 14000,
+    liveCacheMs: 3000,
+    vodCacheMs: 2500,
+    stallTimeoutMs: 15000,
   },
   smooth: {
     label: "Smooth",
     detail: "Deepest buffer. Best on Wi-Fi or a congested line.",
-    liveCacheMs: 2500,
-    vodCacheMs: 2000,
+    liveCacheMs: 5000,
+    vodCacheMs: 4000,
     stallTimeoutMs: 20000,
   },
 };
@@ -186,20 +186,20 @@ class StbEnvironmentImpl {
 
       if (this.settings.bufferProfile === "instant") {
         return {
-          liveCacheMs: 800,
-          vodCacheMs: 500,
+          liveCacheMs: 1500,
+          vodCacheMs: 1200,
           stallTimeoutMs: 10000,
         };
       }
 
       if (this.settings.bufferProfile === "balanced") {
         const liveMs = Number.isFinite(serverBufSec) && serverBufSec > 0
-          ? Math.min(2500, Math.max(1200, Math.round(serverBufSec * 150)))
-          : 1500;
+          ? Math.min(4500, Math.max(2500, Math.round(serverBufSec * 250)))
+          : 3000;
         return {
           liveCacheMs: liveMs,
-          vodCacheMs: 1000,
-          stallTimeoutMs: 12000,
+          vodCacheMs: 2500,
+          stallTimeoutMs: 15000,
         };
       }
     }

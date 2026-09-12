@@ -1285,6 +1285,7 @@ const S = StyleSheet.create({
 
   portalCard: {
     flex: 1,
+    marginTop: ph(2),
     borderRadius: 18,
     overflow: "hidden",
     backgroundColor: "#17181c",

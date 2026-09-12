@@ -27,7 +27,6 @@ import {
   Inter_800ExtraBold,
   Inter_900Black
 } from "@expo-google-fonts/inter";
-import { Audio } from "expo-av";
 
 import ErrorBoundary from "../src/components/ErrorBoundary";
 import { usePortalStore } from "../src/store/portalStore";
@@ -190,34 +189,7 @@ export default function RootLayout() {
   // Boot the app via AppBootManager. Splash audio plays concurrently with a max 1s hold
   useEffect(() => {
     const soundDelay = new Promise<void>((resolve) => {
-      let resolved = false;
-      const done = () => {
-        if (!resolved) {
-          resolved = true;
-          resolve();
-        }
-      };
-
-      // Cap splash screen hold to 1000ms max so app boot isn't blocked
-      const maxSplashTimer = setTimeout(done, 1000);
-
-      Audio.Sound.createAsync(
-        require("../assets/sounds/splash.wav")
-      ).then(({ sound }) => {
-        sound.playAsync().catch(() => { });
-        sound.setOnPlaybackStatusUpdate((status) => {
-          if (status.isLoaded && status.didJustFinish) {
-            clearTimeout(maxSplashTimer);
-            done();
-            setTimeout(() => {
-              try { sound.unloadAsync(); } catch (e) { }
-            }, 1000);
-          }
-        });
-      }).catch(() => {
-        clearTimeout(maxSplashTimer);
-        done();
-      });
+      setTimeout(resolve, 800);
     });
 
     const stbProcess = Promise.all([

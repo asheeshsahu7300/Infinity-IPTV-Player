@@ -301,8 +301,8 @@ export default function SettingsScreen() {
     const next = !hardwareAcceleration;
     setHardwareAcceleration(next);
     persistSettings({ hardwareAcceleration: next });
-    // The player reads this through stbEnvironment when it builds its VLC
-    // options, so both records have to move together.
+    // The player reads this through stbEnvironment when configuring hardware
+    // decoders, so both records have to move together.
     stbEnvironment.update({ hardwareAcceleration: next });
   }, [hardwareAcceleration, persistSettings]);
 

@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.infinity.iptvplayer"
+      "bundleIdentifier": "com.infinity.iptvplayer",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Allows Infinity IPTV Player to discover and stream media from network sources."
+      }
     },
     "android": {
       "package": "com.infinity.iptvplayer",
@@ -56,7 +59,14 @@
           "androidTVRequired": false
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": true,
+          "supportsPictureInPicture": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
