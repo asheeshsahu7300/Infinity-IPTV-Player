@@ -11,6 +11,7 @@ import { usePortalStore } from "../src/store/portalStore";
 import { portalApi, buildImageUrl } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
+import { StreamManager } from "../src/services/StreamManager";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay, useIsFocusTrapped, useDPad, FocusMemory } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
@@ -783,12 +784,20 @@ export default function SearchScreen() {
     return results.filter((item) => item.type === activeFilter);
   }, [results, activeFilter]);
 
-  const handleResultPress = useCallback((item: any) => {
+  const handleResultPress = useCallback(async (item: any) => {
     if (item.type === "live") {
+      const activePortal = usePortalStore.getState().activePortal;
+      let url = item.streamUrl;
+      if (activePortal?.type === "mag") {
+        try {
+          const res = await StreamManager.getStreamUrl(item, activePortal, "itv");
+          if (res.success && res.url) url = res.url;
+        } catch { }
+      }
       router.push({
         pathname: "/player",
         params: {
-          url: item.streamUrl,
+          url,
           title: item.name,
           type: "live",
           logo: item.logo || "",

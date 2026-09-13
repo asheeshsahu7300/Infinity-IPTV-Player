@@ -59,6 +59,7 @@ export interface ConfirmDialogProps {
    * button set. Defaults to the title, which is usually distinct enough.
    */
   dialogKey?: string;
+  restoreFocusOnClose?: boolean;
 }
 
 interface ActionProps {
@@ -138,6 +139,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
   dialogKey,
+  restoreFocusOnClose = true,
 }: ConfirmDialogProps) {
   const t = TONES[tone];
   // Destructive dialogs open on Cancel so a stray OK press cannot wipe data.
@@ -150,6 +152,7 @@ export function ConfirmDialog({
       visible={visible}
       axis="horizontal"
       closeOnBack={!busy}
+      restoreFocusOnClose={restoreFocusOnClose}
       onClose={busy ? undefined : onCancel}
       contentStyle={S.overlayContent}
     >
@@ -208,7 +211,7 @@ export interface DialogApi {
   open: (request: DialogRequest) => void;
   /** One-button message — the drop-in replacement for `Alert.alert(title, msg)`. */
   notify: (title: string, message?: string, tone?: DialogTone) => void;
-  close: () => void;
+  close: (restoreFocus?: boolean) => void;
   busy: boolean;
   /** Render last inside the screen root so it layers above the content. */
   node: React.ReactNode;
@@ -222,13 +225,18 @@ export function useDialog(): DialogApi {
   const [request, setRequest] = useState<DialogRequest | null>(null);
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [restoreFocus, setRestoreFocus] = useState(true);
 
   const open = useCallback((next: DialogRequest) => {
+    setRestoreFocus(true);
     setRequest(next);
     setVisible(true);
   }, []);
 
-  const close = useCallback(() => setVisible(false), []);
+  const close = useCallback((shouldRestoreFocus = true) => {
+    setRestoreFocus(shouldRestoreFocus);
+    setVisible(false);
+  }, []);
 
   const notify = useCallback(
     (title: string, message?: string, tone: DialogTone = "neutral") =>
@@ -243,6 +251,14 @@ export function useDialog(): DialogApi {
     [open]
   );
 
+  const isMountedRef = React.useRef(true);
+  React.useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const handleConfirm = useCallback(async () => {
     const action = request?.onConfirm;
     if (!action) {
@@ -253,7 +269,9 @@ export function useDialog(): DialogApi {
     try {
       await action();
     } finally {
-      setBusy(false);
+      if (isMountedRef.current) {
+        setBusy(false);
+      }
     }
   }, [request, close]);
 
@@ -271,6 +289,7 @@ export function useDialog(): DialogApi {
       cancelLabel={request.cancelLabel}
       acknowledgeOnly={request.acknowledgeOnly}
       busy={busy}
+      restoreFocusOnClose={restoreFocus}
       onConfirm={handleConfirm}
       onCancel={close}
     />

@@ -56,6 +56,8 @@ export interface OverlayProps {
   contentStyle?: StyleProp<ViewStyle>;
   trapFocus?: boolean;
   closeOnBack?: boolean;
+  /** Whether to restore focus to the previously-focused element on close. Default true. */
+  restoreFocusOnClose?: boolean;
   /** Layout direction of the overlay's focusable actions. Default "vertical". */
   axis?: OverlayAxis;
 }
@@ -82,6 +84,7 @@ export function Overlay({
   contentStyle,
   trapFocus = true,
   closeOnBack = true,
+  restoreFocusOnClose = true,
   axis = "vertical",
 }: OverlayProps) {
   const previousFocusedRef = React.useRef<View | null>(null);
@@ -126,7 +129,27 @@ export function Overlay({
     };
   }, [visible, trapFocus]);
 
+  const restoreTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = React.useRef(true);
+
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (restoreTimerRef.current) {
+        clearInterval(restoreTimerRef.current);
+        restoreTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const restorePreviousFocusWithRetry = React.useCallback(() => {
+    if (restoreTimerRef.current) {
+      clearInterval(restoreTimerRef.current);
+      restoreTimerRef.current = null;
+    }
+    if (!mountedRef.current) return;
+
     const startEpoch = FocusMemory.focusEpoch;
     const targetRef = previousFocusedRef.current;
     const targetScreen = previousScreenKey.current || FocusMemory.getLastActiveScreen();
@@ -135,6 +158,7 @@ export function Overlay({
     const maxAttempts = 10;
 
     const tryRestore = () => {
+      if (!mountedRef.current) return true;
       // If focus epoch already moved (meaning an element gained focus), stop retrying!
       if (FocusMemory.focusEpoch !== startEpoch) {
         return true;
@@ -164,10 +188,13 @@ export function Overlay({
     if (tryRestore()) return;
 
     // Retry every 35ms while native view focusability settles
-    const timer = setInterval(() => {
+    restoreTimerRef.current = setInterval(() => {
       attempts++;
-      if (tryRestore() || attempts >= maxAttempts) {
-        clearInterval(timer);
+      if (!mountedRef.current || tryRestore() || attempts >= maxAttempts) {
+        if (restoreTimerRef.current) {
+          clearInterval(restoreTimerRef.current);
+          restoreTimerRef.current = null;
+        }
       }
     }, 35);
   }, []);
@@ -186,8 +213,10 @@ export function Overlay({
       return;
     }
 
-    // Immediately trigger focus restoration retry loop when modal starts closing.
-    restorePreviousFocusWithRetry();
+    // Immediately trigger focus restoration retry loop when modal starts closing if enabled.
+    if (restoreFocusOnClose) {
+      restorePreviousFocusWithRetry();
+    }
 
     Animated.timing(opacity, {
       toValue: 0,
@@ -198,7 +227,7 @@ export function Overlay({
       previousFocusedRef.current = null;
       previousScreenKey.current = null;
     });
-  }, [visible, opacity, reduceMotion, restorePreviousFocusWithRetry]);
+  }, [visible, opacity, reduceMotion, restoreFocusOnClose, restorePreviousFocusWithRetry]);
 
   if (!render) return null;
 

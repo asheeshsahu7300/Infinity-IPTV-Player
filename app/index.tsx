@@ -19,6 +19,8 @@ export default function IndexScreen() {
   const activePortal = usePortalStore((s) => s.activePortal);
   const isHydrated = usePortalStore((s) => s.isHydrated);
 
+  const hasRedirectedRef = React.useRef(false);
+
   // Show loading while AppBootManager is hydrating the store
   if (!isHydrated) {
     return (
@@ -36,6 +38,13 @@ export default function IndexScreen() {
       </View>
     );
   }
+
+  // Only perform redirect once when booting. Subsequent store updates while
+  // another screen is active in the foreground must never re-trigger Redirect.
+  if (hasRedirectedRef.current) {
+    return null;
+  }
+  hasRedirectedRef.current = true;
 
   // A link the app was launched with wins over the default landing screen —
   // but only once we have a portal, otherwise there is nothing to resolve it

@@ -37,6 +37,7 @@ const STORAGE_KEY = "stb_environment_v1";
 export type BufferProfile = "instant" | "balanced" | "smooth";
 
 export interface BufferTuning {
+  profile?: BufferProfile;
   /** VLC `--network-caching` / `--live-caching`, in ms. */
   liveCacheMs: number;
   /** The same for on-demand, where startup latency matters far less. */
@@ -51,6 +52,7 @@ export interface BufferTuning {
 
 export const BUFFER_PROFILES: Record<BufferProfile, BufferTuning & { label: string; detail: string }> = {
   instant: {
+    profile: "instant",
     label: "Instant",
     detail: "Fastest channel change. Needs a steady connection.",
     liveCacheMs: 1500,
@@ -58,6 +60,7 @@ export const BUFFER_PROFILES: Record<BufferProfile, BufferTuning & { label: stri
     stallTimeoutMs: 10000,
   },
   balanced: {
+    profile: "balanced",
     label: "Balanced",
     detail: "Fast zapping with enough buffer to absorb minor network variance.",
     liveCacheMs: 3000,
@@ -65,6 +68,7 @@ export const BUFFER_PROFILES: Record<BufferProfile, BufferTuning & { label: stri
     stallTimeoutMs: 15000,
   },
   smooth: {
+    profile: "smooth",
     label: "Smooth",
     detail: "Deepest buffer. Best on Wi-Fi or a congested line.",
     liveCacheMs: 5000,
@@ -186,6 +190,7 @@ class StbEnvironmentImpl {
 
       if (this.settings.bufferProfile === "instant") {
         return {
+          profile: "instant",
           liveCacheMs: 1500,
           vodCacheMs: 1200,
           stallTimeoutMs: 10000,
@@ -197,6 +202,7 @@ class StbEnvironmentImpl {
           ? Math.min(4500, Math.max(2500, Math.round(serverBufSec * 250)))
           : 3000;
         return {
+          profile: "balanced",
           liveCacheMs: liveMs,
           vodCacheMs: 2500,
           stallTimeoutMs: 15000,
@@ -346,6 +352,27 @@ export const stbEnvironment = new StbEnvironmentImpl();
 export default stbEnvironment;
 
 /**
+ * Checks whether a stream URL is a real, network-playable media address,
+ * rather than an internal unresolved STB command (like localhost, /ch/123_, ffmpeg).
+ */
+export function isPlayableStreamUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const trimmed = url.trim();
+  if (!/^(https?|rtsp|mms):\/\//i.test(trimmed)) return false;
+  if (
+    trimmed.includes("localhost") ||
+    trimmed.includes("127.0.0.1") ||
+    /^ffmpeg\s+/i.test(trimmed) ||
+    /^auto\s+/i.test(trimmed) ||
+    /^ffrt\d*\s+/i.test(trimmed) ||
+    /\/ch\/\d+_/i.test(trimmed)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Rewrites a stream URL to use the portal server host/port if sameHostStreamProxy
  * is enabled, or if the URL contains a known stale/dead middleware domain.
  * Also constructs a fallback same-host URL if the streamUrl is empty.
@@ -364,14 +391,26 @@ export function applySameHostStreamProxy(
     .replace(/\/c$/i, "");
 
   let target = streamUrl ? streamUrl.trim() : "";
+  if (target) {
+    target = target.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
+    if (portal?.config?.mac && /%mac%/i.test(target)) {
+      target = target.replace(/%mac%/ig, portal.config.mac);
+    }
+    // Strip trailing STB metadata parameters (position:0, media_len:3600, atrack:1, strack:1)
+    if (/\s+(position|media_len|atrack|strack):/i.test(target)) {
+      const parts = target.split(/\s+/);
+      const httpPart = parts.find((p) => /^https?:\/\//i.test(p));
+      if (httpPart) target = httpPart;
+    }
+  }
 
-  // If empty player link, attempt to build same host link from cmd if available
+  // If empty player link, attempt to build same host link from cmd if available (only for media files)
   if (!target && cmd) {
     const clean = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
     if (clean) {
-      if (/^https?:\/\//i.test(clean)) {
+      if (/^https?:\/\//i.test(clean) && !/(localhost|127\.0\.0\.1|\/ch\/\d+_)/i.test(clean)) {
         target = clean;
-      } else if (clean.startsWith("/") || clean.includes(".mpg") || clean.includes(".m3u8") || clean.includes(".ts") || clean.includes("ch/")) {
+      } else if ((clean.startsWith("/") || clean.includes(".mpg") || clean.includes(".m3u8") || clean.includes(".ts")) && !clean.includes("ch/")) {
         target = `${serverRoot}/${clean.replace(/^\/+/, "")}`;
       }
     }
@@ -390,7 +429,10 @@ export function applySameHostStreamProxy(
 
     targetUrlObj.protocol = portalUrlObj.protocol;
     targetUrlObj.hostname = portalUrlObj.hostname;
-    if (portalUrlObj.port && (!targetUrlObj.port || targetUrlObj.port === "80" || targetUrlObj.port === "8080" || isEnabled)) {
+    // CRITICAL: NEVER overwrite stream port with portal administrative/PHP port (e.g. 8080)
+    // unless the user explicitly enabled sameHostStreamProxy in settings.
+    // Video streaming servers run on port 80/8000, while port 8080 is Apache/PHP.
+    if (isEnabled && portalUrlObj.port) {
       targetUrlObj.port = portalUrlObj.port;
     }
     return targetUrlObj.toString();
@@ -401,3 +443,4 @@ export function applySameHostStreamProxy(
     return target;
   }
 }
+

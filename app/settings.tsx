@@ -92,7 +92,7 @@ function SettingRow({
       selected={selected}
     >
       {(focused) => (
-        <>
+        <View style={S.rowInner}>
           <DynamicIcon
             name={icon}
             size={ps(2.6)}
@@ -106,7 +106,7 @@ function SettingRow({
             </Text>
           </View>
           <RowControlView control={control} focused={focused} />
-        </>
+        </View>
       )}
     </Focusable>
   );
@@ -193,6 +193,9 @@ export default function SettingsScreen() {
   // Confirmations run through an in-tree overlay rather than `Alert.alert`,
   // which never reliably surfaces on an Android TV release build.
   const { open: openDialog, close: closeDialog, node: dialogNode } = useDialog();
+
+  const isLeavingRef = useRef(false);
+  const [isLeaving, setIsLeaving] = useState(false);
 
   // Initial focus goes to the first non-destructive control; on re-entry the
   // last-focused row wins instead.
@@ -359,13 +362,17 @@ export default function SettingsScreen() {
       confirmLabel: 'Delete All',
       onConfirm: async () => {
         try {
-          await safeStorage.clear();
-          await setActivePortal(null);
-          clearPortalData();
+          closeDialog(false);
           FocusMemory.clear(SCREEN_KEY);
-          closeDialog();
-          router.replace('/');
+          isLeavingRef.current = true;
+          setIsLeaving(true);
+          await safeStorage.clear();
+          await usePortalStore.getState().setActivePortal(null);
+          usePortalStore.getState().clearPortalData();
+          router.replace('/portals');
         } catch {
+          isLeavingRef.current = false;
+          setIsLeaving(false);
           openDialog({
             id: 'clear-all-failed',
             tone: 'danger',
@@ -378,7 +385,7 @@ export default function SettingsScreen() {
         }
       },
     });
-  }, [openDialog, closeDialog, setActivePortal, clearPortalData, router]);
+  }, [openDialog, closeDialog, router]);
 
   const handleDisconnect = useCallback(() => {
     openDialog({
@@ -389,15 +396,24 @@ export default function SettingsScreen() {
       message: `"${activePortal?.name ?? 'This portal'}" will be disconnected. It stays saved, so you can reconnect at any time.`,
       confirmLabel: 'Disconnect',
       onConfirm: async () => {
-        await setActivePortal(null);
-        clearPortalData();
-        closeDialog();
-        router.replace('/');
+        closeDialog(false);
+        FocusMemory.clear(SCREEN_KEY);
+        isLeavingRef.current = true;
+        setIsLeaving(true);
+        try {
+          await usePortalStore.getState().setActivePortal(null);
+          usePortalStore.getState().clearPortalData();
+        } catch {}
+        router.replace('/portals');
       },
     });
-  }, [openDialog, closeDialog, activePortal?.name, setActivePortal, clearPortalData, router]);
+  }, [openDialog, closeDialog, activePortal?.name, router]);
 
   const appVersion = Constants.expoConfig?.version ?? '1.0.0';
+
+  if (isLeaving) {
+    return <View style={[S.container, { backgroundColor: '#000000' }]} />;
+  }
 
   return (
     <View style={[S.container, { paddingTop: insets.top }]}>
@@ -435,7 +451,7 @@ export default function SettingsScreen() {
       >
         {/* Portal Section */}
         {activePortal && (
-          <View style={S.rootSection}>
+          <View key="portal-section" style={S.rootSection}>
             <SectionLabel>PORTAL INFORMATION</SectionLabel>
             <View style={S.portalCard}>
               <View style={S.portalCardHeader}>
@@ -507,7 +523,7 @@ export default function SettingsScreen() {
         )}
 
         {/* Playback Section */}
-        <View style={S.rootSection}>
+        <View key="playback-section" style={S.rootSection}>
           <SectionLabel>PLAYBACK SETTINGS</SectionLabel>
           <View style={S.groupedCard}>
             <SettingRow
@@ -535,7 +551,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Set-Top Box Section */}
-        <View style={S.rootSection}>
+        <View key="stb-section" style={S.rootSection}>
           <SectionLabel>SET-TOP BOX</SectionLabel>
           <View style={S.groupedCard}>
             <SettingRow
@@ -588,7 +604,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Tools Section */}
-        <View style={S.rootSection}>
+        <View key="tools-section" style={S.rootSection}>
           <SectionLabel>TOOLS &amp; DIAGNOSTICS</SectionLabel>
           <FocusGroup style={S.tileRow}>
             <DataTile
@@ -632,7 +648,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Data Section */}
-        <View style={S.rootSection}>
+        <View key="data-section" style={S.rootSection}>
           <SectionLabel>APP MANAGEMENT / DATA</SectionLabel>
           <FocusGroup style={S.tileRow}>
             <DataTile
@@ -661,7 +677,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Legal Section */}
-        <View style={S.rootSection}>
+        <View key="legal-section" style={S.rootSection}>
           <SectionLabel>LEGAL</SectionLabel>
           <View style={S.groupedCard}>
             <SettingRow
@@ -882,6 +898,11 @@ const S = StyleSheet.create({
     borderWidth: 0,
     borderColor: 'transparent',
     marginBottom: ph(0.4),
+  },
+  rowInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
   },
   rowFocused: {
     borderColor: 'transparent',

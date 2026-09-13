@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from "react";
+import React, { useEffect, useRef, useImperativeHandle, forwardRef, useCallback, useMemo } from "react";
 import { StyleSheet, View, ViewStyle, StyleProp, Platform } from "react-native";
 import {
   VideoView,
@@ -9,6 +9,7 @@ import {
   VideoTrack,
   VideoContentFit,
 } from "expo-video";
+import { BufferTuning } from "../services/stbEnvironment";
 
 export interface NormalizedTrackOption {
   id: string | number;
@@ -30,6 +31,7 @@ export interface ExpoVideoPlayerRef {
   selectAudioTrack: (trackIdOrIndex: string | number | undefined) => void;
   selectSubtitleTrack: (trackIdOrIndex: string | number | undefined) => void;
   selectVideoTrack: (trackIdOrIndex: string | number | undefined) => void;
+  reloadSource: () => Promise<void>;
   getPlayer: () => any;
 }
 
@@ -42,6 +44,10 @@ export interface ExpoVideoPlayerProps {
   volume?: number; // 0..1 or 0..100
   paused?: boolean;
   autoPlay?: boolean;
+  isLive?: boolean;
+  is4K?: boolean;
+  networkCacheMs?: number;
+  bufferTuning?: BufferTuning;
   selectedAudioTrack?: string | number | undefined;
   selectedSubtitleTrack?: string | number | undefined;
   selectedVideoTrack?: string | number | undefined;
@@ -52,6 +58,13 @@ export interface ExpoVideoPlayerProps {
     textTracks: NormalizedTrackOption[];
     videoTracks: NormalizedTrackOption[];
     naturalSize?: { width: number; height: number };
+    currentAudioTrack?: NormalizedTrackOption;
+  }) => void;
+  onTracksChange?: (data: {
+    audioTracks: NormalizedTrackOption[];
+    textTracks: NormalizedTrackOption[];
+    videoTracks: NormalizedTrackOption[];
+    currentAudioTrack?: NormalizedTrackOption;
   }) => void;
   onProgress?: (currentTimeMs: number, durationMs: number) => void;
   onBuffering?: (isBuffering: boolean) => void;
@@ -137,6 +150,62 @@ function normalizeVideoTracks(tracks: VideoTrack[]): NormalizedTrackOption[] {
   });
 }
 
+/**
+ * Derives native ExoPlayer / AVPlayer buffer parameters from user buffer profiles
+ * and adaptive network measurements, with proper milliseconds -> seconds conversion.
+ */
+export function calculateExpoBufferOptions({
+  networkCacheMs,
+  bufferTuning,
+  isLive,
+  is4K,
+}: {
+  networkCacheMs?: number;
+  bufferTuning?: BufferTuning;
+  isLive?: boolean;
+  is4K?: boolean;
+}) {
+  const profile = bufferTuning?.profile || "balanced";
+  const baseCacheSec = (networkCacheMs && networkCacheMs > 0)
+    ? networkCacheMs / 1000
+    : (isLive ? 3.0 : 4.0);
+
+  let minBufferSec = 1.5;
+  let forwardBufferSec = 8.0;
+
+  if (profile === "instant") {
+    // Instant zap: start playback as soon as 0.8s (live) or 1.0s (VOD) is buffered
+    minBufferSec = isLive ? 0.8 : 1.0;
+    forwardBufferSec = isLive
+      ? Math.max(2.0, baseCacheSec)
+      : Math.max(4.0, baseCacheSec * 1.5);
+  } else if (profile === "smooth") {
+    // Smooth: deep buffer to absorb high jitter / weak Wi-Fi
+    minBufferSec = isLive ? 2.5 : 3.0;
+    forwardBufferSec = isLive
+      ? Math.max(10.0, baseCacheSec * 2.0)
+      : Math.max(18.0, baseCacheSec * 2.5);
+  } else {
+    // Balanced (default)
+    minBufferSec = isLive ? 1.5 : 2.0;
+    forwardBufferSec = isLive
+      ? Math.max(5.0, baseCacheSec * 1.5)
+      : Math.max(10.0, baseCacheSec * 2.0);
+  }
+
+  if (is4K) {
+    minBufferSec += 0.5;
+    forwardBufferSec = Math.round(forwardBufferSec * 1.3 * 10) / 10;
+  }
+
+  return {
+    preferredForwardBufferDuration: Math.round(forwardBufferSec * 10) / 10,
+    minBufferForPlayback: Math.round(minBufferSec * 10) / 10,
+    maxBufferBytes: 0,
+    prioritizeTimeOverSizeThreshold: true,
+  };
+}
+
 export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerProps>(
   (
     {
@@ -148,11 +217,16 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
       volume = 1.0,
       paused = false,
       autoPlay = true,
+      isLive = false,
+      is4K = false,
+      networkCacheMs,
+      bufferTuning,
       selectedAudioTrack,
       selectedSubtitleTrack,
       selectedVideoTrack,
       staysActiveInBackground = false,
       onLoad,
+      onTracksChange,
       onProgress,
       onBuffering,
       onPlaying,
@@ -167,25 +241,41 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
     const subtitleTracksRef = useRef<SubtitleTrack[]>([]);
     const videoTracksRef = useRef<VideoTrack[]>([]);
     const currentUrlRef = useRef(streamUrl);
+    const lastProgressEmitTime = useRef(0);
 
-    // Build the VideoSource object
-    const source: VideoSource = {
-      uri: streamUrl,
-      headers: headers,
-    };
+    // Build referentially stable VideoSource object
+    const source = useMemo<VideoSource>(
+      () => ({
+        uri: streamUrl,
+        headers: headers,
+      }),
+      [streamUrl, headers]
+    );
 
-    // Initialize the native player
+    // Initialize the native player with tuned buffer options
     const player = useVideoPlayer(source, (p) => {
       p.loop = false;
       p.timeUpdateEventInterval = 0.25; // 250ms for smooth progress bar updates
       p.playbackRate = rate;
       p.volume = volume > 1 ? volume / 100 : volume;
-      p.audioMixingMode = "doNotMix";
+      p.audioMixingMode = "auto";
 
       if (staysActiveInBackground) {
         try {
           p.staysActiveInBackground = true;
         } catch {}
+      }
+
+      // Tune buffer dynamically based on profile, network cache, and resolution
+      try {
+        p.bufferOptions = calculateExpoBufferOptions({
+          networkCacheMs,
+          bufferTuning,
+          isLive,
+          is4K,
+        });
+      } catch (e) {
+        console.warn("[ExpoVideoPlayer] Error setting bufferOptions:", e);
       }
 
       if (autoPlay && !paused) {
@@ -194,6 +284,19 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         } catch {}
       }
     });
+
+    // Dynamic buffer tuning when profile, network cache, or stream type change
+    useEffect(() => {
+      if (!player) return;
+      try {
+        player.bufferOptions = calculateExpoBufferOptions({
+          networkCacheMs,
+          bufferTuning,
+          isLive,
+          is4K,
+        });
+      } catch {}
+    }, [player, networkCacheMs, bufferTuning, isLive, is4K]);
 
     // Synchronize play / pause state
     useEffect(() => {
@@ -249,10 +352,19 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
     const applyAudioTrack = useCallback(
       (trackIdOrIndex: string | number | undefined) => {
         if (!player || trackIdOrIndex === undefined) return;
+        if (trackIdOrIndex === -1 || trackIdOrIndex === "-1" || trackIdOrIndex === null) {
+          try {
+            player.audioTrack = null;
+          } catch {}
+          return;
+        }
         const available = player.availableAudioTracks || [];
         audioTracksRef.current = available;
         const match = available.find(
-          (t, idx) => t.id === String(trackIdOrIndex) || idx === Number(trackIdOrIndex)
+          (t, idx) =>
+            t.id === String(trackIdOrIndex) ||
+            idx === Number(trackIdOrIndex) ||
+            String(idx) === String(trackIdOrIndex)
         );
         if (match) {
           try {
@@ -367,6 +479,9 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         } else if (status === "error") {
           onBuffering?.(false);
           onError?.(error || new Error("Playback error"));
+        } else if (status === "idle" && isLive && !isFirstLoadRef.current) {
+          // If Live TV reaches idle state after having started, the stream dropped/ended
+          onEnd?.();
         }
       });
 
@@ -380,44 +495,63 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
       });
 
       const subTime = player.addListener("timeUpdate", ({ currentTime }: any) => {
+        lastProgressEmitTime.current = Date.now();
         const currentMs = Math.round((currentTime || 0) * 1000);
         const durationMs = Math.round((player.duration || 0) * 1000);
         onProgress?.(currentMs, durationMs);
       });
 
-      const subSourceLoad = player.addListener("sourceLoad", () => {
-        const durationMs = Math.round((player.duration || 0) * 1000);
-        const aTracks = normalizeAudioTracks(player.availableAudioTracks || []);
-        const sTracks = normalizeSubtitleTracks(player.availableSubtitleTracks || []);
-        const vTracks = normalizeVideoTracks(player.availableVideoTracks || []);
-        audioTracksRef.current = player.availableAudioTracks || [];
-        subtitleTracksRef.current = player.availableSubtitleTracks || [];
-        videoTracksRef.current = player.availableVideoTracks || [];
+      // Fallback heartbeat: only emits onProgress if native timeUpdate has not fired
+      // for >1000ms while player is playing (e.g. frozen live MPEG-TS clock)
+      const heartbeatTimer = setInterval(() => {
+        try {
+          if (player.playing && Date.now() - lastProgressEmitTime.current > 1000) {
+            lastProgressEmitTime.current = Date.now();
+            const currentMs = Math.round((player.currentTime || 0) * 1000);
+            const durationMs = Math.round((player.duration || 0) * 1000);
+            onProgress?.(currentMs, durationMs);
+          }
+        } catch {}
+      }, 500);
 
-        onLoad?.({
-          duration: durationMs,
-          audioTracks: aTracks,
-          textTracks: sTracks,
-          videoTracks: vTracks,
-        });
+      const subSourceLoad = player.addListener("sourceLoad", () => {
+        if (isFirstLoadRef.current) {
+          isFirstLoadRef.current = false;
+          const durationMs = Math.round((player.duration || 0) * 1000);
+          const aTracks = normalizeAudioTracks(player.availableAudioTracks || []);
+          const sTracks = normalizeSubtitleTracks(player.availableSubtitleTracks || []);
+          const vTracks = normalizeVideoTracks(player.availableVideoTracks || []);
+          audioTracksRef.current = player.availableAudioTracks || [];
+          subtitleTracksRef.current = player.availableSubtitleTracks || [];
+          videoTracksRef.current = player.availableVideoTracks || [];
+
+          onLoad?.({
+            duration: durationMs,
+            audioTracks: aTracks,
+            textTracks: sTracks,
+            videoTracks: vTracks,
+          });
+        }
       });
 
       const subAudioTracks = player.addListener("availableAudioTracksChange", ({ availableAudioTracks }: any) => {
         audioTracksRef.current = availableAudioTracks || [];
-        const durationMs = Math.round((player.duration || 0) * 1000);
-        onLoad?.({
-          duration: durationMs,
-          audioTracks: normalizeAudioTracks(availableAudioTracks || []),
-          textTracks: normalizeSubtitleTracks(player.availableSubtitleTracks || []),
-          videoTracks: normalizeVideoTracks(player.availableVideoTracks || []),
+        const aTracks = normalizeAudioTracks(availableAudioTracks || []);
+        const sTracks = normalizeSubtitleTracks(player.availableSubtitleTracks || []);
+        const vTracks = normalizeVideoTracks(player.availableVideoTracks || []);
+        const currentAudio = availableAudioTracks && player.audioTrack ? normalizeAudioTracks([player.audioTrack])[0] : undefined;
+
+        onTracksChange?.({
+          audioTracks: aTracks,
+          textTracks: sTracks,
+          videoTracks: vTracks,
+          currentAudioTrack: currentAudio,
         });
       });
 
       const subSubtitleTracks = player.addListener("availableSubtitleTracksChange", ({ availableSubtitleTracks }: any) => {
         subtitleTracksRef.current = availableSubtitleTracks || [];
-        const durationMs = Math.round((player.duration || 0) * 1000);
-        onLoad?.({
-          duration: durationMs,
+        onTracksChange?.({
           audioTracks: normalizeAudioTracks(player.availableAudioTracks || []),
           textTracks: normalizeSubtitleTracks(availableSubtitleTracks || []),
           videoTracks: normalizeVideoTracks(player.availableVideoTracks || []),
@@ -427,9 +561,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
       const subVideoTracks = player.addListener("videoTrackChange", () => {
         const available = player.availableVideoTracks || [];
         videoTracksRef.current = available;
-        const durationMs = Math.round((player.duration || 0) * 1000);
-        onLoad?.({
-          duration: durationMs,
+        onTracksChange?.({
           audioTracks: normalizeAudioTracks(player.availableAudioTracks || []),
           textTracks: normalizeSubtitleTracks(player.availableSubtitleTracks || []),
           videoTracks: normalizeVideoTracks(available),
@@ -441,6 +573,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
       });
 
       return () => {
+        clearInterval(heartbeatTimer);
         subStatus.remove();
         subPlaying.remove();
         subTime.remove();
@@ -450,7 +583,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         subVideoTracks.remove();
         subEnd.remove();
       };
-    }, [player, onBuffering, onLoad, onError, onPlaying, onPaused, onProgress, onEnd]);
+    }, [player, onBuffering, onLoad, onTracksChange, onError, onPlaying, onPaused, onProgress, onEnd]);
 
     // Imperative Handle
     useImperativeHandle(
@@ -485,9 +618,24 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         selectVideoTrack: (trackIdOrIndex) => {
           applyVideoTrack(trackIdOrIndex);
         },
+        reloadSource: async () => {
+          if (!player) return;
+          isFirstLoadRef.current = true;
+          try {
+            await player.replaceAsync({
+              uri: streamUrl,
+              headers: headers,
+            });
+            if (!paused && autoPlay) {
+              player.play();
+            }
+          } catch (err) {
+            console.warn("[ExpoVideoPlayer] reloadSource error:", err);
+          }
+        },
         getPlayer: () => player,
       }),
-      [player, applyAudioTrack, applySubtitleTrack, applyVideoTrack]
+      [player, streamUrl, headers, paused, autoPlay, applyAudioTrack, applySubtitleTrack, applyVideoTrack]
     );
 
     return (
@@ -498,7 +646,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           contentFit={contentFit}
           nativeControls={false}
           allowsPictureInPicture={true}
-          surfaceType={Platform.OS === "android" ? "textureView" : undefined}
+          surfaceType={Platform.OS === "android" ? "surfaceView" : undefined}
         />
       </View>
     );

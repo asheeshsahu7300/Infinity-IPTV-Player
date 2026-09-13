@@ -202,11 +202,7 @@ export const formatMac = (mac: string) => {
  * `allowed_stb_types` is `[]` — but matching what the portal believes costs
  * nothing and removes a reason for it to distrust the session.
  */
-const STB_MODEL = "MAG254";
-const STB_USER_AGENT =
-  "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) " +
-  STB_MODEL +
-  " stbapp ver: 2 rev: 250 Mobile Safari/533.3";
+
 
 /**
  * Headers for a *stream* request.
@@ -233,7 +229,6 @@ export function streamHeaders(
 ): Record<string, string> {
   return {
     "User-Agent": "okhttp/3.12.1",
-    Accept: "*/*",
   };
 }
 
@@ -295,9 +290,9 @@ const headers = (mac: string, token?: string, url?: string) => {
   }
 
   return {
-    // Was "okhttp/3.12.1" — a generic client, identifying as no device at all.
+
     "User-Agent": "okhttp/3.12.1",
- 
+
     "Accept-Encoding": "gzip",
     Cookie: cookieParts.join("; "),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -1585,7 +1580,7 @@ export const portalApi = {
 
     let url = `${base}/portal.php?type=${type}&action=create_link&cmd=${encodeURIComponent(
       cmd
-    )}&JsHttpRequest=1-xml`;
+    )}&forced_storage=0&disable_ad=0&JsHttpRequest=1-xml`;
     if (ep != null) url += `&series=${ep}`;
 
     const extractLink = (resData: any): string => {
@@ -1623,7 +1618,7 @@ export const portalApi = {
       // Attempt 1b: If rawOut is empty and cmd had prefixes like "auto " or "ffmpeg ", try with cleanCmd
       if (!rawOut && cleanCmd && cleanCmd !== cmd) {
         try {
-          let cleanUrl = `${base}/portal.php?type=${type}&action=create_link&cmd=${encodeURIComponent(cleanCmd)}&JsHttpRequest=1-xml`;
+          let cleanUrl = `${base}/portal.php?type=${type}&action=create_link&cmd=${encodeURIComponent(cleanCmd)}&forced_storage=0&disable_ad=0&JsHttpRequest=1-xml`;
           if (ep != null) cleanUrl += `&series=${ep}`;
           const resClean = await axios.get(cleanUrl, {
             ...rmAcceptHeader,
@@ -1637,13 +1632,27 @@ export const portalApi = {
       // Attempt 1c: For series episodes, some Stalker middleware requires type=series instead of type=vod
       if (!rawOut && ep != null && type === "vod") {
         try {
-          const seriesUrl = `${base}/portal.php?type=series&action=create_link&cmd=${encodeURIComponent(cleanCmd || cmd)}&series=${ep}&JsHttpRequest=1-xml`;
+          const seriesUrl = `${base}/portal.php?type=series&action=create_link&cmd=${encodeURIComponent(cleanCmd || cmd)}&series=${ep}&forced_storage=0&disable_ad=0&JsHttpRequest=1-xml`;
           const resSeries = await axios.get(seriesUrl, {
             ...rmAcceptHeader,
             headers: reqHeaders,
             timeout: 15000,
           });
           rawOut = extractLink(resSeries?.data);
+        } catch { }
+      }
+
+      // Attempt 1d: For channel commands containing /ch/123_, try calling create_link with just /ch/... path
+      const chMatch = (cleanCmd || cmd).match(/(\/ch\/[a-zA-Z0-9_\-]+)/i);
+      if (!rawOut && chMatch && chMatch[1]) {
+        try {
+          const chUrl = `${base}/portal.php?type=${type}&action=create_link&cmd=${encodeURIComponent(chMatch[1])}&forced_storage=0&disable_ad=0&JsHttpRequest=1-xml`;
+          const resCh = await axios.get(chUrl, {
+            ...rmAcceptHeader,
+            headers: reqHeaders,
+            timeout: 15000,
+          });
+          rawOut = extractLink(resCh?.data);
         } catch { }
       }
 
@@ -1677,9 +1686,7 @@ export const portalApi = {
           const serverRootObj = new URL(serverRoot);
           const finalUrlObj = new URL(finalUrl);
           finalUrlObj.hostname = serverRootObj.hostname;
-          if (serverRootObj.port && (!finalUrlObj.port || finalUrlObj.port === "80" || finalUrlObj.port === "8080")) {
-            finalUrlObj.port = serverRootObj.port;
-          }
+          // Never force port 8080 (Apache PHP admin port) onto streaming URLs
           finalUrl = finalUrlObj.toString();
         } catch {
           finalUrl = finalUrl.replace(/https?:\/\/[^\/]+/i, serverRoot);
@@ -1704,8 +1711,10 @@ export const portalApi = {
         }
       }
 
-      // If create_link returned empty, BUT cmd is already a direct HTTP/HTTPS stream URL, use cleanCmd directly!
-      if (!finalUrl && /^https?:\/\//i.test(cleanCmd)) {
+      const { isPlayableStreamUrl, applySameHostStreamProxy } = await import("./stbEnvironment");
+
+      // If create_link returned empty, BUT cmd is already a direct HTTP/HTTPS stream URL (not internal command), use cleanCmd!
+      if (!finalUrl && isPlayableStreamUrl(cleanCmd)) {
         finalUrl = cleanCmd;
       }
 
@@ -1717,32 +1726,15 @@ export const portalApi = {
 
       let out2 = finalUrl || out || "";
 
-      // Direct stream URL — bypass probe resolution and give stream URL directly to player
-      /*
-      if (
-        out2 &&
-        /^https?:\/\//i.test(out2) &&
-        !/\.m3u8(\?|$)/i.test(out2) &&
-        !/(play_token|token|auth_token|ticket|session)=/i.test(out2)
-      ) {
-        try {
-          out2 = await resolveDirectStreamUrl(out2);
-        } catch {
-          // fallback safely to out2
-        }
-      }
-      */
-
-      const { applySameHostStreamProxy } = await import("./stbEnvironment");
       return applySameHostStreamProxy(out2, latestPortal, cleanCmd || cmd);
     } catch (e: any) {
       console.warn("getStreamUrl failed:", e?.message || e);
-      const { applySameHostStreamProxy } = await import("./stbEnvironment");
-      if (/^https?:\/\//i.test(cleanCmd)) return applySameHostStreamProxy(cleanCmd, latestPortal, cleanCmd);
+      const { isPlayableStreamUrl, applySameHostStreamProxy } = await import("./stbEnvironment");
+      if (isPlayableStreamUrl(cleanCmd)) return applySameHostStreamProxy(cleanCmd, latestPortal, cleanCmd);
 
       // On 503 or server error, construct the direct stream URL on the same host if possible
       const fallbackUrl = applySameHostStreamProxy("", latestPortal, cleanCmd || cmd);
-      if (fallbackUrl) return fallbackUrl;
+      if (isPlayableStreamUrl(fallbackUrl)) return fallbackUrl;
 
       // Don't retry if server returned 503 (temporarily unavailable / overloaded)
       const is503 = e?.response?.status === 503;

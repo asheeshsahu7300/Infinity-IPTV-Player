@@ -175,6 +175,14 @@ export const Focusable = forwardRef<View, FocusableProps>(
       };
     }, [screenKey, focusKey]);
 
+    React.useEffect(() => {
+      return () => {
+        if (lastFocusedRef.current === nativeRef.current) {
+          lastFocusedRef.current = null;
+        }
+      };
+    }, []);
+
     // Auto-focus on mount if this item hasTVPreferredFocus and is active.
     //
     // Strictly one grab per mounted instance. `hasTVPreferredFocus` is usually

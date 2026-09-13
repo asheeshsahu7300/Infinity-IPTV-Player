@@ -26,7 +26,7 @@ import { epgService } from "../src/services/epgService";
 import { buildImageUrl, portalApi, streamHeaders, getLastMeasuredEdgeRtt } from "../src/services/portalApi";
 import { getLastSpeedTestResult } from "../src/services/speedTest";
 import { parentalControl } from "../src/services/parentalControl";
-import { stbEnvironment, BufferTuning, applySameHostStreamProxy } from "../src/services/stbEnvironment";
+import { stbEnvironment, BufferTuning, applySameHostStreamProxy, isPlayableStreamUrl } from "../src/services/stbEnvironment";
 import { liveChannelSession, buildChannelNumbers, withChannelNumbers } from "../src/services/liveChannelSession";
 import { playbackQueue, QueueItem } from "../src/services/playbackQueue";
 import { resumeIndex } from "../src/services/resumeIndex";
@@ -138,10 +138,10 @@ function calcNetworkCacheMs(quality: NetworkQuality, isLive: boolean, is4K: bool
   if (is4K) {
     if (isLive) {
       switch (quality) {
-        case "fast": return 5000;
-        case "medium": return 7000;
-        case "slow": return 10000;
-        default: return 7000;
+        case "fast": return 3500;
+        case "medium": return 5000;
+        case "slow": return 8000;
+        default: return 5000;
       }
     } else {
       switch (quality) {
@@ -155,35 +155,33 @@ function calcNetworkCacheMs(quality: NetworkQuality, isLive: boolean, is4K: bool
 
   if (isLive) {
     switch (quality) {
-      case "fast": return 2500; // 2.5s for clean zapping with jitter headroom
-      case "medium": return 4000; // 4.0s normal IPTV baseline
-      case "slow": return 6000; // 6.0s fluctuating line
-      default: return 4000;
+      case "fast": return 1500; // 1.5s for instant zap on stable networks
+      case "medium": return 3000; // 3.0s normal IPTV baseline
+      case "slow": return 5000; // 5.0s fluctuating line
+      default: return 3000;
     }
   } else {
     // Smooth start for VOD / Series on-demand playback
     switch (quality) {
-      case "fast": return 2000;
-      case "medium": return 3000;
-      case "slow": return 5000;
-      default: return 3000;
+      case "fast": return 1500;
+      case "medium": return 2500;
+      case "slow": return 4000;
+      default: return 2500;
     }
   }
 }
 
 /**
- * The cache VLC is actually given, in ms.
+ * The cache duration actually supplied to the player, in ms.
  *
  * Three inputs, in priority order:
  *
  *   • the buffer profile the viewer chose — their stated preference for
  *     zap speed over resilience;
- *   • the network floor — "Instant" cannot be honoured on a 3G connection, so
+ *   • the network floor — "Instant" cannot be honoured on a slow line, so
  *     a poor line raises the minimum whatever the setting says;
  *   • the stall boost — after repeated stalls the player deepens its own
- *     buffer, because a viewer watching it stutter did not get the trade they
- *     asked for. This is the part that makes playback settle down on a bad
- *     line instead of stuttering indefinitely.
+ *     buffer, settling down on an unstable line instead of stuttering indefinitely.
  */
 function resolveCacheMs(
   tuning: BufferTuning,
@@ -192,10 +190,11 @@ function resolveCacheMs(
   is4K: boolean,
   boost: number
 ): number {
-  const preference = isLive ? tuning.liveCacheMs : tuning.vodCacheMs;
+  const preference = isLive ? (tuning?.liveCacheMs || 3000) : (tuning?.vodCacheMs || 2500);
   const floor = calcNetworkCacheMs(quality, isLive, is4K);
-  // Cap at 10s to keep latency manageable while absorbing extreme jitter
-  return Math.min(10000, Math.round(Math.max(preference, floor) * boost));
+  // Cap at 15s for Live TV (to prevent unbounded live latency drift) and 30s for VOD / 4K
+  const maxCap = isLive ? (is4K ? 15000 : 10000) : (is4K ? 30000 : 20000);
+  return Math.min(maxCap, Math.round(Math.max(preference, floor) * boost));
 }
 
 /**
@@ -320,12 +319,14 @@ export default function PlayerScreen() {
 
 
   // ── Core playback state ───────────────────────────────────────────────────
-  const [streamUrl, setStreamUrl] = useState(() =>
-    applySameHostStreamProxy(params.url || "", activePortal, params.cmd)
-  );
+  const [streamUrl, setStreamUrl] = useState(() => {
+    const raw = params.url || "";
+    if (!isPlayableStreamUrl(raw)) return "";
+    return applySameHostStreamProxy(raw, activePortal, params.cmd);
+  });
 
   useEffect(() => {
-    if (params.url) {
+    if (params.url && isPlayableStreamUrl(params.url)) {
       const nextUrl = applySameHostStreamProxy(params.url, activePortal, params.cmd);
       setStreamUrl((prev) => {
         if (prev !== nextUrl) {
@@ -338,6 +339,58 @@ export default function PlayerScreen() {
       });
     }
   }, [params.url, params.cmd, activePortal]);
+
+  // If a MAG stream command (e.g. ffmpeg http://localhost/ch/...) was passed without create_link resolution,
+  // resolve it immediately through StreamManager instead of stalling on localhost/ch/...
+  useEffect(() => {
+    const raw = params.url || params.cmd || "";
+    const needsResolution =
+      activePortal?.type === "mag" &&
+      (!streamUrl || !isPlayableStreamUrl(streamUrl) || !isPlayableStreamUrl(raw));
+
+    if (needsResolution) {
+      let isCancelled = false;
+      setIsLoading(true);
+      StreamManager.getStreamUrl(
+        {
+          id: params.contentId || "",
+          name: params.title || "",
+          streamUrl: raw,
+        },
+        activePortal,
+        params.type === "live" ? "itv" : "vod"
+      ).then((res) => {
+        if (!isCancelled && res.success && res.url && isPlayableStreamUrl(res.url)) {
+          const resolved = applySameHostStreamProxy(res.url, activePortal, raw);
+          setStreamUrl(resolved);
+        } else if (!isCancelled) {
+          StreamManager.retryStream(
+            {
+              id: params.contentId || "",
+              name: params.title || "",
+              streamUrl: raw,
+            },
+            activePortal,
+            params.type === "live" ? "itv" : "vod"
+          ).then((retryRes) => {
+            if (!isCancelled && retryRes.success && retryRes.url && isPlayableStreamUrl(retryRes.url)) {
+              const resolved = applySameHostStreamProxy(retryRes.url, activePortal, raw);
+              setStreamUrl(resolved);
+            } else if (!isCancelled) {
+              schedulePlayerRecovery("unresolvedStream", false);
+            }
+          }).catch(() => {
+            if (!isCancelled) schedulePlayerRecovery("unresolvedStream", false);
+          });
+        }
+      }).catch(() => {
+        if (!isCancelled) schedulePlayerRecovery("unresolvedStream", false);
+      });
+      return () => {
+        isCancelled = true;
+      };
+    }
+  }, [params.url, params.cmd, params.contentId, params.title, params.type, activePortal, streamUrl]);
   const [seekBarNode, setSeekBarNode] = useState<number | undefined>(undefined);
   const [dummyLeftNode, setDummyLeftNode] = useState<number | undefined>(undefined);
   const [dummyRightNode, setDummyRightNode] = useState<number | undefined>(undefined);
@@ -442,11 +495,42 @@ export default function PlayerScreen() {
     matches4KKeywords(streamUrl);
 
   const [networkQuality, setNetworkQuality] = useState<NetworkQuality>("unknown");
+  const networkQualityRef = useRef<NetworkQuality>("unknown");
+  const [bufferTuning, setBufferTuning] = useState<BufferTuning>(() => stbEnvironment.buffer);
+  const bufferTuningRef = useRef(bufferTuning);
+  bufferTuningRef.current = bufferTuning;
+  /** Bumped to force native player to remount if recovery fails repeatedly. */
+  const [bufferGeneration, setBufferGeneration] = useState(0);
+  /**
+   * Multiplier applied to the cache after repeated stalls. Steps 1 → 1.4 → 1.8 → 2.2 → 3.0
+   * and decays back down after 30s of uninterrupted playback.
+   */
+  const bufferBoostRef = useRef(1);
+  const stallCountRef = useRef(0);
+
   const [networkCacheMs, setNetworkCacheMs] = useState(() =>
-    calcNetworkCacheMs("unknown", isLive, is4K)
+    resolveCacheMs(stbEnvironment.buffer, "unknown", isLive, isDetected4K || (is4K && !isLive), 1)
   );
-  const [isNetworkLost, setIsNetworkLost] = useState(false);
   const networkCacheMsRef = useRef(networkCacheMs);
+
+  const updateResolvedCache = useCallback(
+    (boost = bufferBoostRef.current) => {
+      const active4K = isDetected4K || (is4K && !isLive);
+      const resolved = resolveCacheMs(
+        bufferTuningRef.current,
+        networkQualityRef.current,
+        isLive,
+        active4K,
+        boost
+      );
+      networkCacheMsRef.current = resolved;
+      setNetworkCacheMs(resolved);
+      return resolved;
+    },
+    [isLive, is4K, isDetected4K]
+  );
+
+  const [isNetworkLost, setIsNetworkLost] = useState(false);
   /** The end-of-episode card. Null when nothing is queued behind this one. */
   const [upNext, setUpNext] = useState<QueueItem | null>(null);
   /**
@@ -465,20 +549,8 @@ export default function PlayerScreen() {
   const vodTitle = queueItem?.title || params.title || "Playing";
   const vodSubtitle = queueItem?.subtitle || (!isLive ? (queueItem?.kind === "episode" ? "Episode" : "Movie") : undefined);
   const [pinTarget, setPinTarget] = useState<Channel | null>(null);
-  /** Bumped to force VLC to remount when the buffer depth changes. */
-  const [bufferGeneration, setBufferGeneration] = useState(0);
-  const [bufferTuning, setBufferTuning] = useState<BufferTuning>(() => stbEnvironment.buffer);
 
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const bufferTuningRef = useRef(bufferTuning);
-  bufferTuningRef.current = bufferTuning;
-  /**
-   * Multiplier applied to the cache after repeated stalls. Steps 1 → 2 → 3 and
-   * never comes back down within a session: a line that stalled three times is
-   * not one to keep probing with a shallow buffer.
-   */
-  const bufferBoostRef = useRef(1);
-  const stallCountRef = useRef(0);
   const recoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNetworkLostRef = useRef(false);
   /** Live values for the channel being watched; a zap replaces both. */
@@ -596,18 +668,28 @@ export default function PlayerScreen() {
     let alive = true;
     stbEnvironment.load().then(() => {
       const activeP = usePortalStore.getState().activePortal;
-      if (alive) setBufferTuning(stbEnvironment.getBufferTuning(activeP));
+      if (alive) {
+        const tuning = stbEnvironment.getBufferTuning(activeP);
+        bufferTuningRef.current = tuning;
+        setBufferTuning(tuning);
+        updateResolvedCache();
+      }
     });
     parentalControl.load();
     const unsubscribe = stbEnvironment.subscribe(() => {
       const activeP = usePortalStore.getState().activePortal;
-      if (alive) setBufferTuning(stbEnvironment.getBufferTuning(activeP));
+      if (alive) {
+        const tuning = stbEnvironment.getBufferTuning(activeP);
+        bufferTuningRef.current = tuning;
+        setBufferTuning(tuning);
+        updateResolvedCache();
+      }
     });
     return () => {
       alive = false;
       unsubscribe();
     };
-  }, [activePortal?.id]);
+  }, [activePortal?.id, updateResolvedCache]);
 
 
   // ── Unmount cleanup ───────────────────────────────────────────────────────
@@ -638,10 +720,9 @@ export default function PlayerScreen() {
         const edgeRtt = getLastMeasuredEdgeRtt();
         const speed = getLastSpeedTestResult();
         const quality = detectNetworkQuality(type, effectiveType, edgeRtt, speed?.mbps);
-        const cacheMs = calcNetworkCacheMs(quality, isLive, is4K);
-        networkCacheMsRef.current = cacheMs;
+        networkQualityRef.current = quality;
         setNetworkQuality(quality);
-        setNetworkCacheMs(cacheMs);
+        updateResolvedCache();
         // Refresh stall clock when network restores — player will resume fetching
         if (mountedRef.current) lastProgressTimeRef.current = Date.now();
 
@@ -662,7 +743,7 @@ export default function PlayerScreen() {
       applyNetworkState(s.type, (s.details as any)?.cellularGeneration, s.isConnected);
     });
     return () => unsub();
-  }, [isLive, is4K]);
+  }, [updateResolvedCache]);
 
   // ── Progress handler for video onProgress ──────────────────────────────────
   const handleNormalizedProgress = useCallback(
@@ -710,6 +791,7 @@ export default function PlayerScreen() {
               stallCountRef.current = Math.max(0, stallCountRef.current - 1);
               bufferBoostRef.current = Math.max(1.0, 1.0 + stallCountRef.current * 0.4);
               console.log(`[Player] Line stabilized. Stall count decayed to ${stallCountRef.current}, boost: ${bufferBoostRef.current.toFixed(1)}x`);
+              updateResolvedCache();
             }
             stablePlaybackTimerRef.current = null;
           }, 30000);
@@ -764,16 +846,9 @@ export default function PlayerScreen() {
 
   // ── Shared buffering handler (debounced UI flag, used by both players) ────
   const handleBufferingChange = useCallback((buffering: boolean) => {
-    if (isLive) {
-      if (bufferingTimeoutRef.current) {
-        clearTimeout(bufferingTimeoutRef.current);
-        bufferingTimeoutRef.current = null;
-      }
-      setIsBuffering(false);
-      return;
-    }
     if (buffering) {
       if (bufferingStartedRef.current === null) bufferingStartedRef.current = Date.now();
+      isBufferingRef.current = true;
       if (!bufferingTimeoutRef.current) {
         bufferingTimeoutRef.current = setTimeout(() => {
           if (mountedRef.current) setIsBuffering(true);
@@ -786,10 +861,11 @@ export default function PlayerScreen() {
         bufferingTimeoutRef.current = null;
       }
       bufferingStartedRef.current = null;
+      isBufferingRef.current = false;
       setIsBuffering(false);
       setIsLoading(false);
     }
-  }, [isLive]);
+  }, []);
 
 
 
@@ -1212,6 +1288,12 @@ export default function PlayerScreen() {
         if (!showControlsRef.current) {
           setShowControls(true);
           resetControlsTimeout();
+        } else if (isLive && canZapRef.current) {
+          // As in MAG STB: OK while info/controls are already visible opens the Channel Zap List
+          setShowZapList(true);
+        } else if (!isLive && !isNavRowFocusedRef.current) {
+          togglePlay();
+          resetControlsTimeout();
         }
       },
       onUp: () => {
@@ -1344,6 +1426,7 @@ export default function PlayerScreen() {
 
     // Deepen adaptive buffer with each stall/retry attempt (1.0x -> 1.4x -> 1.8x -> 2.2x -> capped at 3.0x)
     bufferBoostRef.current = Math.min(3.0, 1.0 + stallCountRef.current * 0.4);
+    updateResolvedCache();
 
     // Exponential backoff: 500 ms, 1 s, 2 s, 4 s, 8 s … capped at 30 s
     const backoffMs = Math.min(500 * Math.pow(2, retryCount.current - 1), 30000);
@@ -1404,8 +1487,16 @@ export default function PlayerScreen() {
 
         setIsBuffering(false);
         setIsLoading(true);
-        setBufferGeneration((prev) => prev + 1);
-        setStreamUrl(applySameHostStreamProxy(result.url, activePortal, activeCmdRef.current));
+        const newUrl = applySameHostStreamProxy(result.url, activePortal, activeCmdRef.current);
+        // Only force full native player remount if repeated retries fail (player corrupted) or no ref.
+        // For standard reconnects, keep the native player mounted and replace source smoothly.
+        if (retryCount.current >= 3 || !playerRef.current) {
+          setBufferGeneration((prev) => prev + 1);
+        }
+        setStreamUrl(newUrl);
+        if (playerRef.current && streamUrl === newUrl) {
+          playerRef.current.reloadSource();
+        }
         stopLiveReconnectLoop();
       } else {
         if (mountedRef.current) setIsLoading(false);
@@ -1474,6 +1565,7 @@ export default function PlayerScreen() {
       isRetryingRef.current = false;
       bufferBoostRef.current = 1;
       stallCountRef.current = 0;
+      updateResolvedCache(1);
       if (recoveryTimeoutRef.current) {
         clearTimeout(recoveryTimeoutRef.current);
         recoveryTimeoutRef.current = null;
@@ -1491,18 +1583,33 @@ export default function PlayerScreen() {
       setPlaybackFailed(false);
       setIsLoading(true);
       setIsPlaying(true);
+      setSelectedAudioTrack(undefined);
+      setSelectedTextTrack(undefined);
+      setSelectedVideoTrack(undefined);
+      setAudioTracks([]);
+      setTextTracks([]);
+      setVideoTracks([]);
 
       activeCmdRef.current = channel.streamUrl;
       activeContentIdRef.current = String(channel.id);
 
       let url = channel.streamUrl;
-      if (activePortal?.type === "mag") {
+      if (activePortal && (activePortal.type === "mag" || !isPlayableStreamUrl(url))) {
         const result = await StreamManager.getStreamUrl(channel, activePortal, "itv");
-        if (result.success && result.url) url = result.url;
+        if (result.success && result.url && isPlayableStreamUrl(result.url)) {
+          url = result.url;
+        } else {
+          const retryRes = await StreamManager.retryStream(channel, activePortal, "itv");
+          if (retryRes.success && retryRes.url && isPlayableStreamUrl(retryRes.url)) {
+            url = retryRes.url;
+          }
+        }
       }
       if (!mountedRef.current) return;
 
-      setStreamUrl(applySameHostStreamProxy(url, activePortal, channel.streamUrl));
+      if (isPlayableStreamUrl(url)) {
+        setStreamUrl(applySameHostStreamProxy(url, activePortal, channel.streamUrl));
+      }
       flashBanner();
 
       // Recalculate network quality using the newly measured edge RTT from the channel's URL resolution
@@ -1515,8 +1622,9 @@ export default function PlayerScreen() {
         edgeRtt,
         speed?.mbps
       );
+      networkQualityRef.current = measuredQuality;
       setNetworkQuality(measuredQuality);
-      networkCacheMsRef.current = calcNetworkCacheMs(measuredQuality, isLive, is4K);
+      updateResolvedCache(1);
 
       if (activePortal) {
         liveChannelSession.rememberLastChannel(channel, activePortal.id).catch(() => { });
@@ -1606,6 +1714,8 @@ export default function PlayerScreen() {
       retryCount.current = 0;
       isRetryingRef.current = false;
       bufferBoostRef.current = 1;
+      stallCountRef.current = 0;
+      updateResolvedCache(1);
       hasStartedPlayingRef.current = false;
       setHasStartedPlaying(false);
       upNextArmedRef.current = false;
@@ -1615,6 +1725,12 @@ export default function PlayerScreen() {
       setPlaybackFailed(false);
       setIsLoading(true);
       setIsPlaying(true);
+      setSelectedAudioTrack(undefined);
+      setSelectedTextTrack(undefined);
+      setSelectedVideoTrack(undefined);
+      setAudioTracks([]);
+      setTextTracks([]);
+      setVideoTracks([]);
       setPosition(0);
       setDuration(0);
       durationRef.current = 0;
@@ -1819,9 +1935,18 @@ export default function PlayerScreen() {
     !isNetworkLost;
 
   // ── Predictive Player Recovery Watchdog ───────────────────────────────────
-  const schedulePlayerRecovery = useCallback((reason: string) => {
+  const schedulePlayerRecovery = useCallback((reason: string, immediate = true) => {
     if (!mountedRef.current || isRetryingRef.current || playbackFailed) return;
-    if (recoveryTimeoutRef.current) return; // Recovery timer already running
+    if (recoveryTimeoutRef.current) {
+      clearTimeout(recoveryTimeoutRef.current);
+      recoveryTimeoutRef.current = null;
+    }
+
+    if (immediate) {
+      console.log(`[Player] ${reason} — retrying immediately without grace period`);
+      handleSilentRetryRef.current();
+      return;
+    }
 
     const stallTimeout = bufferTuningRef.current?.stallTimeoutMs || 15000;
     const gracePeriodMs = Math.max(8000, Math.min(stallTimeout, 15000));
@@ -1835,6 +1960,71 @@ export default function PlayerScreen() {
       handleSilentRetryRef.current();
     }, gracePeriodMs);
   }, [playbackFailed]);
+
+  // ── Stream Freeze / Stall Watchdog ────────────────────────────────────────
+  useEffect(() => {
+    if (playbackFailed) return;
+
+    const interval = setInterval(() => {
+      if (
+        !mountedRef.current ||
+        !isPlayingRef.current ||
+        isRetryingRef.current ||
+        isSeeking.current ||
+        isLoadingRef.current
+      ) {
+        return;
+      }
+
+      const now = Date.now();
+
+      // If stream has not yet started playing (waiting for initial buffer and first frame):
+      if (!hasStartedPlayingRef.current) {
+        const timeSinceTune = now - lastProgressTimeRef.current;
+        const initialTimeout = is4K ? 25000 : 15000;
+        if (timeSinceTune > initialTimeout) {
+          console.warn(`[Player] ${isLive ? "Live" : "VOD"} stream failed to render initial frames after ${timeSinceTune}ms. Triggering reconnect.`);
+          lastProgressTimeRef.current = now;
+          schedulePlayerRecovery("initialLoadTimeout", true);
+        }
+        return;
+      }
+
+      // If player is actively in a legitimate buffering phase:
+      if (isBufferingRef.current) {
+        const buffDuration = bufferingStartedRef.current ? now - bufferingStartedRef.current : 0;
+        const maxBufferingAllowed = is4K ? 35000 : 25000;
+        if (buffDuration > maxBufferingAllowed) {
+          console.warn(`[Player] ${isLive ? "Live" : "VOD"} stream buffer stalled for ${buffDuration}ms. Scheduling recovery.`);
+          lastProgressTimeRef.current = now;
+          schedulePlayerRecovery("bufferStalled", false);
+        }
+        return;
+      }
+
+      // Stream was actively playing: check if progress has frozen mid-stream.
+      const timeSinceLastProgress = now - lastProgressTimeRef.current;
+      if (isLive) {
+        // Live broadcast: if decoder heartbeat stops producing progress ticks for >12s (20s for 4K),
+        // the server dropped the connection or stalled. Trigger reconnect.
+        const liveStallThreshold = is4K ? 20000 : 12000;
+        if (timeSinceLastProgress > liveStallThreshold) {
+          console.warn(`[Player] Live stream frozen (no progress for ${timeSinceLastProgress}ms). Triggering silent reconnect.`);
+          lastProgressTimeRef.current = now;
+          schedulePlayerRecovery("liveStreamFrozen", true);
+        }
+      } else if (durationRef.current > 0) {
+        const stallThreshold = is4K ? 35000 : 25000;
+        if (timeSinceLastProgress > stallThreshold) {
+          console.warn(`[Player] VOD stream frozen (no progress for ${timeSinceLastProgress}ms). Triggering silent reconnect.`);
+          lastProgressTimeRef.current = now;
+          schedulePlayerRecovery("streamFrozen", true);
+        }
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [isLive, is4K, playbackFailed, schedulePlayerRecovery]);
 
   /**
    * The channel/title banner, built once and mounted in one of two places.
@@ -1922,7 +2112,7 @@ export default function PlayerScreen() {
       {/* ── Player: Expo Video Player (Media3 / AVPlayer) ── */}
       {streamUrl && /^(https?|rtsp|mms):\/\//i.test(streamUrl) ? (
         <ExpoVideoPlayer
-          key={`expo-${streamUrl}-${bufferGeneration}`}
+          key={`expo-player-${bufferGeneration}`}
           ref={playerRef}
           style={S.video}
           streamUrl={streamUrl}
@@ -1932,10 +2122,14 @@ export default function PlayerScreen() {
           volume={currentVolume}
           paused={!isPlaying}
           autoPlay={autoPlay}
+          isLive={isLive}
+          is4K={isDetected4K || (is4K && !isLive)}
+          networkCacheMs={networkCacheMs}
+          bufferTuning={bufferTuning}
           selectedAudioTrack={selectedAudioTrack}
           selectedSubtitleTrack={selectedTextTrack}
           selectedVideoTrack={selectedVideoTrack}
-          onLoad={({ duration: durationMs, audioTracks: aTracks, textTracks: sTracks, videoTracks: vTracks }) => {
+          onLoad={({ duration: durationMs, audioTracks: aTracks, textTracks: sTracks, videoTracks: vTracks, currentAudioTrack }) => {
             if (isBufferingRef.current) {
               isBufferingRef.current = false;
               setIsBuffering(false);
@@ -1961,6 +2155,35 @@ export default function PlayerScreen() {
             }
             if (aTracks && aTracks.length > 0) {
               setAudioTracks(aTracks);
+              if (selectedAudioTrack === undefined) {
+                const initialTrackId = currentAudioTrack?.id ?? aTracks[0]?.id;
+                if (initialTrackId !== undefined) {
+                  setSelectedAudioTrack(initialTrackId);
+                }
+              }
+            }
+            if (sTracks && sTracks.length > 0) {
+              setTextTracks(sTracks);
+            }
+          }}
+          onTracksChange={({ audioTracks: aTracks, textTracks: sTracks, videoTracks: vTracks, currentAudioTrack }) => {
+            if (vTracks && vTracks.length > 0) {
+              setVideoTracks(vTracks);
+              const has4kTrack = vTracks.some(
+                (t: any) => (t.width && t.width >= 3840) || (t.height && t.height >= 2160)
+              );
+              if (has4kTrack && !isDetected4K) {
+                setIsDetected4K(true);
+              }
+            }
+            if (aTracks && aTracks.length > 0) {
+              setAudioTracks(aTracks);
+              if (selectedAudioTrack === undefined) {
+                const initialTrackId = currentAudioTrack?.id ?? aTracks[0]?.id;
+                if (initialTrackId !== undefined) {
+                  setSelectedAudioTrack(initialTrackId);
+                }
+              }
             }
             if (sTracks && sTracks.length > 0) {
               setTextTracks(sTracks);
@@ -2003,19 +2226,17 @@ export default function PlayerScreen() {
               clearTimeout(recoveryTimeoutRef.current);
               recoveryTimeoutRef.current = null;
             }
-            if (currentMs > 0) {
-              if (!hasStartedPlayingRef.current) {
-                hasStartedPlayingRef.current = true;
-                setHasStartedPlaying(true);
-              }
-              if (isLoadingRef.current) {
-                isLoadingRef.current = false;
-                setIsLoading(false);
-              }
-              if (isBufferingRef.current) {
-                isBufferingRef.current = false;
-                setIsBuffering(false);
-              }
+            if (!hasStartedPlayingRef.current) {
+              hasStartedPlayingRef.current = true;
+              setHasStartedPlaying(true);
+            }
+            if (isLoadingRef.current) {
+              isLoadingRef.current = false;
+              setIsLoading(false);
+            }
+            if (isBufferingRef.current) {
+              isBufferingRef.current = false;
+              setIsBuffering(false);
             }
 
             if (durationMs > 0 && Math.abs(durationRef.current - durationMs) > 1000) {
@@ -2023,14 +2244,15 @@ export default function PlayerScreen() {
               setDuration(durationMs);
             }
 
-            if (currentMs !== lastProgressPositionRef.current) {
+            // On Live TV, the stream is an ongoing broadcast (currentMs may be fixed or window-relative).
+            // Any onProgress signal confirms that the player is decoding and alive.
+            if (isLive) {
+              lastProgressTimeRef.current = Date.now();
+              bufferingStartedRef.current = null;
+            } else if (currentMs !== lastProgressPositionRef.current || currentMs > 0) {
               lastProgressPositionRef.current = currentMs;
               lastProgressTimeRef.current = Date.now();
               bufferingStartedRef.current = null;
-              if (isBufferingRef.current) {
-                isBufferingRef.current = false;
-                setIsBuffering(false);
-              }
             }
 
             handleNormalizedProgress(currentMs, durationMs);
@@ -2044,32 +2266,62 @@ export default function PlayerScreen() {
             }
           }}
           onEnd={() => {
-            setIsPlaying(false);
-            handleReachedEndRef.current();
+            if (isLive) {
+              console.warn("[Player] Live TV stream ended / dropped (input EOS). Triggering silent reconnect.");
+              schedulePlayerRecovery("liveStreamEnded", true);
+            } else {
+              setIsPlaying(false);
+              handleReachedEndRef.current();
+            }
           }}
           onError={(e) => {
             console.warn("[ExpoVideo] onError", e);
+            const errStr = String((e as any)?.message || e || "");
+            const isAudioDecoderError =
+              errStr.includes("MediaCodecAudioRenderer") ||
+              errStr.includes("audio/mpeg-L2") ||
+              errStr.includes("audio/eac3") ||
+              errStr.includes("audio/");
+
+            if (isAudioDecoderError) {
+              if (audioTracks.length > 1) {
+                const currentIdx = audioTracks.findIndex((t) => String(t.id) === String(selectedAudioTrack));
+                const nextTrack = audioTracks.find((_, idx) => idx !== currentIdx);
+                if (nextTrack) {
+                  console.log(`[Player] Audio decoder failed on track ${selectedAudioTrack}. Auto-switching to track ${nextTrack.id} (${nextTrack.title})`);
+                  setSelectedAudioTrack(nextTrack.id);
+                  playerRef.current?.selectAudioTrack(nextTrack.id);
+                  return;
+                }
+              }
+
+              // If single audio track or no alternative, disable audio so video continues playing smoothly without crashing
+              console.warn(`[Player] Audio decoder unavailable for stream (${errStr.slice(0, 80)}). Disabling audio to maintain video playback.`);
+              setSelectedAudioTrack(-1);
+              playerRef.current?.selectAudioTrack(-1);
+              return;
+            }
+
             const now = Date.now();
-            if (now - lastErrorTimeRef.current < 2500) return;
+            if (now - lastErrorTimeRef.current < 1000) return;
             lastErrorTimeRef.current = now;
             if (!isRetryingRef.current && !playbackFailed) {
-              schedulePlayerRecovery("onError");
+              // Grant grace period for transient decoder/network blip to allow native auto-recovery
+              schedulePlayerRecovery("onError", false);
             }
           }}
         />
       ) : null}
 
-      {/* TV: invisible focusable overlay to catch OK press when controls are hidden or during initial loading */}
-      {(!showControls || isVodLoading) && !showQueueList && !showZapList && !upNext && !pinTarget && (
+      {/* TV: invisible focusable overlay to catch OK press when controls are hidden */}
+      {!showControls && !showQueueList && !showZapList && !upNext && !pinTarget && (
         <Focusable
-          hasTVPreferredFocus={isVodLoading}
+          hasTVPreferredFocus={!showControls}
           style={StyleSheet.absoluteFill}
           ringOnFocus={false}
           onPress={() => {
-            if (!isVodLoading) {
-              setShowControls(true);
-              resetControlsTimeout();
-            }
+            setShowControls(true);
+            resetControlsTimeout();
           }}
         />
       )}
@@ -2217,7 +2469,7 @@ export default function PlayerScreen() {
       )}
 
       {/* ── Controls overlay ─────────────────────────────────────────────── */}
-      {showControls && !upNext && !isVodLoading && (
+      {showControls && !upNext && (
         <FocusGroup style={S.controlsOverlay}>
           {/* Center play / seek buttons */}
           {!isLocked && (

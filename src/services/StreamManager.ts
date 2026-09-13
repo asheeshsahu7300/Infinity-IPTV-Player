@@ -5,7 +5,7 @@ import { Portal, Channel, VODItem, Episode } from "../store/portalStore";
 import { usePortalStore } from "../store/portalStore";
 import { NetworkResilience } from "./NetworkResilience";
 import { safeStorage } from "./safeStorage";
-import { applySameHostStreamProxy } from "./stbEnvironment";
+import { applySameHostStreamProxy, isPlayableStreamUrl } from "./stbEnvironment";
 
 export type StreamableContent = Channel | VODItem | Episode;
 
@@ -47,7 +47,8 @@ class StreamManagerClass {
             // Direct stream for Xtream or M3U portals
             if (portal.type !== "mag") {
                 const proxied = applySameHostStreamProxy(cmd, latestPortal, cmd);
-                return { url: proxied, success: !!proxied };
+                const isPlayable = isPlayableStreamUrl(proxied);
+                return { url: isPlayable ? proxied : cmd, success: !!proxied };
             }
 
             // Import portalApi dynamically to avoid circular deps
@@ -55,30 +56,23 @@ class StreamManagerClass {
 
             const url = await portalApi.getStreamUrl(latestPortal, cmd, type, episodeNum);
 
-            if (!url) {
-                const proxied = applySameHostStreamProxy("", latestPortal, cmd);
-                if (proxied) {
-                    return { url: proxied, success: true };
-                }
+            if (!url || !isPlayableStreamUrl(url)) {
                 const cleanCmd = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
-                if (/^https?:\/\//i.test(cleanCmd)) {
+                if (isPlayableStreamUrl(cleanCmd)) {
                     return { url: applySameHostStreamProxy(cleanCmd, latestPortal, cmd), success: true };
                 }
-                return { url: "", success: false, error: "Failed to generate stream URL" };
+                return { url: "", success: false, error: "Failed to generate playable stream URL" };
             }
 
             const proxiedUrl = applySameHostStreamProxy(url, latestPortal, cmd);
-            return { url: proxiedUrl, success: true };
+            const isPlayable = isPlayableStreamUrl(proxiedUrl);
+            return { url: isPlayable ? proxiedUrl : "", success: isPlayable };
         } catch (error: any) {
             console.warn("⚠️ StreamManager.getStreamUrl error:", error?.message || error);
             const cmd = content.streamUrl || (content as Episode).cmd || "";
             const latestPortal = usePortalStore.getState().activePortal ?? portal;
-            const proxied = applySameHostStreamProxy("", latestPortal, cmd);
-            if (proxied) {
-                return { url: proxied, success: true };
-            }
             const cleanCmd = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
-            if (/^https?:\/\//i.test(cleanCmd)) {
+            if (isPlayableStreamUrl(cleanCmd)) {
                 return { url: applySameHostStreamProxy(cleanCmd, latestPortal, cmd), success: true };
             }
             return { url: "", success: false, error: error.message || "Stream URL generation failed" };
