@@ -9,7 +9,7 @@ import {
   VideoTrack,
   VideoContentFit,
 } from "expo-video";
-import { BufferTuning } from "../services/stbEnvironment";
+import { BufferProfile, BufferTuning } from "../services/stbEnvironment";
 
 export interface NormalizedTrackOption {
   id: string | number;
@@ -151,8 +151,91 @@ function normalizeVideoTracks(tracks: VideoTrack[]): NormalizedTrackOption[] {
 }
 
 /**
- * Derives native ExoPlayer / AVPlayer buffer parameters from user buffer profiles
- * and adaptive network measurements, with proper milliseconds -> seconds conversion.
+ * The four combinations of stream type and resolution that need genuinely
+ * different buffer budgets. They are not one axis with a multiplier on it:
+ * live trades depth against how far behind the broadcast it sits, on-demand
+ * has no such cost, and 4K changes the *bitrate* rather than the duration, so
+ * it moves the memory ceiling far more than it moves the time budget.
+ */
+type ContentClass = "live" | "live4k" | "vod" | "vod4k";
+
+const contentClassFor = (isLive?: boolean, is4K?: boolean): ContentClass =>
+  isLive ? (is4K ? "live4k" : "live") : is4K ? "vod4k" : "vod";
+
+const MB = 1024 * 1024;
+
+/**
+ * How far ahead the loader fills, in seconds — ExoPlayer's high-water mark.
+ *
+ * This is the main lever against stuttering and it used to be far too shallow:
+ * balanced live resolved to a 5s ceiling, and balanced 4K live to 9.8s, so a
+ * two-second dip on the line drained the buffer outright. Depth here costs
+ * almost nothing that a viewer perceives, because *starting* playback is gated
+ * by START_BUFFER_SEC below, not by this — a channel still tunes in about a
+ * second while the loader keeps working well ahead of the playhead.
+ *
+ * What depth does cost on live is latency behind the broadcast, which is why
+ * live sits lower than on-demand. 4K is deeper than HD in time terms only
+ * where the decoder needs it; the real 4K protection is the byte ceiling.
+ */
+const TARGET_BUFFER_SEC: Record<BufferProfile, Record<ContentClass, number>> = {
+  instant: { live: 6, live4k: 8, vod: 10, vod4k: 12 },
+  balanced: { live: 12, live4k: 16, vod: 24, vod4k: 20 },
+  smooth: { live: 20, live4k: 24, vod: 40, vod4k: 28 },
+};
+
+/**
+ * How much must be buffered before playback STARTS, in seconds.
+ *
+ * Deliberately small and deliberately independent of the depth above: this is
+ * the number a viewer actually feels, as the delay between pressing a channel
+ * number and seeing a picture. 4K asks for a little more because one 4K GOP is
+ * a lot of bytes and starting mid-GOP shows as a stutter on the first second.
+ */
+const START_BUFFER_SEC: Record<BufferProfile, Record<ContentClass, number>> = {
+  instant: { live: 0.8, live4k: 1.2, vod: 1.0, vod4k: 1.5 },
+  balanced: { live: 1.5, live4k: 2.0, vod: 2.0, vod4k: 2.5 },
+  smooth: { live: 2.5, live4k: 3.0, vod: 3.0, vod4k: 3.5 },
+};
+
+/** Ceiling on the adaptive lift, so a boosted cache cannot run away. */
+const MAX_TARGET_BUFFER_SEC: Record<ContentClass, number> = {
+  live: 30,
+  live4k: 30,
+  vod: 60,
+  vod4k: 32,
+};
+
+/**
+ * Memory ceiling for the sample queues.
+ *
+ * Previously 0, meaning "let ExoPlayer decide", which resolves to roughly
+ * 140MB for a muxed stream and left the time budget as the only bound. That is
+ * survivable at 6 Mbps and is not at 40: a 4K target of 20s would be ~100MB of
+ * Java heap on a box that may only have 256MB with `largeHeap` on.
+ *
+ * This works as a ceiling rather than a target because
+ * `prioritizeTimeOverSizeThreshold` stays true: below the low-water mark the
+ * load control ignores bytes entirely, so a high-bitrate stream still fills to
+ * its minimum and can never starve — the cap only stops it running on past
+ * that toward the full time budget. The practical effect is that bitrate, not
+ * a guess, decides where a 4K buffer actually settles.
+ */
+const MAX_BUFFER_BYTES: Record<ContentClass, number> = {
+  live: 32 * MB,
+  live4k: 96 * MB,
+  vod: 48 * MB,
+  vod4k: 96 * MB,
+};
+
+/**
+ * Derives native ExoPlayer buffer parameters from the viewer's buffer profile,
+ * the stream class, and the adaptive network cache.
+ *
+ * `networkCacheMs` is the adaptive input: it already carries the network-quality
+ * floor and the stall boost that `player.tsx` raises after repeated stalls, so
+ * it can only ever deepen the buffer past the profile's baseline, never shrink
+ * it below.
  */
 export function calculateExpoBufferOptions({
   networkCacheMs,
@@ -166,42 +249,24 @@ export function calculateExpoBufferOptions({
   is4K?: boolean;
 }) {
   const profile = bufferTuning?.profile || "balanced";
-  const baseCacheSec = (networkCacheMs && networkCacheMs > 0)
-    ? networkCacheMs / 1000
-    : (isLive ? 3.0 : 4.0);
+  const kind = contentClassFor(isLive, is4K);
 
-  let minBufferSec = 1.5;
-  let forwardBufferSec = 8.0;
+  const baseCacheSec =
+    networkCacheMs && networkCacheMs > 0 ? networkCacheMs / 1000 : isLive ? 3.0 : 4.0;
 
-  if (profile === "instant") {
-    // Instant zap: start playback as soon as 0.8s (live) or 1.0s (VOD) is buffered
-    minBufferSec = isLive ? 0.8 : 1.0;
-    forwardBufferSec = isLive
-      ? Math.max(2.0, baseCacheSec)
-      : Math.max(4.0, baseCacheSec * 1.5);
-  } else if (profile === "smooth") {
-    // Smooth: deep buffer to absorb high jitter / weak Wi-Fi
-    minBufferSec = isLive ? 2.5 : 3.0;
-    forwardBufferSec = isLive
-      ? Math.max(10.0, baseCacheSec * 2.0)
-      : Math.max(18.0, baseCacheSec * 2.5);
-  } else {
-    // Balanced (default)
-    minBufferSec = isLive ? 1.5 : 2.0;
-    forwardBufferSec = isLive
-      ? Math.max(5.0, baseCacheSec * 1.5)
-      : Math.max(10.0, baseCacheSec * 2.0);
-  }
+  // The measured line and the stall boost lift the floor; the profile sets it.
+  const adaptiveSec = baseCacheSec * (isLive ? 2.0 : 2.5);
+  const forwardBufferSec = Math.min(
+    MAX_TARGET_BUFFER_SEC[kind],
+    Math.max(TARGET_BUFFER_SEC[profile][kind], adaptiveSec)
+  );
 
-  if (is4K) {
-    minBufferSec += 0.5;
-    forwardBufferSec = Math.round(forwardBufferSec * 1.3 * 10) / 10;
-  }
+  const startBufferSec = START_BUFFER_SEC[profile][kind];
 
   return {
     preferredForwardBufferDuration: Math.round(forwardBufferSec * 10) / 10,
-    minBufferForPlayback: Math.round(minBufferSec * 10) / 10,
-    maxBufferBytes: 0,
+    minBufferForPlayback: Math.round(startBufferSec * 10) / 10,
+    maxBufferBytes: MAX_BUFFER_BYTES[kind],
     prioritizeTimeOverSizeThreshold: true,
   };
 }

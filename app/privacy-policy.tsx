@@ -3,7 +3,7 @@ import { Animated, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CinematicBackground } from '../src/components/CinematicBackground';
-import { ph, psRaw as ps, pw, THEME } from '../src/theme/tokens';
+import { ph, phoneDp, psRaw as ps, pw, THEME } from '../src/theme/tokens';
 import { isPhone } from '../src/utils/phoneUtils';
 import { isTouch } from '../src/utils/tabletUtils';
 import { useDPad } from '../src/tv';
@@ -143,7 +143,7 @@ function CopyEmailButton({ value }: { value: string }) {
       accessibilityLabel={copied ? 'Copied to clipboard' : `Copy ${value} to clipboard`}
       style={[S.copyBtn, copied && S.copyBtnDone]}
     >
-      {copied ? <Check size={13} color="#000" /> : <Copy size={13} color="#fff" />}
+      {copied ? <Check size={phoneDp(13)} color="#000" /> : <Copy size={phoneDp(13)} color="#fff" />}
       <Text style={[S.copyBtnText, copied && S.copyBtnTextDone]}>
         {copied ? 'COPIED' : 'COPY'}
       </Text>
@@ -298,13 +298,13 @@ const S = StyleSheet.create({
     paddingBottom: ph(2),
   },
   headerTitle: {
-    fontSize: isPhone ? 18 : ps(2.6),
+    fontSize: isPhone ? 20.7 : ps(2.6),
     color: '#fff',
     fontWeight: '900',
     letterSpacing: 0.5,
   },
   headerSubtitle: {
-    fontSize: isPhone ? 11 : ps(1.1),
+    fontSize: isPhone ? 12.6 : ps(1.1),
     color: 'rgba(255,255,255,0.5)',
     marginTop: ph(0.6),
   },
@@ -348,14 +348,14 @@ const S = StyleSheet.create({
     flex: 1,
   },
   heroTitle: {
-    fontSize: isPhone ? 13.5 : ps(1.6),
+    fontSize: isPhone ? 15.5 : ps(1.6),
     color: '#fff',
     fontWeight: '700',
     marginBottom: ph(1),
   },
   heroBody: {
-    fontSize: isPhone ? 13 : ps(1.4),
-    lineHeight: isPhone ? 18 : ps(2.2),
+    fontSize: isPhone ? 15 : ps(1.4),
+    lineHeight: isPhone ? 20.7 : ps(2.2),
     color: 'rgba(255,255,255,0.65)',
   },
   // ── Document ──────────────────────────────────────────────────────────────
@@ -392,14 +392,14 @@ const S = StyleSheet.create({
   },
   sectionTitle: {
     flex: 1,
-    fontSize: isPhone ? 13.5 : ps(1.6),
+    fontSize: isPhone ? 15.5 : ps(1.6),
     color: '#FFFFFF',
     fontWeight: '700',
     letterSpacing: 0.3,
   },
   paragraph: {
-    fontSize: isPhone ? 12 : ps(1.2),
-    lineHeight: isPhone ? 17 : ps(1.9),
+    fontSize: isPhone ? 13.8 : ps(1.2),
+    lineHeight: isPhone ? 19.5 : ps(1.9),
     color: 'rgba(255,255,255,0.6)',
     marginBottom: ph(1),
   },
@@ -427,7 +427,7 @@ const S = StyleSheet.create({
   },
   bulletText: {
     flex: 1,
-    fontSize: isPhone ? 12 : ps(1.2),
+    fontSize: isPhone ? 13.8 : ps(1.2),
     color: 'rgba(255,255,255,0.75)',
   },
 
@@ -466,14 +466,14 @@ const S = StyleSheet.create({
     flex: 1,
   },
   contactLabel: {
-    fontSize: isPhone ? 11 : ps(1.1),
+    fontSize: isPhone ? 12.6 : ps(1.1),
     color: 'rgba(255,255,255,0.35)',
     fontWeight: '600',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   contactValue: {
-    fontSize: isPhone ? 13 : ps(1.5),
+    fontSize: isPhone ? 15 : ps(1.5),
     color: '#fff',
     fontWeight: '700',
     marginTop: 2,

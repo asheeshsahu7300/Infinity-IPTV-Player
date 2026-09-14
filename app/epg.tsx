@@ -46,7 +46,7 @@ import {
 import { StreamManager } from "../src/services/StreamManager";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import PinPrompt from "../src/components/PinPrompt";
-import { THEME, ph, psRaw as ps, pw } from "../src/theme/tokens";
+import { THEME, ph, phoneDp, psRaw as ps, pw } from "../src/theme/tokens";
 import { remoteFocusEnabled, isTouch } from "../src/utils/tabletUtils";
 import { isPhone } from "../src/utils/phoneUtils";
 import { Focusable, FocusGroup } from "../src/tv";
@@ -106,12 +106,12 @@ const ACTIVE_ROW_INK = isTouch ? "#000000" : "#FFFFFF";
  * handset with a third of the width, whatever the viewing distance.
  */
 const TOUCH_TYPE = {
-  programTime: isPhone ? 13 : 12,
-  programEnd: isPhone ? 11.5 : 10.5,
-  programTitle: isPhone ? 15 : 13,
-  programDesc: isPhone ? 12.5 : 11,
-  nowBadge: isPhone ? 10 : 9,
-  paneLabel: isPhone ? 12 : 11,
+  programTime: isPhone ? 15 : 12,
+  programEnd: isPhone ? 13.2 : 10.5,
+  programTitle: isPhone ? 17.3 : 13,
+  programDesc: isPhone ? 14.4 : 11,
+  nowBadge: isPhone ? 11.5 : 9,
+  paneLabel: isPhone ? 13.8 : 11,
 };
 
 const CHANNEL_PANE_WIDTH = pw(30);
@@ -361,13 +361,16 @@ export default function EPGScreen() {
    * Portrait: 76 left the stacked title/description/progress column about 1dp
    * of slack once the phone type sizes grew, and `programRowWrapper` is a
    * fixed height — it would have spilled rather than grown, the same way the
-   * pills did.
+   * pills did. It went to 84 then, and to 96 when `PHONE_UI_SCALE` raised the
+   * phone type scale by 15% again: the `TOUCH_TYPE` sizes stacked in this row
+   * grew with it, and this is the branch a handset always takes, since
+   * `withHandsetPortrait` pins phones upright.
    *
    * Landscape: a flat 70 has the same defect the channel rows had, so it takes
    * the same treatment and the two panes stay in step with each other.
    */
   const programRowHeight = isTouch
-    ? (isPortrait ? 84 : Math.round(Math.min(112, Math.max(70, windowHeight / 8.6))))
+    ? (isPortrait ? 96 : Math.round(Math.min(112, Math.max(70, windowHeight / 8.6))))
     : PROGRAM_ROW_HEIGHT;
   // The gutter the pane sits in, and its gap to the schedule beside it. Flat
   // 20/16 before, which is a fair margin on an 853 panel and a hairline on a
@@ -402,15 +405,21 @@ export default function EPGScreen() {
       gap: Math.round(10 * box),
       logoW: Math.round(34 * box),
       logoH: Math.round(26 * box),
-      icon: Math.round(16 * box),
-      numberSize: Math.round(12 * type),
-      numberWidth: Math.round(22 * type),
-      nameSize: Math.round(13 * type),
+      // `phoneDp` on the four raw text/icon sizes below, and on the column that
+      // holds two of them. Everything sourced from `TOUCH_TYPE` already carries
+      // the phone bump; these were bare numbers, so the channel pane kept its
+      // old 12dp numbers and 13dp names while the programme column beside it
+      // grew — the same gap that left the dashboard's icons behind. The
+      // padding, gaps and logo box are layout and stay put.
+      icon: Math.round(phoneDp(16) * box),
+      numberSize: Math.round(phoneDp(12) * type),
+      numberWidth: Math.round(phoneDp(22) * type),
+      nameSize: Math.round(phoneDp(13) * type),
       labelSize: Math.round(TOUCH_TYPE.paneLabel * type),
       progPadV: Math.round(8 * box),
       progPadH: Math.round(10 * box),
       progGap: Math.round(10 * box),
-      progTimeCol: Math.round(46 * type),
+      progTimeCol: Math.round(phoneDp(46) * type),
       progTime: Math.round(TOUCH_TYPE.programTime * type * 2) / 2,
       progEnd: Math.round(TOUCH_TYPE.programEnd * type * 2) / 2,
       progTitle: Math.round(TOUCH_TYPE.programTitle * type * 2) / 2,
@@ -781,13 +790,13 @@ export default function EPGScreen() {
             onPress={() => setCategoryModalVisible(true)}
             activeOpacity={0.7}
           >
-            <Filter size={isPhone ? 14 : 13} color="#FFFFFF" style={{ marginRight: 6 }} />
+            <Filter size={isPhone ? 16.1 : 13} color="#FFFFFF" style={{ marginRight: 6 }} />
             <Text style={S.categoryBadgeText} numberOfLines={1}>
               {selectedCategory === "all"
                 ? "All Categories"
                 : (epgCategories.find((c) => String(c.id) === String(selectedCategory))?.name || "Category")}
             </Text>
-            <ChevronDown size={isPhone ? 15 : 14} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />
+            <ChevronDown size={isPhone ? 17.3 : 14} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />
           </TouchableOpacity>
         )}
       </View>
@@ -873,7 +882,7 @@ export default function EPGScreen() {
                 onPress={() => playChannel(selectedChannel)}
                 activeOpacity={0.8}
               >
-                <Play size={isPhone ? 12 : 11} color="#000000" fill="#000000" style={{ marginRight: 4 }} />
+                <Play size={isPhone ? 13.8 : 11} color="#000000" fill="#000000" style={{ marginRight: 4 }} />
                 <Text style={S.watchLiveBtnText}>Watch Live</Text>
               </TouchableOpacity>
             )}
@@ -948,7 +957,7 @@ export default function EPGScreen() {
             <View style={S.modalHeader}>
               <Text style={S.modalTitle}>Select Category</Text>
               <TouchableOpacity onPress={() => setCategoryModalVisible(false)} hitSlop={12}>
-                <X size={20} color="#FFFFFF" />
+                <X size={phoneDp(20)} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
             <FlatList
@@ -1231,7 +1240,7 @@ const S = StyleSheet.create({
   },
   categoryBadgeText: {
     color: "#FFFFFF",
-    fontSize: isPhone ? 13 : 12,
+    fontSize: isPhone ? 15 : 12,
     fontWeight: "700",
     flexShrink: 1,
   },
@@ -1255,7 +1264,7 @@ const S = StyleSheet.create({
   },
   watchLiveBtnText: {
     color: "#000000",
-    fontSize: isPhone ? 12 : 11,
+    fontSize: isPhone ? 13.8 : 11,
     fontWeight: "900",
     letterSpacing: 0.4,
   },
@@ -1286,7 +1295,7 @@ const S = StyleSheet.create({
   },
   modalTitle: {
     color: "#FFFFFF",
-    fontSize: isPhone ? 18 : 17,
+    fontSize: isPhone ? 20.7 : 17,
     fontWeight: "800",
   },
   categoryModalItem: {
@@ -1303,7 +1312,7 @@ const S = StyleSheet.create({
   },
   categoryModalItemText: {
     color: "rgba(255,255,255,0.7)",
-    fontSize: isPhone ? 15 : 14,
+    fontSize: isPhone ? 17.3 : 14,
     fontWeight: "600",
   },
   categoryModalItemTextSelected: {

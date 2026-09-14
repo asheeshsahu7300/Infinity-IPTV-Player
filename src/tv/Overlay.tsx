@@ -245,7 +245,7 @@ export function Overlay({
     >
       <Animated.View style={[styles.backdrop, style, { opacity }]} pointerEvents={visible ? "auto" : "none"}>
         <Pressable
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           focusable={false}
           accessible={false}
           importantForAccessibility="no"
@@ -283,12 +283,12 @@ const styles = StyleSheet.create({
    * covers iOS and web, where elevation means nothing.
    */
   root: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 9999,
     elevation: 30,
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.85)",
     justifyContent: "center",
     alignItems: "center",

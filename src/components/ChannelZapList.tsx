@@ -14,7 +14,7 @@ import { Platform, ScrollView, StyleSheet, View, Pressable, useWindowDimensions 
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Focusable, FocusGroup, Overlay } from "../tv";
-import { THEME, ph, ps, pw } from "../theme/tokens";
+import { THEME, ph, phoneDp, ps, pw } from "../theme/tokens";
 import { isTouch } from "../utils/tabletUtils";
 import { epgService } from "../services/epgService";
 import { parentalControl } from "../services/parentalControl";
@@ -96,7 +96,7 @@ const ZapRow = React.memo(
             <View style={[S.rowLogo, isTouch && { width: 32, height: 24 }]}>
               {locked ? (
                 <Lock
-                  size={isTouch ? 14 : ps(1.1)}
+                  size={isTouch ? phoneDp(14) : ps(1.1)}
                   color={focused ? "#000" : "rgba(255,255,255,0.5)"}
                 />
               ) : channel.logo ? (
@@ -108,7 +108,7 @@ const ZapRow = React.memo(
                 />
               ) : (
                 <Tv
-                  size={isTouch ? 14 : ps(1.1)}
+                  size={isTouch ? phoneDp(14) : ps(1.1)}
                   color={focused ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.2)"}
                 />
               )}
@@ -127,7 +127,7 @@ const ZapRow = React.memo(
 
             {isCurrent ? (
               <View style={S.playingDot}>
-                <Volume2 size={isTouch ? 14 : ps(1)} color={(focused || isCurrent) ? "#111" : "#fff"} />
+                <Volume2 size={isTouch ? phoneDp(14) : ps(1)} color={(focused || isCurrent) ? "#111" : "#fff"} />
               </View>
             ) : null}
           </View>
@@ -233,7 +233,7 @@ export function ChannelZapList({
       contentStyle={S.overlayContent}
     >
       <Pressable
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
         onPress={onClose}
         accessibilityLabel="Close channel list"
       />
@@ -294,7 +294,7 @@ const S = StyleSheet.create({
     justifyContent: "flex-start",
   },
   overlayContent: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     maxWidth: "100%",
     maxHeight: "100%",
   },

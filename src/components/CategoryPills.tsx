@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { View, TouchableOpacity, StyleSheet, FlatList, Animated, StyleProp, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { Category } from '../store/portalStore';
+import { bareCategoryId } from '../hooks/useCategoryContent';
 import { THEME } from '../theme/tokens';
 import { isPhone } from '../utils/phoneUtils';
 import { Text } from './Text';
@@ -107,6 +108,19 @@ export default function CategoryPills({
   contentContainerStyle,
 }: CategoryPillsProps) {
   const flatListRef = useRef<FlatList>(null);
+  /**
+   * Compare category ids the way the rest of the app does, not with `===`.
+   *
+   * The same category travels under two spellings — a bare `"123"` and a
+   * type-prefixed `"live:123"` — which is why `bareCategoryId` and
+   * `isAllCategory` exist, and why `live-tv` validates its selection with an
+   * `isSameCat` that strips the prefix. This component was the one place
+   * still comparing raw strings, so a selection every other check agreed was
+   * valid could match no pill: live-tv saw its stored category in the list
+   * and left it alone, and the row rendered with nothing highlighted. Most
+   * visible on first open, where there has been no tap to resolve it.
+   */
+  const activeId = bareCategoryId(selectedId);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const focusedIdRef = useRef<string | null>(null);
 
@@ -145,7 +159,7 @@ export default function CategoryPills({
   // Auto-scroll to selected item on mount/update (only if not focusing manually to avoid fighting)
   useEffect(() => {
     if (categories.length > 0 && selectedId && !focusedId) {
-      const index = categories.findIndex((c) => c.id === selectedId);
+      const index = categories.findIndex((c) => bareCategoryId(c.id) === activeId);
       if (index !== -1) {
         // Delay slightly to ensure layout
         setTimeout(() => {
@@ -153,7 +167,7 @@ export default function CategoryPills({
         }, 200);
       }
     }
-  }, [selectedId, categories, focusedId, scrollToIndex]);
+  }, [activeId, selectedId, categories, focusedId, scrollToIndex]);
 
 
 
@@ -175,13 +189,13 @@ export default function CategoryPills({
           <PillItem
             item={item}
             index={index}
-            isActive={selectedId === item.id}
+            isActive={bareCategoryId(item.id) === activeId}
             isFocused={focusedId === item.id}
             onSelect={onSelect}
             onFocus={handleFocus}
             onBlur={handleBlur}
           />
-        ), [selectedId, focusedId, onSelect, handleFocus, handleBlur])}
+        ), [activeId, focusedId, onSelect, handleFocus, handleBlur])}
         keyExtractor={(item) => String(item.id)}
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -279,7 +293,7 @@ const styles = StyleSheet.create({
 
   pillText: {
     color: "#888",
-    fontSize: isPhone ? 13.5 : 15,
+    fontSize: isPhone ? 15.5 : 15,
     fontWeight: "500",
     /*
      * 16/18 was below Inter's own line box (about 1.21x the font size, so 16.4
@@ -287,7 +301,7 @@ const styles = StyleSheet.create({
      * from underneath. Set at 1.3x, which clears the metrics and still fits the
      * pill exactly: 18 + 12 padding + 4 border is the 34 above.
      */
-    lineHeight: isPhone ? 18 : 20,
+    lineHeight: isPhone ? 20.7 : 20,
     /*
      * The actual reason the label sat outside the pill on Android.
      *

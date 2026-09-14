@@ -1,0 +1,297 @@
+diff --git a/node_modules/expo-video/android/build.gradle b/node_modules/expo-video/android/build.gradle
+index 7894755..901ef78 100644
+--- a/node_modules/expo-video/android/build.gradle
++++ b/node_modules/expo-video/android/build.gradle
+@@ -25,6 +25,7 @@ dependencies {
+   implementation "androidx.media3:media3-exoplayer-hls:${androidxMedia3Version}"
+   implementation "androidx.media3:media3-ui:${androidxMedia3Version}"
+   implementation "androidx.media3:media3-datasource-okhttp:${androidxMedia3Version}"
++  implementation "org.jellyfin.media3:media3-ffmpeg-decoder:${androidxMedia3Version}+1"
+ 
+   def fragment_version = "1.8.9"
+   implementation "androidx.fragment:fragment:$fragment_version"
+diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
+index 8bae522..4b67b3d 100644
+--- a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
++++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
+@@ -56,13 +56,53 @@ import java.io.FileInputStream
+ import java.lang.ref.WeakReference
+ import kotlin.time.DurationUnit
+ 
++import android.os.Handler
++import androidx.media3.exoplayer.Renderer
++import androidx.media3.exoplayer.audio.AudioRendererEventListener
++import androidx.media3.exoplayer.audio.AudioSink
++import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
++import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
++import androidx.media3.decoder.ffmpeg.FfmpegLibrary
++
+ // https://developer.android.com/guide/topics/media/media3/getting-started/migration-guide#improvements_in_media3
+ @UnstableApi
+ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSource?, playerBuilderOptions: expo.modules.video.records.PlayerBuilderOptions? = null) : AutoCloseable, SharedObject(appContext), IntervalUpdateEmitter {
+-  // This improves the performance of playing DRM-protected content
+-  private var renderersFactory = DefaultRenderersFactory(context)
+-    .forceEnableMediaCodecAsynchronousQueueing()
++  private var renderersFactory = object : DefaultRenderersFactory(context) {
++    override fun buildAudioRenderers(
++      context: Context,
++      extensionRendererMode: Int,
++      mediaCodecSelector: MediaCodecSelector,
++      enableDecoderFallback: Boolean,
++      audioSink: AudioSink,
++      eventHandler: Handler,
++      eventListener: AudioRendererEventListener,
++      out: java.util.ArrayList<Renderer>
++    ) {
++      super.buildAudioRenderers(
++        context,
++        extensionRendererMode,
++        mediaCodecSelector,
++        enableDecoderFallback,
++        audioSink,
++        eventHandler,
++        eventListener,
++        out
++      )
++      try {
++        if (FfmpegLibrary.isAvailable()) {
++          out.add(FfmpegAudioRenderer(eventHandler, eventListener, audioSink))
++          android.util.Log.i("ExpoVideo", "Successfully registered fallback FfmpegAudioRenderer (FFmpeg v${FfmpegLibrary.getVersion()})")
++        } else {
++          android.util.Log.w("ExpoVideo", "FfmpegLibrary is NOT available")
++        }
++      } catch (t: Throwable) {
++        android.util.Log.e("ExpoVideo", "Error initializing FfmpegAudioRenderer", t)
++      }
++    }
++  }
++    .forceDisableMediaCodecAsynchronousQueueing()
+     .setEnableDecoderFallback(true)
++    .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+   private val listeners: MutableList<WeakReference<VideoPlayerListener>> = mutableListOf()
+   private val currentVideoViewRef = MutableWeakReference<VideoView?>(null) { new, old ->
+     sendEvent(PlayerEvent.TargetViewChanged(new, old))
+@@ -71,11 +111,17 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+   val loadControl: VideoPlayerLoadControl = VideoPlayerLoadControl()
+   val subtitles: VideoPlayerSubtitles = VideoPlayerSubtitles(this)
+   val audioTracks: VideoPlayerAudioTracks = VideoPlayerAudioTracks(this)
+-  val trackSelector = DefaultTrackSelector(context)
++  val trackSelector = DefaultTrackSelector(context).apply {
++    parameters = buildUponParameters()
++      .setConstrainAudioChannelCountToDeviceCapabilities(true)
++      .setExceedRendererCapabilitiesIfNecessary(true)
++      .build()
++  }
+ 
+   val player = ExoPlayer
+     .Builder(context, renderersFactory)
+     .apply {
++      setTrackSelector(trackSelector)
+       setLooper(context.mainLooper)
+       setLoadControl(loadControl)
+       playerBuilderOptions?.seekBackwardIncrement?.let {
+diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerAudioTracks.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerAudioTracks.kt
+index fbccab6..d3aece6 100644
+--- a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerAudioTracks.kt
++++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerAudioTracks.kt
+@@ -121,6 +121,19 @@ class VideoPlayerAudioTracks(owner: VideoPlayer) : VideoPlayerListener {
+       return@let null
+     }
+ 
+-    return overriddenFormat ?: preferredFormat
++    val activeFromPlayer: Format? = videoPlayer?.player?.currentTracks?.let { tracks ->
++      for (group in tracks.groups) {
++        if (group.type == C.TRACK_TYPE_AUDIO && group.isSelected) {
++          for (i in 0..<group.length) {
++            if (group.isTrackSelected(i)) {
++              return@let group.getTrackFormat(i)
++            }
++          }
++        }
++      }
++      return@let null
++    }
++
++    return overriddenFormat ?: preferredFormat ?: activeFromPlayer
+   }
+ }
+diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerLoadControl.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerLoadControl.kt
+index 4ffe72b..828d310 100644
+--- a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerLoadControl.kt
++++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerLoadControl.kt
+@@ -7,11 +7,32 @@ import expo.modules.video.records.BufferOptions
+ 
+ @UnstableApi
+ class VideoPlayerLoadControl : DefaultLoadControl() {
++  /**
++   * The high-water mark: the buffer depth the loader fills to before idling.
++   * Setting it also derives the low-water mark, because `DefaultLoadControl`
++   * needs both and `BufferOptions` only carries one.
++   *
++   * `minBufferUs` is NOT "the buffer we keep" — it is the level at which
++   * loading RESUMES (see `shouldContinueLoading`: load below min, stop above
++   * max, hold state in between). Upstream expo-video sets min == max, which
++   * makes the loader thrash; the previous patch here set min to half of max
++   * with a hard 12s ceiling, which on a deep buffer meant a 30s target only
++   * started refilling once it had drained to 12s — a third of the way to empty
++   * before a single byte was requested, on exactly the unstable lines the deep
++   * buffer was chosen for.
++   *
++   * 75% keeps the loader topping up almost continuously, which is what an IPTV
++   * line wants: bandwidth is not the scarce resource, continuity is. The 2s
++   * separation stops min and max collapsing onto each other at small targets,
++   * which would oscillate the loader on and off every tick.
++   */
+   private var targetBufferMs: Long
+     get() = maxBufferUs / 1000
+     set(value) {
+-      minBufferUs = Util.msToUs(value)
+-      maxBufferUs = Util.msToUs(value)
++      val safeMax = maxOf(4000L, value)
++      val safeMin = maxOf(3000L, minOf((safeMax * 0.75).toLong(), safeMax - 2000L))
++      minBufferUs = Util.msToUs(safeMin)
++      maxBufferUs = Util.msToUs(safeMax)
+     }
+ 
+   private var bufferForPlaybackMs: Long
+@@ -26,9 +47,28 @@ class VideoPlayerLoadControl : DefaultLoadControl() {
+       bufferForPlaybackAfterRebufferUs = Util.msToUs(value)
+     }
+ 
++  init {
++    /**
++     * Upstream's defaults are 50s min AND max, which for a live IPTV stream
++     * means the loader tries to pull 50 seconds ahead before it will let
++     * playback begin settling — unusable for zapping. These are the "balanced
++     * live" numbers from `calculateExpoBufferOptions`, and they matter beyond
++     * the first frame: a channel change reuses the same player instance, so
++     * there is a real window on every zap between construction and JS pushing
++     * its own `BufferOptions` down.
++     *
++     * Assigned through the accessors above so the min/max relationship is
++     * defined in exactly one place.
++     */
++    targetBufferMs = 12000L
++    bufferForPlaybackMs = 1500L
++    bufferForPlaybackAfterRebufferMs = 3750L
++    prioritizeTimeOverSizeThresholds = true
++  }
++
+   fun applyBufferOptions(bufferOptions: BufferOptions) {
+     targetBufferMs = bufferOptions.preferredForwardBufferDuration?.let { (it * 1000).toLong() }
+-      ?: DEFAULT_MAX_BUFFER_MS.toLong()
++      ?: 20000L
+ 
+     targetBufferBytesOverwrite = if (bufferOptions.maxBufferBytes == 0L) {
+       C.LENGTH_UNSET
+@@ -50,7 +90,25 @@ class VideoPlayerLoadControl : DefaultLoadControl() {
+       (bufferOptions.minBufferForPlayback * 1000).toLong()
+     }
+     bufferForPlaybackMs = safeBufferForPlayback
+-    bufferForPlaybackAfterRebufferMs = safeBufferForPlayback
++
++    /**
++     * Resuming AFTER a rebuffer has to demand more than starting from cold.
++     *
++     * A cold start is optimistic — nothing is known about the line yet, and a
++     * low threshold is what makes a channel change feel instant. A rebuffer is
++     * evidence: the line just failed to keep up. Resuming on the same thin
++     * threshold empties the buffer again within a second or two, which is the
++     * stutter loop that reads to a viewer as "it keeps buffering" rather than
++     * as one clean pause. The previous floor of 2s made live indistinguishable
++     * from its 1.5s cold start.
++     *
++     * 2.5x, floored at 3s, and never more than half the target so it stays
++     * reachable on a buffer that is small by choice (the "instant" profile).
++     */
++    bufferForPlaybackAfterRebufferMs = minOf(
++      maxOf(safeBufferForPlayback * 5 / 2, 3000L),
++      maxOf(3000L, targetBufferMs / 2)
++    )
+ 
+     updateAllocator()
+   }
+diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/records/Tracks.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/records/Tracks.kt
+index 28afe31..1ce083b 100644
+--- a/node_modules/expo-video/android/src/main/java/expo/modules/video/records/Tracks.kt
++++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/records/Tracks.kt
+@@ -53,7 +53,7 @@ class AudioTrack(
+   companion object {
+     fun fromFormat(format: Format?): AudioTrack? {
+       format ?: return null
+-      val id = format.id ?: return null
++      val id = format.id ?: (format.sampleMimeType?.let { "${it}_${format.channelCount}_${format.sampleRate}" } ?: "audio_${format.hashCode()}")
+       val language = format.language
+       val label = language?.let { Locale(it).displayLanguage } ?: "Unknown"
+       val name = format.label
+diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
+index 460fb7b..f872a31 100644
+--- a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
++++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
+@@ -24,17 +24,27 @@ fun buildBaseDataSourceFactory(context: Context, videoSource: VideoSource): Data
+   }
+ }
+ 
++private val sharedOkHttpClient: OkHttpClient by lazy {
++  OkHttpClient.Builder()
++    .connectionPool(okhttp3.ConnectionPool(16, 5, java.util.concurrent.TimeUnit.MINUTES))
++    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
++    .readTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
++    .writeTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
++    .retryOnConnectionFailure(true)
++    .followRedirects(true)
++    .followSslRedirects(true)
++    .build()
++}
++
+ @OptIn(UnstableApi::class)
+ fun buildOkHttpDataSourceFactory(context: Context, videoSource: VideoSource): OkHttpDataSource.Factory {
+-  val client = OkHttpClient.Builder().build()
+-
+   // If the application name has ANY non-ASCII characters, we need to strip them out. This is because using non-ASCII characters
+   // in the User-Agent header can cause issues with getting the media to play.
+   val applicationName = getApplicationName(context).filter { it.code in 0..127 }
+ 
+-  val defaultUserAgent = Util.getUserAgent(context, applicationName)
++  val defaultUserAgent = "okhttp/3.12.1"
+ 
+-  return OkHttpDataSource.Factory(client).apply {
++  return OkHttpDataSource.Factory(sharedOkHttpClient).apply {
+     val headers = videoSource.headers
+     headers?.takeIf { it.isNotEmpty() }?.let {
+       setDefaultRequestProperties(it)
+@@ -54,7 +64,17 @@ fun buildCacheDataSourceFactory(context: Context, videoSource: VideoSource): Dat
+ }
+ 
+ fun buildMediaSourceFactory(context: Context, dataSourceFactory: DataSource.Factory): MediaSource.Factory {
+-  return DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory)
++  val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
++    .setConstantBitrateSeekingEnabled(true)
++    .setTsExtractorMode(androidx.media3.extractor.ts.TsExtractor.MODE_MULTI_PMT)
++    .setTsExtractorTimestampSearchBytes(112800 * 5)
++    .setTsExtractorFlags(
++      androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or
++        androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_IGNORE_SPLICE_INFO_STREAM or
++        androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS
++    )
++  return DefaultMediaSourceFactory(context, extractorsFactory)
++    .setDataSourceFactory(dataSourceFactory)
+ }
+ 
+ @OptIn(UnstableApi::class)
+@@ -65,7 +85,14 @@ fun buildExpoVideoMediaSource(context: Context, videoSource: VideoSource): Media
+     buildBaseDataSourceFactory(context, videoSource)
+   }
+   val mediaSourceFactory = buildMediaSourceFactory(context, dataSourceFactory)
+-  val mediaItem = videoSource.toMediaItem(context)
++  val mediaItem = videoSource.toMediaItem(context).buildUpon()
++    .setLiveConfiguration(
++      androidx.media3.common.MediaItem.LiveConfiguration.Builder()
++        .setMinPlaybackSpeed(1.0f)
++        .setMaxPlaybackSpeed(1.0f)
++        .build()
++    )
++    .build()
+   return mediaSourceFactory.createMediaSource(mediaItem)
+ }
+ 

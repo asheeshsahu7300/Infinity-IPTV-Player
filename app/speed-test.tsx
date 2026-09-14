@@ -305,7 +305,7 @@ const S = StyleSheet.create({
     paddingBottom: ph(1),
   },
   headerTitle: { color: "#fff", fontSize: ps(2.2), fontWeight: "900", letterSpacing: 0.5 },
-  headerSubtitle: { color: THEME.colors.textDim, fontSize: isPhone ? 12.5 : ps(1.1), marginTop: ph(0.6) },
+  headerSubtitle: { color: THEME.colors.textDim, fontSize: isPhone ? 14.4 : ps(1.1), marginTop: ph(0.6) },
 
   scroll: { paddingHorizontal: pw(8), paddingBottom: ph(8), gap: ph(2.4) },
 
@@ -317,7 +317,7 @@ const S = StyleSheet.create({
     fontVariant: ["tabular-nums"],
     letterSpacing: -1,
   },
-  headlineLabel: { color: THEME.colors.textMuted, fontSize: isPhone ? 12.5 : ps(1.05), fontWeight: "600" },
+  headlineLabel: { color: THEME.colors.textMuted, fontSize: isPhone ? 14.4 : ps(1.05), fontWeight: "600" },
   progressTrack: {
     /*
      * `pw` is a percentage of the *long* edge, so `pw(50)` is 436dp — wider
@@ -360,18 +360,18 @@ const S = StyleSheet.create({
   },
   statLabel: {
     color: "rgba(255,255,255,0.35)",
-    fontSize: isPhone ? 10 : ps(0.75),
+    fontSize: isPhone ? 11.5 : ps(0.75),
     fontWeight: "900",
     letterSpacing: 1.2,
     marginTop: ph(0.4),
   },
   statValue: {
     color: "#fff",
-    fontSize: isPhone ? 16 : ps(1.5),
+    fontSize: isPhone ? 18.4 : ps(1.5),
     fontWeight: "800",
     fontVariant: ["tabular-nums"],
   },
-  statHint: { color: "rgba(255,255,255,0.28)", fontSize: isPhone ? 10 : ps(0.78) },
+  statHint: { color: "rgba(255,255,255,0.28)", fontSize: isPhone ? 11.5 : ps(0.78) },
 
   verdict: {
     padding: pw(2),
@@ -382,8 +382,8 @@ const S = StyleSheet.create({
   },
   verdictHead: { flexDirection: "row", alignItems: "center", gap: pw(1) },
   verdictDot: { width: 10, height: 10, borderRadius: 5 },
-  verdictGrade: { fontSize: isPhone ? 13.5 : ps(1.2), fontWeight: "900", letterSpacing: 1.5 },
-  verdictQuality: { color: "#fff", fontSize: isPhone ? 12.5 : ps(1.05), fontWeight: "700" },
+  verdictGrade: { fontSize: isPhone ? 15.5 : ps(1.2), fontWeight: "900", letterSpacing: 1.5 },
+  verdictQuality: { color: "#fff", fontSize: isPhone ? 14.4 : ps(1.05), fontWeight: "700" },
   verdictSummary: { color: THEME.colors.textMuted, fontSize: ps(1), lineHeight: ps(1.6) },
 
   errorBox: {
@@ -396,7 +396,7 @@ const S = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(248,113,113,0.25)",
   },
-  errorText: { color: "#fca5a5", fontSize: isPhone ? 12 : ps(1), flex: 1 },
+  errorText: { color: "#fca5a5", fontSize: isPhone ? 13.8 : ps(1), flex: 1 },
 
   actions: { flexDirection: "row", gap: pw(1.5), flexWrap: "wrap" },
   actionWrapper: { borderRadius: ps(1) },
@@ -416,8 +416,8 @@ const S = StyleSheet.create({
   },
   actionFocused: { backgroundColor: "#fff", borderColor: "#fff", transform: [{ scale: 1.04 }] },
   actionDisabled: { opacity: 0.6 },
-  actionText: { color: isPhone ? "#000" : "#fff", fontSize: isPhone ? 13 : ps(1), fontWeight: "900", letterSpacing: 1 },
+  actionText: { color: isPhone ? "#000" : "#fff", fontSize: isPhone ? 15 : ps(1), fontWeight: "900", letterSpacing: 1 },
   actionTextFocused: { color: "#000" },
 
-  footnote: { color: "rgba(255,255,255,0.28)", fontSize: isPhone ? 11 : ps(0.9) },
+  footnote: { color: "rgba(255,255,255,0.28)", fontSize: isPhone ? 12.6 : ps(0.9) },
 });

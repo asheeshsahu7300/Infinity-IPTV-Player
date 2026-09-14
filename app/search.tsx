@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { View, StyleSheet, ActivityIndicator, FlatList, ScrollView, Platform, Animated, findNodeHandle, Pressable , TextInput as RNTextInput, useWindowDimensions } from 'react-native';
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useRouter, useIsFocused } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useIsFocused } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 
@@ -15,7 +14,7 @@ import { StreamManager } from "../src/services/StreamManager";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay, useIsFocusTrapped, useDPad, FocusMemory } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
-import { THEME, pw, ph, ps, psRaw, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
+import { THEME, pw, ph, phoneDp, ps, psRaw, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
 import {
   isPhone,
   PHONE_GRID_COLUMNS,
@@ -155,10 +154,10 @@ const CardInner = React.memo(function CardInner({
             onError={() => setImgError(true)}
           />
         ) : (
-          <View style={[StyleSheet.absoluteFillObject, S.posterFallback]}>
+          <View style={[StyleSheet.absoluteFill, S.posterFallback]}>
             <DynamicIcon
               name={isLive ? "television" : "filmstrip"}
-              size={isTouch ? (isLive ? 22 : 30) : (isLive ? ps(2.8) : ps(4.2))}
+              size={isTouch ? (isLive ? phoneDp(22) : phoneDp(30)) : (isLive ? ps(2.8) : ps(4.2))}
               color="rgba(255,255,255,0.32)"
             />
           </View>
@@ -1014,7 +1013,7 @@ export default function SearchScreen() {
         <LinearGradient
           colors={["rgba(8, 8, 10, 0.62)", "rgba(8, 8, 10, 0.88)", "#08080a"]}
           locations={[0, 0.4, 0.95]}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
 
@@ -1251,14 +1250,14 @@ export default function SearchScreen() {
           {selectedItem?.logo ? (
             <Image
               source={{ uri: selectedItem.logo }}
-              style={[StyleSheet.absoluteFillObject, { opacity: 0.25 }]}
+              style={[StyleSheet.absoluteFill, { opacity: 0.25 }]}
               blurRadius={50}
               contentFit="cover"
             />
           ) : null}
           <LinearGradient
             colors={["rgba(10, 12, 18, 0.75)", "rgba(8, 8, 12, 0.95)", "#08080a"]}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
           />
           <View style={[S.modalTVContent, S.modalBody, isPhone && { paddingBottom: 10 + insets.bottom }]}>
             {/* Left: Poster Image */}

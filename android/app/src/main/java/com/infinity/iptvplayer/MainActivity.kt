@@ -29,6 +29,43 @@ class MainActivity : ReactActivity() {
     hideSystemUI()
   }
 
+  /**
+   * Returns the name of the main component registered from JavaScript. This is used to schedule
+   * rendering of the component.
+   */
+  override fun getMainComponentName(): String = "main"
+
+  /**
+   * Returns the instance of the [ReactActivityDelegate]. We use [DefaultReactActivityDelegate]
+   * which allows you to enable New Architecture with a single boolean flags [fabricEnabled]
+   */
+  override fun createReactActivityDelegate(): ReactActivityDelegate {
+    return ReactActivityDelegateWrapper(
+          this,
+          BuildConfig.IS_NEW_ARCHITECTURE_ENABLED,
+          object : DefaultReactActivityDelegate(
+              this,
+              mainComponentName,
+              fabricEnabled
+          ){})
+  }
+
+  /**
+   * Move the task to the background instead of finishing MainActivity when
+   * back is pressed at root level, so the React instance survives. Injected by
+   * plugins/withImmersiveMainActivity.js, replacing the template's API-gated
+   * version — edit the plugin, not this file.
+   */
+  override fun invokeDefaultOnBackPressed() {
+    if (!moveTaskToBack(true)) {
+      super.invokeDefaultOnBackPressed()
+    }
+  }
+
+  /**
+   * Injected by plugins/withImmersiveMainActivity.js — edit the plugin, not
+   * this file, or the next prebuild will drop the change.
+   */
   override fun onResume() {
     super.onResume()
     hideSystemUI()
@@ -60,37 +97,6 @@ class MainActivity : ReactActivity() {
           or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
       )
     } catch (e: Exception) {}
-  }
-
-  /**
-   * Returns the name of the main component registered from JavaScript. This is used to schedule
-   * rendering of the component.
-   */
-  override fun getMainComponentName(): String = "main"
-
-  /**
-   * Returns the instance of the [ReactActivityDelegate]. We use [DefaultReactActivityDelegate]
-   * which allows you to enable New Architecture with a single boolean flags [fabricEnabled]
-   */
-  override fun createReactActivityDelegate(): ReactActivityDelegate {
-    return ReactActivityDelegateWrapper(
-          this,
-          BuildConfig.IS_NEW_ARCHITECTURE_ENABLED,
-          object : DefaultReactActivityDelegate(
-              this,
-              mainComponentName,
-              fabricEnabled
-          ){})
-  }
-
-  /**
-   * Move task to background instead of finishing MainActivity when back is
-   * pressed at root level or when returning from system TV settings panel.
-   */
-  override fun invokeDefaultOnBackPressed() {
-      if (!moveTaskToBack(true)) {
-          super.invokeDefaultOnBackPressed()
-      }
   }
 
   override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {

@@ -6,7 +6,7 @@
 //     and TV focus/scrub UX.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { View, StyleSheet, Dimensions, Platform, ActivityIndicator, StatusBar, ScrollView, BackHandler, findNodeHandle, Animated, AppState, AppStateStatus, UIManager } from 'react-native';
+import { View, StyleSheet, Dimensions, Platform, ActivityIndicator, StatusBar, ScrollView, BackHandler, findNodeHandle, Animated, AppState, AppStateStatus } from 'react-native';
 import { useLocalSearchParams } from "expo-router";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { isPhone } from "../src/utils/phoneUtils";
@@ -333,6 +333,11 @@ export default function PlayerScreen() {
           setIsLoading(true);
           setHasStartedPlaying(false);
           hasStartedPlayingRef.current = false;
+          // New stream, so nothing is known about its clock yet.
+          hasSeenProgressRef.current = false;
+          failedAudioTracksRef.current.clear();
+          lastProgressPositionRef.current = 0;
+          lastProgressTimeRef.current = Date.now();
           return nextUrl;
         }
         return prev;
@@ -484,6 +489,19 @@ export default function PlayerScreen() {
   );
 
   // ── 4K stream detection & adaptive network quality ────────────────────────
+  //
+  // `isDetected4K` is authoritative — it comes from a real video track being
+  // 3840x2160 or larger — but it only arrives once tracks have loaded, which is
+  // after the buffer parameters for the opening seconds have already been
+  // chosen. The name-based checks are what cover that window.
+  //
+  // Those checks used to be discarded on live (`is4K && !isLive`), presumably
+  // because channel names are noisy and plenty of "4K" channels are not. The
+  // asymmetry runs the other way though: mislabelling an SD channel as 4K costs
+  // a somewhat deeper buffer and nothing else, while treating a real 4K channel
+  // as SD starts it on an SD cache floor and an SD buffer budget, which is
+  // exactly when a 25 Mbps stream cannot afford it. `isDetected4K` then
+  // corrects it a second or two later — after the stall the viewer already saw.
   const is4K =
     isDetected4K ||
     matches4KKeywords(params.title) ||
@@ -509,25 +527,24 @@ export default function PlayerScreen() {
   const stallCountRef = useRef(0);
 
   const [networkCacheMs, setNetworkCacheMs] = useState(() =>
-    resolveCacheMs(stbEnvironment.buffer, "unknown", isLive, isDetected4K || (is4K && !isLive), 1)
+    resolveCacheMs(stbEnvironment.buffer, "unknown", isLive, is4K, 1)
   );
   const networkCacheMsRef = useRef(networkCacheMs);
 
   const updateResolvedCache = useCallback(
     (boost = bufferBoostRef.current) => {
-      const active4K = isDetected4K || (is4K && !isLive);
       const resolved = resolveCacheMs(
         bufferTuningRef.current,
         networkQualityRef.current,
         isLive,
-        active4K,
+        is4K,
         boost
       );
       networkCacheMsRef.current = resolved;
       setNetworkCacheMs(resolved);
       return resolved;
     },
-    [isLive, is4K, isDetected4K]
+    [isLive, is4K]
   );
 
   const [isNetworkLost, setIsNetworkLost] = useState(false);
@@ -588,6 +605,28 @@ export default function PlayerScreen() {
   const seekTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastProgressTimeRef = useRef(Date.now());
   const lastProgressPositionRef = useRef(0);
+  /**
+   * Whether the reported position has EVER moved on this stream.
+   *
+   * The freeze watchdog below treats a motionless clock as a stall, which is
+   * only sound once we know this stream's clock moves at all. A handful of
+   * server-side muxes report a constant position on a live channel that is
+   * otherwise decoding perfectly; without this gate they would be reconnected
+   * every few seconds forever. Until the first movement is seen, the initial
+   * load timeout is the only thing watching, which is what it is for.
+   */
+  /**
+   * Audio tracks whose decoder has already failed on this stream.
+   *
+   * Without it the error handler picked "the first track that is not the
+   * current one", which on a three-track stream ping-pongs between the first
+   * two forever and never reaches the third, never exhausts the list, and so
+   * never reaches the disable-audio fallback below it. Every failure also
+   * re-selected a track already known to be undecodable. That is the loop in
+   * the logs: decoder error, switch, decoder error, switch.
+   */
+  const failedAudioTracksRef = useRef<Set<string>>(new Set());
+  const hasSeenProgressRef = useRef(false);
   const bufferingStartedRef = useRef<number | null>(null);
   /** Mirror of `isBuffering`, readable from the progress tick. */
   const isBufferingRef = useRef(false);
@@ -1476,6 +1515,8 @@ export default function PlayerScreen() {
         targetSeekPosition.current = null;
         bufferingStartedRef.current = null;
         lastProgressTimeRef.current = Date.now();
+        hasSeenProgressRef.current = false;
+          failedAudioTracksRef.current.clear();
         hasStartedPlayingRef.current = false;
         setHasStartedPlaying(false);
         upNextArmedRef.current = false;
@@ -1579,6 +1620,8 @@ export default function PlayerScreen() {
       upNextArmedRef.current = false;
       lastProgressPositionRef.current = 0;
       lastProgressTimeRef.current = Date.now();
+      hasSeenProgressRef.current = false;
+          failedAudioTracksRef.current.clear();
       stopLiveReconnectLoop();
       setPlaybackFailed(false);
       setIsLoading(true);
@@ -1721,6 +1764,8 @@ export default function PlayerScreen() {
       upNextArmedRef.current = false;
       lastProgressPositionRef.current = 0;
       lastProgressTimeRef.current = Date.now();
+      hasSeenProgressRef.current = false;
+          failedAudioTracksRef.current.clear();
       stopLiveReconnectLoop();
       setPlaybackFailed(false);
       setIsLoading(true);
@@ -1978,8 +2023,15 @@ export default function PlayerScreen() {
 
       const now = Date.now();
 
-      // If stream has not yet started playing (waiting for initial buffer and first frame):
-      if (!hasStartedPlayingRef.current) {
+      // If stream has not yet started playing (waiting for initial buffer and first frame).
+      //
+      // Keyed on the clock having MOVED rather than on `hasStartedPlayingRef`,
+      // because `onPlaying` raises that flag the moment ExoPlayer reports the
+      // playing state — which a stream that renders nothing still does. Without
+      // this, such a stream left the initial-load branch immediately and then
+      // fell through the freeze branch below (which needs a moving clock to
+      // reason about), so nothing watched it at all.
+      if (!hasSeenProgressRef.current) {
         const timeSinceTune = now - lastProgressTimeRef.current;
         const initialTimeout = is4K ? 25000 : 15000;
         if (timeSinceTune > initialTimeout) {
@@ -1995,18 +2047,26 @@ export default function PlayerScreen() {
         const buffDuration = bufferingStartedRef.current ? now - bufferingStartedRef.current : 0;
         const maxBufferingAllowed = is4K ? 35000 : 25000;
         if (buffDuration > maxBufferingAllowed) {
-          console.warn(`[Player] ${isLive ? "Live" : "VOD"} stream buffer stalled for ${buffDuration}ms. Scheduling recovery.`);
+          console.warn(`[Player] ${isLive ? "Live" : "VOD"} stream buffer stalled for ${buffDuration}ms. Reconnecting.`);
           lastProgressTimeRef.current = now;
-          schedulePlayerRecovery("bufferStalled", false);
+          // Immediate, with no further grace: the threshold above IS the
+          // wait-and-see period, and it has just elapsed. This asked for a
+          // grace period until now, which layered another 15s on top of an
+          // already 25s wait — 40s of spinner before anything was retried. It
+          // read as harmless only because the grace timer could never fire:
+          // every progress tick tore it down within 250ms (see onProgress).
+          schedulePlayerRecovery("bufferStalled", true);
         }
         return;
       }
 
-      // Stream was actively playing: check if progress has frozen mid-stream.
+      // Stream was actively playing: check if the POSITION has frozen
+      // mid-stream. Event arrival proves nothing here — see the note in
+      // onProgress on why both progress sources keep ticking through a freeze.
       const timeSinceLastProgress = now - lastProgressTimeRef.current;
       if (isLive) {
-        // Live broadcast: if decoder heartbeat stops producing progress ticks for >12s (20s for 4K),
-        // the server dropped the connection or stalled. Trigger reconnect.
+        // Live broadcast: the position has stopped advancing for >12s (20s for
+        // 4K), so the server dropped the connection or the decoder is wedged.
         const liveStallThreshold = is4K ? 20000 : 12000;
         if (timeSinceLastProgress > liveStallThreshold) {
           console.warn(`[Player] Live stream frozen (no progress for ${timeSinceLastProgress}ms). Triggering silent reconnect.`);
@@ -2123,7 +2183,7 @@ export default function PlayerScreen() {
           paused={!isPlaying}
           autoPlay={autoPlay}
           isLive={isLive}
-          is4K={isDetected4K || (is4K && !isLive)}
+          is4K={is4K}
           networkCacheMs={networkCacheMs}
           bufferTuning={bufferTuning}
           selectedAudioTrack={selectedAudioTrack}
@@ -2222,37 +2282,58 @@ export default function PlayerScreen() {
             }, 20000);
           }}
           onProgress={(currentMs, durationMs) => {
-            if (recoveryTimeoutRef.current) {
-              clearTimeout(recoveryTimeoutRef.current);
-              recoveryTimeoutRef.current = null;
-            }
-            if (!hasStartedPlayingRef.current) {
-              hasStartedPlayingRef.current = true;
-              setHasStartedPlaying(true);
-            }
-            if (isLoadingRef.current) {
-              isLoadingRef.current = false;
-              setIsLoading(false);
-            }
-            if (isBufferingRef.current) {
-              isBufferingRef.current = false;
-              setIsBuffering(false);
-            }
-
             if (durationMs > 0 && Math.abs(durationRef.current - durationMs) > 1000) {
               durationRef.current = durationMs;
               setDuration(durationMs);
             }
 
-            // On Live TV, the stream is an ongoing broadcast (currentMs may be fixed or window-relative).
-            // Any onProgress signal confirms that the player is decoding and alive.
-            if (isLive) {
-              lastProgressTimeRef.current = Date.now();
-              bufferingStartedRef.current = null;
-            } else if (currentMs !== lastProgressPositionRef.current || currentMs > 0) {
+            /**
+             * A stream is alive when its POSITION MOVES — never merely because
+             * a progress event arrived.
+             *
+             * Both sources of this callback are plain timers. Native
+             * `timeUpdate` comes from expo-video's `IntervalUpdateClock`, which
+             * is a `Handler` ticking at `timeUpdateEventInterval` regardless of
+             * what the decoder is doing, and the fallback heartbeat in
+             * `ExpoVideoPlayer` fires off `player.playing` alone. A frozen
+             * MPEG-TS stream keeps `playing` true with a stopped clock — the
+             * single most common IPTV failure — so both keep firing at full
+             * rate through it.
+             *
+             * Everything in this block used to run on arrival instead: the
+             * stall clock was reset unconditionally for live and, for
+             * on-demand, behind a `|| currentMs > 0` that made the position
+             * comparison next to it dead code. Worse, cancelling
+             * `recoveryTimeoutRef` on every tick meant a scheduled recovery was
+             * always torn down within 250ms of being armed, so the entire
+             * grace-period path — including `bufferStalled`, the one that
+             * handles a stuck buffer — could never fire. Between them, a frozen
+             * channel spun indefinitely rather than reconnecting. Same lesson
+             * as the VLC path: watch the reported position, not the event.
+             */
+            if (currentMs !== lastProgressPositionRef.current) {
               lastProgressPositionRef.current = currentMs;
               lastProgressTimeRef.current = Date.now();
+              hasSeenProgressRef.current = true;
               bufferingStartedRef.current = null;
+
+              // The stream recovered on its own; stand the reconnect down.
+              if (recoveryTimeoutRef.current) {
+                clearTimeout(recoveryTimeoutRef.current);
+                recoveryTimeoutRef.current = null;
+              }
+              if (!hasStartedPlayingRef.current) {
+                hasStartedPlayingRef.current = true;
+                setHasStartedPlaying(true);
+              }
+              if (isLoadingRef.current) {
+                isLoadingRef.current = false;
+                setIsLoading(false);
+              }
+              if (isBufferingRef.current) {
+                isBufferingRef.current = false;
+                setIsBuffering(false);
+              }
             }
 
             handleNormalizedProgress(currentMs, durationMs);
@@ -2277,26 +2358,42 @@ export default function PlayerScreen() {
           onError={(e) => {
             console.warn("[ExpoVideo] onError", e);
             const errStr = String((e as any)?.message || e || "");
+
+            /**
+             * An audio *decoder* failure, not merely an error that mentions a
+             * format. The old test ORed a bare `includes("audio/")`, which any
+             * source error carrying a Format dump satisfies — and misreading a
+             * source error as an audio error silently disables audio instead of
+             * reconnecting.
+             */
             const isAudioDecoderError =
               errStr.includes("MediaCodecAudioRenderer") ||
-              errStr.includes("audio/mpeg-L2") ||
-              errStr.includes("audio/eac3") ||
-              errStr.includes("audio/");
+              (errStr.includes("Decoder init failed") && errStr.includes("audio/"));
 
             if (isAudioDecoderError) {
-              if (audioTracks.length > 1) {
-                const currentIdx = audioTracks.findIndex((t) => String(t.id) === String(selectedAudioTrack));
-                const nextTrack = audioTracks.find((_, idx) => idx !== currentIdx);
-                if (nextTrack) {
-                  console.log(`[Player] Audio decoder failed on track ${selectedAudioTrack}. Auto-switching to track ${nextTrack.id} (${nextTrack.title})`);
-                  setSelectedAudioTrack(nextTrack.id);
-                  playerRef.current?.selectAudioTrack(nextTrack.id);
-                  return;
-                }
+              // Remember this one, then take the first track not already known
+              // to be undecodable. Exhausting the list is what finally reaches
+              // the disable-audio fallback.
+              if (selectedAudioTrack !== undefined && selectedAudioTrack !== -1) {
+                failedAudioTracksRef.current.add(String(selectedAudioTrack));
+              }
+              const nextTrack = audioTracks.find(
+                (t) => !failedAudioTracksRef.current.has(String(t.id))
+              );
+              if (nextTrack) {
+                console.log(
+                  `[Player] Audio decoder failed on track ${selectedAudioTrack}. Auto-switching to track ${nextTrack.id} (${nextTrack.title})`
+                );
+                setSelectedAudioTrack(nextTrack.id);
+                playerRef.current?.selectAudioTrack(nextTrack.id);
+                return;
               }
 
-              // If single audio track or no alternative, disable audio so video continues playing smoothly without crashing
-              console.warn(`[Player] Audio decoder unavailable for stream (${errStr.slice(0, 80)}). Disabling audio to maintain video playback.`);
+              // Every track has failed — the device has no decoder for any of
+              // them. Keep the picture rather than failing the stream.
+              console.warn(
+                `[Player] No decodable audio track on this stream (tried ${failedAudioTracksRef.current.size}). Disabling audio to keep video playing.`
+              );
               setSelectedAudioTrack(-1);
               playerRef.current?.selectAudioTrack(-1);
               return;
@@ -2305,9 +2402,33 @@ export default function PlayerScreen() {
             const now = Date.now();
             if (now - lastErrorTimeRef.current < 1000) return;
             lastErrorTimeRef.current = now;
+
+            /**
+             * An expired or rejected link is not a blip, so it gets no grace.
+             *
+             * A 401/403 means the portal has invalidated this URL; 404/410 mean
+             * it is gone. Waiting 15s for "self-recovery" on those just delays
+             * the only thing that can help — `handleSilentRetry` re-resolves the
+             * stream through `StreamManager.retryStream`, which mints a new
+             * link. In the logs that wait, plus the initial-frame watchdog
+             * behind it, cost ~16s of black screen before the first real
+             * attempt.
+             */
+            const isDeadLink =
+              /Response code: (401|403|404|410)/.test(errStr) ||
+              // iOS never reports the HTTP code here. AVFoundation surfaces
+              // the same refusal through NSURLError: -1013 is
+              // NSURLErrorUserAuthenticationRequired and -1012 is
+              // NSURLErrorUserCancelledAuthentication. Both mean the panel
+              // rejected these credentials for this link, so waiting out the
+              // grace period only delays the re-resolve that can fix it.
+              /NSURLErrorDomain error -101[23]/.test(errStr);
+
             if (!isRetryingRef.current && !playbackFailed) {
-              // Grant grace period for transient decoder/network blip to allow native auto-recovery
-              schedulePlayerRecovery("onError", false);
+              schedulePlayerRecovery(
+                isDeadLink ? "deadLink" : "onError",
+                isDeadLink
+              );
             }
           }}
         />
@@ -2365,7 +2486,7 @@ export default function PlayerScreen() {
           {vodPoster ? (
             <Image
               source={{ uri: vodPoster }}
-              style={StyleSheet.absoluteFillObject}
+              style={StyleSheet.absoluteFill}
               contentFit="cover"
               blurRadius={35}
             />
@@ -3104,7 +3225,7 @@ function TrackSelectionModal({
         {(focused: boolean) => (
           <View style={S.modalCloseInner}>
             {/* Dark on the phone's white fill, or it is invisible. */}
-            <X size={isPhone ? 13 : ps(1.2)} color={isPhone || focused ? "#000000" : "#FFFFFF"} />
+            <X size={isPhone ? 15 : ps(1.2)} color={isPhone || focused ? "#000000" : "#FFFFFF"} />
             <Text style={[S.modalCloseBtnText, focused && S.modalCloseBtnTextFocused]}>
               CLOSE
             </Text>
@@ -3118,7 +3239,7 @@ function TrackSelectionModal({
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
-  video: { ...StyleSheet.absoluteFillObject },
+  video: { ...StyleSheet.absoluteFill },
 
   bannerHost: {
     position: "absolute",
@@ -3165,7 +3286,7 @@ const S = StyleSheet.create({
   resumeBtnText: { color: "#fff", fontSize: ps(0.82), fontWeight: "900", letterSpacing: 0.8 },
 
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.82)",
     justifyContent: "center",
     alignItems: "center",
@@ -3181,14 +3302,14 @@ const S = StyleSheet.create({
   },
 
   vodLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#000000",
     justifyContent: "center",
     alignItems: "center",
     zIndex: 50,
   },
   vodLoadingBackdropDim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0, 0, 0, 0.90)",
   },
   // Scaled up: this is the only thing on screen while a stream connects, so
@@ -3321,7 +3442,7 @@ const S = StyleSheet.create({
 
   // Shimmer buffering animation on progress rail
   shimmerContainer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: "hidden",
     borderRadius: 2,
     backgroundColor: "rgba(255,255,255,0.05)",
@@ -3374,7 +3495,7 @@ const S = StyleSheet.create({
     letterSpacing: 0.8,
   },
 
-  controlsOverlay: { ...StyleSheet.absoluteFillObject },
+  controlsOverlay: { ...StyleSheet.absoluteFill },
   bottomGradient: { position: "absolute", bottom: 0, left: 0, right: 0, height: "45%" },
 
   qualityBadge: {
@@ -3784,7 +3905,7 @@ const S = StyleSheet.create({
   },
   modalCloseBtnText: {
     color: isPhone ? "#000000" : "#FFFFFF",
-    fontSize: isPhone ? 12 : ps(1.0),
+    fontSize: isPhone ? 13.8 : ps(1.0),
     fontWeight: "900",
     letterSpacing: 2,
   },

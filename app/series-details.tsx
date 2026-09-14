@@ -144,7 +144,7 @@ const EpisodeTile = React.memo(function EpisodeTile({
                   transition={200}
                 />
               ) : (
-                <View style={[StyleSheet.absoluteFillObject, S.posterFallback]}>
+                <View style={[StyleSheet.absoluteFill, S.posterFallback]}>
                   <Tv size={ps(3.5)} color="rgba(255,255,255,0.32)" />
                 </View>
               )}
@@ -722,14 +722,14 @@ export default function SeriesDetailsScreen() {
           {(selectedEpisode?.still || params.logo) ? (
             <Image
               source={{ uri: selectedEpisode?.still || params.logo }}
-              style={[StyleSheet.absoluteFillObject, { opacity: 0.22 }]}
+              style={[StyleSheet.absoluteFill, { opacity: 0.22 }]}
               blurRadius={50}
               contentFit="cover"
             />
           ) : null}
           <LinearGradient
             colors={['rgba(10,12,18,0.78)', 'rgba(8,8,12,0.96)', '#08080a']}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
           />
           <View style={[S.modalTVContent, S.modalBody, isPhone && { paddingBottom: 10 + insets.bottom }]}>
             {/* Poster / Episode Still thumbnail */}
@@ -909,7 +909,7 @@ const S = StyleSheet.create({
   /** The synopsis and credits as their own full-width band, phones only. */
   heroDescBlock: { width: "100%" },
   posterWrapper: { width: isPhone ? 100 : pw(18), aspectRatio: 2 / 3, borderRadius: 20, overflow: "hidden", elevation: 20, shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 20 },
-  poster: { ...StyleSheet.absoluteFillObject },
+  poster: { ...StyleSheet.absoluteFill },
   posterPlaceholder: { backgroundColor: "#1a1a20", alignItems: "center", justifyContent: "center" },
   infoArea: { flex: 1, justifyContent: "flex-end", paddingBottom: ph(0.8) },
   title: { color: "#fff", fontSize: ps(2.2), fontWeight: "900", marginBottom: ph(1.5), textAlign: "left" },

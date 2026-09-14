@@ -291,14 +291,14 @@ const S = StyleSheet.create({
   },
   fieldLabel: {
     color: "rgba(255,255,255,0.32)",
-    fontSize: isPhone ? 10 : ps(0.78),
+    fontSize: isPhone ? 11.5 : ps(0.78),
     fontWeight: "800",
     letterSpacing: 0.8,
   },
-  fieldValue: { color: "#fff", fontSize: isPhone ? 13 : ps(1.1), fontWeight: "700" },
+  fieldValue: { color: "#fff", fontSize: isPhone ? 15 : ps(1.1), fontWeight: "700" },
   fieldValueEmphasis: {
     color: THEME.colors.primary,
-    fontSize: isPhone ? 15 : ps(1.25),
+    fontSize: isPhone ? 17.3 : ps(1.25),
     fontVariant: ["tabular-nums"],
   },
 
@@ -318,6 +318,6 @@ const S = StyleSheet.create({
     borderColor: "transparent",
   },
   actionFocused: { backgroundColor: "#fff", borderColor: "#fff", transform: [{ scale: 1.04 }] },
-  actionText: { color: isPhone ? "#000" : "#fff", fontSize: isPhone ? 13 : ps(1), fontWeight: "900", letterSpacing: 1 },
+  actionText: { color: isPhone ? "#000" : "#fff", fontSize: isPhone ? 15 : ps(1), fontWeight: "900", letterSpacing: 1 },
   actionTextFocused: { color: "#000" },
 });

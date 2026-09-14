@@ -1,5 +1,11 @@
 import React, { useEffect, useState, useRef } from "react";
-import { Stack, useRouter, useNavigationContainerRef } from "expo-router";
+import {
+  Stack,
+  useRouter,
+  useNavigationContainerRef,
+  DarkTheme,
+  ThemeProvider as NavigationThemeProvider,
+} from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -276,44 +282,69 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <View style={[styles.container, { padding: overscanPadding }]}>
             <StatusBar style="light" hidden={true} />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: "#08080a" },
-                animation: Platform.isTV ? "none" : "slide_from_right",
-                // Inactive screens keep their scroll/focus state but stop
-                // re-rendering, so backgrounded grids don't compete with the
-                // foreground screen (or the player) for the JS thread.
-                freezeOnBlur: true,
-              }}
-              initialRouteName="index"
-            >
-              <Stack.Screen name="index" />
-              <Stack.Screen name="portals" />
-              <Stack.Screen name="add-portal" />
-              <Stack.Screen name="dashboard" />
-              <Stack.Screen name="live-tv" options={{ contentStyle: { backgroundColor: "#000000" } }} />
-              <Stack.Screen name="vod" />
-              <Stack.Screen name="series" />
-              <Stack.Screen name="series-details" />
-              <Stack.Screen name="player" options={{ animation: "fade" }} />
-              <Stack.Screen name="search" />
-              <Stack.Screen name="settings" />
-              <Stack.Screen name="privacy-policy" />
-              {/* Set-top-box screens. The guide has always been on disk but
-                  was never registered here, so nothing could route to it. */}
-              <Stack.Screen name="epg" />
-              <Stack.Screen name="speed-test" />
-              <Stack.Screen name="parental-control" />
-              <Stack.Screen name="system-info" />
-              <Stack.Screen name="categories" />
-            </Stack>
+            <NavigationThemeProvider value={NAVIGATION_THEME}>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: "#08080a" },
+                  animation: Platform.isTV ? "none" : "slide_from_right",
+                  // Inactive screens keep their scroll/focus state but stop
+                  // re-rendering, so backgrounded grids don't compete with the
+                  // foreground screen (or the player) for the JS thread.
+                  freezeOnBlur: true,
+                }}
+                initialRouteName="index"
+              >
+                <Stack.Screen name="index" />
+                <Stack.Screen name="portals" />
+                <Stack.Screen name="add-portal" />
+                <Stack.Screen name="dashboard" />
+                <Stack.Screen name="live-tv" options={{ contentStyle: { backgroundColor: "#000000" } }} />
+                <Stack.Screen name="vod" />
+                <Stack.Screen name="series" />
+                <Stack.Screen name="series-details" />
+                <Stack.Screen name="player" options={{ animation: "fade" }} />
+                <Stack.Screen name="search" />
+                <Stack.Screen name="settings" />
+                <Stack.Screen name="privacy-policy" />
+                {/* Set-top-box screens. The guide has always been on disk but
+                    was never registered here, so nothing could route to it. */}
+                <Stack.Screen name="epg" />
+                <Stack.Screen name="speed-test" />
+                <Stack.Screen name="parental-control" />
+                <Stack.Screen name="system-info" />
+                <Stack.Screen name="categories" />
+              </Stack>
+            </NavigationThemeProvider>
           </View>
         </SafeAreaProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
 }
+
+/**
+ * The navigator's own palette, which is a separate thing from `ThemeProvider`
+ * in `src/context` — that one is the app's colours, this one is what
+ * react-navigation paints underneath the screens.
+ *
+ * Left unset it falls back to the light default, whose `background` is
+ * `rgb(242, 242, 242)` and whose `card` is pure white. Those show during a
+ * `slide_from_right` transition, in the moment between a screen being mounted
+ * and painted — a white flash on a black app, on every navigation.
+ *
+ * `contentStyle` on the navigator does not cover it: that styles the screen's
+ * own container, and this is the surface behind it. The two are set to the same
+ * `#08080a` so there is no seam to notice if one ever shows through the other.
+ */
+const NAVIGATION_THEME = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: "#08080a",
+    card: "#08080a",
+  },
+};
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#08080a" },

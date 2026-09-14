@@ -613,7 +613,7 @@ const S = StyleSheet.create({
   },
   headerSubtitle: {
     color: "rgba(255, 255, 255, 0.55)",
-    fontSize: isPhone ? 12.5 : ps(1.15),
+    fontSize: isPhone ? 14.4 : ps(1.15),
     marginTop: ph(0.8),
   },
 
@@ -635,13 +635,13 @@ const S = StyleSheet.create({
   },
   statusBadgeTextActive: {
     color: "#4ade80",
-    fontSize: isPhone ? 12.5 : ps(1.1),
+    fontSize: isPhone ? 14.4 : ps(1.1),
     fontWeight: "800",
     letterSpacing: 1,
   },
   statusBadgeTextInactive: {
     color: "rgba(255, 255, 255, 0.5)",
-    fontSize: isPhone ? 12.5 : ps(1.1),
+    fontSize: isPhone ? 14.4 : ps(1.1),
     fontWeight: "800",
     letterSpacing: 1,
   },
@@ -684,14 +684,14 @@ const S = StyleSheet.create({
   },
   statLabel: {
     color: "rgba(255, 255, 255, 0.45)",
-    fontSize: isPhone ? 10.5 : ps(0.88),
+    fontSize: isPhone ? 12.1 : ps(0.88),
     fontWeight: "800",
     letterSpacing: 0.8,
     textTransform: "uppercase",
   },
   statValue: {
     color: "#FFFFFF",
-    fontSize: isPhone ? 14.5 : ps(1.4),
+    fontSize: isPhone ? 16.7 : ps(1.4),
     fontWeight: "800",
     marginTop: ph(0.6),
   },
@@ -723,14 +723,14 @@ const S = StyleSheet.create({
   },
   warningTitle: {
     color: "#fbbf24",
-    fontSize: isPhone ? 13 : ps(1.3),
+    fontSize: isPhone ? 15 : ps(1.3),
     fontWeight: "800",
   },
   warningText: {
     color: "rgba(251, 191, 36, 0.85)",
-    fontSize: isPhone ? 12 : ps(1.05),
+    fontSize: isPhone ? 13.8 : ps(1.05),
     marginTop: ph(0.3),
-    lineHeight: isPhone ? 17 : ps(1.45),
+    lineHeight: isPhone ? 19.5 : ps(1.45),
   },
   warningBtnWrapper: {},
   warningBtn: {
@@ -745,7 +745,7 @@ const S = StyleSheet.create({
   },
   warningBtnText: {
     color: "#0E0F14",
-    fontSize: isPhone ? 12.5 : ps(1.15),
+    fontSize: isPhone ? 14.4 : ps(1.15),
     fontWeight: "900",
   },
   warningBtnTextFocused: {
@@ -767,7 +767,7 @@ const S = StyleSheet.create({
   },
   noticeBannerText: {
     color: "#86efac",
-    fontSize: isPhone ? 13 : ps(1.2),
+    fontSize: isPhone ? 15 : ps(1.2),
     fontWeight: "700",
     flex: 1,
   },
@@ -781,7 +781,7 @@ const S = StyleSheet.create({
     marginBottom: ph(4.5),
   },
   sectionLabel: {
-    fontSize: isPhone ? 13.5 : ps(1.35),
+    fontSize: isPhone ? 15.5 : ps(1.35),
     fontWeight: "900",
     color: "rgba(255, 255, 255, 0.65)",
     letterSpacing: 2,
@@ -841,7 +841,7 @@ const S = StyleSheet.create({
     paddingRight: pw(1),
   },
   rowTitle: {
-    fontSize: isPhone ? 14.5 : ps(1.45),
+    fontSize: isPhone ? 16.7 : ps(1.45),
     color: "#FFFFFF",
     fontWeight: "700",
   },
@@ -850,10 +850,10 @@ const S = StyleSheet.create({
     fontWeight: "900",
   },
   rowSubtitle: {
-    fontSize: isPhone ? 12.5 : ps(1.1),
+    fontSize: isPhone ? 14.4 : ps(1.1),
     color: "rgba(255, 255, 255, 0.55)",
     marginTop: 3,
-    lineHeight: isPhone ? 17 : ps(1.5),
+    lineHeight: isPhone ? 19.5 : ps(1.5),
   },
   rowSubtitleFocused: {
     color: "rgba(0, 0, 0, 0.65)",
@@ -873,7 +873,7 @@ const S = StyleSheet.create({
   },
   badgePillText: {
     color: "rgba(255, 255, 255, 0.8)",
-    fontSize: isPhone ? 12 : ps(1.05),
+    fontSize: isPhone ? 13.8 : ps(1.05),
     fontWeight: "700",
   },
   badgePillTextFocused: {
@@ -947,13 +947,13 @@ const S = StyleSheet.create({
   },
   infoCardTitle: {
     color: "#93c5fd",
-    fontSize: isPhone ? 13 : ps(1.2),
+    fontSize: isPhone ? 15 : ps(1.2),
     fontWeight: "800",
   },
   infoCardText: {
     color: "rgba(147, 197, 253, 0.85)",
-    fontSize: isPhone ? 12 : ps(1.05),
-    lineHeight: isPhone ? 17 : ps(1.5),
+    fontSize: isPhone ? 13.8 : ps(1.05),
+    lineHeight: isPhone ? 19.5 : ps(1.5),
     marginTop: ph(0.3),
   },
 });

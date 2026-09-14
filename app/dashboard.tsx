@@ -52,6 +52,53 @@ import { Text } from '../src/components/Text';
 
 const RAIL_H_PAD = pw(5);
 
+/**
+ * The air bracketing the phone hero copy, tight above and open below.
+ *
+ * "Unlimited Entertainment" and its byline are one block, and the two gaps
+ * around it do different jobs rather than matching. Above, the copy belongs
+ * with the logo it sits under — closing that gap groups them as one masthead.
+ * Below, the Search and TV Guide pills are controls, not more copy, and the
+ * larger gap is what separates the thing you read from the thing you press.
+ *
+ * Neither says anything about the gap *inside* the block: the title and byline
+ * stay tight together as a single unit.
+ */
+const PHONE_HERO_GAP_ABOVE = 0;
+const PHONE_HERO_GAP_BELOW = 20;
+
+/** The logo box, and so the height of the header row it is the tallest thing in. */
+const PHONE_HEADER_H = 80;
+/** The pinned height of a hero pill — see `heroPillGradient`. */
+const PHONE_PILL_H = 36;
+/** Gap between the three stacked browse cards in portrait. */
+const PORTRAIT_CARD_GAP = 12;
+
+/**
+ * Everything on the phone dashboard that is not a browse card, so the cards
+ * can take exactly what is left.
+ *
+ * This used to be a flat `290` shared with tablet portrait, and it was wrong by
+ * about 77dp — it over-reserved, so the computed card height came out below the
+ * 185 floor on every handset and the floor, not the screen, decided how tall a
+ * card was. The page then came to ~816dp against an 800dp phone and scrolled,
+ * and no amount of adjusting the floor could fix that, because the floor was
+ * the thing overflowing.
+ *
+ * Summed from the parts rather than measured once, so editing a gap above
+ * cannot silently put it back out of step. Insets are not included: they are
+ * subtracted separately at the call site, where they are known.
+ */
+const PHONE_BROWSE_CHROME =
+  PHONE_HEADER_H +
+  PHONE_HERO_GAP_ABOVE +
+  // The hero: title box, byline box, the gap to the pills, the pills, and the
+  // section's own bottom margin. The two text boxes are the rendered heights
+  // including Android's font padding, not the font sizes.
+  (23 + 20 + PHONE_HERO_GAP_BELOW + PHONE_PILL_H + 10) +
+  // The two gaps between the three cards belong to the cards' own budget.
+  2 * PORTRAIT_CARD_GAP;
+
 // ─── Components ───────────────────────────────────────────────────────────────
 
 const HeroPill = ({
@@ -81,7 +128,7 @@ const HeroPill = ({
   // was asked for over the guideline, and `Focusable` has no `hitSlop` to keep
   // the tap area while shrinking the paint. Noted so it is a decision, not a
   // drift.
-  const pillIconSize = !Platform.isTV ? (isPhone ? 12 : isPortrait ? 15 : isTablet ? tps(18) : 16) : ps(2.2);
+  const pillIconSize = !Platform.isTV ? (isPhone ? 13.8 : isPortrait ? 15 : isTablet ? tps(18) : 16) : ps(2.2);
 
   return (
     <Focusable
@@ -121,7 +168,7 @@ const HeroPill = ({
             <Text style={[
               S.heroPillText,
               !Platform.isTV && {
-                fontSize: isPhone ? 10 : isPortrait ? 13 : (isTablet ? tps(15) : 12),
+                fontSize: isPhone ? 11.5 : isPortrait ? 13 : (isTablet ? tps(15) : 12),
               },
               focused && { color: "#000" }
             ]}>
@@ -154,7 +201,7 @@ export default function DashboardScreen() {
   // over the guideline, and `Focusable` exposes no `hitSlop`, so the tap area
   // shrinks with the paint. Recorded so it stays a decision rather than drift.
   const actionBtnSize = !Platform.isTV ? (isPhone ? 36 : isPortrait ? 50 : (isTablet ? tps(54) : 50)) : pw(4.6);
-  const actionIconSize = !Platform.isTV ? (isPhone ? 17 : isPortrait ? 22 : (isTablet ? tps(24) : 22)) : ps(2.3);
+  const actionIconSize = !Platform.isTV ? (isPhone ? 19.6 : isPortrait ? 22 : (isTablet ? tps(24) : 22)) : ps(2.3);
 
   // Portrait card height: tall enough to look cinematic, capped so 3 fit comfortably.
   // ScrollView handles any overflow on unusually small screens.
@@ -163,16 +210,24 @@ export default function DashboardScreen() {
   // bands from the same measurement, and repeating the expression is how the
   // two would drift.
   const portraitCardSpace = Math.floor(
-    (windowHeight - insets.top - insets.bottom - 290) / 3
+    (windowHeight -
+      insets.top -
+      insets.bottom -
+      (isPhone ? PHONE_BROWSE_CHROME : 290)) /
+      3
   );
-  // The phone band is lower at both ends. On a ~873dp-tall handset the
-  // measurement lands around 174, so the old floor of 180 was what the card
-  // actually took — the clamp, not the space, was setting the height. A 150
-  // ceiling is the reduction; the 120 floor keeps a small handset from
-  // collapsing the artwork to a strip.
+  // The phone floor is a safety net, not the driver.
+  //
+  // It was 185, which on every handset was *above* what the measurement
+  // produced — so it set the card height outright and the page overflowed by
+  // however much the screen was short. With `PHONE_BROWSE_CHROME` now telling
+  // the truth about the space, the measurement is the answer and the card
+  // shrinks to fit; 150 only catches a handset small enough that the artwork
+  // would otherwise collapse to a strip, and there the ScrollView takes over
+  // as it always did.
   const portraitCardHeight = isPortrait
     ? isPhone
-      ? Math.max(185, Math.min(290, portraitCardSpace))
+      ? Math.max(150, Math.min(290, portraitCardSpace))
       : Math.max(180, Math.min(290, portraitCardSpace))
     : undefined;
   // Errors surface through an in-tree overlay — Alert.alert does not
@@ -276,7 +331,7 @@ export default function DashboardScreen() {
         S.headerBranding,
         { paddingHorizontal: hPad },
         isPortrait
-          ? { marginTop: isPhone ? 0 : 6, marginBottom: isPhone ? 4 : 18 }
+          ? { marginTop: isPhone ? 0 : 6, marginBottom: isPhone ? PHONE_HERO_GAP_ABOVE : 18 }
           : (!Platform.isTV && { marginTop: 4, marginBottom: isTablet ? vGap(6, 10) : 10 })
       ]}>
         <View style={S.logoRow}>
@@ -401,7 +456,7 @@ export default function DashboardScreen() {
         {/*
           * No hero card on a phone.
           *
-          * This gradient is the hero's container — `absoluteFillObject` behind
+          * This gradient is the hero's container — `absoluteFill` behind
           * the copy and the pills, rounded, at `zIndex: -1`. On a handset it
           * reads as a boxed panel inset from a background that is already
           * cinematic, so the hero is drawn straight onto `CinematicBackground`
@@ -425,7 +480,7 @@ export default function DashboardScreen() {
             // then applied to every non-TV device, so a 1506dp tablet was
             // reading the same 20dp title as a 393dp phone. The tablet gets its
             // own step now.
-            fontSize: isPhone ? 15 : isPortrait ? 18 : (isTablet ? tps(28) : 20),
+            fontSize: isPhone ? 17.3 : isPortrait ? 18 : (isTablet ? tps(28) : 20),
             marginVertical: isPhone ? 0 : isTablet && !isPortrait ? vGap(2, 6) : 6,
           }
         ]}>
@@ -436,16 +491,16 @@ export default function DashboardScreen() {
           style={[
             S.heroDesc,
             !Platform.isTV && {
-              fontSize: isPhone ? 11 : isPortrait ? 12 : (isTablet ? tps(15) : 13),
-              lineHeight: isPhone ? 14 : isPortrait ? 15 : (isTablet ? tps(22) : 19),
-              marginBottom: isPhone ? 10 : isPortrait ? 18 : (isTablet ? vGap(10, 26) : 14),
+              fontSize: isPhone ? 12.6 : isPortrait ? 12 : (isTablet ? tps(15) : 13),
+              lineHeight: isPhone ? 16.1 : isPortrait ? 15 : (isTablet ? tps(22) : 19),
+              marginBottom: isPhone ? PHONE_HERO_GAP_BELOW : isPortrait ? 18 : (isTablet ? vGap(10, 26) : 14),
               // A measure, not a width: 560 was chosen against a 1280 panel and
               // is a short line on a 1506 one.
               maxWidth: isPortrait ? "100%" : (isTablet ? tps(680) : 480),
             }
           ]}
         >
-          Access thousands of channels, global movies and exclusive series directly on your screen.
+          Access thousands of channels, global movies and series
         </Text>
         <View style={[S.heroButtons, !Platform.isTV && { gap: isPortrait ? 10 : 12 }]}>
           {/* Initial focus belongs to the Live TV tile below, not here. */}
@@ -533,7 +588,7 @@ export default function DashboardScreen() {
                     <LinearGradient
                       colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.35)", "rgba(8,8,12,0.92)"]}
                       locations={[0, 0.45, 1]}
-                      style={StyleSheet.absoluteFillObject}
+                      style={StyleSheet.absoluteFill}
                     />
 
                     {/* Text container sitting on top at the bottom with NO icon background */}
@@ -545,8 +600,11 @@ export default function DashboardScreen() {
                         gap: 8,
                       }
                     ]}>
+                      {/* The icon takes a phone branch of its own: the
+                          `isPortrait` one it used to fall through to is also a
+                          tablet held upright, which does not take the bump. */}
                       <DynamicIcon name={cat.icon}
-                        size={!Platform.isTV ? (isPortrait ? 20 : (isTablet ? tps(22) : 20)) : ps(2.2)}
+                        size={!Platform.isTV ? (isPhone ? 23 : isPortrait ? 20 : (isTablet ? tps(22) : 20)) : ps(2.2)}
                         color={focused ? "#FFFFFF" : "rgba(255,255,255,0.75)"}
                       />
                       <Text style={[
@@ -599,7 +657,12 @@ export default function DashboardScreen() {
               }
             ]}
             showsVerticalScrollIndicator={false}
+            // `bounces` is iOS-only, so on Android nothing was suppressing the
+            // overscroll stretch: the dashboard fits, but every drag still
+            // pulled the whole page and sprang it back, which reads as the
+            // screen being scrollable when it has nowhere to go.
             bounces={false}
+            overScrollMode="never"
           >
             {dashboardContent}
           </ScrollView>
@@ -729,14 +792,14 @@ const S = StyleSheet.create({
   backgroundArea: {
     // Full-bleed. The old ph(70) cap ended the backdrop 70% down the screen and
     // left a hard seam with the flat container colour below it.
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   bgImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     opacity: 0.45,
   },
   bgGradient: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   bgBottomFade: {
     position: "absolute",
@@ -812,7 +875,7 @@ const S = StyleSheet.create({
     marginBottom: ph(1.5),
   },
   heroGradientOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: ps(2),
     zIndex: -1,
   },

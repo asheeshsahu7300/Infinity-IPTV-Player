@@ -280,7 +280,7 @@ const S = StyleSheet.create({
     paddingBottom: ph(1),
   },
   headerTitle: { color: "#fff", fontSize: ps(2.2), fontWeight: "900", letterSpacing: 0.5 },
-  headerSubtitle: { color: THEME.colors.textDim, fontSize: isPhone ? 12.5 : ps(1.1), marginTop: ph(0.6) },
+  headerSubtitle: { color: THEME.colors.textDim, fontSize: isPhone ? 14.4 : ps(1.1), marginTop: ph(0.6) },
 
   /*
    * The three tabs have to fit one row on a phone, and at the TV's padding they
@@ -305,7 +305,7 @@ const S = StyleSheet.create({
   },
   tabActive: { backgroundColor: "#F5F5F5" },
   tabFocused: { backgroundColor: "#F5F5F5", borderColor: "transparent", borderWidth: 0 },
-  tabText: { color: "#fff", fontSize: isPhone ? 12.5 : ps(1.3), fontWeight: "900", letterSpacing: 1 },
+  tabText: { color: "#fff", fontSize: isPhone ? 14.4 : ps(1.3), fontWeight: "900", letterSpacing: 1 },
 
   listHost: { flex: 1, paddingHorizontal: pw(8) },
   listContent: { paddingBottom: ph(4), paddingTop: ph(1) },
@@ -323,7 +323,7 @@ const S = StyleSheet.create({
     backgroundColor: "#17181c",
   },
   rowFocused: { backgroundColor: "#F5F5F5", borderColor: "transparent", borderWidth: 0 },
-  rowName: { flex: 1, color: "#fff", fontSize: isPhone ? 14.5 : ps(1.5), fontWeight: "700" },
+  rowName: { flex: 1, color: "#fff", fontSize: isPhone ? 16.7 : ps(1.5), fontWeight: "700" },
   rowNameHidden: { color: "rgba(255,255,255,0.35)" },
   onFocus: { color: "#000" },
 
@@ -350,7 +350,7 @@ const S = StyleSheet.create({
   empty: { alignItems: "center", justifyContent: "center", paddingVertical: ph(10), gap: ph(1.5) },
   emptyText: {
     color: "rgba(255,255,255,0.3)",
-    fontSize: isPhone ? 12 : ps(1),
+    fontSize: isPhone ? 13.8 : ps(1),
     textAlign: "center",
     maxWidth: pw(40),
   },
@@ -371,6 +371,6 @@ const S = StyleSheet.create({
   },
   actionFocused: { backgroundColor: "#fff", borderColor: "transparent", borderWidth: 0 },
   actionDisabled: { opacity: 0.45 },
-  actionText: { color: isPhone ? "#000" : "#fff", fontSize: isPhone ? 13 : ps(1.3), fontWeight: "900", letterSpacing: 1 },
+  actionText: { color: isPhone ? "#000" : "#fff", fontSize: isPhone ? 15 : ps(1.3), fontWeight: "900", letterSpacing: 1 },
   actionTextFocused: { color: "#000" },
 });

@@ -1,9 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { View, StyleSheet, ActivityIndicator, FlatList, Platform, InteractionManager, BackHandler, Pressable , TextInput as RNTextInput, useWindowDimensions } from 'react-native';
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useRouter, useIsFocused } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useIsFocused } from "@react-navigation/native";
 
 import { usePortalStore, Channel, Category } from "../src/store/portalStore";
 import { portalApi } from "../src/services/portalApi";
@@ -183,7 +182,7 @@ const S = StyleSheet.create({
     height: "100%",
   },
   cardFallback: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
@@ -204,9 +203,15 @@ const S = StyleSheet.create({
     // Explicit leading on the phone so the label's height is a number we know
     // rather than whatever the font's metrics produce. The row height is fixed
     // through `getItemLayout`, so the tighter the row gets the less the gap can
-    // afford to be an estimate — with these pinned, the label is exactly 20dp
-    // (11 + 9) and the remaining slack is real.
-    ...(isPhone ? { lineHeight: 11 } : null),
+    // afford to be an estimate — with these pinned, the label is exactly 23dp
+    // (13 + 10) and the remaining slack is real.
+    //
+    // 13 and 10, up from 11 and 9, because `PHONE_UI_SCALE` took these two
+    // labels from 8.8/7.0dp to 10.1/8.1dp. At the old leading the glyphs no
+    // longer fit their line box (1.09x is below what Inter needs for
+    // descenders) and a fixed row clips rather than scrolls, so the `24` in
+    // ROW_HEIGHT moved to `27` in step to keep the same 4dp of air.
+    ...(isPhone ? { lineHeight: 13 } : null),
   },
   cardTitleFocused: {
     fontWeight: "900",
@@ -217,7 +222,7 @@ const S = StyleSheet.create({
     fontWeight: "600",
     textAlign: "center",
     marginTop: isPhone ? 0 : 2,
-    ...(isPhone ? { lineHeight: 9 } : null),
+    ...(isPhone ? { lineHeight: 10 } : null),
   },
   cardNumber: {
     position: "absolute",
@@ -587,7 +592,12 @@ export default function LiveTVScreen() {
         idLower !== "*"
       );
     });
-    return valid[0]?.id ? String(valid[0].id) : "";
+    // Run the same hidden-category filter `sidebarCategories` does.
+    // Without it this can pick a category the row never renders — the
+    // selection is then valid by every check but matches no pill, so the
+    // screen opens with nothing highlighted.
+    const visible = hiddenCategories.filter("live", valid);
+    return visible[0]?.id ? String(visible[0].id) : "";
   });
   const [displayChannels, setDisplayChannels] = useState<Channel[]>([]);
   const displayChannelsRef = useRef<Channel[]>([]);
@@ -701,12 +711,16 @@ export default function LiveTVScreen() {
   // The gap a viewer sees between tiles is simply `extra - label`: the wrapper
   // padding and the leftover slack add up to whatever the label does not use.
   //
-  // On a phone the label is pinned to exactly 20dp — `cardTitle` and
-  // `cardCategory` carry explicit `lineHeight`s (11 + 9), the category's top
-  // margin is 0 and `cardInfo`'s bottom padding is 0 — so 24 leaves 4dp of air
+  // On a phone the label is pinned to exactly 23dp — `cardTitle` and
+  // `cardCategory` carry explicit `lineHeight`s (13 + 10), the category's top
+  // margin is 0 and `cardInfo`'s bottom padding is 0 — so 27 leaves 4dp of air
   // between one tile's label and the next tile, down from ~18 at the original
   // 48. Every dp of that came from making the label smaller or more certain,
   // not from letting the row overlap it.
+  //
+  // The label was 20dp (11 + 9) against a `+24` row until `PHONE_UI_SCALE`
+  // enlarged the phone type scale; both numbers moved together, since the 4dp
+  // of air is the part that has to stay.
   //
   // 24 is close to the floor. The row height is fixed through `getItemLayout`,
   // so anything the label overruns is clipped rather than scrolled, and only
@@ -725,7 +739,7 @@ export default function LiveTVScreen() {
    */
   const CARD_ASPECT = 1.085;
   const ROW_HEIGHT = isPortrait
-    ? Math.floor(tileWidth + (isPhone ? 24 : 48))
+    ? Math.floor(tileWidth + (isPhone ? 27 : 48))
     : Math.min(
         Math.floor(AVAILABLE_VIEWPORT_HEIGHT / targetVisibleRows),
         Math.round(tileWidth * CARD_ASPECT) + 12
@@ -973,6 +987,18 @@ export default function LiveTVScreen() {
       if (reset) restoreFocusPosition(list);
     } catch (err) {
       console.warn("Live TV Data Fetch Error:", err);
+      /**
+       * A failed *initial* load has to say so. Both the retry button and the
+       * background resync hang off `loadFailed`, and this path never set it —
+       * so a 503 from the panel, which `axiosWithRetry` has already retried
+       * three times by the time it lands here, surfaced as a bare "No Channels
+       * Found" with nothing to press and nothing happening behind it.
+       *
+       * Only on `reset`. A pagination failure keeps the channels already on
+       * screen, and `reportLoadFailure` would also pin `hasMore` to false,
+       * which would stop paging for good even once the panel recovered.
+       */
+      if (reset) reportLoadFailure();
     } finally {
       setIsLoading(false);
       setLoadingMore(false);

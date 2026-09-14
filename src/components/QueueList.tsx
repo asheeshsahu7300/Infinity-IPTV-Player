@@ -11,7 +11,7 @@ import { Platform, ScrollView, StyleSheet, View, Pressable, useWindowDimensions 
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Focusable, FocusGroup, Overlay } from "../tv";
-import { THEME, ph, ps, pw } from "../theme/tokens";
+import { THEME, ph, phoneDp, ps, pw } from "../theme/tokens";
 import { isTouch } from "../utils/tabletUtils";
 import { resumeIndex } from "../services/resumeIndex";
 import { formatRuntime } from "../utils/duration";
@@ -95,7 +95,7 @@ const QueueRow = React.memo(
               {watched && !isCurrent ? (
                 <DynamicIcon
                   name="checkmark-circle"
-                  size={isTouch ? 14 : ps(1)}
+                  size={isTouch ? phoneDp(14) : ps(1)}
                   color={focused ? "rgba(0,0,0,0.5)" : "#34c759"}
                 />
               ) : null}
@@ -115,7 +115,7 @@ const QueueRow = React.memo(
                 />
               ) : (
                 <Film
-                  size={isTouch ? 18 : ps(1.6)}
+                  size={isTouch ? phoneDp(18) : ps(1.6)}
                   color={focused ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.3)"}
                 />
               )}
@@ -247,7 +247,7 @@ export function QueueList({
       contentStyle={S.overlayContent}
     >
       <Pressable
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
         onPress={onClose}
         accessibilityLabel="Close queue list"
       />
@@ -294,7 +294,7 @@ const S = StyleSheet.create({
     justifyContent: "flex-start",
   },
   overlayContent: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     maxWidth: "100%",
     maxHeight: "100%",
   },

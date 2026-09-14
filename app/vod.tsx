@@ -1,9 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { View, StyleSheet, ActivityIndicator, Dimensions, Platform, FlatList, InteractionManager, BackHandler, Animated, Pressable , TextInput as RNTextInput, useWindowDimensions } from 'react-native';
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useRouter, useIsFocused } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useIsFocused } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 
@@ -528,7 +527,7 @@ const MovieItem = React.memo(function MovieItem({
                   transition={200}
                 />
               ) : (
-                <View style={[StyleSheet.absoluteFillObject, S.posterFallback]}>
+                <View style={[StyleSheet.absoluteFill, S.posterFallback]}>
                   <Film size={ps(4.2)} color="rgba(255,255,255,0.32)" />
                 </View>
               )}
@@ -1716,14 +1715,14 @@ export default function VODScreen() {
           {selectedVod?.logo && (
             <Image
               source={{ uri: selectedVod.logo }}
-              style={[StyleSheet.absoluteFillObject, { opacity: 0.22 }]}
+              style={[StyleSheet.absoluteFill, { opacity: 0.22 }]}
               blurRadius={50}
               contentFit="cover"
             />
           )}
           <LinearGradient
             colors={['rgba(10,12,18,0.78)', 'rgba(8,8,12,0.96)', '#08080a']}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
           />
           {/* The sheet sits flush to the bottom edge, so on a phone the last
               button would otherwise land under the gesture bar. */}

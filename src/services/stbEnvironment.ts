@@ -377,7 +377,46 @@ export function isPlayableStreamUrl(url: string | null | undefined): boolean {
  * is enabled, or if the URL contains a known stale/dead middleware domain.
  * Also constructs a fallback same-host URL if the streamUrl is empty.
  */
+/**
+ * Ask for the HLS variant of a live stream on Apple platforms.
+ *
+ * AVFoundation cannot play raw MPEG-TS. Given a `.ts` it range-requests the
+ * file, gets a 200 with no `Content-Length` — which is what an endless live
+ * stream looks like — and fails with CoreMedia -12939 ("byte range and no
+ * content length"), surfaced as AVFoundation -11850 "Operation Stopped" with
+ * the misleading "The server is not correctly configured". The server is fine;
+ * the container is one AVPlayer has never supported.
+ *
+ * `XtreamApi.builditvUrl` already asks for `.m3u8` on iOS, but that only fixes
+ * URLs built *now*: channel lists are cached and persisted, and a resolved link
+ * that has been through a portal redirect comes back as whatever the server
+ * sent — typically `.ts` with a `play_token` query. So the swap has to happen
+ * here too, at the last point before the URL reaches the player, where every
+ * source converges.
+ *
+ * Rewriting cannot make things worse on iOS: a `.ts` there cannot play at all,
+ * so the downside of a panel that serves no HLS variant is a 404 instead of a
+ * decode failure. Android is untouched — ExoPlayer reads both.
+ *
+ * Only the final path segment is considered, so a `.ts` inside a query string
+ * is left alone, and any query or fragment is preserved.
+ */
+export function adaptLiveContainerForPlatform(url: string): string {
+  if (Platform.OS !== "ios" || !url) return url;
+  return url.replace(/(\/[^/?#]+)\.ts(?=$|[?#])/i, "$1.m3u8");
+}
+
 export function applySameHostStreamProxy(
+  streamUrl: string,
+  portal: Portal | null | undefined,
+  cmd?: string
+): string {
+  return adaptLiveContainerForPlatform(
+    resolveSameHostStreamUrl(streamUrl, portal, cmd)
+  );
+}
+
+function resolveSameHostStreamUrl(
   streamUrl: string,
   portal: Portal | null | undefined,
   cmd?: string

@@ -1,6 +1,6 @@
 import React, { Component, ReactNode } from 'react';
 import { View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { THEME } from '../theme/tokens';
+import { phoneDp, THEME } from '../theme/tokens';
 import { RefreshCw, TriangleAlert } from 'lucide-react-native';
 import { Text } from './Text';
 
@@ -87,7 +87,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               </View>
             )}
             <TouchableOpacity style={styles.button} onPress={this.handleReset}>
-              <RefreshCw size={20} color="#fff" />
+              <RefreshCw size={phoneDp(20)} color="#fff" />
               <Text style={[styles.buttonText, { marginLeft: 8 }]}>Try Again</Text>
             </TouchableOpacity>
           </View>

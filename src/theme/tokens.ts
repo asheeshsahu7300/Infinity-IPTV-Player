@@ -78,8 +78,34 @@ const REF_UNIT = (960 + 540) / 2;
  * instead of 7.0dp, which is the illegibility this tier exists to fix, not
  * quite fixed. Each function gets the normaliser for its own reference value.
  */
-const PHONE_PS_NORM = isPhone ? (REF_UNIT * 1.3) / ((W + H) / 2) : 1;
-const PHONE_PSRAW_NORM = isPhone ? REF_UNIT / ((W + H) / 2) : 1;
+/**
+ * A deliberate size bump on top of the normalisation above — phone text and
+ * icons read too small at reference dp.
+ *
+ * The normalisers restore the *reference* size, which is the size these values
+ * were designed at on a TV canvas viewed from a sofa. That is the right
+ * starting point but not the right finish: the same dp at arm's length on a
+ * handset is a much smaller angular size than the reference tier assumes, and
+ * a phone is also the one tier where the viewer cannot lean back.
+ *
+ * Kept as its own factor rather than folded into `REF_UNIT` so that what is
+ * "correct normalisation" stays separable from what is "a judgement about
+ * legibility" — change this number, not the reference canvas, to retune.
+ *
+ * This is one of two places the bump is applied, and both have to move
+ * together or the phone type scale comes out mixed. Roughly 165 call sites
+ * size text and icons through `ps`/`psRaw` and are covered here; another ~75
+ * hardcode a phone number (e.g. `fontSize: isPhone ? 16.1 : ps(1.5)`, which was
+ * 14 before this bump) and were scaled
+ * by the same 1.15 in place. A new hardcoded phone size should be written
+ * already-scaled, or better, expressed through `ps`.
+ *
+ * Exactly 1 on TV and tablet, like the normalisers it multiplies.
+ */
+const PHONE_UI_SCALE = 1.15;
+
+const PHONE_PS_NORM = isPhone ? (PHONE_UI_SCALE * REF_UNIT * 1.3) / ((W + H) / 2) : 1;
+const PHONE_PSRAW_NORM = isPhone ? (PHONE_UI_SCALE * REF_UNIT) / ((W + H) / 2) : 1;
 
 /**
  * The canvas the tablet tier was tuned against: a 1280x800 panel.
@@ -123,6 +149,23 @@ export const ps = (pct: number) =>
  */
 export const psRaw = (pct: number) =>
   ((pw(pct) + ph(pct)) / 2) * PHONE_PSRAW_NORM * TABLET_PS_NORM;
+
+/**
+ * A raw dp value that still takes the phone bump. Unchanged on TV and tablet.
+ *
+ * `ps`/`psRaw` carry `PHONE_UI_SCALE` for everything sized as a percentage of
+ * the canvas, and hardcoded `isPhone ? 14 : ...` values were scaled in place.
+ * Neither covers the third case: a size written as a bare number for *every*
+ * tier, like `<DynamicIcon size={24} />` in the shared header. Those silently
+ * sat out the bump and ended up small next to text that had grown — which is
+ * how the dashboard's icons stayed put while its labels did not.
+ *
+ * Use this for a raw dp that should track the phone type scale — chrome sized
+ * to sit beside text. Not for hero graphics (a 52dp offline glyph, a spinner):
+ * those are pictures, not legibility, and they are already large.
+ */
+export const phoneDp = (dp: number) =>
+  isPhone ? Math.round(dp * PHONE_UI_SCALE * 10) / 10 : dp;
 
 /**
  * The shared artwork-card frame: radius, hairline and wash.

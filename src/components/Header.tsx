@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LucideIcon } from "lucide-react-native";
+import { phoneDp } from '../theme/tokens';
 import { Text } from './Text';
 
 
@@ -31,7 +32,7 @@ export default function Header({ title, showBack = false, rightAction }: HeaderP
         
         {rightAction ? (
           <TouchableOpacity onPress={rightAction.onPress} style={styles.rightButton}>
-            <DynamicIcon name={rightAction.icon} size={24} color="#fff" />
+            <DynamicIcon name={rightAction.icon} size={phoneDp(24)} color="#fff" />
           </TouchableOpacity>
         ) : (
           <View style={styles.placeholder} />

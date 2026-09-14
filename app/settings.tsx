@@ -57,6 +57,12 @@ function RowControlView({ control, focused }: { control: RowControl; focused: bo
 interface SettingRowProps {
   icon: IconName;
   title: string;
+  /**
+   * No longer drawn — the rows are title-only now. It stays because it is still
+   * the `accessibilityHint`, which is the one place the longer explanation is
+   * worth keeping: a title like "Host Rewrite" says nothing on its own to
+   * someone using a screen reader on a box with no pointer.
+   */
   subtitle: string;
   focusKey: string;
   onPress: () => void;
@@ -101,9 +107,6 @@ function SettingRow({
           />
           <View style={S.rowText}>
             <Text style={[S.rowTitle, focused && S.rowTitleFocused]}>{title}</Text>
-            <Text style={[S.rowSubtitle, focused && S.rowSubtitleFocused]} numberOfLines={2}>
-              {subtitle}
-            </Text>
           </View>
           <RowControlView control={control} focused={focused} />
         </View>
@@ -115,6 +118,7 @@ function SettingRow({
 interface DataTileProps {
   icon: IconName;
   title: string;
+  /** Not drawn; kept as the `accessibilityHint`. See `SettingRowProps`. */
   subtitle: string;
   focusKey: string;
   onPress: () => void;
@@ -152,9 +156,6 @@ function DataTile({ icon, title, subtitle, focusKey, onPress, value }: DataTileP
                 </View>
               ) : null}
             </View>
-            <Text style={[S.tileSubtitle, focused && S.tileSubtitleFocused]} numberOfLines={2}>
-              {subtitle}
-            </Text>
           </View>
         </View>
       )}
@@ -475,7 +476,7 @@ export default function SettingsScreen() {
                   <Text style={S.largeValue} numberOfLines={1}>{activePortal.config.url}</Text>
                 </View>
                 <View style={S.infoCol}>
-                  <Text style={S.tinyLabel}>DEVICE MAC ADDRESS</Text>
+                  <Text style={S.tinyLabel}>MAC ADDRESS</Text>
                   <Text style={S.largeValue}>{activePortal.config.mac || '00:1A:79:XX:XX:XX'}</Text>
                 </View>
               </View>
@@ -894,6 +895,11 @@ const S = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: pw(2),
     paddingVertical: ph(2.4),
+    // Same floor, and the same reason, as `tile` below: dropping the subtitle
+    // takes a phone row from ~56dp to ~44, under the 48dp minimum for a tap
+    // target. The padding is a percentage of the short edge, so it does not
+    // grow back on its own.
+    ...(isPhone ? { minHeight: 48 } : null),
     borderRadius: 12,
     borderWidth: 0,
     borderColor: 'transparent',
@@ -925,15 +931,6 @@ const S = StyleSheet.create({
     color: '#000',
     fontWeight: '900',
   },
-  rowSubtitle: {
-    fontSize: isPhone ? 12 : ps(1.12),
-    color: 'rgba(255,255,255,0.6)',
-    marginTop: 4,
-    lineHeight: isPhone ? 16 : ps(1.55),
-  },
-  rowSubtitleFocused: {
-    color: 'rgba(0,0,0,0.65)',
-  },
 
   // ── Data tiles ────────────────────────────────────────────────────
   /*
@@ -956,20 +953,29 @@ const S = StyleSheet.create({
     marginBottom: isPhone ? 10 : ph(1.5),
   },
   /*
-   * The phone tile is a fixed 72dp so the grid is even.
+   * Height comes from the content now, with a floor on the phone only.
    *
-   * `minHeight: ph(12.5)` is 67dp on the box but only 49 on a handset — below
-   * what the contents actually need (a title line, a 2-line subtitle and 12dp
-   * of padding come to about 63), so it stopped acting as a height at all and
-   * every tile sized to its own text. Tiles stretch to match within a row, so
-   * the result was even pairs at uneven heights down the column.
+   * A tile used to be an icon, a title and a subtitle capped at two lines, and
+   * whether a given subtitle wrapped to one line or two decided that tile's
+   * height — tiles stretch to match within a row, so the grid came out as even
+   * pairs at uneven heights down the column. A fixed 72dp on the phone
+   * (`ph(12.5)` resolved to only 49 there, under the ~63 the content needed)
+   * was what forced them level.
    *
-   * 72 clears the tallest content, which makes it the height of every tile
-   * rather than a floor some of them exceed.
+   * With the subtitles gone every tile is an icon plus a single-line title, so
+   * the content is identical everywhere by construction and padding alone
+   * gives an even grid. Keeping the 72 would only add empty space — it was
+   * measured against text that no longer exists.
+   *
+   * The phone still needs a floor, for a different reason: there the content
+   * comes to about 44dp (a 24.4dp icon plus 10dp of padding either side),
+   * which is under the 48dp minimum for something you tap. On TV and tablet
+   * the icon scales with `TV_SCALE` and the natural height clears that on its
+   * own, so a floor there would do nothing but stretch the tile.
    */
   tile: {
     flex: 1,
-    minHeight: isPhone ? 72 : ph(12.5),
+    ...(isPhone ? { minHeight: 48 } : null),
     borderRadius: 18,
     paddingHorizontal: isPhone ? 12 : pw(1.8),
     paddingVertical: isPhone ? 10 : ph(1.6),
@@ -1010,15 +1016,6 @@ const S = StyleSheet.create({
   tileTitleFocused: {
     color: '#000',
     fontWeight: '900',
-  },
-  tileSubtitle: {
-    fontSize: isPhone ? 11.5 : ps(1.05),
-    color: 'rgba(255,255,255,0.6)',
-    marginTop: 2,
-    lineHeight: isPhone ? 15 : ps(1.45),
-  },
-  tileSubtitleFocused: {
-    color: 'rgba(0,0,0,0.65)',
   },
   valuePill: {
     paddingHorizontal: pw(1.6),

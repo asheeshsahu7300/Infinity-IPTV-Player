@@ -1239,7 +1239,7 @@ const S = StyleSheet.create({
 
   addBtnText: {
     color: isPhone ? "#000000" : "#FFFFFF",
-    fontSize: isPhone ? 12.5 : ps(1.2),
+    fontSize: isPhone ? 14.4 : ps(1.2),
     fontWeight: "800",
     letterSpacing: 1.2,
   },
@@ -1477,7 +1477,7 @@ const S = StyleSheet.create({
     color: isPhone
       ? "#000000"
       : "rgba(255, 255, 255, 0.95)",
-    fontSize: isPhone ? 12.5 : ps(1.15),
+    fontSize: isPhone ? 14.4 : ps(1.15),
     fontWeight: "700",
     letterSpacing: 1.5,
   },

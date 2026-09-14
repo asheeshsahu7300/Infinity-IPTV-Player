@@ -22,7 +22,7 @@ export const CINEMATIC_EVENT = "UPDATE_CINEMATIC_BACKGROUND";
 
 export const CinematicBackground = React.memo(function CinematicBackground({ uri: _uri }: CinematicBackgroundProps = {}) {
   return (
-    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000000' }]} pointerEvents="none" />
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000' }]} pointerEvents="none" />
   );
 });
 

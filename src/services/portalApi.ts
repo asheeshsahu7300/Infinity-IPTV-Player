@@ -24,6 +24,22 @@ import { usePortalStore } from "../store/portalStore";
 const safe = (v: any) => (typeof v === "string" ? v : "");
 
 /**
+ * Node's `Buffer`, if the host happens to have one.
+ *
+ * The base64 decoding below prefers `atob`, which both React Native and every
+ * browser provide, so this fallback is unreachable in practice — it is only
+ * here for a bare Node host. It used to be written as a plain `Buffer`
+ * reference, which type-checked only because some dependency happened to hoist
+ * `@types/node` to the top level; SDK 57 no longer does, and pulling Node's
+ * globals into an app that has no Node runtime would invite worse mistakes than
+ * it fixes. Reading it off `globalThis` keeps the behaviour identical — an
+ * absent `Buffer` still throws into the surrounding try/catch — without
+ * claiming the types.
+ */
+const nodeBuffer: { from(data: string, encoding: string): { toString(encoding: string): string } } | undefined =
+  (globalThis as any).Buffer;
+
+/**
  * Portal timestamps arrive as unix seconds, unix milliseconds, or a formatted
  * date string depending on the endpoint and the firmware behind it. Every EPG
  * reader in this file goes through here so they cannot drift apart.
@@ -480,7 +496,7 @@ export const buildImageUrl = (base: string, raw?: any): string => {
   // 3. Base64-encoded URL (e.g. aHR0cDov... -> http:// or aHR0cHM6... -> https://)
   if (s.startsWith("aHR0cDov") || s.startsWith("aHR0cHM6") || s.startsWith("aHR0cDox")) {
     try {
-      const decoded = typeof atob === "function" ? atob(s) : Buffer.from(s, "base64").toString("utf-8");
+      const decoded = typeof atob === "function" ? atob(s) : nodeBuffer!.from(s, "base64").toString("utf-8");
       if (decoded && (decoded.startsWith("http://") || decoded.startsWith("https://"))) {
         return rewriteStaleOrigin(decoded);
       }
@@ -514,7 +530,7 @@ export const buildImageUrl = (base: string, raw?: any): string => {
     if (s.length > 500 && /^[A-Za-z0-9+/=\s]+$/.test(s)) {
       try {
         const sample = s.replace(/\s+/g, "").slice(0, 32);
-        const decoded = typeof atob === "function" ? atob(sample) : Buffer.from(sample, "base64").toString("binary");
+        const decoded = typeof atob === "function" ? atob(sample) : nodeBuffer!.from(sample, "base64").toString("binary");
         if (decoded.startsWith("\x89PNG")) return `data:image/png;base64,${s}`;
         if (decoded.charCodeAt(0) === 0xff && decoded.charCodeAt(1) === 0xd8) return `data:image/jpeg;base64,${s}`;
         if (decoded.startsWith("GIF")) return `data:image/gif;base64,${s}`;

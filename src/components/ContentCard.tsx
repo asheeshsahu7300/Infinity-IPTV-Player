@@ -177,7 +177,7 @@ const S = StyleSheet.create({
     height: "100%",
   },
   imageOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   placeholder: {
     flex: 1,

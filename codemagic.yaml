@@ -3,7 +3,14 @@ workflows:
     name: Build Android APK/AAB
     instance_type: mac_mini_m2
     environment:
-      node: 20.19.4
+      # React Native 0.86 requires ^20.19.4; 22 LTS leaves some headroom rather
+      # than sitting exactly on the floor.
+      node: 22
+      # Expo SDK 57 moves the project to Gradle 9.3.1 and AGP 8.12, both of
+      # which need JDK 17 or newer — Gradle 9 dropped everything below it.
+      # Pinned rather than left to the image default so a base-image change
+      # cannot silently move it.
+      java: 17
     scripts:
       - name: Install Dependencies
         script: |

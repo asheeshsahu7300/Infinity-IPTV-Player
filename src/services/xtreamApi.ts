@@ -1,4 +1,5 @@
 // api/xtreamApi.ts
+import { Platform } from "react-native";
 import axios from "axios";
 import { cacheManager, CACHE_TTL } from "./cacheManager";
 import type { MediaMeta, Season } from "../store/portalStore";
@@ -480,9 +481,29 @@ export class XtreamApi {
   // ============================================================
   // STREAM URL HELPERS
   // ============================================================
-  builditvUrl(streamId: string | number, ext: string = "ts") {
+  /**
+   * The live container, chosen per platform.
+   *
+   * An Xtream panel serves the same channel two ways: `.ts`, a raw MPEG-TS
+   * progressive stream, and `.m3u8`, an HLS playlist of the same thing.
+   * ExoPlayer reads both, so Android has always taken the `.ts` and been fine.
+   *
+   * AVFoundation reads only the HLS one. Handed a raw `.ts` it range-requests
+   * the file, gets a 200 with no `Content-Length` — which is what a stream with
+   * no end looks like — and fails with CoreMedia -12939, "byte range and no
+   * content length", surfaced as AVFoundation -11850 "Operation Stopped" and
+   * the misleading "The server is not correctly configured." The server is
+   * fine; the container is one AVPlayer cannot consume, and retrying cannot
+   * change that.
+   *
+   * `Platform.OS === "ios"` covers Apple TV too — react-native-tvos reports
+   * `ios` there.
+   */
+  private static readonly LIVE_EXT = Platform.OS === "ios" ? "m3u8" : "ts";
+
+  builditvUrl(streamId: string | number, ext?: string) {
     const base = this.config.url.replace(/\/+$/, "");
-    return `${base}/live/${this.config.username}/${this.config.password}/${streamId}.${ext || "ts"}`;
+    return `${base}/live/${this.config.username}/${this.config.password}/${streamId}.${ext || XtreamApi.LIVE_EXT}`;
   }
 
   buildMovieUrl(streamId: string | number, ext: string = "mp4") {

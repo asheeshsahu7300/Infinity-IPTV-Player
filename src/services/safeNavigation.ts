@@ -4,21 +4,39 @@
 // or loops through duplicate route history.
 
 import { BackHandler } from "react-native";
-import { StackActions, NavigationContainerRefWithCurrent } from "@react-navigation/native";
-import { router } from "expo-router";
+import { router, useNavigationContainerRef } from "expo-router";
 
-let navigationRef: NavigationContainerRefWithCurrent<any> | null = null;
+/**
+ * Expo SDK 56 dropped expo-router's dependency on @react-navigation/*, so the
+ * container-ref type is no longer importable from there. Deriving it from the
+ * hook that produces the ref keeps it correct without naming a package we no
+ * longer depend on — `app/_layout.tsx` passes exactly this value in.
+ */
+type NavigationContainerRef = ReturnType<typeof useNavigationContainerRef>;
+
+let navigationRef: NavigationContainerRef | null = null;
 let lastBackTimestamp = 0;
 let lastNavTimestamp = 0;
 
-export function setSafeNavigationRef(ref: NavigationContainerRefWithCurrent<any> | null) {
+export function setSafeNavigationRef(ref: NavigationContainerRef | null) {
   navigationRef = ref;
 }
 
 /**
+ * `StackActions.pop(count)` from the same removed package, inlined.
+ *
+ * The action is a plain object — this is verbatim what expo-router's own
+ * vendored `StackActions.pop` returns — and dispatching it is identical to
+ * calling the helper. Reaching into
+ * `expo-router/build/react-navigation/routers` for the real one would work too,
+ * but that is an unstable internal path, and this is the whole of it.
+ */
+const popAction = (count: number) => ({ type: "POP", payload: { count } }) as const;
+
+/**
  * Safely navigates back without ever landing on the same screen.
  * - Skips all duplicate instances of the current screen in the navigation stack.
- * - Pops past them in a single atomic StackActions.pop() transition.
+ * - Pops past them in a single atomic POP transition.
  * - If at root or dashboard, gracefully exits/minimizes the app.
  * - Debounced to eliminate remote key bounce.
  */
@@ -94,7 +112,7 @@ export function safeBack(): boolean {
     if (targetIndex >= 0) {
       const popCount = currentIndex - targetIndex;
       if (popCount > 1) {
-        navigationRef.dispatch(StackActions.pop(popCount));
+        navigationRef.dispatch(popAction(popCount));
       } else {
         navigationRef.goBack();
       }
@@ -129,7 +147,13 @@ export function safeNavigate(route: string, params?: Record<string, any>) {
   // Prevent pushing the identical screen if already on it
   try {
     if (navigationRef && navigationRef.isReady && navigationRef.isReady()) {
-      const currentRoute = navigationRef.getCurrentRoute();
+      // Read loosely, as the rest of this file reads navigation state. The ref
+      // is now typed against `ReactNavigation.RootParamList`, which is only
+      // populated by the typed-routes declarations the dev server generates
+      // into `.expo/types`; that directory is gitignored, so on a clean
+      // checkout the param list is empty and `getCurrentRoute()` narrows to
+      // `never`. The name is compared as a string either way.
+      const currentRoute = navigationRef.getCurrentRoute() as { name?: string } | undefined;
       const targetName = route.replace(/^\//, "").split("?")[0];
       if (currentRoute && currentRoute.name === targetName && !params) {
         return;

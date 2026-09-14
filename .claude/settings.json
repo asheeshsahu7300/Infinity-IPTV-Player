@@ -1,7 +1,24 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node -e \"const RN = require\\('react-native'\\); console.log\\('TVFocusGuideView' in RN ? 'YES' : 'NO'\\); console.log\\('useTVEventHandler' in RN ? 'useTVEventHandler: YES' : 'useTVEventHandler: NO'\\); console.log\\('TVEventHandler' in RN ? 'TVEventHandler: YES' : 'TVEventHandler: NO'\\);\")"
+      "Bash(node -e \"const RN = require\\('react-native'\\); console.log\\('TVFocusGuideView' in RN ? 'YES' : 'NO'\\); console.log\\('useTVEventHandler' in RN ? 'useTVEventHandler: YES' : 'useTVEventHandler: NO'\\); console.log\\('TVEventHandler' in RN ? 'TVEventHandler: YES' : 'TVEventHandler: NO'\\);\")",
+      "Bash(npm view *)",
+      "Bash(curl -s \"https://unpkg.com/expo-build-properties@57.0.17/build/pluginConfig.d.ts\")",
+      "Bash(yarn install *)",
+      "Bash(npx expo-doctor *)",
+      "Bash(git --no-pager diff -- android/settings.gradle android/app/build.gradle android/gradle.properties)",
+      "Bash(echo \"--- exit $? ---\")",
+      "Bash(npx expo *)",
+      "Bash(npx tsc *)",
+      "Bash(echo \"=== exit: $? ===\")",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\({deps:p.dependencies,dev:p.devDependencies,resolutions:p.resolutions},null,1\\)\\)\")",
+      "Bash(npx patch-package *)",
+      "Bash(grep -n \"active4K = is4K\\\\|is4K={is4K}\\\\|isLive, is4K, 1\\)\" app/player.tsx)",
+      "Bash(echo \"=== tsc exit: $? ===\")",
+      "Bash(echo \"exit: $?\")",
+      "Bash(echo \"tsc exit: $?\")",
+      "Bash(NODE_PATH=\"C:\\\\\\\\Users\\\\\\\\AsheeshSahu\\\\\\\\AppData\\\\\\\\Roaming\\\\\\\\npm\\\\\\\\node_modules\" npx expo start --tunnel)"
     ]
   }
 }

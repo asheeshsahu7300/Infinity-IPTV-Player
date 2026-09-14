@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "infinityiptv",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.infinity.iptvplayer",
@@ -17,21 +16,15 @@
     },
     "android": {
       "package": "com.infinity.iptvplayer",
-      "edgeToEdgeEnabled": true,
-      "largeHeap": true,
+      "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "leanbackIcon": "./assets/images/splash-icon.png",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
-    },
-    "androidTV": {
-      "icon": "./assets/images/tv-icon.png",
-      "banner": "./assets/images/splash-icon.png"
     },
     "web": {
       "bundler": "metro",
@@ -40,14 +33,32 @@
     },
     "plugins": [
       "expo-router",
+      "./plugins/withTransparentSplashIcon",
       [
         "expo-splash-screen",
         {
           "backgroundColor": "#000000"
         }
       ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26,
+            "extraMavenRepos": [
+              "https://www.jitpack.io"
+            ]
+          }
+        }
+      ],
       "./plugins/withTabletLandscape",
       "./plugins/withHandsetPortrait",
+      "./plugins/withImmersiveMainActivity",
+      "./plugins/withAndroidManifestExtras",
+      "./plugins/withFfmpegDecoder",
+      "./plugins/withGradleBuildTweaks",
+      "./plugins/withAutolinkingCacheGuard",
+      "./plugins/withDarkWindowBackground",
       [
         "@react-native-tvos/config-tv",
         {

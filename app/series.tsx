@@ -1,9 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { View, StyleSheet, ActivityIndicator, Dimensions, FlatList, InteractionManager, BackHandler, Pressable , TextInput as RNTextInput, useWindowDimensions, Platform } from 'react-native';
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useRouter, useIsFocused } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useIsFocused } from "@react-navigation/native";
 
 import { usePortalStore, Series, Category } from "../src/store/portalStore";
 import { portalApi, buildImageUrl } from "../src/services/portalApi";
@@ -331,7 +330,7 @@ const SeriesItem = React.memo(function SeriesItem({
                   transition={200}
                 />
               ) : (
-                <View style={[StyleSheet.absoluteFillObject, S.posterFallback]}>
+                <View style={[StyleSheet.absoluteFill, S.posterFallback]}>
                   <Film size={ps(4.2)} color="rgba(255,255,255,0.32)" />
                 </View>
               )}
