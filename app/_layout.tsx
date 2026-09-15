@@ -34,7 +34,9 @@ import {
   Inter_900Black
 } from "@expo-google-fonts/inter";
 
+import * as P from "../src/theme/palette";
 import ErrorBoundary from "../src/components/ErrorBoundary";
+import { GlassRoot } from "../src/components/GlassSurface";
 import { usePortalStore } from "../src/store/portalStore";
 import { ThemeProvider } from "../src/context/ThemeContext";
 import { AppBootManager, SYNC_INTERVAL } from "../src/services/AppBootManager";
@@ -80,7 +82,7 @@ function SplashScreen() {
   }, []);
 
   return (
-    <LinearGradient colors={["#0F1014", "#000000"]} style={styles.splash}>
+    <LinearGradient colors={[P.secondarySystemBackground, P.systemBackground]} style={styles.splash}>
       <Animated.View style={[styles.splashContent, { opacity: fadeAnim }]}>
         <Animated.View
           style={[styles.splashLogoWrapper, { transform: [{ scale: pulseAnim }] }]}
@@ -218,9 +220,22 @@ export default function RootLayout() {
       });
   }, []);
 
-  // Ensure status bar is hidden (immersive full-screen is handled natively by MainActivity)
+  /**
+   * The status bar is shown app-wide, and the player hides it for itself.
+   *
+   * This asserted `setHidden(true)` once on mount, which is the JS half of a
+   * pair — `MainActivity.hideSystemUI()` was hiding the status bar natively on
+   * every resume and focus change, so the two agreed and nothing could show it.
+   * The native call is now scoped to the navigation bar, and this is the other
+   * half being undone.
+   *
+   * Asserted rather than left to default, because the setting is process-wide:
+   * `app/player.tsx` hides it while it is mounted, and if it is torn down
+   * without running its cleanup — a crash, a fast unmount — the bar would stay
+   * hidden for the rest of the session. This puts it back on every cold start.
+   */
   useEffect(() => {
-    RNStatusBar.setHidden(true, "none");
+    RNStatusBar.setHidden(false, "fade");
   }, []);
 
   // Links that arrive while the app is already running.
@@ -280,13 +295,18 @@ export default function RootLayout() {
     <ErrorBoundary>
       <ThemeProvider>
         <SafeAreaProvider>
-          <View style={[styles.container, { padding: overscanPadding }]}>
-            <StatusBar style="light" hidden={true} />
+          {/* Every glass surface in the app blurs into this one view.
+              Android's BlurView needs a nominated target and silently renders
+              flat without one, so the root is mounted here, once, around the
+              whole navigator — see GlassRoot for the full trap. It is inert on
+              iOS and skipped outright on a box, where blur is off anyway. */}
+          <GlassRoot style={[styles.container, { padding: overscanPadding }]}>
+            <StatusBar style="light" hidden={false} />
             <NavigationThemeProvider value={NAVIGATION_THEME}>
               <Stack
                 screenOptions={{
                   headerShown: false,
-                  contentStyle: { backgroundColor: "#08080a" },
+                  contentStyle: { backgroundColor: P.systemBackground },
                   animation: Platform.isTV ? "none" : "slide_from_right",
                   // Inactive screens keep their scroll/focus state but stop
                   // re-rendering, so backgrounded grids don't compete with the
@@ -316,7 +336,7 @@ export default function RootLayout() {
                 <Stack.Screen name="categories" />
               </Stack>
             </NavigationThemeProvider>
-          </View>
+          </GlassRoot>
         </SafeAreaProvider>
       </ThemeProvider>
     </ErrorBoundary>
@@ -341,13 +361,13 @@ const NAVIGATION_THEME = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    background: "#08080a",
-    card: "#08080a",
+    background: P.systemBackground,
+    card: P.systemBackground,
   },
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#08080a" },
+  container: { flex: 1, backgroundColor: P.systemBackground },
   splash: { flex: 1, justifyContent: "center", alignItems: "center", width: "100%", height: "100%" },
   splashContent: { alignItems: "center", justifyContent: "center", width: "100%" },
   splashLogoWrapper: {

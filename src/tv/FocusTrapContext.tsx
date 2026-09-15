@@ -1,5 +1,15 @@
 import React from "react";
 import { findNodeHandle, View } from "react-native";
+import { remoteFocusEnabled } from "../utils/tabletUtils";
+
+function safeFindNodeHandle(node: any): number | undefined {
+  if (!node) return undefined;
+  try {
+    return (findNodeHandle(node) as number | undefined) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface NextFocusTags {
   nextFocusUp?: number;
@@ -38,7 +48,13 @@ const subscribeOverlayCount = (listener: () => void) => {
 };
 
 const emit = () => {
-  _listeners.forEach((listener) => listener());
+  _listeners.forEach((listener) => {
+    try {
+      listener();
+    } catch {
+      // ignore
+    }
+  });
 };
 
 export const FocusTrap = {
@@ -57,8 +73,11 @@ export const FocusTrap = {
 /**
  * Returns `true` when the component is in the background behind an active
  * overlay (i.e. an overlay is open and this component is not inside it).
+ * On touchscreens (non-TV), focus trapping is unnecessary as modal backdrops
+ * intercept all touch events; skipping this prevents mass re-rendering.
  */
 export function useIsFocusTrapped(): boolean {
+  if (!remoteFocusEnabled) return false;
   const overlayController = React.useContext(InsideOverlayContext);
   const count = React.useSyncExternalStore(
     subscribeOverlayCount,
@@ -82,7 +101,13 @@ export function useOverlayFocusController(axis: OverlayAxis = "vertical"): Overl
   const listenersRef = React.useRef<Set<() => void>>(new Set());
 
   const notifyListeners = React.useCallback(() => {
-    listenersRef.current.forEach((fn) => fn());
+    listenersRef.current.forEach((fn) => {
+      try {
+        fn();
+      } catch {
+        // ignore
+      }
+    });
   }, []);
 
   return React.useMemo<OverlayFocusController>(() => {
@@ -110,13 +135,14 @@ export function useOverlayFocusController(axis: OverlayAxis = "vertical"): Overl
       },
 
       getNextFocus(id: string): NextFocusTags {
+        if (!remoteFocusEnabled) return {};
         const list = itemsRef.current;
         if (list.length === 0 || axis === "none") return {};
 
         const index = list.findIndex((it) => it.id === id);
         if (index === -1) return {};
 
-        const selfTag = findNodeHandle(list[index].ref.current) ?? undefined;
+        const selfTag = safeFindNodeHandle(list[index].ref.current);
         if (!selfTag) return {};
 
         if (axis === "grid" || axis === "grid-3") {
@@ -129,10 +155,10 @@ export function useOverlayFocusController(axis: OverlayAxis = "vertical"): Overl
           const leftIndex = col > 0 ? index - 1 : -1;
           const rightIndex = col < cols - 1 && index + 1 < total ? index + 1 : -1;
 
-          const upTag = upIndex >= 0 ? (findNodeHandle(list[upIndex].ref.current) ?? selfTag) : selfTag;
-          const downTag = downIndex < total ? (findNodeHandle(list[downIndex].ref.current) ?? selfTag) : selfTag;
-          const leftTag = leftIndex >= 0 ? (findNodeHandle(list[leftIndex].ref.current) ?? selfTag) : selfTag;
-          const rightTag = rightIndex >= 0 ? (findNodeHandle(list[rightIndex].ref.current) ?? selfTag) : selfTag;
+          const upTag = upIndex >= 0 ? (safeFindNodeHandle(list[upIndex].ref.current) ?? selfTag) : selfTag;
+          const downTag = downIndex < total ? (safeFindNodeHandle(list[downIndex].ref.current) ?? selfTag) : selfTag;
+          const leftTag = leftIndex >= 0 ? (safeFindNodeHandle(list[leftIndex].ref.current) ?? selfTag) : selfTag;
+          const rightTag = rightIndex >= 0 ? (safeFindNodeHandle(list[rightIndex].ref.current) ?? selfTag) : selfTag;
 
           return {
             nextFocusUp: upTag,
@@ -143,10 +169,10 @@ export function useOverlayFocusController(axis: OverlayAxis = "vertical"): Overl
         }
 
         const prevTag =
-          index > 0 ? (findNodeHandle(list[index - 1].ref.current) ?? selfTag) : selfTag;
+          index > 0 ? (safeFindNodeHandle(list[index - 1].ref.current) ?? selfTag) : selfTag;
         const nextTag =
           index < list.length - 1
-            ? (findNodeHandle(list[index + 1].ref.current) ?? selfTag)
+            ? (safeFindNodeHandle(list[index + 1].ref.current) ?? selfTag)
             : selfTag;
 
         return axis === "horizontal"

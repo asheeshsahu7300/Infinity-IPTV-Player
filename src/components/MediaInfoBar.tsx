@@ -20,6 +20,8 @@ import { isPhone } from "../utils/phoneUtils";
 import type { QueueItem } from "../services/playbackQueue";
 import { Film } from 'lucide-react-native';
 import { Text } from './Text';
+import { RADIUS } from '../theme/materials';
+import * as P from "../theme/palette";
 
 
 export interface MediaInfoBarProps {
@@ -101,7 +103,7 @@ export const MediaInfoBar = React.memo(function MediaInfoBar({
               transition={120}
             />
           ) : (
-            <Film size={ps(1.8)} color="rgba(255,255,255,0.25)" />
+            <Film size={ps(1.8)} color={P.tertiaryLabel} />
           )}
         </View>
 
@@ -200,10 +202,14 @@ const S = StyleSheet.create({
   posterBox: {
     width: isPhone ? 41 : ps(6.4),
     height: isPhone ? 62 : ps(9.6),
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderWidth: 1.5,
-    borderColor: "rgba(255, 255, 255, 0.18)",
+    borderRadius: RADIUS.card,
+    borderCurve: "continuous",
+    backgroundColor: P.quaternarySystemFill,
+    // A hairline rather than the 1.5dp it was. This poster sits over video,
+    // and a heavy edge on artwork reads as a frame drawn around the picture
+    // instead of as the edge of the artwork itself.
+    borderWidth: 1,
+    borderColor: P.glassEdge,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -212,40 +218,44 @@ const S = StyleSheet.create({
 
   detail: { flex: 1, gap: ph(0.5) },
   titleRow: { flexDirection: "row", alignItems: "center", gap: pw(0.8) },
-  title: { color: "#fff", fontSize: ps(1.4), fontWeight: "800", flexShrink: 1 },
-  subtitle: { color: "rgba(255,255,255,0.5)", fontSize: ps(1), fontWeight: "600" },
+  title: { color: P.label, fontSize: ps(1.4), fontFamily: THEME.fonts.semibold, letterSpacing: -0.3, flexShrink: 1 },
+  subtitle: { color: P.secondaryLabel, fontSize: ps(1) },
 
   badge: {
     paddingHorizontal: pw(0.8),
     paddingVertical: ph(0.35),
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.14)",
+    // Capsule, not a rounded rectangle: Apple's small status chips are always
+    // fully round, and at this height a 8dp radius reads as neither.
+    borderRadius: RADIUS.full,
+    backgroundColor: P.tertiarySystemFill,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
+    borderColor: P.glassEdgeSoft,
   },
-  badgeWarn: { backgroundColor: "rgba(255,204,0,0.2)" },
-  badgeText: { color: "#fff", fontSize: ps(0.7), fontWeight: "900", letterSpacing: 0.8 },
+  badgeWarn: { backgroundColor: "rgba(255, 159, 10, 0.22)", borderColor: "rgba(255, 159, 10, 0.45)" },
+  badgeText: { color: P.label, fontSize: ps(0.7), letterSpacing: 0.8 },
 
   timeRow: { flexDirection: "row", alignItems: "center", gap: pw(1), marginTop: ph(0.3) },
   time: {
-    color: "rgba(255,255,255,0.7)",
+    color: P.secondaryLabel,
     fontSize: ps(0.95),
-    fontWeight: "700",
+    // Tabular figures are load-bearing on a running clock: without them the
+    // elapsed readout changes width as the digits tick and shoves the
+    // progress bar sideways once a second.
     fontVariant: ["tabular-nums"],
   },
   progressTrack: {
     flex: 1,
     height: 3,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.16)",
+    borderRadius: RADIUS.full,
+    backgroundColor: P.quaternarySystemFill,
     overflow: "hidden",
   },
-  progressFill: { height: "100%", backgroundColor: "#F5F5F5" },
+  progressFill: { height: "100%", backgroundColor: P.tint },
 
-  remaining: { color: "rgba(255,255,255,0.42)", fontSize: ps(0.85), fontWeight: "600" },
-  nextLine: { color: "rgba(255,255,255,0.5)", fontSize: ps(0.85), fontWeight: "600", flexShrink: 1 },
-  nextLabel: { color: "rgba(255,255,255,0.32)", fontWeight: "900", letterSpacing: 1 },
-  hint: { color: "rgba(255,255,255,0.3)", fontSize: ps(0.8), marginTop: ph(0.2) },
+  remaining: { color: P.tertiaryLabel, fontSize: ps(0.85), fontVariant: ["tabular-nums"] },
+  nextLine: { color: P.secondaryLabel, fontSize: ps(0.85), flexShrink: 1 },
+  nextLabel: { color: P.tertiaryLabel, letterSpacing: 1 },
+  hint: { color: P.tertiaryLabel, fontSize: ps(0.8), marginTop: ph(0.2) },
 });
 
 export default MediaInfoBar;

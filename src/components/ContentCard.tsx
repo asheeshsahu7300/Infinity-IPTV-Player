@@ -8,9 +8,12 @@ import { View, StyleSheet, Animated } from 'react-native';
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Focusable } from "../tv";
-import { THEME, pw, ph, ps, TILE_FRAME, TILE_FRAME_FOCUSED } from "../theme/tokens";
+import { pw, ps, THEME } from "../theme/tokens";
+import * as P from "../theme/palette";
+import { FOCUS, RADIUS } from "../theme/materials";
 import { Heart } from 'lucide-react-native';
 import { DynamicIcon } from '../components/DynamicIcon';
+import { GlassSurface } from './GlassSurface';
 import { Text } from './Text';
 
 
@@ -88,7 +91,7 @@ export const ContentCard = React.memo(function ContentCard({
                     <DynamicIcon
                       name={PLACEHOLDER_ICON[type]}
                       size={ps(2)}
-                      color="rgba(255,255,255,0.15)"
+                      color={P.quaternaryLabel}
                     />
                   </View>
                 )}
@@ -104,7 +107,7 @@ export const ContentCard = React.memo(function ContentCard({
                 {/* Favourite badge */}
                 {isFavorite && (
                   <View style={S.favBadge}>
-                    <Heart size={ps(1)} color="#ff2d55" />
+                    <Heart size={ps(1)} color={P.systemPink} />
                   </View>
                 )}
               </View>
@@ -130,16 +133,25 @@ export const ContentCard = React.memo(function ContentCard({
           // the reason this card never matched the poster grids it sits next to.
           // The resting branch was the same box left transparent, so at rest
           // there was no border at all.
+          //
+          // The frame is now a `thin` material rather than a hand-styled box.
+          // `thin` because a card sits over decorative artwork: it wants enough
+          // body to separate from the backdrop and not so much that it looks
+          // like a panel. The focused edge, wash, sheen and iOS bloom all come
+          // from the material, so this call site no longer describes focus at
+          // all beyond passing the flag through.
           return (
-            <View
+            <GlassSurface
+              material="thin"
+              radius={RADIUS.card}
+              focused={focused}
               style={[
                 S.frame,
-                focused && S.frameFocused,
-                focused && { transform: [{ scale: 1.06 }] },
+                focused && { transform: [{ scale: FOCUS.scale }] },
               ]}
             >
               {cardContent}
-            </View>
+            </GlassSurface>
           );
         }}
       </Focusable>
@@ -157,19 +169,28 @@ const S = StyleSheet.create({
   // The frame lives out here, on the card's outermost box. Putting it on
   // `card` below instead would draw a border inside a border — the same
   // box-in-a-box the settings rows ended up with.
-  frame: { ...TILE_FRAME, borderRadius: ps(1.2) },
-  frameFocused: { ...TILE_FRAME_FOCUSED },
+  //
+  // Only the padding now: the radius, border, fill and every focus treatment
+  // belong to the `GlassSurface` this is spread onto. The `padding: 1` is what
+  // holds the artwork one pixel inside the border so the corners nest, and it
+  // is the one part of the old `TILE_FRAME` that is a layout concern rather
+  // than a material one.
+  frame: { padding: 1, overflow: "visible" },
   // Inner content, clipped one step inside `frame` so the corners nest
   // instead of leaving a sliver of frame showing through. Transparent, because
   // the frame carries the wash — this used to be an opaque #161622 slab.
   card: {
     backgroundColor: "transparent",
-    borderRadius: ps(1.1),
+    borderRadius: RADIUS.card - 1,
     overflow: "hidden",
   },
   imageContainer: {
     width: "100%",
-    backgroundColor: "#1c1c2b",
+    // The placeholder behind artwork that has not decoded yet. Apple's
+    // tertiary elevated background rather than the blue-tinged `#1c1c2b` it
+    // was, so an un-decoded tile reads as an empty surface rather than as a
+    // tile of a slightly different colour.
+    backgroundColor: P.tertiaryElevatedSystemBackground,
     overflow: "hidden",
   },
   image: {
@@ -188,22 +209,26 @@ const S = StyleSheet.create({
     position: "absolute",
     top: 8,
     right: 8,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    borderRadius: 10,
+    backgroundColor: P.scrim,
+    borderRadius: RADIUS.full,
     padding: 5,
   },
   info: {
     padding: ps(0.7),
   },
   title: {
-    color: "#fff",
+    color: P.label,
     fontSize: ps(1.15),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
+    // Apple tightens tracking as type gets larger and loosens it as it gets
+    // smaller. A card title is small enough to want none of either, but the
+    // subtitle below is small enough to want the loosening.
+    letterSpacing: -0.1,
   },
   subtitle: {
-    color: "rgba(255,255,255,0.5)",
+    color: P.secondaryLabel,
     fontSize: ps(0.9),
     marginTop: 4,
-    fontFamily: THEME.fonts.regular,
+    letterSpacing: 0.1,
   },
 });

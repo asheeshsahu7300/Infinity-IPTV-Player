@@ -21,6 +21,9 @@ import { parentalControl } from "../services/parentalControl";
 import type { Channel } from "../store/portalStore";
 import { Lock, Tv, Volume2, CornerDownLeft } from 'lucide-react-native';
 import { Text } from './Text';
+import { GlassSurface } from './GlassSurface';
+import { RADIUS } from '../theme/materials';
+import * as P from "../theme/palette";
 
 
 export interface ChannelZapListProps {
@@ -97,7 +100,7 @@ const ZapRow = React.memo(
               {locked ? (
                 <Lock
                   size={isTouch ? phoneDp(14) : ps(1.1)}
-                  color={focused ? "#000" : "rgba(255,255,255,0.5)"}
+                  color={focused || isCurrent ? P.onTint : P.secondaryLabel}
                 />
               ) : channel.logo ? (
                 <Image
@@ -109,7 +112,7 @@ const ZapRow = React.memo(
               ) : (
                 <Tv
                   size={isTouch ? phoneDp(14) : ps(1.1)}
-                  color={focused ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.2)"}
+                  color={focused || isCurrent ? P.onTintSecondary : P.quaternaryLabel}
                 />
               )}
             </View>
@@ -127,7 +130,9 @@ const ZapRow = React.memo(
 
             {isCurrent ? (
               <View style={S.playingDot}>
-                <Volume2 size={isTouch ? phoneDp(14) : ps(1)} color={(focused || isCurrent) ? "#111" : "#fff"} />
+                {/* The row this sits in is filled with the tint whenever it is
+                    current, so this glyph is always on an off-white ground. */}
+                <Volume2 size={isTouch ? phoneDp(14) : ps(1)} color={P.onTint} />
               </View>
             ) : null}
           </View>
@@ -237,7 +242,14 @@ export function ChannelZapList({
         onPress={onClose}
         accessibilityLabel="Close channel list"
       />
-      <View style={[S.panel, isTouch && { width: panelWidth, minWidth: undefined, maxWidth: 360 }]}>
+      {/* `thick`, because this slides over live video: the picture should stay
+          perceptible behind it without ever competing with the channel names. */}
+      <GlassSurface
+        material="thick"
+        radius={0}
+        bordered={false}
+        style={[S.panel, isTouch && { width: panelWidth, minWidth: undefined, maxWidth: 360 }]}
+      >
         <View style={[S.header, isTouch && { paddingTop: Math.max(16, insets.top + 8) }]}>
           <Text style={S.headerTitle} numberOfLines={1}>
             {categoryName || "Channels"}
@@ -247,7 +259,7 @@ export function ChannelZapList({
 
         {channels.length === 0 ? (
           <View style={S.emptyContainer}>
-            <Tv size={ps(2.5)} color="rgba(255,255,255,0.2)" />
+            <Tv size={ps(2.5)} color={P.quaternaryLabel} />
             <Text style={S.emptyText}>No channels in this category</Text>
           </View>
         ) : (
@@ -279,10 +291,10 @@ export function ChannelZapList({
         )}
 
         <View style={[S.footer, isTouch && { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
-          <CornerDownLeft size={ps(1)} color="rgba(255,255,255,0.4)" style={{ marginRight: ps(0.4) }} />
+          <CornerDownLeft size={ps(1)} color={P.tertiaryLabel} style={{ marginRight: ps(0.4) }} />
           <Text style={S.footerHint}>OK to tune · BACK to close</Text>
         </View>
-      </View>
+      </GlassSurface>
     </Overlay>
   );
 }
@@ -306,7 +318,7 @@ const S = StyleSheet.create({
     width: pw(23),
     minWidth: 260,
     maxWidth: 340,
-    backgroundColor: "rgba(8,9,13,0.96)",
+    // Fill and edge belong to the `thick` material now.
     borderRightWidth: 0,
     borderRightColor: "transparent",
     zIndex: 90,
@@ -322,12 +334,12 @@ const S = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
-    color: "#fff",
+    color: P.label,
     fontSize: ps(1.15),
-    fontWeight: "900",
-    letterSpacing: 0.5,
+    fontFamily: THEME.fonts.semibold,
+    letterSpacing: -0.2,
   },
-  headerCount: { color: THEME.colors.textDim, fontSize: ps(0.95), fontWeight: "700" },
+  headerCount: { color: P.tertiaryLabel, fontSize: ps(0.95), fontVariant: ["tabular-nums"] },
   list: { flex: 1 },
   listContent: {
     paddingVertical: ps(0.6),
@@ -342,9 +354,8 @@ const S = StyleSheet.create({
     gap: ps(0.8),
   },
   emptyText: {
-    color: "rgba(255,255,255,0.4)",
+    color: P.tertiaryLabel,
     fontSize: ps(1.05),
-    fontWeight: "700",
   },
   footer: {
     flexDirection: "row",
@@ -354,9 +365,8 @@ const S = StyleSheet.create({
     borderTopWidth: 0,
   },
   footerHint: {
-    color: "rgba(255,255,255,0.4)",
+    color: P.tertiaryLabel,
     fontSize: ps(0.8),
-    fontWeight: "700",
   },
 
   rowWrapper: { height: ROW_HEIGHT, paddingHorizontal: pw(0.8), paddingVertical: ph(0.35), justifyContent: "center" },
@@ -366,27 +376,29 @@ const S = StyleSheet.create({
     gap: pw(0.8),
     paddingHorizontal: pw(1.0),
     paddingVertical: ph(1.2),
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
+    borderCurve: "continuous",
     borderWidth: 0,
     borderColor: "transparent",
-    backgroundColor: "#17181c",
+    // A fill rather than a material — this is a dense list of rows, and glass
+    // per row would stack forty sets of edges down the overlay.
+    backgroundColor: P.tertiarySystemFill,
   },
   rowCurrent: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderWidth: 0,
     borderColor: "transparent",
   },
   rowFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderWidth: 0,
     borderColor: "transparent",
     elevation: 8,
   },
   rowNumber: {
     minWidth: ps(2.2),
-    color: "rgba(255,255,255,0.5)",
+    color: P.secondaryLabel,
     fontSize: ps(1.05),
-    fontWeight: "900",
     fontVariant: ["tabular-nums"],
   },
   rowLogo: {
@@ -397,11 +409,19 @@ const S = StyleSheet.create({
   },
   rowLogoImage: { width: "100%", height: "100%" },
   rowText: { flex: 1 },
-  rowName: { color: "#fff", fontSize: ps(1.2), fontWeight: "800", letterSpacing: 0.2 },
-  rowNow: { color: "rgba(255,255,255,0.42)", fontSize: ps(0.85), fontWeight: "600" },
-  rowNowActive: { color: "rgba(0,0,0,0.55)" },
-  rowTextFocused: { color: "#000" },
-  rowTextActive: { color: THEME.colors.selectedText, fontWeight: "900" },
+  rowName: { color: P.label, fontSize: ps(1.2), fontFamily: THEME.fonts.medium, letterSpacing: 0.1 },
+  rowNow: { color: P.tertiaryLabel, fontSize: ps(0.85) },
+  /**
+   * The secondary line once the row is filled with the tint.
+   *
+   * Dark at reduced alpha, because the filled row is an off-white — the same
+   * ink as the row's title above it, turned down, exactly as `rowNow` is a
+   * turned-down `rowName` on a resting row. Both levels come from the palette
+   * so the pair moves together.
+   */
+  rowNowActive: { color: P.onTintSecondary },
+  rowTextFocused: { color: P.onTint },
+  rowTextActive: { color: THEME.colors.selectedText },
   playingDot: { paddingLeft: pw(0.5) },
 });
 

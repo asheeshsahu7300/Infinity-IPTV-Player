@@ -7,6 +7,7 @@ import { usePortalStore } from "../src/store/portalStore";
 import { portalApi, formatMac } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
+import { CinematicBackground } from "../src/components/CinematicBackground";
 import LoadingOverlay from "../src/components/LoadingOverlay";
 import { useDialog } from "../src/components/ConfirmDialog";
 import { safeBack } from "../src/services/safeNavigation";
@@ -17,6 +18,8 @@ import { isTouch } from "../src/utils/tabletUtils";
 import { pw, ph, ps } from "../src/theme/tokens";
 import { Text } from '../src/components/Text';
 import { TextInput } from '../src/components/TextInput';
+import * as P from "../src/theme/palette";
+import { THEME } from "../src/theme/tokens";
 
 
 
@@ -58,7 +61,7 @@ const GradientBorderCard = ({
           width: "30%",
           aspectRatio: 1,
           borderRadius: RADIUS,
-          backgroundColor: focused ? "#FFFFFF" : "#17181c",
+          backgroundColor: focused ? "#FFFFFF" : P.secondaryElevatedSystemBackground,
           borderWidth: 0,
           borderColor: "transparent",
           overflow: "hidden",
@@ -497,7 +500,10 @@ export default function AddPortalScreen() {
   );
 
   return (
-    <View style={[S.container, { paddingTop: insets.top }]}>{inner}</View>
+    <View style={[S.container, { paddingTop: insets.top }]}>
+      <CinematicBackground />
+      {inner}
+    </View>
   );
 }
 
@@ -578,7 +584,7 @@ const S = StyleSheet.create({
   },
   darkCardTitle: {
     fontSize: ps(1.6),
-    fontWeight: "600",
+    fontFamily: THEME.fonts.semibold,
     color: "#fff",
     marginBottom: 8,
     textAlign: "center",
@@ -649,14 +655,14 @@ const S = StyleSheet.create({
   ventoxHeadlinePre: {
     color: "#FFFFFF",
     fontSize: ps(2.3),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     lineHeight: ps(2.3) * (isPhone ? 1.3 : 1.0114),
     textAlign: "left",
   },
   ventoxHeadlineMain: {
     color: "#FFFFFF",
     fontSize: ps(3.0),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     lineHeight: ps(3.0) * (isPhone ? 1.25 : 0.96),
     marginTop: ph(0.6),
     textAlign: "left",
@@ -670,7 +676,7 @@ const S = StyleSheet.create({
     // but 39 on a handset — under the touch minimum for the one control on
     // this screen you have to hit accurately.
     height: isPhone ? 46 : ph(9.8),
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: "transparent",
@@ -681,19 +687,19 @@ const S = StyleSheet.create({
   },
   inputBoxFocused: {
     borderColor: "#FFFFFF",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
   textInput: {
     color: "#FFFFFF",
     fontSize: ps(1.6),
-    fontWeight: "500",
+    fontFamily: THEME.fonts.medium,
     paddingVertical: 0,
     width: "100%",
   },
   themeAddBtn: {
     width: "100%",
     height: isPhone ? 46 : ph(9.8),
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
@@ -702,7 +708,7 @@ const S = StyleSheet.create({
     borderColor: "transparent",
   },
   themeAddBtnFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "transparent",
     borderWidth: 0,
     transform: [{ scale: 1.02 }],
@@ -710,11 +716,11 @@ const S = StyleSheet.create({
   themeAddBtnText: {
     color: "#000000",
     fontSize: ps(1.7),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 0.5,
   },
   themeAddBtnTextFocused: {
     color: "#000000",
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
   },
 });

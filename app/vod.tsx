@@ -11,7 +11,8 @@ import { portalApi, buildImageUrl } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { cacheManager } from "../src/services/cacheManager";
-import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { THEME, pw, ph, ps, HEADER } from "../src/theme/tokens";
+import { FOCUS, MATERIALS, RADIUS, focusGlowShadow } from "../src/theme/materials";
 import { TABLET_TILE_MAX_WIDTH, TILE_MAX_WIDTH, isTablet, SIDEBAR_WIDTH } from "../src/utils/tabletUtils";
 import { isPhone, PHONE_GRID_COLUMNS, PHONE_H_PAD, PHONE_SEARCH_BAR_WIDTH } from "../src/utils/phoneUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
@@ -46,73 +47,23 @@ const SCREEN_KEY = "vod";
 // ─────────────────────────────────────────────
 const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000000" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: pw(3),
-    height: 56,
-  },
-  headerCenterTitleWrapper: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    pointerEvents: "none",
-  },
-  headerTitle: {
-    color: "#FFFFFF",
-    fontSize: ps(1.6),
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  searchBtnWrapper: {
-    borderRadius: 24,
-    overflow: "hidden",
-  },
-  searchCircleBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#17181c",
-    borderWidth: 0,
-    borderColor: "transparent",
-    overflow: "hidden",
-  },
-  searchCircleBtnFocused: {
-    borderRadius: 22,
-    backgroundColor: "#F5F5F5",
-    borderColor: "transparent",
-    borderWidth: 0,
-    transform: [{ scale: 1.12 }],
-    overflow: "hidden",
-  },
+  // The shared header. These seven were byte-identical in live-tv, vod and
+  // series; see `HEADER` in theme/tokens for why they now live in one place.
+  // The names are kept so the JSX below is untouched.
+  header: HEADER.bar,
+  headerCenterTitleWrapper: HEADER.centerTitleWrapper,
+  headerTitle: HEADER.title,
+  headerRight: HEADER.right,
+  searchBtnWrapper: HEADER.iconButtonWrapper,
+  searchCircleBtn: HEADER.iconButton,
+  searchCircleBtnFocused: HEADER.iconButtonFocused,
+  // Width is the one thing that is genuinely per-screen here, so the shared
+  // bar supplies everything else and this adds the measurement.
   searchOpenBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#17181c",
-    borderRadius: 22,
-    paddingHorizontal: pw(1.4),
-    height: 44,
+    ...HEADER.searchBar,
     width: isPhone ? PHONE_SEARCH_BAR_WIDTH : pw(36),
-    borderWidth: 0,
-    borderColor: "transparent",
   },
-  searchInput: {
-    flex: 1,
-    color: "#FFFFFF",
-    fontSize: ps(1.15),
-    fontWeight: "600",
-    paddingVertical: 0,
-    textAlignVertical: "center",
-  },
+  searchInput: HEADER.searchInput,
   body: { flex: 1, flexDirection: "row", marginTop: 10 },
   portraitPillsWrapper: {
     paddingVertical: 4,
@@ -138,36 +89,37 @@ const S = StyleSheet.create({
     // becomes even gap instead of piling up at the end of the row.
     width: isTablet ? TABLET_TILE_MAX_WIDTH : "100%",
     alignSelf: "center",
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
     overflow: "visible",
   },
   movieCardContainerFocused: {},
   posterFrame: {
     width: "100%",
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
+    borderCurve: "continuous",
     overflow: "hidden",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 1,
-    borderColor: "transparent",
+    borderColor: MATERIALS.thin.edge,
   },
   posterFrameFocused: {
-    borderColor: "#ffffff",
+    borderColor: FOCUS.edge,
     borderWidth: 1,
-    transform: [{ scale: 1.03 }],
-    elevation: 12,
+    transform: [{ scale: FOCUS.scale }],
+    ...focusGlowShadow,
   },
-  posterImage: { width: "100%", height: "100%" },
+  posterImage: { width: "100%", height: "100%", borderRadius: RADIUS.lg, overflow: "hidden" },
   posterFallback: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
   cornerRatingBadge: {
     position: "absolute",
     bottom: 6,
     right: 6,
-    backgroundColor: "rgba(0, 0, 0, 0.78)",
+    backgroundColor: P.scrimHeavy,
     borderWidth: 0,
     paddingHorizontal: 7,
     paddingVertical: 2.5,
@@ -175,9 +127,9 @@ const S = StyleSheet.create({
     elevation: 4,
   },
   cornerRatingText: {
-    color: "#FFFFFF",
+    color: P.label,
     fontSize: ps(0.85),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.2,
   },
   favoriteBadge: {
@@ -204,22 +156,22 @@ const S = StyleSheet.create({
     height: 3.5,
     backgroundColor: "rgba(0,0,0,0.6)",
   },
-  resumeProgress: { height: "100%", backgroundColor: "#F5F5F5" },
+  resumeProgress: { height: "100%", backgroundColor: P.tint },
   movieTitleText: {
-    color: "rgba(255,255,255,0.75)",
+    color: P.label,
     fontSize: ps(0.92),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     marginTop: 8,
     lineHeight: 20,
   },
   movieTitleTextFocused: {
-    color: "#ffffff",
-    fontWeight: "900",
+    color: P.label,
+    fontFamily: THEME.fonts.bold,
   },
   loadingCenter: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { color: "#B8B8B8", marginTop: 15, fontSize: ps(1.05), fontWeight: "600" },
+  loadingText: { color: "#B8B8B8", marginTop: 15, fontSize: ps(1.05), fontFamily: THEME.fonts.semibold },
   emptyState: { flex: 1, justifyContent: "center", alignItems: "center", paddingVertical: ph(6) },
-  emptyTitle: { color: "#FFFFFF", fontSize: ps(1.4), marginTop: 12, fontWeight: "800" },
+  emptyTitle: { color: "#FFFFFF", fontSize: ps(1.4), marginTop: 12, fontFamily: THEME.fonts.bold },
   emptySubtitle: { color: "#B8B8B8", fontSize: ps(1.05), marginTop: 6, textAlign: "center" },
   retryBtn: { marginTop: ph(2.5), borderRadius: 16, overflow: "visible" },
   retryInner: {
@@ -237,17 +189,20 @@ const S = StyleSheet.create({
     borderColor: "#FFC857",
     elevation: 8,
   },
-  retryText: { color: "#FFFFFF", fontSize: ps(1.05), fontWeight: "800", marginLeft: pw(0.6) },
+  retryText: { color: "#FFFFFF", fontSize: ps(1.05), fontFamily: THEME.fonts.bold, marginLeft: pw(0.6) },
 
   // Modal Styles
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center" },
-  modalContainer: { width: ps(65), borderRadius: 36, padding: ps(2), overflow: "hidden" },
+  modalBackdrop: { flex: 1, backgroundColor: P.scrimHeavy, justifyContent: "center", alignItems: "center" },
+  modalContainer: { width: ps(65), borderRadius: RADIUS.xl, borderCurve: "continuous", padding: ps(2), overflow: "hidden" },
   modalSurface: {
     width: '100%',
     borderTopLeftRadius: ps(2),
     borderTopRightRadius: ps(2),
     overflow: 'hidden',
-    backgroundColor: 'rgba(21, 21, 18, 0.98)',
+    // The thick material's own fill. This was 'rgba(21, 21, 18, 0.98)' — a warm
+    // near-black from the cinema palette, and the last surface in the app still
+    // wearing it.
+    backgroundColor: P.elevatedSystemBackground,
   },
   /*
    * The play sheet is three columns — poster, details, actions — and on a phone
@@ -277,9 +232,10 @@ const S = StyleSheet.create({
     // title, rather than stand next to the whole synopsis.
     width: isPhone ? 72 : pw(11),
     aspectRatio: 2 / 3,
-    borderRadius: ps(0.8),
+    borderRadius: RADIUS.sm,
+    borderCurve: "continuous",
     overflow: "hidden",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: P.quaternarySystemFill,
     marginRight: isPhone ? 12 : pw(2),
   },
   modalPosterImg: {
@@ -291,20 +247,20 @@ const S = StyleSheet.create({
     height: "100%",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: P.quaternarySystemFill,
   },
   modalTypeBadge: {
     alignSelf: "flex-start",
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: P.tertiarySystemFill,
     paddingHorizontal: ps(0.6),
     paddingVertical: ps(0.2),
-    borderRadius: ps(0.3),
+    borderRadius: RADIUS.xs,
     marginBottom: ps(0.5),
   },
   modalTypeBadgeText: {
-    color: "#FFFFFF",
+    color: P.secondaryLabel,
     fontSize: ps(0.7),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 1,
   },
   modalLeft: {
@@ -338,10 +294,14 @@ const S = StyleSheet.create({
     justifyContent: "center",
     gap: isPhone ? 10 : ps(0.8),
   },
+  // Matched to series-details' sheet: semibold with negative tracking rather
+  // than bold with none. Apple tightens as type grows, and bold at ps(1.6) on
+  // a dark sheet reads heavier than the title of the page behind it.
   modalTitle: {
-    color: "#FFFFFF",
+    color: P.label,
     fontSize: ps(1.6),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.semibold,
+    letterSpacing: -0.3,
     marginBottom: ps(0.6),
   },
   modalMetaRow: {
@@ -351,8 +311,10 @@ const S = StyleSheet.create({
     marginBottom: ps(0.4),
     flexWrap: "wrap",
   },
+  // The tint, not the goldenrod it was. `#B8860B` predates the palette by two
+  // schemes and was the only one of its kind left.
   modalRatingBadge: {
-    backgroundColor: "#B8860B",
+    backgroundColor: P.tint,
     paddingHorizontal: 8,
     paddingVertical: 2.5,
     borderRadius: 7,
@@ -360,19 +322,19 @@ const S = StyleSheet.create({
     justifyContent: "center",
   },
   modalRatingBadgeText: {
-    color: "#FFFFFF",
+    color: P.onTint,
     fontSize: ps(0.85),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.2,
   },
   modalMetaDot: {
-    color: "#B8B8B8",
+    color: P.quaternaryLabel,
     fontSize: ps(1.05),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     marginHorizontal: pw(0.8),
   },
   modalBtnWrapper: {
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
     overflow: "visible",
     width: "100%",
   },
@@ -386,31 +348,32 @@ const S = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 0,
     borderColor: "transparent",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
   modalBtnPillFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "transparent",
     borderWidth: 0,
     elevation: 8,
     transform: [{ scale: 1.05 }],
   },
   modalBtnText: {
-    color: "#FFFFFF",
+    color: P.label,
     fontSize: ps(1.0),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.3,
   },
+  // Dark, because the focused pill fills with the off-white tint.
   modalBtnTextFocused: {
-    color: "#000000",
+    color: P.onTint,
     fontSize: ps(1.0),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.3,
   },
   loadMoreFooter: { paddingVertical: ph(3), alignItems: "center", justifyContent: "center" },
-  loadMoreBtn: { flexDirection: "row", alignItems: "center", gap: pw(0.8), paddingHorizontal: pw(3), paddingVertical: ph(1.4), backgroundColor: "#17181c", borderRadius: 24, borderWidth: 0, borderColor: "transparent" },
-  loadMoreBtnFocused: { borderColor: "transparent", borderWidth: 0, backgroundColor: "#F5F5F5", shadowColor: "#fff", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 12, elevation: 12 },
-  loadMoreBtnText: { color: "#000000", fontSize: ps(1), fontWeight: "900", letterSpacing: 1.5 },
+  loadMoreBtn: { flexDirection: "row", alignItems: "center", gap: pw(0.8), paddingHorizontal: pw(3), paddingVertical: ph(1.4), backgroundColor: P.secondaryElevatedSystemBackground, borderRadius: 24, borderWidth: 0, borderColor: "transparent" },
+  loadMoreBtnFocused: { borderColor: "transparent", borderWidth: 0, backgroundColor: P.tint, shadowColor: "#fff", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 12, elevation: 12 },
+  loadMoreBtnText: { color: "#000000", fontSize: ps(1), fontFamily: THEME.fonts.bold, letterSpacing: 1.5 },
 });
 
 // ─────────────────────────────────────────────
@@ -528,7 +491,7 @@ const MovieItem = React.memo(function MovieItem({
                 />
               ) : (
                 <View style={[StyleSheet.absoluteFill, S.posterFallback]}>
-                  <Film size={ps(4.2)} color="rgba(255,255,255,0.32)" />
+                  <Film size={ps(4.2)} color={P.tertiaryLabel} />
                 </View>
               )}
 
@@ -708,6 +671,7 @@ const pickYear = (v: any) => {
 };
 
 import { safeBack } from "../src/services/safeNavigation";
+import * as P from "../src/theme/palette";
 
 const pickDescription = (v: any) => {
   const desc = v?.description ?? v?.descr ?? v?.plot ?? v?.info ?? v?.storyline ?? v?.short_description ?? "";
@@ -1527,33 +1491,37 @@ export default function VODScreen() {
 
   return (
     <View style={[S.container, { paddingTop: isPortrait ? Math.max(insets.top, 24) + 8 : insets.top }]}>
-      <CinematicBackground />
+      <CinematicBackground followsFocus />
 
       <View
         style={{ flex: 1 }}
         accessible={!playModalVisible}
         importantForAccessibility={playModalVisible ? "no-hide-descendants" : "auto"}
       >
-        <CinematicBackground />
+        <CinematicBackground followsFocus />
 
         <View style={S.header}>
           <View style={{ width: 38 }} />
 
-          <View style={S.headerCenterTitleWrapper}>
-            <Text style={S.headerTitle}>Movies</Text>
-          </View>
+        {/* Hidden while the search field is open — the field expands across
+            the same strip this is centred in, and both were drawing at once. */}
+          {!isSearchOpen && (
+            <View style={S.headerCenterTitleWrapper}>
+              <Text style={S.headerTitle}>Movies</Text>
+            </View>
+          )}
 
           <View style={S.headerRight}>
             {isSearchOpen ? (
               <View style={S.searchOpenBar}>
                 <Pressable onPress={() => commitSearch()} style={{ padding: 2 }}>
-                  <Search size={ps(1.8)} color="rgba(255,255,255,0.75)" style={{ marginRight: pw(0.8) }} />
+                  <Search size={ps(1.8)} color={P.secondaryLabel} style={{ marginRight: pw(0.8) }} />
                 </Pressable>
                 <TextInput
                   ref={searchInputRef}
                   style={S.searchInput}
                   placeholder="Search movies..."
-                  placeholderTextColor="rgba(255,255,255,0.4)"
+                  placeholderTextColor={P.placeholderText}
                   value={searchQuery}
                   onChangeText={(text) => {
                     searchQueryRef.current = text;
@@ -1586,7 +1554,7 @@ export default function VODScreen() {
                     <View style={focused ? { transform: [{ scale: 1.15 }] } : undefined}>
                       <X
                         size={ps(2.1)}
-                        color={focused ? "#ffffff" : "rgba(255,255,255,0.75)"}
+                        color={focused ? P.label : P.secondaryLabel}
                       />
                     </View>
                   )}
@@ -1613,7 +1581,8 @@ export default function VODScreen() {
                       { borderRadius: 22 },
                     ]}
                   >
-                    <Search size={ps(2.2)} color={focused ? "#000000" : "#ffffff"} />
+                    {/* Dark when focused: the button fills with the off-white tint. */}
+                  <Search size={ps(2.2)} color={focused ? P.onTint : P.label} />
                   </View>
                 )}
               </Focusable>
@@ -1676,7 +1645,7 @@ export default function VODScreen() {
                     <DynamicIcon
                       name={loadFailed ? "cloud-off-outline" : "movie-filter-outline"}
                       size={ps(4)}
-                      color="rgba(255,255,255,0.05)"
+                      color={P.quaternaryLabel}
                     />
                     <Text style={S.emptyTitle}>
                       {loadFailed ? "Couldn't Load Movies" : "Nothing Found"}
@@ -1721,7 +1690,7 @@ export default function VODScreen() {
             />
           )}
           <LinearGradient
-            colors={['rgba(10,12,18,0.78)', 'rgba(8,8,12,0.96)', '#08080a']}
+            colors={['rgba(0,0,0,0.78)', 'rgba(0,0,0,0.94)', P.systemBackground]}
             style={StyleSheet.absoluteFill}
           />
           {/* The sheet sits flush to the bottom edge, so on a phone the last
@@ -1738,7 +1707,7 @@ export default function VODScreen() {
                 />
               ) : (
                 <View style={S.modalPosterFallback}>
-                  <Film size={ps(3.2)} color="rgba(255,255,255,0.3)" />
+                  <Film size={ps(3.2)} color={P.tertiaryLabel} />
                 </View>
               )}
               {selectedVod?.rating && parseFloat(String(selectedVod.rating)) > 0 ? (

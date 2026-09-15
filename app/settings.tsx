@@ -11,7 +11,7 @@ import { parentalControl } from '../src/services/parentalControl';
 import { epgService } from '../src/services/epgService';
 import { hiddenCategories } from '../src/services/hiddenCategories';
 import PinPrompt from '../src/components/PinPrompt';
-import { THEME, pw, ph, psRaw as ps } from '../src/theme/tokens';
+import { THEME, pw, ph, psRaw as ps, PAGE_HEADER } from '../src/theme/tokens';
 import { isPhone } from '../src/utils/phoneUtils';
 import { isTouch } from '../src/utils/tabletUtils';
 import { Focusable, FocusGroup, FocusMemory, useFocusRestore } from '../src/tv';
@@ -20,6 +20,7 @@ import { useDialog } from '../src/components/ConfirmDialog';
 import { ArrowLeftRight, ChevronRight, LogOut } from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
 import { Text } from '../src/components/Text';
+import * as P from "../src/theme/palette";
 
 
 type IconName = string;
@@ -58,10 +59,17 @@ interface SettingRowProps {
   icon: IconName;
   title: string;
   /**
-   * No longer drawn — the rows are title-only now. It stays because it is still
-   * the `accessibilityHint`, which is the one place the longer explanation is
-   * worth keeping: a title like "Host Rewrite" says nothing on its own to
-   * someone using a screen reader on a box with no pointer.
+   * Drawn on a TV and a tablet, and not on a handset.
+   *
+   * The split is about how far away the screen is and how much of it there is.
+   * On a box the viewer is across a room with a remote, cannot hover anything
+   * to find out what it does, and has a wide row with space to spare — so a
+   * title like "Host Rewrite" needs its line of explanation. A handset has the
+   * setting an inch from the eye and a column too narrow to carry it, which is
+   * why these came off the phone in the first place.
+   *
+   * It is also the `accessibilityHint` on every tier, so the explanation still
+   * reaches a screen reader on a phone where the line is not drawn.
    */
   subtitle: string;
   focusKey: string;
@@ -102,11 +110,19 @@ function SettingRow({
           <DynamicIcon
             name={icon}
             size={ps(2.6)}
-            color={focused ? '#000' : 'rgba(255,255,255,0.75)'}
+            color={focused ? P.onTint : P.secondaryLabel}
             style={S.rowIcon}
           />
           <View style={S.rowText}>
             <Text style={[S.rowTitle, focused && S.rowTitleFocused]}>{title}</Text>
+            {!isPhone ? (
+              <Text
+                style={[S.rowSubtitle, focused && S.rowSubtitleFocused]}
+                numberOfLines={2}
+              >
+                {subtitle}
+              </Text>
+            ) : null}
           </View>
           <RowControlView control={control} focused={focused} />
         </View>
@@ -118,7 +134,8 @@ function SettingRow({
 interface DataTileProps {
   icon: IconName;
   title: string;
-  /** Not drawn; kept as the `accessibilityHint`. See `SettingRowProps`. */
+  /** Drawn on TV and tablet only, and the `accessibilityHint` everywhere. See
+   *  `SettingRowProps`. */
   subtitle: string;
   focusKey: string;
   onPress: () => void;
@@ -142,7 +159,7 @@ function DataTile({ icon, title, subtitle, focusKey, onPress, value }: DataTileP
           <DynamicIcon
             name={icon}
             size={ps(2.5)}
-            color={focused ? '#000' : 'rgba(255,255,255,0.75)'}
+            color={focused ? P.onTint : P.secondaryLabel}
             style={S.tileIcon}
           />
           <View style={S.tileText}>
@@ -152,10 +169,18 @@ function DataTile({ icon, title, subtitle, focusKey, onPress, value }: DataTileP
               </Text>
               {value ? (
                 <View style={[S.valuePill, focused && S.valuePillFocused]}>
-                  <Text style={[S.valuePillText, focused && { color: '#fff' }]}>{value}</Text>
+                  <Text style={[S.valuePillText, focused && { color: P.label }]}>{value}</Text>
                 </View>
               ) : null}
             </View>
+            {!isPhone ? (
+              <Text
+                style={[S.tileSubtitle, focused && S.tileSubtitleFocused]}
+                numberOfLines={2}
+              >
+                {subtitle}
+              </Text>
+            ) : null}
           </View>
         </View>
       )}
@@ -423,8 +448,8 @@ export default function SettingsScreen() {
       {/* ── Header ── */}
       <View style={[
         S.header,
-        isTouch && { paddingHorizontal: 24, paddingTop: ph(3) },
-        isPhone && { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8 },
+        isTouch && { paddingHorizontal: 24, paddingTop: ph(1.5) },
+        isPhone && { paddingHorizontal: 14, paddingTop: 4 },
       ]}>
         <Text style={S.headerTitle}>Settings</Text>
       </View>
@@ -723,22 +748,11 @@ const S = StyleSheet.create({
   },
 
   // ── Header ────────────────────────────────────────────────────────────────
-  header: {
-    paddingHorizontal: pw(8),
-    paddingTop: ph(5),
-    paddingBottom: ph(2),
-  },
-  headerTitle: {
-    color: '#FFFFFF',
-    fontSize: isPhone ? 20 : ps(2.6),
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  headerSubtitle: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: isPhone ? 12 : ps(1.1),
-    marginTop: ph(0.6),
-  },
+  // The shared page header — see `PAGE_HEADER` in theme/tokens for the table of
+  // what the six copies of this had drifted to.
+  header: PAGE_HEADER.bar,
+  headerTitle: PAGE_HEADER.title,
+  headerSubtitle: PAGE_HEADER.subtitle,
 
   content: {
     flex: 1,
@@ -754,17 +768,14 @@ const S = StyleSheet.create({
     marginBottom: ph(5),
   },
   sectionLabel: {
-    fontSize: isPhone ? 12 : ps(1.45),
-    fontWeight: '900',
-    color: 'rgba(255,255,255,0.65)',
-    letterSpacing: 2.5,
+    ...PAGE_HEADER.sectionLabel,
     marginBottom: ph(1.4),
     paddingLeft: pw(0.5),
   },
 
   // ── Portal card ───────────────────────────────────────────────────────────
   portalCard: {
-    backgroundColor: '#17181c',
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderRadius: 18,
     padding: ps(2.8),
     borderWidth: 0,
@@ -781,7 +792,7 @@ const S = StyleSheet.create({
   portalNameText: {
     color: '#FFFFFF',
     fontSize: isPhone ? 17 : ps(2.2),
-    fontWeight: '900',
+    fontFamily: THEME.fonts.bold,
   },
   portalTypeBadge: {
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
@@ -792,9 +803,9 @@ const S = StyleSheet.create({
     borderColor: 'transparent',
   },
   portalTypeBadgeText: {
-    color: 'rgba(255, 255, 255, 0.95)',
+    color: P.label,
     fontSize: isPhone ? 10 : ps(0.95),
-    fontWeight: '800',
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.8,
   },
   portalInfoCols: {
@@ -807,15 +818,15 @@ const S = StyleSheet.create({
   },
   tinyLabel: {
     fontSize: isPhone ? 11.5 : ps(1.05),
-    color: 'rgba(255,255,255,0.5)',
-    fontWeight: '800',
+    color: P.secondaryLabel,
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 1.2,
     marginBottom: ph(0.5),
   },
   largeValue: {
     fontSize: isPhone ? 14 : ps(1.5),
     color: '#fff',
-    fontWeight: '600',
+    fontFamily: THEME.fonts.semibold,
   },
   portalActionsRow: {
     flexDirection: 'row',
@@ -835,7 +846,7 @@ const S = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 0,
     borderColor: 'transparent',
-    backgroundColor: '#17181c',
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
   switchBtnFocused: {
     borderColor: 'transparent',
@@ -846,7 +857,7 @@ const S = StyleSheet.create({
   },
   switchBtnText: {
     fontSize: isPhone ? 12 : ps(1.25),
-    fontWeight: '800',
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.5,
     color: '#fff',
   },
@@ -862,7 +873,7 @@ const S = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 0,
     borderColor: 'transparent',
-    backgroundColor: '#17181c',
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
   disconnectBtnFocused: {
     borderColor: 'transparent',
@@ -873,9 +884,9 @@ const S = StyleSheet.create({
   },
   disconnectBtnText: {
     fontSize: isPhone ? 12 : ps(1.25),
-    fontWeight: '800',
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.5,
-    color: 'rgba(255,255,255,0.7)',
+    color: P.label,
   },
   disconnectBtnTextFocused: {
     color: '#000',
@@ -885,7 +896,7 @@ const S = StyleSheet.create({
   groupedCard: {
     borderRadius: 18,
     padding: ps(0.8),
-    backgroundColor: '#17181c',
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 0,
     borderColor: 'transparent',
     overflow: 'hidden',
@@ -913,7 +924,7 @@ const S = StyleSheet.create({
   rowFocused: {
     borderColor: 'transparent',
     borderWidth: 0,
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
   },
   rowIcon: {
     marginRight: pw(1.8),
@@ -923,13 +934,27 @@ const S = StyleSheet.create({
     paddingRight: pw(1),
   },
   rowTitle: {
-    fontSize: isPhone ? 14 : ps(1.5),
+    fontSize: isPhone ? 14 : ps(1.75),
     color: '#fff',
-    fontWeight: '700',
+    fontFamily: THEME.fonts.semibold,
   },
   rowTitleFocused: {
-    color: '#000',
-    fontWeight: '900',
+    color: P.onTint,
+    fontFamily: THEME.fonts.bold,
+  },
+  // A focused row fills with the off-white tint, so both levels of ink invert —
+  // the same pairing the parental-control rows use.
+  rowSubtitle: {
+    fontSize: ps(1.35),
+    color: P.secondaryLabel,
+    fontFamily: THEME.fonts.regular,
+    marginTop: ph(0.3),
+    // 1.37x the size, held as the size moved — Inter needs ~1.21 as a floor
+    // and these rows are read from across a room.
+    lineHeight: ps(1.85),
+  },
+  rowSubtitleFocused: {
+    color: P.onTintSecondary,
   },
 
   // ── Data tiles ────────────────────────────────────────────────────
@@ -953,42 +978,51 @@ const S = StyleSheet.create({
     marginBottom: isPhone ? 10 : ph(1.5),
   },
   /*
-   * Height comes from the content now, with a floor on the phone only.
+   * A floor on every tier, for two different reasons.
    *
-   * A tile used to be an icon, a title and a subtitle capped at two lines, and
-   * whether a given subtitle wrapped to one line or two decided that tile's
-   * height — tiles stretch to match within a row, so the grid came out as even
-   * pairs at uneven heights down the column. A fixed 72dp on the phone
-   * (`ph(12.5)` resolved to only 49 there, under the ~63 the content needed)
-   * was what forced them level.
+   * **TV and tablet.** Tiles stretch to match *within* a row but not between
+   * rows, so anything that makes one tile taller raises its whole row and the
+   * grid steps down the column. Two things do:
    *
-   * With the subtitles gone every tile is an icon plus a single-line title, so
-   * the content is identical everywhere by construction and padding alone
-   * gives an even grid. Keeping the 72 would only add empty space — it was
-   * measured against text that no longer exists.
+   *   - the value pill. Its `minHeight: ph(3.4)` is about 18dp on the box
+   *     against the title's ~17.6dp line, so the one tile carrying an "On"
+   *     badge is taller than its neighbours — which is exactly what the
+   *     Tools & Diagnostics grid was showing.
+   *   - a subtitle that wraps. These are drawn again on TV and tablet, and
+   *     whether a given one takes one line or two decides that tile's height.
    *
-   * The phone still needs a floor, for a different reason: there the content
-   * comes to about 44dp (a 24.4dp icon plus 10dp of padding either side),
-   * which is under the 48dp minimum for something you tap. On TV and tablet
-   * the icon scales with `TV_SCALE` and the natural height clears that on its
-   * own, so a floor there would do nothing but stretch the tile.
+   * `ps(6.3)` is the taller case measured out: an 18.4dp header row, a
+   * `ph(0.4)` gap, two subtitle lines at `ps(1.25)`, and `ph(1.6)` of padding
+   * either side — about 60dp on the box. Every tile reaches it, so none of the
+   * three variables can move a row any more.
+   *
+   * This is the restoration of a floor that was removed on the reasoning that
+   * "with the subtitles gone every tile is an icon plus a single-line title, so
+   * the content is identical everywhere by construction". That was true while
+   * it was written and stopped being true the moment the subtitles came back.
+   *
+   * **Phone.** A different reason and a different number: the content there is
+   * about 44dp (a 24.4dp icon plus 10dp of padding either side), under the 48dp
+   * minimum for something you tap. Subtitles are not drawn on a handset, so the
+   * grid is even there by construction and 48 is a touch target rather than a
+   * levelling device.
    */
   tile: {
     flex: 1,
-    ...(isPhone ? { minHeight: 48 } : null),
+    minHeight: isPhone ? 48 : ps(6.3),
     borderRadius: 18,
     paddingHorizontal: isPhone ? 12 : pw(1.8),
     paddingVertical: isPhone ? 10 : ph(1.6),
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#17181c',
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 0,
     borderColor: 'transparent',
   },
   tileFocused: {
     borderColor: 'transparent',
     borderWidth: 0,
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     transform: [{ scale: 1.035 }],
   },
   tileIcon: {
@@ -1008,14 +1042,23 @@ const S = StyleSheet.create({
     gap: pw(0.6),
   },
   tileTitle: {
-    fontSize: isPhone ? 13 : ps(1.35),
+    fontSize: isPhone ? 13 : ps(1.55),
     color: '#fff',
-    fontWeight: '700',
+    fontFamily: THEME.fonts.semibold,
     flexShrink: 1,
   },
   tileTitleFocused: {
-    color: '#000',
-    fontWeight: '900',
+    color: P.onTint,
+    fontFamily: THEME.fonts.bold,
+  },
+  tileSubtitle: {
+    fontSize: ps(1.25),
+    color: P.secondaryLabel,
+    fontFamily: THEME.fonts.regular,
+    lineHeight: ps(1.7),
+  },
+  tileSubtitleFocused: {
+    color: P.onTintSecondary,
   },
   valuePill: {
     paddingHorizontal: pw(1.6),
@@ -1036,7 +1079,7 @@ const S = StyleSheet.create({
   valuePillText: {
     color: '#fff',
     fontSize: isPhone ? 11 : ps(1.15),
-    fontWeight: '800',
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.5,
   },
 
@@ -1070,13 +1113,13 @@ const S = StyleSheet.create({
     borderColor: 'rgba(0,0,0,0.3)',
   },
   switchTrackOn: {
-    backgroundColor: '#4ADE80',
-    borderColor: '#4ADE80',
+    backgroundColor: P.systemGreen,
+    borderColor: P.systemGreen,
   },
   // ON + focused: keep green but slightly darker
   switchTrackOnFocused: {
-    backgroundColor: '#22c55e',
-    borderColor: '#22c55e',
+    backgroundColor: P.systemGreen,
+    borderColor: P.systemGreen,
   },
   switchKnob: {
     width: isPhone ? 18 : ps(1.6),
@@ -1100,13 +1143,13 @@ const S = StyleSheet.create({
   },
   footerText: {
     fontSize: isPhone ? 11 : ps(1),
-    color: 'rgba(255,255,255,0.3)',
-    fontWeight: '800',
+    color: P.tertiaryLabel,
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 2,
   },
   footerSubtext: {
     fontSize: isPhone ? 9.5 : ps(0.85),
-    color: 'rgba(255,255,255,0.18)',
+    color: P.quaternaryLabel,
     marginTop: 4,
     letterSpacing: 1,
   },

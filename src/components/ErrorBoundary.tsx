@@ -1,6 +1,8 @@
 import React, { Component, ReactNode } from 'react';
 import { View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { phoneDp, THEME } from '../theme/tokens';
+import * as P from '../theme/palette';
+import { RADIUS } from '../theme/materials';
 import { RefreshCw, TriangleAlert } from 'lucide-react-native';
 import { Text } from './Text';
 
@@ -74,7 +76,7 @@ export default class ErrorBoundary extends Component<Props, State> {
       return (
         <View style={styles.container}>
           <View style={styles.content}>
-            <TriangleAlert size={64} color="#ef4444" />
+            <TriangleAlert size={64} color={P.systemRed} />
             <Text style={styles.title}>Oops! Something went wrong</Text>
             <Text style={styles.subtitle}>
               The app encountered an unexpected error
@@ -87,7 +89,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               </View>
             )}
             <TouchableOpacity style={styles.button} onPress={this.handleReset}>
-              <RefreshCw size={phoneDp(20)} color="#fff" />
+              <RefreshCw size={phoneDp(20)} color={P.onTint} />
               <Text style={[styles.buttonText, { marginLeft: 8 }]}>Try Again</Text>
             </TouchableOpacity>
           </View>
@@ -102,7 +104,7 @@ export default class ErrorBoundary extends Component<Props, State> {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: P.systemBackground,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
@@ -113,41 +115,48 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: '600',
-    color: '#fff',
+    fontFamily: THEME.fonts.semibold,
+    color: P.label,
     marginTop: 24,
     marginBottom: 12,
     textAlign: 'center',
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 16,
-    color: '#888',
+    color: P.secondaryLabel,
     textAlign: 'center',
     marginBottom: 32,
   },
   errorDetails: {
-    backgroundColor: '#111827',
+    backgroundColor: P.secondaryElevatedSystemBackground,
     padding: 16,
-    borderRadius: 12,
+    borderRadius: RADIUS.card,
+    borderCurve: 'continuous',
     marginBottom: 24,
     maxWidth: '100%',
   },
   errorText: {
-    color: '#ef4444',
+    color: P.systemRed,
     fontSize: 12,
     fontFamily: 'monospace',
   },
+  // A filled tint button with dark ink, which is the pairing this file has now
+  // had in both directions: the original `#F5F5F5` fill with white text was
+  // invisible, and so would a tint fill with white text be. Ink on tint is
+  // always `onTint` — see the note on `selectedText` in tokens.
   button: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.colors.primary,
     paddingHorizontal: 24,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: RADIUS.card,
+    borderCurve: 'continuous',
   },
   buttonText: {
-    color: '#fff',
+    color: P.onTint,
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: THEME.fonts.semibold,
   },
 });

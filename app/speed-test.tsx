@@ -10,7 +10,7 @@
 // that would help, rather than leaving the viewer to find that setting.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { usePortalStore } from "../src/store/portalStore";
@@ -23,41 +23,55 @@ import {
 } from "../src/services/speedTest";
 import { BUFFER_PROFILES, stbEnvironment } from "../src/services/stbEnvironment";
 import { CinematicBackground } from "../src/components/CinematicBackground";
-import { THEME, ph, psRaw as ps, pw } from "../src/theme/tokens";
+import { THEME, ph, psRaw as ps, pw, PAGE_HEADER, DATA_TILE } from "../src/theme/tokens";
+import * as P from "../src/theme/palette";
+import { RADIUS } from "../src/theme/materials";
 import { isPhone } from "../src/utils/phoneUtils";
 import { isTouch } from "../src/utils/tabletUtils";
 import { Focusable, FocusGroup } from "../src/tv";
-import { AlertCircle, RefreshCw, SlidersHorizontal , LucideIcon} from 'lucide-react-native';
+import { AlertCircle, RefreshCw, SlidersHorizontal } from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
 import { Text } from '../src/components/Text';
 
 
+/**
+ * The four grades, as a diagnostic ramp.
+ *
+ * These were Tailwind's `#4ade80`, `#a3e635`, `#fbbf24` and `#f87171` — the
+ * same stray palette that had drifted into half a dozen other files and was
+ * replaced there by Apple's system colours. This screen and `system-info` were
+ * missed by that pass because neither used the old accent literal the sweep
+ * keyed off, which is most of why the two of them stopped matching everything
+ * else.
+ *
+ * Green -> yellow -> orange -> red rather than Tailwind's green -> lime ->
+ * amber -> red: the system ramp has no lime, and a four-step diagnostic scale
+ * is the one place a yellow "good" reads correctly rather than as a warning,
+ * because the step above it is unambiguously green.
+ */
 const GRADE_COLOR: Record<string, string> = {
-  excellent: "#4ade80",
-  good: "#a3e635",
-  fair: "#fbbf24",
-  poor: "#f87171",
+  excellent: P.systemGreen,
+  good: P.systemYellow,
+  fair: P.systemOrange,
+  poor: P.systemRed,
 };
 
 function Stat({
   icon,
   label,
   value,
-  hint,
   style,
 }: {
   icon: string;
   label: string;
   value: string;
-  hint?: string;
   style?: any;
 }) {
   return (
     <View style={[S.stat, style]}>
-      <DynamicIcon name={icon} size={ps(1.6)} color="rgba(255,255,255,0.35)" />
+      <DynamicIcon name={icon} size={ps(1.6)} color={P.secondaryLabel} />
       <Text style={S.statLabel}>{label}</Text>
       <Text style={S.statValue}>{value}</Text>
-      {hint ? <Text style={S.statHint}>{hint}</Text> : null}
     </View>
   );
 }
@@ -120,7 +134,7 @@ export default function SpeedTestScreen() {
   }, []);
 
   const running = progress.phase === "latency" || progress.phase === "download";
-  const gradeColor = result ? GRADE_COLOR[result.verdict.grade] ?? "#fff" : "#fff";
+  const gradeColor = result ? GRADE_COLOR[result.verdict.grade] ?? P.label : P.label;
 
   // While the transfer runs, the live figure is the interesting one; once it
   // is done, the sustained average is.
@@ -132,15 +146,10 @@ export default function SpeedTestScreen() {
 
       <View style={[
         S.header,
-        isTouch && { paddingHorizontal: 24, paddingTop: ph(3) },
-        isPhone && { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 },
+        isTouch && { paddingHorizontal: 24, paddingTop: ph(1.5) },
+        isPhone && { paddingHorizontal: 14, paddingTop: 4 },
       ]}>
         <Text style={S.headerTitle}>Connection Test</Text>
-        <Text style={S.headerSubtitle}>
-          {activePortal
-            ? `Measured against ${result?.host ?? activePortal.name}`
-            : "No portal connected"}
-        </Text>
       </View>
 
       <ScrollView
@@ -160,7 +169,7 @@ export default function SpeedTestScreen() {
       >
         {/* ── Headline ── */}
         <View style={S.headline}>
-          <Text style={[S.headlineValue, { color: result ? gradeColor : "#fff" }]}>
+          <Text style={[S.headlineValue, { color: result ? gradeColor : P.label }]}>
             {headlineSpeed > 0 ? formatSpeed(headlineSpeed) : "—"}
           </Text>
           <Text style={S.headlineLabel}>
@@ -197,34 +206,30 @@ export default function SpeedTestScreen() {
                   ? `${progress.latencyMs} ms`
                   : "—"
             }
-            hint="Time to reach the server"
           />
           <Stat
             style={isPortrait ? { minWidth: "48%" } : undefined}
             icon="analytics-outline"
             label="JITTER"
             value={result ? `${result.jitterMs} ms` : "—"}
-            hint="Steadiness — what breaks live TV"
           />
           <Stat
             style={isPortrait ? { minWidth: "48%" } : undefined}
             icon="cloud-download-outline"
             label="TRANSFERRED"
             value={result ? formatBytes(result.bytes) : "—"}
-            hint={result ? `in ${(result.durationMs / 1000).toFixed(1)}s` : undefined}
           />
           <Stat
             style={isPortrait ? { minWidth: "48%" } : undefined}
             icon="wifi-outline"
             label="CONNECTION"
             value={result ? result.connectionType.toUpperCase() : "—"}
-            hint="Reported by the system"
           />
         </View>
 
         {/* ── Verdict ── */}
         {result ? (
-          <View style={[S.verdict, { borderColor: `${gradeColor}55` }]}>
+          <View style={S.verdict}>
             <View style={S.verdictHead}>
               <View style={[S.verdictDot, { backgroundColor: gradeColor }]} />
               <Text style={[S.verdictGrade, { color: gradeColor }]}>
@@ -238,7 +243,7 @@ export default function SpeedTestScreen() {
 
         {error ? (
           <View style={S.errorBox}>
-            <AlertCircle size={ps(1.6)} color="#f87171" />
+            <AlertCircle size={ps(1.6)} color={P.systemRed} />
             <Text style={S.errorText}>{error}</Text>
           </View>
         ) : null}
@@ -256,9 +261,9 @@ export default function SpeedTestScreen() {
             {(focused) => (
               <View style={[S.action, focused && S.actionFocused, running && S.actionDisabled]}>
                 {running ? (
-                  <ActivityIndicator size="small" color={isPhone || focused ? "#000" : "#fff"} />
+                  <ActivityIndicator size="small" color={isPhone || focused ? P.onTint : P.label} />
                 ) : (
-                  <RefreshCw size={ps(1.4)} color={isPhone || focused ? "#000" : "#fff"} />
+                  <RefreshCw size={ps(1.4)} color={isPhone || focused ? P.onTint : P.label} />
                 )}
                 <Text style={[S.actionText, focused && S.actionTextFocused]}>
                   {running ? "TESTING…" : "RUN AGAIN"}
@@ -278,7 +283,7 @@ export default function SpeedTestScreen() {
             >
               {(focused) => (
                 <View style={[S.action, focused && S.actionFocused]}>
-                  <SlidersHorizontal size={ps(1.4)} color={isPhone || focused ? "#000" : "#fff"} />
+                  <SlidersHorizontal size={ps(1.4)} color={isPhone || focused ? P.onTint : P.label} />
                   <Text style={[S.actionText, focused && S.actionTextFocused]}>
                     USE SMOOTH BUFFER
                   </Text>
@@ -289,6 +294,9 @@ export default function SpeedTestScreen() {
         </FocusGroup>
 
         <Text style={S.footnote}>
+          {activePortal
+            ? `Measured against ${result?.host ?? activePortal.name} · `
+            : "No portal connected · "}
           Buffer profile: {BUFFER_PROFILES[bufferProfile].label} — {BUFFER_PROFILES[bufferProfile].detail}
         </Text>
       </ScrollView>
@@ -299,25 +307,27 @@ export default function SpeedTestScreen() {
 const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: THEME.colors.background },
 
-  header: {
-    paddingHorizontal: pw(8),
-    paddingTop: ph(5),
-    paddingBottom: ph(1),
-  },
-  headerTitle: { color: "#fff", fontSize: ps(2.2), fontWeight: "900", letterSpacing: 0.5 },
-  headerSubtitle: { color: THEME.colors.textDim, fontSize: isPhone ? 14.4 : ps(1.1), marginTop: ph(0.6) },
+  // NB: this file aliases `psRaw as ps`, so every other size in it is on the
+  // unbumped scale. The header deliberately is not — it comes from
+  // `PAGE_HEADER`, which uses the same `ps` as every other page header, so
+  // this title finally matches them on a box instead of rendering a third
+  // small. The rest of the screen is left on `psRaw` as it was.
+  // The shared page header — see `PAGE_HEADER` in theme/tokens for the table of
+  // what the six copies of this had drifted to.
+  header: PAGE_HEADER.bar,
+  headerTitle: PAGE_HEADER.title,
 
   scroll: { paddingHorizontal: pw(8), paddingBottom: ph(8), gap: ph(2.4) },
 
   headline: { alignItems: "center", paddingTop: ph(3), gap: ph(0.6) },
   headlineValue: {
-    color: "#fff",
+    color: P.label,
     fontSize: ps(5),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     fontVariant: ["tabular-nums"],
     letterSpacing: -1,
   },
-  headlineLabel: { color: THEME.colors.textMuted, fontSize: isPhone ? 14.4 : ps(1.05), fontWeight: "600" },
+  headlineLabel: { color: P.secondaryLabel, fontSize: isPhone ? 14.4 : ps(1.05) },
   progressTrack: {
     /*
      * `pw` is a percentage of the *long* edge, so `pw(50)` is 436dp — wider
@@ -327,12 +337,12 @@ const S = StyleSheet.create({
      */
     width: isPhone ? "80%" : pw(50),
     height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: RADIUS.full,
+    backgroundColor: P.quaternarySystemFill,
     overflow: "hidden",
     marginTop: ph(1.2),
   },
-  progressFill: { height: "100%", backgroundColor: "#fff", borderRadius: 2 },
+  progressFill: { height: "100%", backgroundColor: P.tint, borderRadius: RADIUS.full },
 
   // Gap trimmed on a phone: the stats wrap two to a row at `minWidth: 48%`, and
   // `pw(1.5)` is 13dp, which leaves those two within 2dp of overflowing — the
@@ -352,72 +362,96 @@ const S = StyleSheet.create({
     flex: 1,
     minHeight: isPhone ? 78 : undefined,
     padding: isPhone ? 12 : pw(1.5),
-    borderRadius: ps(1),
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    // Flat, not a material — see `DATA_TILE`.
+    ...DATA_TILE,
     gap: ph(0.3),
   },
   statLabel: {
-    color: "rgba(255,255,255,0.35)",
+    color: P.secondaryLabel,
     fontSize: isPhone ? 11.5 : ps(0.75),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.medium,
     letterSpacing: 1.2,
     marginTop: ph(0.4),
   },
   statValue: {
-    color: "#fff",
+    color: P.label,
     fontSize: isPhone ? 18.4 : ps(1.5),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.semibold,
     fontVariant: ["tabular-nums"],
   },
-  statHint: { color: "rgba(255,255,255,0.28)", fontSize: isPhone ? 11.5 : ps(0.78) },
 
+  /**
+   * The verdict panel keeps the material's own neutral edge rather than a
+   * grade-tinted one.
+   *
+   * It used to take `${gradeColor}55` as its border, which put the grade in
+   * three places at once — the dot, the word, and a coloured frame around the
+   * whole block. The dot and the word are enough; a tinted container is the
+   * treatment `ConfirmDialog` had to have taken off it for the same reason.
+   */
   verdict: {
     padding: pw(2),
-    borderRadius: ps(1.1),
-    borderWidth: 1,
-    backgroundColor: "rgba(255,255,255,0.03)",
+    ...DATA_TILE,
     gap: ph(0.8),
   },
   verdictHead: { flexDirection: "row", alignItems: "center", gap: pw(1) },
-  verdictDot: { width: 10, height: 10, borderRadius: 5 },
-  verdictGrade: { fontSize: isPhone ? 15.5 : ps(1.2), fontWeight: "900", letterSpacing: 1.5 },
-  verdictQuality: { color: "#fff", fontSize: isPhone ? 14.4 : ps(1.05), fontWeight: "700" },
-  verdictSummary: { color: THEME.colors.textMuted, fontSize: ps(1), lineHeight: ps(1.6) },
+  verdictDot: { width: 10, height: 10, borderRadius: RADIUS.full },
+  verdictGrade: {
+    fontSize: isPhone ? 15.5 : ps(1.2),
+    fontFamily: THEME.fonts.semibold,
+    letterSpacing: 1.5,
+  },
+  verdictQuality: {
+    color: P.label,
+    fontSize: isPhone ? 14.4 : ps(1.05),
+    fontFamily: THEME.fonts.medium,
+  },
+  verdictSummary: { color: P.secondaryLabel, fontSize: ps(1), lineHeight: ps(1.6) },
 
   errorBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: pw(1),
     padding: pw(1.5),
-    borderRadius: ps(1),
-    backgroundColor: "rgba(248,113,113,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(248,113,113,0.25)",
+    borderRadius: RADIUS.card,
+    borderCurve: "continuous",
+    // Fill only, matching the tiles above it.
+    backgroundColor: "rgba(255, 69, 58, 0.12)",
   },
-  errorText: { color: "#fca5a5", fontSize: isPhone ? 13.8 : ps(1), flex: 1 },
+  errorText: { color: P.systemRed, fontSize: isPhone ? 13.8 : ps(1), flex: 1 },
 
   actions: { flexDirection: "row", gap: pw(1.5), flexWrap: "wrap" },
-  actionWrapper: { borderRadius: ps(1) },
+  actionWrapper: { borderRadius: RADIUS.card },
   action: {
     flexDirection: "row",
     alignItems: "center",
     gap: pw(0.8),
     paddingHorizontal: pw(2.5),
     paddingVertical: ph(1.3),
-    borderRadius: ps(1),
-    // White on a phone. The translucent fill is the *resting* state of a
-    // control that turns white when a remote focuses it, and a phone focuses
-    // nothing — so it would have stayed a faint grey panel forever.
-    backgroundColor: isPhone ? "#fff" : "rgba(255,255,255,0.07)",
+    borderRadius: RADIUS.card,
+    borderCurve: "continuous",
+    // Filled on a phone. The translucent fill is the *resting* state of a
+    // control that fills when a remote focuses it, and a phone focuses
+    // nothing — so it would have stayed a faint grey panel forever. This is
+    // the same "no cursor, so the selected thing is always the filled one"
+    // rule that `selectionRung` encodes for the category selectors.
+    //
+    // The fill is the tint rather than a bare `#fff`, which is the specific
+    // thing that made this screen's buttons read a shade brighter than every
+    // other focused control in the app.
+    backgroundColor: isPhone ? P.tint : P.tertiarySystemFill,
     borderWidth: 1,
     borderColor: "transparent",
   },
-  actionFocused: { backgroundColor: "#fff", borderColor: "#fff", transform: [{ scale: 1.04 }] },
+  actionFocused: { backgroundColor: P.tint, borderColor: P.tint, transform: [{ scale: 1.04 }] },
   actionDisabled: { opacity: 0.6 },
-  actionText: { color: isPhone ? "#000" : "#fff", fontSize: isPhone ? 15 : ps(1), fontWeight: "900", letterSpacing: 1 },
-  actionTextFocused: { color: "#000" },
+  actionText: {
+    color: isPhone ? P.onTint : P.label,
+    fontSize: isPhone ? 15 : ps(1),
+    fontFamily: THEME.fonts.semibold,
+    letterSpacing: 1,
+  },
+  actionTextFocused: { color: P.onTint },
 
-  footnote: { color: "rgba(255,255,255,0.28)", fontSize: isPhone ? 12.6 : ps(0.9) },
+  footnote: { color: P.secondaryLabel, fontSize: isPhone ? 12.6 : ps(0.9) },
 });

@@ -11,7 +11,8 @@ import { usePortalStore, Season, Episode, MediaMeta } from "../src/store/portalS
 import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
-import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { THEME, pw, ph, ps, HEADER, SELECTION, selectionRung } from "../src/theme/tokens";
+import { FOCUS, MATERIALS, RADIUS, focusGlowShadow, sheetShadow } from "../src/theme/materials";
 import { isPhone, PHONE_GRID_COLUMNS, PHONE_H_PAD } from "../src/utils/phoneUtils";
 import { isTouch, isTablet, TABLET_TILE_MAX_WIDTH } from "../src/utils/tabletUtils";
 import { CinematicBackground } from "../src/components/CinematicBackground";
@@ -28,6 +29,7 @@ import { formatRuntime } from "../src/utils/duration";
 import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import { Check, ExternalLink, Library, Play, Star, Tv, MonitorOff, X , PlayCircle} from 'lucide-react-native';
 import { Text } from '../src/components/Text';
+import * as P from "../src/theme/palette";
 
 
 /**
@@ -145,7 +147,7 @@ const EpisodeTile = React.memo(function EpisodeTile({
                 />
               ) : (
                 <View style={[StyleSheet.absoluteFill, S.posterFallback]}>
-                  <Tv size={ps(3.5)} color="rgba(255,255,255,0.32)" />
+                  <Tv size={ps(3.5)} color={P.tertiaryLabel} />
                 </View>
               )}
 
@@ -155,7 +157,7 @@ const EpisodeTile = React.memo(function EpisodeTile({
 
               {watched ? (
                 <View style={S.epWatchedBadge}>
-                  <Check size={ps(1.0)} color="#ffffff" />
+                  <Check size={ps(1.0)} color={P.label} />
                 </View>
               ) : null}
 
@@ -208,23 +210,35 @@ const SeasonPill = React.memo(function SeasonPill({
       ringOnFocus={false}
       style={S.seasonPillWrapper}
     >
-      {(focused) => (
-        <BlurView
-          intensity={isActive && !focused ? 80 : 0}
-          tint={isActive ? "light" : "dark"}
-          style={[
-            S.seasonPillBorder,
-            focused && S.seasonPillBorderFocused,
-            (focused || isActive) && { backgroundColor: "#fff" }
-          ]}
-        >
-          <View style={[S.seasonPillInner, isActive && S.seasonPillInnerActive, (focused || isActive) && { backgroundColor: "transparent" }]}>
-            <Text style={[S.seasonPillText, (isActive || focused) && S.seasonPillTextActive, (isActive || focused) && { color: "#000" }]}>
+      {(focused) => {
+        /*
+         * The same three-rung ladder the category pills use — this is the same
+         * control, and it had drifted into its own treatment: a BlurView
+         * wrapper faking a border, a `#fff` fill and black ink.
+         *
+         * Dropping the BlurView costs nothing. Its intensity was already 0 in
+         * every state but one, and on Android it was rendering flat regardless
+         * for want of a blur target (see GlassRoot) — so it was a wrapper view
+         * doing a border's job.
+         */
+        const rung = selectionRung(isActive, focused);
+        return (
+          <View style={[S.seasonPill, SELECTION[rung], focused && S.seasonPillFocused]}>
+            <Text
+              style={[
+                S.seasonPillText,
+                rung === "rest"
+                  ? SELECTION.restInk
+                  : rung === "marked"
+                    ? SELECTION.markedInk
+                    : SELECTION.filledInk,
+              ]}
+            >
               {season.name || `Season ${season.seasonNumber}`}
             </Text>
           </View>
-        </BlurView>
-      )}
+        );
+      }}
     </Focusable>
   );
 });
@@ -593,7 +607,7 @@ export default function SeriesDetailsScreen() {
               />
             ) : (
               <View style={[S.poster, S.posterPlaceholder]}>
-                <Tv size={ps(4)} color="rgba(255,255,255,0.1)" />
+                <Tv size={ps(4)} color={P.quaternaryLabel} />
               </View>
             )}
           </View>
@@ -674,7 +688,11 @@ export default function SeriesDetailsScreen() {
         accessibilityElementsHidden={playModalVisible}
         importantForAccessibility={playModalVisible ? "no-hide-descendants" : "auto"}
       >
-        <CinematicBackground uri={seriesMeta?.backdrop || params.logo} />
+        {/* The same plain ground every other page stands on. This passed the
+            series backdrop once, which wore blurred artwork where the rest of
+            the app is flat — strongest right behind the hero, which is where
+            it showed as a band of another colour across the top. */}
+        <CinematicBackground />
 
         {/* Single root VirtualizedList — hero + season pills are the header,
           episodes are the data. Avoids the "VirtualizedLists should never be
@@ -702,8 +720,8 @@ export default function SeriesDetailsScreen() {
               showsVerticalScrollIndicator={false}
               ListEmptyComponent={
                 <View style={{ alignItems: "center", justifyContent: "center", paddingTop: ph(5), opacity: 0.3 }}>
-                  <MonitorOff size={ps(4)} color="#fff" />
-                  <Text style={{ color: "#fff", fontSize: ps(1.2), marginTop: 10 }}>No Episodes Available</Text>
+                  <MonitorOff size={ps(4)} color={P.tertiaryLabel} />
+                  <Text style={{ color: P.secondaryLabel, fontSize: ps(1.2), marginTop: 10 }}>No Episodes Available</Text>
                 </View>
               }
             />
@@ -728,7 +746,7 @@ export default function SeriesDetailsScreen() {
             />
           ) : null}
           <LinearGradient
-            colors={['rgba(10,12,18,0.78)', 'rgba(8,8,12,0.96)', '#08080a']}
+            colors={['rgba(0,0,0,0.78)', 'rgba(0,0,0,0.94)', P.systemBackground]}
             style={StyleSheet.absoluteFill}
           />
           <View style={[S.modalTVContent, S.modalBody, isPhone && { paddingBottom: 10 + insets.bottom }]}>
@@ -743,7 +761,7 @@ export default function SeriesDetailsScreen() {
                 />
               ) : (
                 <View style={S.modalPosterFallback}>
-                  <Library size={ps(3.2)} color="rgba(255,255,255,0.3)" />
+                  <Library size={ps(3.2)} color={P.tertiaryLabel} />
                 </View>
               )}
               {(selectedEpisode?.rating || params.rating) && parseFloat(String(selectedEpisode?.rating || params.rating)) > 0 ? (
@@ -793,7 +811,7 @@ export default function SeriesDetailsScreen() {
                       return seen > 0
                         ? {
                           icon: "play-circle-outline" as const,
-                          iconColor: "#4ade80",
+                          iconColor: P.systemGreen,
                           text: `${Math.round(seen * 100)}% watched`,
                           tone: "accent" as const,
                         }
@@ -819,7 +837,7 @@ export default function SeriesDetailsScreen() {
               >
                 {(focused) => (
                   <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
-                    <Play size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                    <Play size={ps(1.15)} color={focused ? P.onTint : P.label} />
                     <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>WATCH NOW</Text>
                   </View>
                 )}
@@ -831,7 +849,7 @@ export default function SeriesDetailsScreen() {
               >
                 {(focused) => (
                   <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
-                    <ExternalLink size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                    <ExternalLink size={ps(1.15)} color={focused ? P.onTint : P.label} />
                     <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>EXTERNAL PLAYER</Text>
                   </View>
                 )}
@@ -847,7 +865,7 @@ export default function SeriesDetailsScreen() {
                 >
                   {(focused) => (
                     <View style={[S.modalBtnPill, focused && S.modalBtnPillFocused]}>
-                      <X size={ps(1.15)} color={focused ? "#000000" : "#FFFFFF"} />
+                      <X size={ps(1.15)} color={focused ? P.onTint : P.label} />
                       <Text style={[S.modalBtnText, focused && S.modalBtnTextFocused]}>CLOSE</Text>
                     </View>
                   )}
@@ -880,17 +898,38 @@ const S = StyleSheet.create({
   /*
    * `pw` is a percentage of the *long* edge, so `pw(4)` is 35dp a side on a
    * portrait handset — 70 of 393, before anything is laid out. An absolute
-   * gutter on a phone, matched by `episodesSection` and by `GRID_H_PADDING` so
+   * gutter, matched by `epListContent` and by `GRID_H_PADDING` so
    * the hero, the season pills and the episode grid share one left edge.
    */
   // Vertical padding only on a phone — `epListContent` above owns the gutter,
   // and this sits inside it.
+  /*
+   * No horizontal padding of its own — the gutter is CONTENT_H_PAD, applied
+   * once by the list.
+   *
+   * The hero and the season pills are the episode list's ListHeaderComponent,
+   * so epListContent's paddingHorizontal already wraps them. This added pw(4)
+   * on top of it, and so did episodesSection below — which on TV and tablet is
+   * the *same* pw(4) twice, putting the hero and the pills at double the gutter
+   * while the episode rows stayed at one. The grid then began further left than
+   * everything above it.
+   *
+   * It read as correct on a handset and only there, because both branches
+   * collapse to 0 when isPhone.
+   *
+   * CONTENT_H_PAD's own docblock is explicit that the hero, the season pills
+   * and the episode grid share one left edge; these two paddings were what
+   * quietly broke that. GRID_H_PADDING divides by CONTENT_H_PAD * 2, so the
+   * tile width was being computed against the gutter the grid actually had
+   * rather than the one the header was drawing at.
+   */
   heroSection: {
-    paddingHorizontal: isPhone ? 0 : pw(4),
     paddingVertical: isPhone ? PHONE_H_PAD : pw(4),
     marginBottom: ph(2),
   },
-  backBtn: { width: ps(3.5), height: ps(3.5), borderRadius: 20, backgroundColor: "rgba(255,255,255,0.05)", alignItems: "center", justifyContent: "center", marginBottom: ph(3) },
+  // The same round control the grid screens use for search, so a viewer moving
+  // between this screen and those sees one button rather than two.
+  backBtn: { ...HEADER.iconButton, marginBottom: ph(3) },
   /*
    * On a phone this wraps into two bands: poster beside the title, then the
    * description full width beneath.
@@ -908,11 +947,11 @@ const S = StyleSheet.create({
   },
   /** The synopsis and credits as their own full-width band, phones only. */
   heroDescBlock: { width: "100%" },
-  posterWrapper: { width: isPhone ? 100 : pw(18), aspectRatio: 2 / 3, borderRadius: 20, overflow: "hidden", elevation: 20, shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 20 },
+  posterWrapper: { width: isPhone ? 100 : pw(18), aspectRatio: 2 / 3, borderRadius: RADIUS.lg, borderCurve: "continuous", overflow: "hidden", ...sheetShadow },
   poster: { ...StyleSheet.absoluteFill },
-  posterPlaceholder: { backgroundColor: "#1a1a20", alignItems: "center", justifyContent: "center" },
+  posterPlaceholder: { backgroundColor: P.tertiaryElevatedSystemBackground, alignItems: "center", justifyContent: "center" },
   infoArea: { flex: 1, justifyContent: "flex-end", paddingBottom: ph(0.8) },
-  title: { color: "#fff", fontSize: ps(2.2), fontWeight: "900", marginBottom: ph(1.5), textAlign: "left" },
+  title: { color: P.label, fontSize: ps(2.2), fontFamily: THEME.fonts.bold, letterSpacing: -0.5, marginBottom: ph(1.5), textAlign: "left" },
   badgesRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -921,88 +960,74 @@ const S = StyleSheet.create({
     justifyContent: "flex-start",
   },
   ratingBadge: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     paddingHorizontal: 8,
     paddingVertical: 2.5,
-    borderRadius: 6,
+    borderRadius: RADIUS.xs,
     alignItems: "center",
     justifyContent: "center",
   },
+  // Dark ink, because the badge is filled with the off-white tint.
   ratingBadgeText: {
-    color: "#000000",
+    color: P.onTint,
     fontSize: ps(0.85),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.2,
   },
-  description: { color: "rgba(255,255,255,0.45)", fontSize: ps(1.15), lineHeight: ps(1.8), marginBottom: ph(4), textAlign: "left" },
+  // Deliberately brighter than `secondaryLabel`: this is the synopsis, which
+  // is body copy meant to be read rather than a caption supporting something
+  // else. Same value `MediaMetaPanel` uses for the same reason.
+  description: { color: "rgba(235, 235, 245, 0.85)", fontSize: ps(1.15), lineHeight: ps(1.8), marginBottom: ph(4), textAlign: "left" },
   favoriteBtnInner: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingHorizontal: 20,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: RADIUS.card,
+    borderCurve: "continuous",
     borderWidth: 2,
     borderColor: "transparent",
   },
   favoriteBtnFocused: {
-    borderColor: "#fff",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#fff",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 0,
-      }
-    })
+    borderColor: P.tintStrong,
+    ...focusGlowShadow,
   },
-  favoriteText: { color: "#fff", fontSize: ps(0.9), fontWeight: "800" },
+  favoriteText: { color: P.label, fontSize: ps(0.9), fontFamily: THEME.fonts.semibold },
 
-  episodesSection: { paddingHorizontal: isPhone ? 0 : pw(4) },
+  // Gutter comes from the list — see the note on heroSection.
+  episodesSection: {},
   sectionHeader: { marginBottom: ph(2) },
-  sectionTitle: { color: "#fff", fontSize: ps(1.5), fontWeight: "900", opacity: 0.9, marginBottom: ph(1.5) },
+  // The `opacity: 0.9` this carried was doing `secondaryLabel`'s job by hand,
+  // and doing it to the whole node rather than to the colour.
+  sectionTitle: { color: P.label, fontSize: ps(1.5), fontFamily: THEME.fonts.semibold, letterSpacing: -0.3, marginBottom: ph(1.5) },
   seasonsList: { gap: 12, paddingVertical: 10, paddingBottom: ph(2), paddingRight: pw(10) },
 
   // ── Season pill: gradient acts as the border ──
   seasonPillWrapper: {
     borderRadius: THEME.radius.full,
-    overflow: "visible",
-  },
-  seasonPillBorder: {
-    padding: 1.5,
-    borderRadius: THEME.radius.full,
     overflow: "hidden",
   },
-  seasonPillBorderFocused: {
-    padding: 2.5,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#fff",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 0,
-      }
-    })
-  },
-  seasonPillInner: {
+  // One box where there were two. The fill, edge and ink all come from
+  // `SELECTION`; only the shape and the focus lift are this screen's own.
+  seasonPill: {
     paddingHorizontal: 28,
     paddingVertical: 10,
     borderRadius: THEME.radius.full,
-    backgroundColor: "#0d0d12",
+    borderWidth: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-  seasonPillInnerActive: {
-    backgroundColor: "transparent",
+  // `focusGlowShadow` is iOS-only by construction — on Android an elevated
+  // pill shadows the pills beside it in the row, the same constraint
+  // `TILE_FRAME_FOCUSED` documents. Taking it from the theme rather than
+  // hand-rolling the Platform.select keeps this bloom the same colour and
+  // radius as every other focused surface.
+  seasonPillFocused: {
+    transform: [{ scale: FOCUS.scale }],
+    ...focusGlowShadow,
   },
-  seasonPillText: { color: "rgba(255,255,255,0.5)", fontSize: ps(1), fontWeight: "900", letterSpacing: 0.5 },
-  seasonPillTextActive: { color: "#fff" },
+  seasonPillText: { fontSize: ps(1), fontFamily: THEME.fonts.medium, letterSpacing: 0.3 },
 
   listArea: { flex: 1, minHeight: ph(40), marginTop: ph(2) },
   /*
@@ -1034,63 +1059,69 @@ const S = StyleSheet.create({
     overflow: "visible",
   },
   episodeCardContainer: {
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
     overflow: "visible",
   },
   episodeCardContainerFocused: {},
   posterFrame: {
     width: "100%",
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
+    borderCurve: "continuous",
     overflow: "hidden",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 1,
-    borderColor: "transparent",
+    borderColor: MATERIALS.thin.edge,
   },
+  // No `elevation` — these sit in a grid, and on Android a lifted card draws
+  // its shadow over the cards beside it. The same constraint TILE_FRAME_FOCUSED
+  // documents; the edge and the lift carry focus on their own.
   posterFrameFocused: {
-    borderColor: "#ffffff",
+    borderColor: FOCUS.edge,
     borderWidth: 1,
-    transform: [{ scale: 1.03 }],
-    elevation: 12,
+    transform: [{ scale: FOCUS.scale }],
+    ...focusGlowShadow,
   },
-  posterImage: { width: "100%", height: "100%" },
+  posterImage: { width: "100%", height: "100%", borderRadius: RADIUS.lg, overflow: "hidden" },
   posterFallback: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
   episodeTitleText: {
-    color: "rgba(255,255,255,0.75)",
+    color: P.secondaryLabel,
     fontSize: ps(0.92),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.medium,
     marginTop: 8,
     lineHeight: 20,
   },
+  // The card is not filled on focus — only its frame lights up — so this stays
+  // light ink and simply comes up to full strength.
   episodeTitleTextFocused: {
-    color: "#ffffff",
-    fontWeight: "900",
+    color: P.label,
+    fontFamily: THEME.fonts.semibold,
   },
   epNumBadge: {
     position: "absolute",
     top: 8,
     left: 8,
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
-    borderRadius: 7,
+    backgroundColor: P.scrimHeavy,
+    borderRadius: RADIUS.xs,
     paddingHorizontal: 7,
     paddingVertical: 2.5,
   },
   epNumBadgeText: {
-    color: "#FFFFFF",
+    color: P.label,
     fontSize: ps(0.8),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.2,
   },
   epWatchedBadge: {
     position: "absolute",
     top: 8,
     right: 8,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    borderRadius: 12,
+    backgroundColor: P.scrimHeavy,
+    borderRadius: RADIUS.full,
     padding: 5,
   },
   resumeBar: {
@@ -1099,20 +1130,23 @@ const S = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 3.5,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: P.scrim,
   },
-  resumeProgress: { height: "100%", backgroundColor: "#F5F5F5" },
+  resumeProgress: { height: "100%", backgroundColor: P.tint },
 
   // Modal Styles
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "center", alignItems: "center" },
-  modalContainer: { width: ps(65), borderRadius: 24, padding: ps(2), borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
+  modalContainer: { width: ps(65), borderRadius: RADIUS.xl, borderCurve: "continuous", padding: ps(2), borderWidth: 1, borderColor: P.glassEdge, overflow: "hidden" },
   modalSurface: {
     width: '100%',
     borderTopLeftRadius: ps(2),
     borderTopRightRadius: ps(2),
     overflow: 'hidden',
     borderWidth: 0,
-    backgroundColor: 'rgba(10, 12, 18, 0.95)',
+    // The `thick` material's own fill, so this sheet and every sheet built
+    // from `GlassSurface` are the same surface. It is still a hand-styled
+    // BlurView here because the modal predates the primitive.
+    backgroundColor: P.elevatedSystemBackground,
   },
   modalBody: {
     padding: isPhone ? PHONE_H_PAD : ps(2.2),
@@ -1134,9 +1168,10 @@ const S = StyleSheet.create({
   modalPosterWrapper: {
     width: isPhone ? 72 : pw(11),
     aspectRatio: 2 / 3,
-    borderRadius: ps(0.8),
+    borderRadius: RADIUS.sm,
+    borderCurve: "continuous",
     overflow: "hidden",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: P.quaternarySystemFill,
     marginRight: isPhone ? 12 : pw(2),
   },
   modalPosterImg: {
@@ -1148,37 +1183,37 @@ const S = StyleSheet.create({
     height: "100%",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: P.quaternarySystemFill,
   },
   cornerRatingBadge: {
     position: "absolute",
     bottom: 6,
     right: 6,
-    backgroundColor: "rgba(0, 0, 0, 0.78)",
+    backgroundColor: P.scrimHeavy,
     borderWidth: 0,
     paddingHorizontal: 7,
     paddingVertical: 2.5,
-    borderRadius: 7,
+    borderRadius: RADIUS.xs,
     elevation: 4,
   },
   cornerRatingText: {
-    color: "#FFFFFF",
+    color: P.label,
     fontSize: ps(0.85),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.2,
   },
   modalTypeBadge: {
     alignSelf: "flex-start",
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: P.tertiarySystemFill,
     paddingHorizontal: ps(0.6),
     paddingVertical: ps(0.2),
-    borderRadius: ps(0.3),
+    borderRadius: RADIUS.xs,
     marginBottom: ps(0.5),
   },
   modalTypeBadgeText: {
-    color: "#FFFFFF",
+    color: P.secondaryLabel,
     fontSize: ps(0.7),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 1,
   },
   modalLeft: {
@@ -1197,9 +1232,10 @@ const S = StyleSheet.create({
     gap: isPhone ? 10 : ps(0.8),
   },
   modalTitle: {
-    color: "#FFFFFF",
+    color: P.label,
     fontSize: ps(1.6),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.semibold,
+    letterSpacing: -0.3,
     marginBottom: ps(0.6),
   },
   modalMetaRow: {
@@ -1210,27 +1246,27 @@ const S = StyleSheet.create({
     flexWrap: "wrap",
   },
   modalRatingBadge: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     paddingHorizontal: 8,
     paddingVertical: 2.5,
-    borderRadius: 7,
+    borderRadius: RADIUS.xs,
     alignItems: "center",
     justifyContent: "center",
   },
   modalRatingBadgeText: {
-    color: "#000000",
+    color: P.onTint,
     fontSize: ps(0.85),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.2,
   },
   modalMetaDot: {
-    color: "rgba(255,255,255,0.28)",
+    color: P.quaternaryLabel,
     fontSize: ps(1.05),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     marginHorizontal: pw(0.8),
   },
   modalBtnWrapper: {
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
     overflow: "visible",
     width: "100%",
   },
@@ -1241,28 +1277,30 @@ const S = StyleSheet.create({
     gap: ps(0.6),
     paddingVertical: ps(0.95),
     paddingHorizontal: ps(1.5),
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
+    borderCurve: "continuous",
     borderWidth: 0,
     borderColor: "transparent",
-    backgroundColor: "#17181c",
+    backgroundColor: P.tertiarySystemFill,
   },
   modalBtnPillFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "transparent",
     borderWidth: 0,
     elevation: 8,
     transform: [{ scale: 1.05 }],
   },
   modalBtnText: {
-    color: "#FFFFFF",
+    color: P.label,
     fontSize: ps(1.0),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 0.3,
   },
+  // Dark, because `modalBtnPillFocused` fills with the off-white tint.
   modalBtnTextFocused: {
-    color: "#000000",
+    color: P.onTint,
     fontSize: ps(1.0),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 0.3,
   },
 });

@@ -10,7 +10,7 @@
 // open settings menu, some want the reverse.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { BackHandler, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { BackHandler, ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -24,7 +24,8 @@ import {
 import { safeBack } from "../src/services/safeNavigation";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import PinPrompt from "../src/components/PinPrompt";
-import { THEME, ph, psRaw as ps, pw } from "../src/theme/tokens";
+import { THEME, ph, psRaw as ps, pw, PAGE_HEADER } from "../src/theme/tokens";
+import { RADIUS } from "../src/theme/materials";
 import { isPhone } from "../src/utils/phoneUtils";
 import { isTouch } from "../src/utils/tabletUtils";
 import { Focusable, FocusGroup } from "../src/tv";
@@ -38,6 +39,7 @@ import {
 } from "lucide-react-native";
 import { DynamicIcon } from "../src/components/DynamicIcon";
 import { Text } from "../src/components/Text";
+import * as P from "../src/theme/palette";
 
 type IconName = string;
 
@@ -99,11 +101,11 @@ function Row({
               color={
                 focused
                   ? danger
-                    ? "#dc2626"
-                    : "#0E0F14"
+                    ? P.systemRedOnTint
+                    : P.onTint
                   : danger
-                    ? "#f87171"
-                    : "#ffffff"
+                    ? P.systemRed
+                    : P.label
               }
             />
           </View>
@@ -112,18 +114,20 @@ function Row({
               style={[
                 S.rowTitle,
                 focused && S.rowTitleFocused,
-                danger && !focused && { color: "#f87171" },
-                danger && focused && { color: "#dc2626" },
+                danger && !focused && { color: P.systemRed },
+                danger && focused && { color: P.systemRedOnTint },
               ]}
             >
               {title}
             </Text>
-            <Text
-              style={[S.rowSubtitle, focused && S.rowSubtitleFocused]}
-              numberOfLines={2}
-            >
-              {subtitle}
-            </Text>
+            {!isPhone ? (
+              <Text
+                style={[S.rowSubtitle, focused && S.rowSubtitleFocused]}
+                numberOfLines={2}
+              >
+                {subtitle}
+              </Text>
+            ) : null}
           </View>
           {on === undefined ? (
             badge ? (
@@ -133,13 +137,13 @@ function Row({
                 </Text>
                 <ChevronRight
                   size={ps(1.8)}
-                  color={focused ? "#0E0F14" : "rgba(255,255,255,0.4)"}
+                  color={focused ? P.onTint : P.secondaryLabel}
                 />
               </View>
             ) : (
               <ChevronRight
                 size={ps(2)}
-                color={focused ? "#0E0F14" : "rgba(255,255,255,0.35)"}
+                color={focused ? P.onTint : P.secondaryLabel}
               />
             )
           ) : (
@@ -169,10 +173,6 @@ function Row({
 export default function ParentalControlScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  // The same expression every other screen uses. This read `isTablet && ...`,
-  // which is never true on a phone, so a handset took the landscape branch.
-  const isPortrait = !Platform.isTV && windowHeight > windowWidth;
   const channels = usePortalStore((s) => s.channels);
   const vodItems = usePortalStore((s) => s.vodItems);
   const series = usePortalStore((s) => s.series);
@@ -328,95 +328,39 @@ export default function ParentalControlScreen() {
       {/* ── Header ── */}
       <View style={[
         S.header,
-        isTouch && { paddingHorizontal: 24, paddingTop: ph(3), paddingBottom: ph(2) },
-        isPhone && { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8 },
+        isTouch && { paddingHorizontal: 24, paddingTop: ph(3) },
+        isPhone && { paddingHorizontal: 14, paddingTop: 10 },
       ]}>
+        {/* No byline. The enabled state is on the badge to the right, and both
+            lock counts are on the rows they belong to. */}
         <View style={S.headerTitles}>
           <Text style={S.headerTitle}>Parental Control</Text>
-          <Text style={S.headerSubtitle}>
-            {state.enabled
-              ? `Active security · ${lockedCount} manually locked${
-                  autoLockedCount > 0 ? ` + ${autoLockedCount} keyword matched` : ""
-                }`
-              : "Parental lock is currently turned off"}
-          </Text>
         </View>
 
         {/* Protection Status Badge */}
         {state.enabled ? (
           <View style={S.statusBadge}>
             <View style={S.statusDotActive} />
-            <ShieldCheck size={ps(1.6)} color="#4ade80" />
+            <ShieldCheck size={ps(1.6)} color={P.systemGreen} />
             <Text style={S.statusBadgeTextActive}>PROTECTED</Text>
           </View>
         ) : (
           <View style={[S.statusBadge, S.statusBadgeInactive]}>
             <View style={S.statusDotInactive} />
-            <Unlock size={ps(1.6)} color="rgba(255,255,255,0.4)" />
+            <Unlock size={ps(1.6)} color={P.secondaryLabel} />
             <Text style={S.statusBadgeTextInactive}>UNPROTECTED</Text>
           </View>
         )}
-      </View>
-
-      {/* ── System Overview Stats ── */}
-      <View style={[S.statsRow, isTouch && { paddingHorizontal: 24 }, isPhone && { paddingHorizontal: 14 }, isPortrait && { flexWrap: "wrap", gap: 10 }]}>
-        <View style={[S.statCard, isPortrait && { minWidth: "48%" }]}>
-          <Text style={S.statLabel}>System State</Text>
-          <Text
-            style={[
-              S.statValue,
-              { color: state.enabled ? "#4ade80" : "rgba(255,255,255,0.5)" },
-            ]}
-          >
-            {state.enabled ? "Active" : "Disabled"}
-          </Text>
-        </View>
-        <View style={[S.statCard, isPortrait && { minWidth: "48%" }]}>
-          <Text style={S.statLabel}>Manually Locked</Text>
-          <Text style={S.statValue}>
-            {lockedCount} {lockedCount === 1 ? "Item" : "Items"}
-          </Text>
-        </View>
-        <View style={[S.statCard, isPortrait && { minWidth: "48%" }]}>
-          <Text style={S.statLabel}>Adult Keyword Filter</Text>
-          <Text
-            style={[
-              S.statValue,
-              { color: state.blockAdultKeywords ? "#60a5fa" : "rgba(255,255,255,0.5)" },
-            ]}
-          >
-            {state.blockAdultKeywords
-              ? autoLockedCount > 0
-                ? `${autoLockedCount} Filtered`
-                : "Active"
-              : "Off"}
-          </Text>
-        </View>
-        <View style={[S.statCard, isPortrait && { minWidth: "48%" }]}>
-          <Text style={S.statLabel}>PIN Mode</Text>
-          <Text
-            style={[
-              S.statValue,
-              { color: parentalControl.isDefaultPin ? "#fbbf24" : "#4ade80" },
-            ]}
-          >
-            {parentalControl.isDefaultPin ? "Factory (0000)" : "Custom PIN"}
-          </Text>
-        </View>
       </View>
 
       {/* ── Default PIN Warning Banner ── */}
       {parentalControl.isDefaultPin && state.enabled ? (
         <View style={[S.warningCard, isTouch && { marginHorizontal: 24 }, isPhone && { marginHorizontal: 14 }]}>
           <View style={S.warningIconBox}>
-            <TriangleAlert size={ps(2.2)} color="#fbbf24" />
+            <TriangleAlert size={ps(2.2)} color={P.systemOrange} />
           </View>
           <View style={S.warningContent}>
             <Text style={S.warningTitle}>Default Factory PIN in Use ({DEFAULT_PIN})</Text>
-            <Text style={S.warningText}>
-              Your lock is active with the default factory PIN. Anyone can bypass restrictions.
-              Please update to a personal 4-digit PIN.
-            </Text>
           </View>
           <Focusable
             ringOnFocus={false}
@@ -443,7 +387,7 @@ export default function ParentalControlScreen() {
       {/* ── Notice Toast ── */}
       {notice ? (
         <View style={[S.noticeBanner, isTouch && { marginHorizontal: 24 }, isPhone && { marginHorizontal: 14 }]}>
-          <CheckCircle size={ps(1.8)} color="#4ade80" />
+          <CheckCircle size={ps(1.8)} color={P.systemGreen} />
           <Text style={S.noticeBannerText}>{notice}</Text>
         </View>
       ) : null}
@@ -562,13 +506,9 @@ export default function ParentalControlScreen() {
 
         {/* Info Footnote Card */}
         <View style={S.infoCard}>
-          <Info size={ps(2)} color="#93c5fd" style={S.infoCardIcon} />
+          <Info size={ps(2)} color={P.secondaryLabel} style={S.infoCardIcon} />
           <View style={S.infoCardContent}>
             <Text style={S.infoCardTitle}>PIN Session Memory</Text>
-            <Text style={S.infoCardText}>
-              Entering a correct PIN unlocks playback for 15 minutes to allow uninterrupted
-              channel zapping. Exiting the player relocks all protected content immediately.
-            </Text>
           </View>
         </View>
       </ScrollView>
@@ -594,10 +534,20 @@ const S = StyleSheet.create({
   },
 
   // ── Header ────────────────────────────────────────────────────────────────
+  /**
+   * A row rather than `PAGE_HEADER.bar`, because this screen hangs the
+   * PROTECTED/UNPROTECTED badge off the right-hand end — but it takes the
+   * shared bar's spacing so it still lines up with the pages either side of it
+   * in the menu.
+   *
+   * The `paddingBottom` is the part that matters: it was `ph(3.5)`, which is a
+   * percentage of the *short* edge and so lands around 14dp on a portrait
+   * handset — and that was measured when the header still carried a subtitle
+   * to separate it from the content below.
+   */
   header: {
-    paddingHorizontal: pw(8),
+    ...PAGE_HEADER.bar,
     paddingTop: ph(5.5),
-    paddingBottom: ph(3.5),
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -605,17 +555,9 @@ const S = StyleSheet.create({
   headerTitles: {
     flex: 1,
   },
-  headerTitle: {
-    color: "#FFFFFF",
-    fontSize: ps(2.6),
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-  headerSubtitle: {
-    color: "rgba(255, 255, 255, 0.55)",
-    fontSize: isPhone ? 14.4 : ps(1.15),
-    marginTop: ph(0.8),
-  },
+  // The bar itself stays a row — this screen hangs a status badge off the
+  // right-hand end — but the type is the shared one.
+  headerTitle: PAGE_HEADER.title,
 
   // ── Status Badge ──────────────────────────────────────────────────────────
   statusBadge: {
@@ -625,31 +567,28 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(1.6),
     paddingVertical: ph(0.9),
     borderRadius: ps(1.2),
-    backgroundColor: "rgba(74, 222, 128, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(74, 222, 128, 0.3)",
+    backgroundColor: "rgba(50, 215, 75, 0.12)",
   },
   statusBadgeInactive: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: P.quaternarySystemFill,
   },
   statusBadgeTextActive: {
-    color: "#4ade80",
-    fontSize: isPhone ? 14.4 : ps(1.1),
-    fontWeight: "800",
+    color: P.systemGreen,
+    fontSize: isPhone ? 12.6 : ps(0.95),
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 1,
   },
   statusBadgeTextInactive: {
-    color: "rgba(255, 255, 255, 0.5)",
-    fontSize: isPhone ? 14.4 : ps(1.1),
-    fontWeight: "800",
+    color: P.secondaryLabel,
+    fontSize: isPhone ? 12.6 : ps(0.95),
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 1,
   },
   statusDotActive: {
     width: ps(0.8),
     height: ps(0.8),
     borderRadius: ps(0.4),
-    backgroundColor: "#4ade80",
+    backgroundColor: P.systemGreen,
   },
   statusDotInactive: {
     width: ps(0.8),
@@ -658,45 +597,6 @@ const S = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.4)",
   },
 
-  // ── Stats Summary Row ─────────────────────────────────────────────────────
-  statsRow: {
-    flexDirection: "row",
-    gap: pw(1.5),
-    paddingHorizontal: pw(8),
-    marginBottom: ph(3.5),
-  },
-  /*
-   * A fixed height on a phone so the four stats match.
-   *
-   * They wrap two to a row here, and flex equalises only within a row — so the
-   * second pair sized itself independently of the first and the grid stepped.
-   * 68 clears a label line, a value line and the padding.
-   */
-  statCard: {
-    flex: 1,
-    minHeight: isPhone ? 68 : undefined,
-    backgroundColor: "#17181c",
-    borderRadius: ps(1.4),
-    paddingHorizontal: isPhone ? 12 : pw(1.8),
-    paddingVertical: isPhone ? 10 : ph(1.8),
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.06)",
-  },
-  statLabel: {
-    color: "rgba(255, 255, 255, 0.45)",
-    fontSize: isPhone ? 12.1 : ps(0.88),
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  statValue: {
-    color: "#FFFFFF",
-    fontSize: isPhone ? 16.7 : ps(1.4),
-    fontWeight: "800",
-    marginTop: ph(0.6),
-  },
-
-  // ── Warning & Notice ──────────────────────────────────────────────────────
   warningCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -705,16 +605,17 @@ const S = StyleSheet.create({
     marginBottom: ph(3.5),
     paddingHorizontal: pw(2),
     paddingVertical: ph(1.6),
-    borderRadius: ps(1.6),
-    backgroundColor: "rgba(245, 158, 11, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.35)",
+    borderRadius: RADIUS.lg,
+    borderCurve: "continuous",
+    // The tinted fill separates this on its own; the outline it carried was a
+    // second statement of the same thing.
+    backgroundColor: "rgba(255, 159, 10, 0.12)",
   },
   warningIconBox: {
     width: ps(3.8),
     height: ps(3.8),
-    borderRadius: ps(1.9),
-    backgroundColor: "rgba(245, 158, 11, 0.18)",
+    borderRadius: RADIUS.full,
+    backgroundColor: "rgba(255, 159, 10, 0.18)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -722,34 +623,31 @@ const S = StyleSheet.create({
     flex: 1,
   },
   warningTitle: {
-    color: "#fbbf24",
-    fontSize: isPhone ? 15 : ps(1.3),
-    fontWeight: "800",
-  },
-  warningText: {
-    color: "rgba(251, 191, 36, 0.85)",
-    fontSize: isPhone ? 13.8 : ps(1.05),
-    marginTop: ph(0.3),
-    lineHeight: isPhone ? 19.5 : ps(1.45),
+    color: P.systemOrange,
+    fontSize: isPhone ? 13.8 : ps(1.15),
+    fontFamily: THEME.fonts.bold,
   },
   warningBtnWrapper: {},
   warningBtn: {
     paddingHorizontal: pw(1.8),
     paddingVertical: ph(1.1),
-    borderRadius: ps(1),
-    backgroundColor: "#fbbf24",
+    borderRadius: RADIUS.sm,
+    borderCurve: "continuous",
+    backgroundColor: P.systemOrange,
   },
+  // Focus lifts the button from the warning colour to the tint. Both are light
+  // fills, so the ink stays `onTint` through the change rather than inverting.
   warningBtnFocused: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: P.tint,
     transform: [{ scale: 1.05 }],
   },
   warningBtnText: {
-    color: "#0E0F14",
-    fontSize: isPhone ? 14.4 : ps(1.15),
-    fontWeight: "900",
+    color: P.onTint,
+    fontSize: isPhone ? 13 : ps(1.0),
+    fontFamily: THEME.fonts.bold,
   },
   warningBtnTextFocused: {
-    color: "#0E0F14",
+    color: P.onTint,
   },
 
   noticeBanner: {
@@ -760,15 +658,14 @@ const S = StyleSheet.create({
     marginBottom: ph(3.5),
     paddingHorizontal: pw(2),
     paddingVertical: ph(1.4),
-    borderRadius: ps(1.4),
-    backgroundColor: "rgba(74, 222, 128, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(74, 222, 128, 0.35)",
+    borderRadius: RADIUS.card,
+    borderCurve: "continuous",
+    backgroundColor: "rgba(50, 215, 75, 0.12)",
   },
   noticeBannerText: {
-    color: "#86efac",
-    fontSize: isPhone ? 15 : ps(1.2),
-    fontWeight: "700",
+    color: P.systemGreen,
+    fontSize: isPhone ? 13.8 : ps(1.05),
+    fontFamily: THEME.fonts.semibold,
     flex: 1,
   },
 
@@ -780,20 +677,18 @@ const S = StyleSheet.create({
   rootSection: {
     marginBottom: ph(4.5),
   },
+  // Shared — see `PAGE_HEADER.sectionLabel`. This one was 15.5 on a phone,
+  // within a point of `rowTitle` below it.
   sectionLabel: {
-    fontSize: isPhone ? 15.5 : ps(1.35),
-    fontWeight: "900",
-    color: "rgba(255, 255, 255, 0.65)",
-    letterSpacing: 2,
+    ...PAGE_HEADER.sectionLabel,
     marginBottom: ph(1.6),
     paddingLeft: pw(0.5),
   },
   group: {
-    borderRadius: 18,
+    borderRadius: RADIUS.lg,
+    borderCurve: "continuous",
     padding: ps(0.8),
-    backgroundColor: "#17181c",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     overflow: "hidden",
   },
 
@@ -806,15 +701,21 @@ const S = StyleSheet.create({
     alignItems: "center",
     gap: pw(1.8),
     paddingHorizontal: pw(2),
-    paddingVertical: ph(2),
-    borderRadius: 12,
+    // Tighter now that a row is one line rather than two — at the old
+    // `ph(2)` the rows kept the height they had when they carried a
+    // description, and read as mostly empty.
+    paddingVertical: ph(1.5),
+    borderRadius: RADIUS.card,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: "transparent",
     backgroundColor: "transparent",
   },
+  // The fill carries focus on its own; a near-white edge on a near-white fill
+  // was drawing a border nobody could see.
   rowFocused: {
-    backgroundColor: "#F5F5F5",
-    borderColor: "#FFFFFF",
+    backgroundColor: P.tint,
+    borderColor: P.tint,
   },
   rowDisabled: {
     opacity: 0.38,
@@ -822,41 +723,59 @@ const S = StyleSheet.create({
   iconBadge: {
     width: ps(4.2),
     height: ps(4.2),
-    borderRadius: ps(1.2),
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderRadius: RADIUS.card,
+    borderCurve: "continuous",
+    backgroundColor: P.quaternarySystemFill,
     alignItems: "center",
     justifyContent: "center",
   },
+  // On a focused row the badge sits on the off-white fill, so it deepens
+  // rather than lightens — the same inversion the ink makes.
   iconBadgeFocused: {
-    backgroundColor: "rgba(0, 0, 0, 0.08)",
+    backgroundColor: "rgba(28, 28, 30, 0.10)",
   },
   iconBadgeDanger: {
-    backgroundColor: "rgba(239, 68, 68, 0.15)",
+    backgroundColor: "rgba(255, 69, 58, 0.15)",
   },
   iconBadgeDangerFocused: {
-    backgroundColor: "rgba(220, 38, 38, 0.15)",
+    backgroundColor: "rgba(179, 37, 27, 0.15)",
   },
   rowText: {
     flex: 1,
+    justifyContent: "center",
     paddingRight: pw(1),
   },
   rowTitle: {
-    fontSize: isPhone ? 16.7 : ps(1.45),
-    color: "#FFFFFF",
-    fontWeight: "700",
+    fontSize: isPhone ? 15 : ps(1.7),
+    color: P.label,
+    fontFamily: THEME.fonts.semibold,
   },
   rowTitleFocused: {
-    color: "#0E0F14",
-    fontWeight: "900",
+    color: P.onTint,
+    fontFamily: THEME.fonts.bold,
   },
+  /**
+   * Drawn on TV and tablet only — the same split settings uses, and for the
+   * same reason: a box is read across a room with a remote and has a wide row
+   * with space to spare, while a handset has the setting an inch from the eye
+   * and a column too narrow to carry it.
+   *
+   * It stays the Focusable's accessibilityHint on every tier, so a screen
+   * reader on a phone still gets the explanation the line does not draw.
+   *
+   * A focused row fills with the off-white tint, so both levels of ink invert.
+   */
   rowSubtitle: {
-    fontSize: isPhone ? 14.4 : ps(1.1),
-    color: "rgba(255, 255, 255, 0.55)",
-    marginTop: 3,
-    lineHeight: isPhone ? 19.5 : ps(1.5),
+    fontSize: ps(1.5),
+    color: P.secondaryLabel,
+    fontFamily: THEME.fonts.regular,
+    marginTop: ph(0.3),
+    // 1.4x the size. Generous for a regular face, but these lines are long and
+    // read from a distance, and Inter needs ~1.21 as a floor.
+    lineHeight: ps(2.1),
   },
   rowSubtitleFocused: {
-    color: "rgba(0, 0, 0, 0.65)",
+    color: P.onTintSecondary,
   },
 
   badgePill: {
@@ -865,20 +784,20 @@ const S = StyleSheet.create({
     gap: pw(0.6),
     paddingHorizontal: pw(1.2),
     paddingVertical: ph(0.6),
-    borderRadius: ps(0.8),
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: RADIUS.full,
+    backgroundColor: P.tertiarySystemFill,
   },
   badgePillFocused: {
-    backgroundColor: "rgba(0, 0, 0, 0.08)",
+    backgroundColor: "rgba(28, 28, 30, 0.10)",
   },
   badgePillText: {
-    color: "rgba(255, 255, 255, 0.8)",
-    fontSize: isPhone ? 13.8 : ps(1.05),
-    fontWeight: "700",
+    color: P.label,
+    fontSize: isPhone ? 12.6 : ps(0.95),
+    fontFamily: THEME.fonts.semibold,
   },
   badgePillTextFocused: {
-    color: "#0E0F14",
-    fontWeight: "800",
+    color: P.onTint,
+    fontFamily: THEME.fonts.bold,
   },
 
   // ── Switch ────────────────────────────────────────────────────────────────
@@ -892,33 +811,36 @@ const S = StyleSheet.create({
     width: isPhone ? 44 : pw(4.2),
     height: isPhone ? 26 : ph(3.2),
     minWidth: isPhone ? 44 : ps(3.8),
-    borderRadius: isPhone ? 13 : ps(1.6),
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: RADIUS.full,
+    backgroundColor: P.tertiarySystemFill,
     justifyContent: "center",
     padding: isPhone ? 3 : 2,
   },
+  // On a focused row the switch sits on the off-white fill, so its track
+  // deepens rather than lightens — the same inversion the ink and the icon
+  // badge make.
   switchTrackFocused: {
-    backgroundColor: "rgba(0, 0, 0, 0.15)",
-    borderColor: "rgba(0, 0, 0, 0.3)",
+    backgroundColor: "rgba(28, 28, 30, 0.15)",
   },
+  // `#4ADE80` — Tailwind's green in uppercase, which is how it survived the
+  // sweep that replaced every lowercase spelling of it.
   switchTrackOn: {
-    backgroundColor: "#4ADE80",
-    borderColor: "#4ADE80",
+    backgroundColor: P.systemGreen,
   },
   switchTrackOnFocused: {
-    backgroundColor: "#22c55e",
-    borderColor: "#22c55e",
+    backgroundColor: P.systemGreen,
   },
   switchKnob: {
     width: isPhone ? 18 : ps(1.6),
     height: isPhone ? 18 : ps(1.6),
-    borderRadius: isPhone ? 9 : ps(0.8),
-    backgroundColor: "rgba(255, 255, 255, 0.6)",
+    borderRadius: RADIUS.full,
+    // Solid, not 60% white. The knob is the part that says which way the
+    // switch is thrown, and it has to hold against both the grey track and the
+    // green one.
+    backgroundColor: P.label,
   },
   switchKnobFocused: {
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: P.onTint,
   },
   switchKnobOn: {
     alignSelf: "flex-end",
@@ -930,10 +852,13 @@ const S = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: pw(1.6),
-    backgroundColor: "rgba(59, 130, 246, 0.08)",
-    borderRadius: ps(1.6),
-    borderWidth: 1,
-    borderColor: "rgba(59, 130, 246, 0.2)",
+    // Neutral, not the blue this was. An explanatory card is not a status —
+    // it is not telling you something succeeded, failed or needs attention —
+    // so it takes a plain surface and lets the three status colours keep their
+    // meaning. It was also the last blue left in the app.
+    backgroundColor: P.quaternarySystemFill,
+    borderRadius: RADIUS.lg,
+    borderCurve: "continuous",
     paddingHorizontal: pw(2),
     paddingVertical: ph(1.8),
     marginTop: ph(1),
@@ -946,14 +871,8 @@ const S = StyleSheet.create({
     flex: 1,
   },
   infoCardTitle: {
-    color: "#93c5fd",
-    fontSize: isPhone ? 15 : ps(1.2),
-    fontWeight: "800",
-  },
-  infoCardText: {
-    color: "rgba(147, 197, 253, 0.85)",
+    color: P.label,
     fontSize: isPhone ? 13.8 : ps(1.05),
-    lineHeight: isPhone ? 19.5 : ps(1.5),
-    marginTop: ph(0.3),
+    fontFamily: THEME.fonts.bold,
   },
 });

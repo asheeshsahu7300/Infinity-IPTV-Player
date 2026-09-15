@@ -27,6 +27,7 @@ import { portalApi } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 
+import { CinematicBackground } from "../src/components/CinematicBackground";
 import LoadingOverlay from "../src/components/LoadingOverlay";
 
 import { LinearGradient } from "expo-linear-gradient";
@@ -51,6 +52,8 @@ import {
 import { Plus } from "lucide-react-native";
 import { DynamicIcon } from "../src/components/DynamicIcon";
 import { Text } from "../src/components/Text";
+import * as P from "../src/theme/palette";
+import { THEME } from "../src/theme/tokens";
 
 /**
  * Height of the DELETE PORTAL button, in dp.
@@ -496,8 +499,7 @@ export default function PortalsScreen() {
               S.cardDetailText,
               { fontSize: ps(1.3) * cardTypeScale },
               isFocused && {
-                color:
-                  "rgba(255,255,255,0.9)",
+                color: P.label,
               },
             ]}
             numberOfLines={1}
@@ -957,6 +959,8 @@ export default function PortalsScreen() {
           },
         ]}
       >
+        <CinematicBackground />
+
         {isLoading && (
           <LoadingOverlay
             message={loadingMessage}
@@ -986,6 +990,8 @@ export default function PortalsScreen() {
         },
       ]}
     >
+      <CinematicBackground />
+
       {isLoading && (
         <LoadingOverlay
           message={loadingMessage}
@@ -1203,14 +1209,14 @@ const S = StyleSheet.create({
     borderRadius: 18,
     // White for the same reason as `deleteBtn`: the dark fill is a resting
     // state that only a remote's focus ever lifts.
-    backgroundColor: isPhone ? "#F5F5F5" : "#17181c",
+    backgroundColor: isPhone ? P.tint : P.secondaryElevatedSystemBackground,
     borderWidth: 0,
     borderColor: "transparent",
     gap: isPhone ? 8 : pw(0.8),
   },
 
   addBtnFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "transparent",
     borderWidth: 0,
 
@@ -1240,13 +1246,13 @@ const S = StyleSheet.create({
   addBtnText: {
     color: isPhone ? "#000000" : "#FFFFFF",
     fontSize: isPhone ? 14.4 : ps(1.2),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 1.2,
   },
 
   addBtnTextFocused: {
     color: "#000000",
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
   },
 
   // ── Carousel ──────────────────────────────────────────────────────────────
@@ -1288,13 +1294,13 @@ const S = StyleSheet.create({
     marginTop: ph(2),
     borderRadius: 18,
     overflow: "hidden",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 1,
     borderColor: "transparent",
   },
 
   portalCardFocused: {
-    borderColor: "#FFFFFF",
+    borderColor: P.tintStrong,
     borderWidth: 1,
     backgroundColor:
       "rgba(255, 255, 255, 0.12)",
@@ -1316,14 +1322,22 @@ const S = StyleSheet.create({
     }),
   },
 
+  // The resting outline on the portal you are connected to. Lighter on TV and
+  // tablet: the card is physically much larger there, and an edge weight picked
+  // for a handset reads as a drawn frame once it is wrapped around a card three
+  // times the size. A handset keeps the heavier 0.25 because the same line has
+  // a fraction of the length to be seen over.
   portalCardActive: {
-    borderColor:
-      "rgba(255, 255, 255, 0.25)",
+    borderColor: isPhone ? "rgba(255, 255, 255, 0.25)" : P.glassEdge,
   },
 
+  // One hairline, like every other focused frame in the app. This was the only
+  // 2dp border left — against the 1dp the grids, the browse cards and the
+  // unfocused portal card all use, it made this one card read as heavier
+  // chrome rather than the same object in a different state.
   portalCardActiveFocused: {
-    borderColor: "#FFFFFF",
-    borderWidth: 2,
+    borderColor: P.tintStrong,
+    borderWidth: 1,
     backgroundColor:
       "rgba(255, 255, 255, 0.12)",
 
@@ -1375,17 +1389,17 @@ const S = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: "#4ADE80",
+    backgroundColor: P.systemGreen,
   },
 
   badgeDotFocused: {
-    backgroundColor: "#4ADE80",
+    backgroundColor: P.systemGreen,
   },
 
   activeBadgeText: {
     color: "#FFFFFF",
     fontSize: ps(1.05),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 1.2,
   },
 
@@ -1402,7 +1416,7 @@ const S = StyleSheet.create({
 
   cardName: {
     fontSize: ps(2.8),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     color: "#FFFFFF",
     marginBottom: ph(0.6),
     letterSpacing: 0.5,
@@ -1410,16 +1424,16 @@ const S = StyleSheet.create({
 
   cardDetailText: {
     fontSize: ps(1.3),
-    color: "rgba(255, 255, 255, 0.65)",
-    fontWeight: "500",
+    color: P.secondaryLabel,
+    fontFamily: THEME.fonts.medium,
     marginBottom: ph(1.2),
     letterSpacing: 0.3,
   },
 
   cardTypeLabel: {
     fontSize: ps(1.1),
-    color: "rgba(255, 255, 255, 0.5)",
-    fontWeight: "800",
+    color: P.secondaryLabel,
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 2,
   },
 
@@ -1439,13 +1453,13 @@ const S = StyleSheet.create({
     // White on a phone. The dark fill is the *resting* state of a control that
     // turns white when a remote focuses it — and a phone never focuses
     // anything, so it would have sat dark forever.
-    backgroundColor: isPhone ? "#F5F5F5" : "#17181c",
+    backgroundColor: isPhone ? P.tint : P.secondaryElevatedSystemBackground,
     borderWidth: 0,
     borderColor: "transparent",
   },
 
   deleteBtnFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "transparent",
     borderWidth: 0,
 
@@ -1478,13 +1492,13 @@ const S = StyleSheet.create({
       ? "#000000"
       : "rgba(255, 255, 255, 0.95)",
     fontSize: isPhone ? 14.4 : ps(1.15),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 1.5,
   },
 
   deleteBtnTextFocused: {
     color: "#000000",
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
   },
 
   // ── Empty state ───────────────────────────────────────────────────────────
@@ -1513,7 +1527,7 @@ const S = StyleSheet.create({
   introTitle: {
     fontSize: ps(3),
     color: "#F5F5F7",
-    fontWeight: "600",
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 0.5,
   },
 
@@ -1567,13 +1581,13 @@ const S = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 18,
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 0,
     borderColor: "transparent",
   },
 
   addButtonLargeFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "transparent",
     borderWidth: 0,
 
@@ -1603,7 +1617,7 @@ const S = StyleSheet.create({
   addButtonText: {
     color: "#F5F5F7",
     fontSize: ps(1.4),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 1.5,
   },
 });

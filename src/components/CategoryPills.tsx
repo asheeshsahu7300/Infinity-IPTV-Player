@@ -3,7 +3,8 @@ import { View, TouchableOpacity, StyleSheet, FlatList, Animated, StyleProp, View
 import { Image } from 'expo-image';
 import { Category } from '../store/portalStore';
 import { bareCategoryId } from '../hooks/useCategoryContent';
-import { THEME } from '../theme/tokens';
+import { SELECTION, selectionRung, THEME } from '../theme/tokens';
+import * as P from '../theme/palette';
 import { isPhone } from '../utils/phoneUtils';
 import { Text } from './Text';
 
@@ -47,13 +48,15 @@ const PillItem = React.memo(({ item, isActive, isFocused, onSelect, onFocus, onB
 
   // OK is delivered via TouchableOpacity.onPress when focused.
 
+  const rung = selectionRung(isActive, isFocused);
+
   return (
     <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
       <TouchableOpacity
         style={[
           styles.pill,
-          isActive && styles.pillActive,
-          isFocused && styles.pillFocused,
+          rung === "marked" && styles.pillMarked,
+          rung === "filled" && styles.pillFilled,
         ]}
         onPress={handleSelect}
         activeOpacity={1}
@@ -71,8 +74,8 @@ const PillItem = React.memo(({ item, isActive, isFocused, onSelect, onFocus, onB
         <Text
           style={[
             styles.pillText,
-            isActive && styles.pillTextActive,
-            isFocused && styles.pillTextFocused,
+            rung === "marked" && styles.pillTextMarked,
+            rung === "filled" && styles.pillTextFilled,
           ]}
           numberOfLines={1}
           /*
@@ -264,12 +267,22 @@ const styles = StyleSheet.create({
      * width instead. Categories are short and never reach it.
      */
     maxWidth: isPhone ? 210 : 280,
-    backgroundColor: "#111827",
+    // A resting pill is a fill, not a surface: Apple's segmented controls and
+    // filter chips sit on `tertiarySystemFill` rather than on a material,
+    // because a row of a dozen glass panes is a dozen sets of edges and sheens
+    // competing for the same strip of screen. The glass here is the bar the
+    // row sits in, not the pills themselves.
+    backgroundColor: P.tertiarySystemFill,
     marginRight: isPhone ? 8 : 10,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 2,
+    // One hairline, matching the sidebar and the season pills — the three share
+    // SELECTION, so they should share the weight of the edge it hands them.
+    // Two was sized for a light ring on a dark pill; the focused edge is a dark
+    // ring on a white one now, which is far more visible and needs less of it.
+    borderWidth: 1,
     borderColor: "transparent",
+    borderCurve: "continuous",
   },
 
   pillLogo: {
@@ -281,20 +294,34 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
 
-  pillActive: {
-    backgroundColor: THEME.colors.primary,
+  /**
+   * Selected, with the cursor elsewhere: the wash rung.
+   *
+   * These two used to be the other way round — the selected pill filled solid
+   * and the focused one took the wash — which is the opposite of what the
+   * sidebar did with the same two states. They are the same control in two
+   * orientations, so they now share one ladder; see `SELECTION` in
+   * theme/tokens.
+   */
+  pillMarked: {
+    ...SELECTION.marked,
+    zIndex: 10,
   },
 
-  pillFocused: {
-    borderColor: THEME.colors.primary,
-    backgroundColor: "#1f2937",
+  /** Under the cursor, or selected on a device that has no cursor. */
+  pillFilled: {
+    ...SELECTION.filled,
     zIndex: 10,
   },
 
   pillText: {
-    color: "#888",
+    // `secondaryLabel`, not the flat `#888` it was. A resting pill's label has
+    // to read as the same white as the selected one, turned down — a grey
+    // reads as a different colour against a translucent fill, which is what
+    // made the unselected pills look disabled rather than merely unselected.
+    color: P.secondaryLabel,
     fontSize: isPhone ? 15.5 : 15,
-    fontWeight: "500",
+    fontFamily: THEME.fonts.medium,
     /*
      * 16/18 was below Inter's own line box (about 1.21x the font size, so 16.4
      * and 18.2 are the minimums here) and clipped the descenders of g, y and p
@@ -327,18 +354,18 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 
-  /**
-   * The active pill's ink: dark, because `pillActive` fills it with
-   * `THEME.colors.primary` -- which is #F5F5F5. This was #fff on that white
-   * fill, so the selected category was legible only by its silhouette.
-   */
-  pillTextActive: {
-    color: THEME.colors.selectedText,
-  },
+  /** Ink on the wash: full strength white, since the wash only lightens. */
+  pillTextMarked: SELECTION.markedInk,
 
-  /** The focused pill is filled #1f2937 instead, so its ink stays light. */
-  pillTextFocused: {
-    color: "#fff",
-  },
+  /**
+   * Ink on the solid fill: dark, because the fill is an off-white.
+   *
+   * This value has now been inverted twice — dark for the original ivory
+   * accent, white while the accent was systemBlue, dark again now. Both times
+   * the failure mode was the same and invisible in review: ink and fill the
+   * same colour. It comes from `SELECTION` rather than from a literal here
+   * precisely so the pair cannot be moved one at a time a third time.
+   */
+  pillTextFilled: SELECTION.filledInk,
 });
 

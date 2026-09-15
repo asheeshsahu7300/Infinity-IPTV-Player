@@ -22,6 +22,8 @@ import { stbEnvironment } from "../services/stbEnvironment";
 import type { Channel } from "../store/portalStore";
 import { Lock, Tv } from 'lucide-react-native';
 import { Text } from './Text';
+import { RADIUS } from '../theme/materials';
+import * as P from '../theme/palette';
 
 
 export interface ChannelInfoBarProps {
@@ -105,7 +107,7 @@ export const ChannelInfoBar = React.memo(function ChannelInfoBar({
           </View>
           <View style={S.logoBox}>
             {locked ? (
-              <Lock size={ps(2.4)} color="rgba(255,255,255,0.55)" />
+              <Lock size={ps(2.4)} color={P.secondaryLabel} />
             ) : channel.logo ? (
               <Image
                 source={{ uri: channel.logo }}
@@ -115,7 +117,7 @@ export const ChannelInfoBar = React.memo(function ChannelInfoBar({
                 transition={120}
               />
             ) : (
-              <Tv size={ps(2.4)} color="rgba(255,255,255,0.3)" />
+              <Tv size={ps(2.4)} color={P.tertiaryLabel} />
             )}
           </View>
         </View>
@@ -183,8 +185,12 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(2),
     paddingVertical: ph(1.2),
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "#151512",
+    borderTopColor: P.glassEdgeSoft,
+    // The "screen" variant sits on the app background rather than over video,
+    // so it needs a ground of its own. Apple's elevated background, which is
+    // the colour a raised container takes on a dark ground — `#151512` before,
+    // a warm near-black that belonged to the old cinema palette.
+    backgroundColor: P.elevatedSystemBackground,
   },
   // Inherits the host's horizontal inset and scrim; see the `variant` note.
   wrapInline: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: ph(1) },
@@ -202,18 +208,27 @@ const S = StyleSheet.create({
     minWidth: ps(3.8),
     height: ps(5.4),
     paddingHorizontal: pw(0.8),
-    borderRadius: ps(0.8),
-    backgroundColor: "#161613CC",
+    borderRadius: RADIUS.sm,
+    borderCurve: "continuous",
+    backgroundColor: P.tertiarySystemFill,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: P.glassEdgeSoft,
     alignItems: "center",
     justifyContent: "center",
   },
   numberText: {
-    color: "#FFF7E6",
+    fontFamily: THEME.fonts.bold,
+    // The channel number is the thing a viewer dials by, so it is the one
+    // thing on this banner given full emphasis — `label` and bold, against the
+    // `secondaryLabel` everything else around it sits at.
+    //
+    // Emphasis here is weight and brightness rather than hue, because the
+    // accent is achromatic: there is no colour to spend, so the hierarchy has
+    // to be carried by the two axes that are left.
+    color: P.label,
     fontSize: ps(1.6),
-    fontWeight: "900",
     letterSpacing: 1,
+    fontVariant: ["tabular-nums"],
   },
   // Matched to the grid card's treatment: the logo is what identifies the
   // channel, so it gets room. The box keeps a roughly 16:9 shape because that
@@ -224,27 +239,29 @@ const S = StyleSheet.create({
     height: ps(5.4),
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: ps(0.8),
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: RADIUS.sm,
+    borderCurve: "continuous",
+    backgroundColor: P.quaternarySystemFill,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderColor: P.glassEdgeSoft,
   },
   logo: { width: "95%", height: "95%" },
 
   detail: { flex: 1, gap: ph(0.5) },
   titleRow: { flexDirection: "row", alignItems: "center", gap: pw(0.8) },
   channelName: {
-    color: "#FFFFFF",
+    color: P.label,
     fontSize: ps(1.3),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.semibold,
+    letterSpacing: -0.2,
     flexShrink: 1,
   },
   clock: {
     marginLeft: "auto",
-    color: "#B8B8B8",
+    color: P.secondaryLabel,
     fontSize: ps(1.05),
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
+    fontVariant: ["tabular-nums"],
   },
 
   badge: {
@@ -253,49 +270,53 @@ const S = StyleSheet.create({
     gap: pw(0.35),
     paddingHorizontal: pw(0.7),
     paddingVertical: ph(0.25),
-    borderRadius: 4,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: RADIUS.full,
+    backgroundColor: P.tertiarySystemFill,
   },
-  badgeLive: { backgroundColor: "rgba(255,60,60,0.22)" },
-  badgeWarn: { backgroundColor: "rgba(255,204,0,0.2)" },
+  // systemRed and systemOrange at low alpha, rather than the two hand-mixed
+  // reds and ambers these were. The LIVE dot is the full-strength colour,
+  // since a 6dp dot has no room to say anything at reduced alpha.
+  badgeLive: { backgroundColor: "rgba(255, 69, 58, 0.22)" },
+  badgeWarn: { backgroundColor: "rgba(255, 159, 10, 0.22)" },
   badgeText: {
-    color: "#fff",
+    color: P.label,
     fontSize: ps(0.7),
-    fontWeight: "900",
     letterSpacing: 0.8,
   },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#ff3c3c" },
+  liveDot: { width: 6, height: 6, borderRadius: RADIUS.full, backgroundColor: P.systemRed },
 
   nowRow: { flexDirection: "row", alignItems: "center", gap: pw(1) },
   nowTime: {
-    color: "#B8B8B8",
+    color: P.secondaryLabel,
     fontSize: ps(0.95),
-    fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
-  nowTitle: { color: "#FFFFFF", fontSize: ps(1.05), fontWeight: "700", flex: 1 },
+  nowTitle: { color: P.label, fontSize: ps(1.05), fontFamily: THEME.fonts.medium, flex: 1 },
   remaining: {
-    color: "#B8B8B8",
+    color: P.secondaryLabel,
     fontSize: ps(0.85),
-    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
   },
 
   progressTrack: {
     height: 3,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: RADIUS.full,
+    backgroundColor: P.quaternarySystemFill,
     overflow: "hidden",
   },
   progressFill: { height: "100%", backgroundColor: THEME.colors.primary },
 
   noGuide: {
-    color: "rgba(255,255,255,0.35)",
+    color: P.tertiaryLabel,
     fontSize: ps(0.95),
     fontStyle: "italic",
   },
-  nextLine: { color: "#B8B8B8", fontSize: ps(0.9), fontWeight: "600" },
-  nextLabel: { color: THEME.colors.primary, fontWeight: "900", letterSpacing: 1 },
-  hint: { color: "rgba(255,255,255,0.3)", fontSize: ps(0.8), marginTop: ph(0.3) },
+  nextLine: { color: P.secondaryLabel, fontSize: ps(0.9) },
+  // The "NEXT" caption. `secondaryLabel` rather than the accent — it labels
+  // the line after it rather than being read itself, and an achromatic accent
+  // would have made it as bright as the programme title it introduces.
+  nextLabel: { color: P.secondaryLabel, letterSpacing: 1 },
+  hint: { color: P.tertiaryLabel, fontSize: ps(0.8), marginTop: ph(0.3) },
 });
 
 export default ChannelInfoBar;

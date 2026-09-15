@@ -234,7 +234,7 @@ export function Overlay({
   return (
     <FocusGuide
       style={styles.root}
-      {...(Platform.isTV
+      {...(Platform.isTV && FocusGuide !== View
         ? {
             trapFocusUp: trapFocus && visible,
             trapFocusDown: trapFocus && visible,
@@ -243,7 +243,7 @@ export function Overlay({
           }
         : null)}
     >
-      <Animated.View style={[styles.backdrop, style, { opacity }]} pointerEvents={visible ? "auto" : "none"}>
+      <Animated.View style={[styles.backdrop, style, { opacity, pointerEvents: visible ? "auto" : "none" }]}>
         <Pressable
           style={StyleSheet.absoluteFill}
           focusable={false}

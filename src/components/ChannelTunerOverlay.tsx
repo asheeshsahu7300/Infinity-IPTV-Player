@@ -12,7 +12,10 @@
 import React from "react";
 import { StyleSheet, View } from 'react-native';
 
-import { THEME, ph, ps, pw } from "../theme/tokens";
+import { ph, ps, pw, THEME } from "../theme/tokens";
+import * as P from "../theme/palette";
+import { RADIUS } from "../theme/materials";
+import { GlassSurface } from "./GlassSurface";
 import { Text } from './Text';
 
 
@@ -39,7 +42,16 @@ export const ChannelTunerReadout = React.memo(function ChannelTunerReadout({
 
   return (
     <View style={S.readout} pointerEvents="none">
-      <View style={S.readoutBox}>
+      {/* `ultraThin`, because this sits over live video and the picture
+          underneath has to stay watchable while the viewer dials. It is also
+          the one readout the STB puts up mid-programme, so it must never read
+          as a panel that has taken the screen. */}
+      <GlassSurface
+        material="ultraThin"
+        radius={RADIUS.lg}
+        shadow="popover"
+        style={S.readoutBox}
+      >
         <Text style={S.readoutDigits}>
           {entry}
           {pad > 0 ? <Text style={S.readoutPad}>{"_".repeat(pad)}</Text> : null}
@@ -47,7 +59,7 @@ export const ChannelTunerReadout = React.memo(function ChannelTunerReadout({
         <Text style={S.readoutLabel} numberOfLines={1}>
           {resolvedName ?? "Enter channel"}
         </Text>
-      </View>
+      </GlassSurface>
     </View>
   );
 });
@@ -63,27 +75,33 @@ const S = StyleSheet.create({
     minWidth: ps(9),
     paddingHorizontal: pw(2),
     paddingVertical: ph(1.4),
-    borderRadius: ps(1),
-    backgroundColor: "rgba(8,8,12,0.88)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
   },
   readoutDigits: {
-    color: "#fff",
+    color: P.label,
     fontSize: ps(4),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
+    // Weight comes from the family, never from `fontWeight` — `Text` strips
+    // that property, so the `fontFamily: THEME.fonts.bold` this used to carry rendered as
+    // Regular. Bold rather than the Black that was asked for: at ps(4) these
+    // digits are already the largest thing on the screen, and Black at that
+    // size closes up the counters of the 0, 6 and 8 from across a room.
+    //
+    // The tracking stays generous and the tabular figures stay mandatory —
+    // without them the readout's width jumps as each digit lands, which on a
+    // right-anchored overlay makes the whole box twitch.
     letterSpacing: 4,
     fontVariant: ["tabular-nums"],
   },
-  readoutPad: { color: "rgba(255,255,255,0.22)" },
+  readoutPad: { color: P.quaternaryLabel },
   readoutLabel: {
-    color: "rgba(255,255,255,0.55)",
+    color: P.secondaryLabel,
     fontSize: ps(0.9),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.medium,
     letterSpacing: 1,
     marginTop: ph(0.4),
     maxWidth: pw(24),
+    textTransform: "uppercase",
   },
 
 });

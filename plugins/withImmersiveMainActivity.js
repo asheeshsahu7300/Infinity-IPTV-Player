@@ -14,14 +14,29 @@ const { withMainActivity } = require('expo/config-plugins');
  *
  * Three unrelated things live here because they share one target file:
  *
- * IMMERSIVE MODE (`hideSystemUI`) — the status and navigation bars are hidden
- * for the life of the activity. It is re-applied from `onResume` and
+ * IMMERSIVE MODE (`hideSystemUI`) — the **navigation** bar is hidden for the
+ * life of the activity. It is re-applied from `onResume` and
  * `onWindowFocusChanged` rather than set once, because Android restores the
  * bars whenever the window loses and regains focus: returning from the system
  * TV settings panel, from an external player, or from a PiP transition all put
  * them back. Both the `WindowCompat` path and the deprecated
  * `systemUiVisibility` path are set, and each is wrapped separately, because
  * the older STB firmware this app targets does not reliably honour the former.
+ *
+ * It hid the **status** bar too until the app was asked to show one. That is
+ * why this is `navigationBars()` and not `systemBars()`, and why the two
+ * FULLSCREEN flags are absent from the legacy path: those are the status bar's
+ * half of the pair. Re-adding either takes the status bar back off the whole
+ * app, and — because this runs on every focus change — no amount of
+ * `StatusBar.setHidden(false)` in JS would win it back.
+ *
+ * The status bar is now `expo-status-bar`'s to control, which is what lets
+ * `app/player.tsx` hide it for itself and restore it on the way out. An Android
+ * TV box has no status bar to begin with, so nothing here changes on a box.
+ *
+ * The function keeps the name `hideSystemUI` deliberately: `MARKER` below
+ * greps for it to decide whether the block is already injected, and renaming it
+ * would make a prebuild over an already-patched file inject a second copy.
  *
  * BACK AT ROOT (`invokeDefaultOnBackPressed`) — moves the task to the
  * background instead of finishing the activity. Finishing it tears down the
@@ -71,7 +86,7 @@ const METHODS = `
       androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
       val controller = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
       controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-      controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+      controller.hide(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
     } catch (e: Exception) {}
 
     try {
@@ -80,9 +95,7 @@ const METHODS = `
         android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
           or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
           or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-          or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
           or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-          or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
       )
     } catch (e: Exception) {}
   }

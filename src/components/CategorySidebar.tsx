@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useCallback, useMemo } from "react";
 import { View, StyleSheet, FlatList, Dimensions, Animated } from 'react-native';
-import { pw, ps, THEME } from "../theme/tokens";
+import { pw, ps, SELECTION, selectionRung, THEME } from "../theme/tokens";
+import * as P from "../theme/palette";
+import { RADIUS } from "../theme/materials";
 import { Focusable } from "../tv";
 import { remoteFocusEnabled, SIDEBAR_WIDTH } from "../utils/tabletUtils";
 import { Text } from './Text';
@@ -44,18 +46,13 @@ const S = StyleSheet.create({
     justifyContent: "center",
     width: "100%",
   },
+  // No colour here: every render path spreads one of SELECTION's three inks
+  // over this, so a colour would only ever be the one that loses.
   itemText: {
-    color: "#FFFFFF",
     fontSize: ps(1.1),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.medium,
     letterSpacing: 0.2,
     textAlign: "center",
-  },
-  itemTextActive: {
-    color: "#111111",
-    fontSize: ps(1.15),
-    fontWeight: "900",
-    letterSpacing: 0.3,
   },
 });
 
@@ -114,6 +111,8 @@ const CategoryItem = React.memo(
               useNativeDriver: true,
             }).start();
 
+            const rung = selectionRung(isActive, focused);
+
             return (
               <Animated.View
                 style={[
@@ -129,34 +128,44 @@ const CategoryItem = React.memo(
                     width:
                       !remoteFocusEnabled || focused || isActive ? "100%" : "90%",
                     alignSelf: "center",
-                    borderRadius: 18,
+                    borderRadius: RADIUS.lg,
+                    borderCurve: "continuous",
                     justifyContent: "center",
                     alignItems: "center",
                     paddingHorizontal: pw(1.2),
                     overflow: "hidden",
-                    borderWidth: 0,
+                    // A resting pill is a fill rather than a material, for the
+                    // same reason the horizontal pills are — a column of forty
+                    // glass panes is forty sets of edges down one side of the
+                    // screen. `#17181c` before, which was a hair off the app's
+                    // own greys and read as a slightly different black.
+                    borderWidth: 1,
                     borderColor: "transparent",
-                    backgroundColor: "#17181c",
+                    backgroundColor: P.tertiarySystemFill,
                     transform: [{ scale: scaleAnim }],
                   },
-                  isActive && !focused && {
-                    backgroundColor: "#F5F5F5",
-                    borderColor: "transparent",
-                  },
-                  focused && {
-                    borderColor: "transparent",
-                    backgroundColor: "#F5F5F5",
-                    elevation: 8,
-                  },
+                  // The shared three-state ladder — see `SELECTION` in
+                  // theme/tokens for why an achromatic accent needs three
+                  // rungs rather than the usual two, and why the solid rung
+                  // is not keyed off `focused` alone.
+                  //
+                  // These two states used to be the same fill separated only
+                  // by a border, which was fine while the accent was blue and
+                  // silently invisible once it went back to off-white: a white
+                  // edge on a white fill. The wash is what distinguishes them
+                  // now, and it cannot collapse the same way.
+                  SELECTION[rung],
                 ]}
               >
                 <View style={S.itemInner}>
                   <Text
                     style={[
                       S.itemText,
-                      (focused || isActive)
-                        ? { color: THEME.colors.selectedText, fontWeight: "900", fontSize: ps(1.15) }
-                        : { color: THEME.colors.text },
+                      rung === "rest"
+                        ? SELECTION.restInk
+                        : rung === "marked"
+                          ? { ...SELECTION.markedInk, fontSize: ps(1.15) }
+                          : { ...SELECTION.filledInk, fontSize: ps(1.15) },
                     ]}
                     numberOfLines={1}
                   >

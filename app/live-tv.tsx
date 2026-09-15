@@ -10,7 +10,8 @@ import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { StreamManager } from "../src/services/StreamManager";
 import { cacheManager } from "../src/services/cacheManager";
-import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { THEME, pw, ph, ps, HEADER } from "../src/theme/tokens";
+import { FOCUS, MATERIALS, RADIUS, focusGlowShadow } from "../src/theme/materials";
 import { TABLET_TILE_MAX_WIDTH, TILE_MAX_WIDTH, isTablet, SIDEBAR_WIDTH } from "../src/utils/tabletUtils";
 import {
   isPhone,
@@ -18,6 +19,7 @@ import {
   PHONE_NOTICE_MAX_WIDTH,
   PHONE_SEARCH_BAR_WIDTH,
 } from "../src/utils/phoneUtils";
+import { CinematicBackground } from "../src/components/CinematicBackground";
 import CategorySidebar from "../src/components/CategorySidebar";
 import CategoryPills from "../src/components/CategoryPills";
 import { Focusable, FocusGroup, FocusMemory, STB_PRIORITY, useInitialFocusPulse, useStbKeys, useIsFocusTrapped } from "../src/tv";
@@ -37,6 +39,7 @@ import { Info, Lock, RefreshCw, Search, Tv, X } from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
 import { Text } from '../src/components/Text';
 import { TextInput } from '../src/components/TextInput';
+import * as P from "../src/theme/palette";
 
 
 
@@ -54,82 +57,35 @@ const S = StyleSheet.create({
   },
 
   // ── Header ──
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: pw(3),
-    height: 56,
-  },
-  headerCenterTitleWrapper: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    pointerEvents: "none",
-  },
-  headerTitle: {
-    color: "#FFFFFF",
-    fontSize: ps(1.6),
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  searchBtnWrapper: {
-    borderRadius: 24,
-    overflow: "hidden",
-  },
-  searchCircleBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#17181c",
-    borderWidth: 0,
-    borderColor: "transparent",
-    overflow: "hidden",
-  },
-  searchCircleBtnFocused: {
-    borderRadius: 22,
-    backgroundColor: "#F5F5F5",
-    borderColor: "transparent",
-    borderWidth: 0,
-    transform: [{ scale: 1.12 }],
-    overflow: "hidden",
-  },
+  // The shared header. These seven were byte-identical in live-tv, vod and
+  // series; see `HEADER` in theme/tokens for why they now live in one place.
+  // The names are kept so the JSX below is untouched.
+  header: HEADER.bar,
+  headerCenterTitleWrapper: HEADER.centerTitleWrapper,
+  headerTitle: HEADER.title,
+  headerRight: HEADER.right,
+  searchBtnWrapper: HEADER.iconButtonWrapper,
+  searchCircleBtn: HEADER.iconButton,
+  searchCircleBtnFocused: HEADER.iconButtonFocused,
+  // Width is the one thing that is genuinely per-screen here, so the shared
+  // bar supplies everything else and this adds the measurement.
   searchOpenBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#17181c",
-    borderRadius: 22,
-    paddingHorizontal: pw(1.4),
-    height: 44,
+    ...HEADER.searchBar,
     width: isPhone ? PHONE_SEARCH_BAR_WIDTH : pw(36),
-    borderWidth: 0,
-    borderColor: "transparent",
   },
-  searchInput: {
-    flex: 1,
-    color: "#FFFFFF",
-    fontSize: ps(1.15),
-    fontWeight: "600",
-    paddingVertical: 0,
-    textAlignVertical: "center",
-  },
+  searchInput: HEADER.searchInput,
 
   // ── Body ──
   body: {
     flexDirection: "row",
     marginTop: 10,
   },
+  // The pills are a control strip and the grid below is content, so the join
+  // wants a clear break rather than the 6dp it had — at that distance the top
+  // row of tiles read as part of the same band as the pills.
   portraitPillsWrapper: {
     paddingVertical: 4,
-    marginBottom: 6,
+    marginBottom: 16,
   },
   /** Pills above the grid instead of a sidebar beside it. */
   gridArea: {
@@ -149,25 +105,33 @@ const S = StyleSheet.create({
   },
   cardWrapper: {
     paddingHorizontal: 5,
-    // Halved on a phone: this padding is doubled up between rows, so 4 here is
-    // 8dp of gap between tiles.
-    paddingTop: isPhone ? 1 : 4,
-    paddingBottom: isPhone ? 1 : 4,
+    // Doubled up between rows, so 2 here is 4dp of the gap. Reduced together
+    // with the row-height constants in ROW_HEIGHT — see the note there.
+    // Changing one without the other either does nothing or clips the label.
+    paddingTop: isPhone ? 0 : 2,
+    paddingBottom: isPhone ? 0 : 2,
   },
+  // The same resting hairline the VOD and Series posters wear, so a channel
+  // tile and a poster tile read as one family. It was `transparent`, so the
+  // tile had no edge at all until focus landed on it.
   cardBorder: {
-    borderRadius: 12,
+    borderRadius: RADIUS.card,
+    borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: "transparent",
-    backgroundColor: "#17181c",
+    borderColor: MATERIALS.thin.edge,
+    backgroundColor: P.secondaryElevatedSystemBackground,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
+  // No `elevation`: in a grid an elevated tile paints its shadow over the
+  // tiles beside it on Android — the constraint `TILE_FRAME_FOCUSED`
+  // documents. `focusGlowShadow` is iOS-only by construction.
   cardBorderFocused: {
-    borderColor: "#ffffff",
+    borderColor: FOCUS.edge,
     borderWidth: 1,
-    transform: [{ scale: 1.03 }],
-    elevation: 12,
+    transform: [{ scale: FOCUS.scale }],
+    ...focusGlowShadow,
   },
   cardLogoWrapper: {
     width: "75%",
@@ -198,7 +162,7 @@ const S = StyleSheet.create({
   cardTitle: {
     color: "#FFFFFF",
     fontSize: ps(0.9),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     textAlign: "center",
     // Explicit leading on the phone so the label's height is a number we know
     // rather than whatever the font's metrics produce. The row height is fixed
@@ -214,12 +178,12 @@ const S = StyleSheet.create({
     ...(isPhone ? { lineHeight: 13 } : null),
   },
   cardTitleFocused: {
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
   },
   cardCategory: {
     color: "#B8B8B8",
     fontSize: ps(0.72),
-    fontWeight: "600",
+    fontFamily: THEME.fonts.semibold,
     textAlign: "center",
     marginTop: isPhone ? 0 : 2,
     ...(isPhone ? { lineHeight: 10 } : null),
@@ -239,7 +203,7 @@ const S = StyleSheet.create({
   cardNumberText: {
     color: "#FFFFFF",
     fontSize: ps(0.7),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     fontVariant: ["tabular-nums"],
   },
   cardLock: {
@@ -262,7 +226,7 @@ const S = StyleSheet.create({
   loadingText: {
     color: "#B8B8B8",
     fontSize: ps(1),
-    fontWeight: "600",
+    fontFamily: THEME.fonts.semibold,
   },
   emptyState: {
     flex: 1,
@@ -274,7 +238,7 @@ const S = StyleSheet.create({
   emptyTitle: {
     color: "#FFFFFF",
     fontSize: ps(1.4),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
   },
   emptySubtitle: {
     color: "#B8B8B8",
@@ -304,7 +268,7 @@ const S = StyleSheet.create({
   retryText: {
     color: "#FFFFFF",
     fontSize: ps(1.05),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     marginLeft: pw(0.6),
   },
 
@@ -328,7 +292,7 @@ const S = StyleSheet.create({
   noticeText: {
     color: "#FFFFFF",
     fontSize: ps(1),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
   },
 });
 
@@ -431,7 +395,7 @@ const ChannelCard = React.memo(function ChannelCard({
                 />
               ) : (
                 <View style={S.cardFallback}>
-                  <Tv size={ps(2.5)} color="rgba(255,255,255,0.28)" />
+                  <Tv size={ps(2.5)} color={P.tertiaryLabel} />
                 </View>
               )}
             </View>
@@ -738,11 +702,25 @@ export default function LiveTVScreen() {
    * bounds are equal there and this changes nothing on TV.
    */
   const CARD_ASPECT = 1.085;
+  /*
+   * The trailing constants are the row's vertical slack — the gap between one
+   * row's label and the next row's card.
+   *
+   * Phone: 27 -> 25. The label is exactly 23dp (13 + 10 of pinned leading) and
+   * cardWrapper now adds none, so 25 keeps the same ~2dp of clipping margin the
+   * 27 had while halving the visible gap from 4dp to 2. That 2dp is the floor:
+   * the row is fixed through getItemLayout, so anything the label overruns is
+   * clipped rather than scrolled. Shorten the label before taking it.
+   *
+   * Tablet portrait: 48 -> 42. Landscape: 12 -> 8, with cardHeight below
+   * following the same number so the card takes back what the gap gives up
+   * rather than the row simply shrinking.
+   */
   const ROW_HEIGHT = isPortrait
-    ? Math.floor(tileWidth + (isPhone ? 27 : 48))
+    ? Math.floor(tileWidth + (isPhone ? 25 : 42))
     : Math.min(
         Math.floor(AVAILABLE_VIEWPORT_HEIGHT / targetVisibleRows),
-        Math.round(tileWidth * CARD_ASPECT) + 12
+        Math.round(tileWidth * CARD_ASPECT) + 8
       );
   // Fills the viewport even when the rows no longer divide it exactly, so a
   // shorter row cannot reopen the black band at the foot of the screen.
@@ -751,7 +729,9 @@ export default function LiveTVScreen() {
     : AVAILABLE_VIEWPORT_HEIGHT + GRID_V_PADDING;
   const cardHeight = isPortrait
     ? Math.floor(tileWidth)
-    : Math.floor(ROW_HEIGHT - 12);
+    // Tracks the + 8 above: the card grows into the space the gap gave up, so
+    // rows tighten without the artwork shrinking with them.
+    : Math.floor(ROW_HEIGHT - 8);
 
   const PAGE_SIZE = numColumns * Math.ceil(28 / numColumns);
 
@@ -1486,13 +1466,22 @@ export default function LiveTVScreen() {
 
   return (
     <View style={[S.container, { paddingTop: isPortrait ? Math.max(insets.top, 24) + 8 : insets.top }]}>
+      {/* Live TV was the one screen in the app with no backdrop at all — flat
+          black where every other grid sits on the ambient field. The sidebar
+          scrim deepens the left edge under the category list. */}
+      <CinematicBackground sidebarScrim={!isPortrait} />
+
       {/* ─── Header ─── */}
       <View style={S.header}>
         <View style={{ width: 38 }} />
 
-        <View style={S.headerCenterTitleWrapper}>
-          <Text style={S.headerTitle}>Live TV</Text>
-        </View>
+        {/* Hidden while the search field is open — the field expands across
+            the same strip this is centred in, and both were drawing at once. */}
+        {!isSearchOpen && (
+          <View style={S.headerCenterTitleWrapper}>
+            <Text style={S.headerTitle}>Live TV</Text>
+          </View>
+        )}
 
         <View style={S.headerRight}>
           {isSearchOpen ? (
@@ -1500,7 +1489,7 @@ export default function LiveTVScreen() {
               <Pressable onPress={() => commitSearch()} style={{ padding: 2 }}>
                 <Search
                   size={ps(1.8)}
-                  color="rgba(255,255,255,0.75)"
+                  color={P.secondaryLabel}
                   style={{ marginRight: pw(0.8) }}
                 />
               </Pressable>
@@ -1508,7 +1497,7 @@ export default function LiveTVScreen() {
                 ref={searchInputRef}
                 style={S.searchInput}
                 placeholder="Search channels..."
-                placeholderTextColor="rgba(255,255,255,0.4)"
+                placeholderTextColor={P.placeholderText}
                 value={searchQuery}
                 onChangeText={(text) => {
                   searchQueryRef.current = text;
@@ -1541,7 +1530,7 @@ export default function LiveTVScreen() {
                   <View style={focused ? { transform: [{ scale: 1.15 }] } : undefined}>
                     <X
                       size={ps(2.1)}
-                      color={focused ? "#ffffff" : "rgba(255,255,255,0.75)"}
+                      color={focused ? P.label : P.secondaryLabel}
                     />
                   </View>
                 )}
@@ -1568,7 +1557,8 @@ export default function LiveTVScreen() {
                     { borderRadius: 22 },
                   ]}
                 >
-                  <Search size={ps(2.2)} color={focused ? "#000000" : "#ffffff"} />
+                  {/* Dark when focused: the button fills with the off-white tint. */}
+                  <Search size={ps(2.2)} color={focused ? P.onTint : P.label} />
                 </View>
               )}
             </Focusable>
@@ -1640,7 +1630,7 @@ export default function LiveTVScreen() {
                   <DynamicIcon
                     name={loadFailed ? "cloud-off-outline" : "television-play"}
                     size={ps(4)}
-                    color="rgba(255,255,255,0.05)"
+                    color={P.quaternaryLabel}
                   />
                   <Text style={S.emptyTitle}>
                     {loadFailed ? "Couldn't Load Channels" : "No Channels Found"}

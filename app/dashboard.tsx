@@ -45,9 +45,10 @@ const tps = (n: number) => Math.round(n * TPS);
 const vGap = (small: number, large: number) =>
   Math.round(small + (large - small) * Math.min(1, Math.max(0, (TPS - 1) / 0.45)));
 // This screen is sized against the un-bumped scale — see psRaw in tokens.ts.
-import { THEME, pw, ph, psRaw as ps, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
+import { THEME, pw, ph, psRaw as ps, CARD_FRAME } from "../src/theme/tokens";
 import { Calendar, ExternalLink, Film, Layers, LayoutGrid, LucideIcon, Play, RefreshCw, Search, Settings, Star, Tv, X } from 'lucide-react-native';
 import { Text } from '../src/components/Text';
+import * as P from "../src/theme/palette";
 
 
 const RAIL_H_PAD = pw(5);
@@ -65,7 +66,53 @@ const RAIL_H_PAD = pw(5);
  * stay tight together as a single unit.
  */
 const PHONE_HERO_GAP_ABOVE = 0;
-const PHONE_HERO_GAP_BELOW = 20;
+/**
+ * One gap, used twice: title to byline, and byline to the pills.
+ *
+ * It was a single 20dp below the block with nothing at all inside it, which
+ * made the three lines read as a title welded to its byline and then a long
+ * drop to the controls. Splitting the same 20 evenly gives the even rhythm
+ * the copy actually wants.
+ *
+ * Evenly is also what keeps `PHONE_BROWSE_CHROME` honest: 10 + 10 is the 20 it
+ * already accounts for, so the sum below is unchanged and the browse cards
+ * keep the height they were computed at. Move one of these without the other
+ * and the sum has to move too.
+ */
+const PHONE_HERO_TEXT_GAP = 10;
+const PHONE_HERO_GAP_BELOW = PHONE_HERO_TEXT_GAP;
+
+/**
+ * The TV tier's hero gap, stated once and used for both — the title to the
+ * byline and the byline to the pills. They were ph(0.7) and ph(2.2), which is
+ * a three-to-one rhythm on three lines that belong together.
+ */
+/**
+ * The TV hero's rhythm: one block of copy, with air on either side of it.
+ *
+ * This is the shape the phone tier has always been written to — see
+ * PHONE_HERO_GAP_ABOVE/BELOW, whose docblock says the title and byline "stay
+ * tight together as a single unit" and that the larger gap below is "what
+ * separates the thing you read from the thing you press". TV never had it; it
+ * had one value used three times, which spaced the heading from its own byline
+ * exactly as far as it spaced the byline from the buttons, so the copy read as
+ * three loose lines rather than a masthead and a caption.
+ *
+ * HERO_BLOCK_GAP goes above the block and below it. HERO_LINE_GAP is the seam
+ * inside it, and is small on purpose.
+ */
+const HERO_BLOCK_GAP = ph(7.5);
+
+/**
+ * The seam between the heading and its byline.
+ *
+ * Not zero, which is what the phone uses. On a handset the title keeps Android's
+ * font padding and its natural leading, and that built-in space is doing the
+ * separating; TV has neither — `includeFontPadding` is off and the leading is
+ * pinned at 1.22x — so with no margin at all the two line boxes butt together.
+ * ph(0.5) is roughly what the phone gets for free.
+ */
+const HERO_LINE_GAP = ph(2.2);
 
 /** The logo box, and so the height of the header row it is the tallest thing in. */
 const PHONE_HEADER_H = 80;
@@ -95,7 +142,7 @@ const PHONE_BROWSE_CHROME =
   // The hero: title box, byline box, the gap to the pills, the pills, and the
   // section's own bottom margin. The two text boxes are the rendered heights
   // including Android's font padding, not the font sizes.
-  (23 + 20 + PHONE_HERO_GAP_BELOW + PHONE_PILL_H + 10) +
+  (23 + PHONE_HERO_TEXT_GAP + 20 + PHONE_HERO_GAP_BELOW + PHONE_PILL_H + 10) +
   // The two gaps between the three cards belong to the cards' own budget.
   2 * PORTRAIT_CARD_GAP;
 
@@ -155,7 +202,7 @@ const HeroPill = ({
               // however the label and icon are sized. `heroPillGradient`
               // already centres its children, so the padding just goes to 0.
               isPhone && { height: 36 },
-              !focused && { backgroundColor: "#17181c" },
+              !focused && { backgroundColor: P.secondaryElevatedSystemBackground },
               focused && { backgroundColor: "#fff" }
             ]}
           >
@@ -186,6 +233,17 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isPortrait = !Platform.isTV && windowHeight > windowWidth;
+  // One value for both hero gaps on the non-TV tiers. Written once rather than
+  // twice so "equal" is structural rather than a coincidence that survives
+  // until someone edits one of them.
+  const heroTitleSize = isPhone ? 17.3 : isPortrait ? 18 : (isTablet ? tps(28) : 20);
+  const heroTextGap = isPhone
+    ? PHONE_HERO_TEXT_GAP
+    : isPortrait
+      ? 12
+      : isTablet
+        ? vGap(6, 16)
+        : 10;
   // `hPad` is the dashboard's side margin — the header, the hero and the browse
   // section all take it, so this is the one number that sets the page gutter.
   const hPad = !Platform.isTV ? (isPhone ? 14 : isPortrait ? 20 : (isTablet ? tps(32) : 24)) : RAIL_H_PAD;
@@ -480,8 +538,13 @@ export default function DashboardScreen() {
             // then applied to every non-TV device, so a 1506dp tablet was
             // reading the same 20dp title as a 393dp phone. The tablet gets its
             // own step now.
-            fontSize: isPhone ? 17.3 : isPortrait ? 18 : (isTablet ? tps(28) : 20),
-            marginVertical: isPhone ? 0 : isTablet && !isPortrait ? vGap(2, 6) : 6,
+            fontSize: heroTitleSize,
+            // Phone left on its natural leading: PHONE_BROWSE_CHROME sums the
+            // *rendered* box heights (the 23 and the 20), and pinning the
+            // leading here would change one of them without the sum following.
+            ...(isPhone ? null : { lineHeight: Math.round(heroTitleSize * 1.22) }),
+            marginTop: isPhone ? 0 : heroTextGap,
+            marginBottom: heroTextGap,
           }
         ]}>
           Unlimited Entertainment
@@ -492,8 +555,11 @@ export default function DashboardScreen() {
             S.heroDesc,
             !Platform.isTV && {
               fontSize: isPhone ? 12.6 : isPortrait ? 12 : (isTablet ? tps(15) : 13),
-              lineHeight: isPhone ? 16.1 : isPortrait ? 15 : (isTablet ? tps(22) : 19),
-              marginBottom: isPhone ? PHONE_HERO_GAP_BELOW : isPortrait ? 18 : (isTablet ? vGap(10, 26) : 14),
+              // Tablet and the generic branch were at 1.47x against the
+              // title's 1.22x, which reopened the very gap the title's leading
+              // had just closed. The phone keeps 16.1 for the reason above.
+              lineHeight: isPhone ? 16.1 : isPortrait ? 15 : (isTablet ? tps(19) : 16),
+              marginBottom: heroTextGap,
               // A measure, not a width: 560 was chosen against a 1280 panel and
               // is a short line on a 1506 one.
               maxWidth: isPortrait ? "100%" : (isTablet ? tps(680) : 480),
@@ -814,7 +880,20 @@ const S = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     // paddingHorizontal is applied dynamically in render (hPad) to respond to orientation
-    marginBottom: ph(1.8),
+    /*
+     * Nothing below the header on TV — the gap to the title is the title's own
+     * marginTop, and only that.
+     *
+     * This was ph(1.8), which stacked on top of the title's own margin and made the
+     * logo-to-title gap roughly twice the two gaps inside the copy. It is the
+     * last of three separate things that were adding to that one space: the
+     * section's flex centring, Android's font padding, and this.
+     *
+     * Only TV is affected. Every non-TV path overrides marginBottom inline —
+     * both the isPortrait branch and the !Platform.isTV one set their own — so
+     * this value was never reaching a phone or a tablet in the first place.
+     */
+    marginBottom: HERO_BLOCK_GAP,
     marginTop: ph(1.5),
   },
   logoRow: {
@@ -825,7 +904,7 @@ const S = StyleSheet.create({
   logoTitle: {
     color: "#fff",
     fontSize: ps(2.8),
-    fontWeight: "500",
+    fontFamily: THEME.fonts.medium,
     letterSpacing: 5,
   },
   headerLogoImage: {
@@ -843,13 +922,13 @@ const S = StyleSheet.create({
     width: pw(4.6),
     height: pw(4.6),
     borderRadius: pw(2.3),
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 0,
     justifyContent: "center",
     alignItems: "center",
   },
   roundBtnFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "#FFFFFF",
     transform: [{ scale: 1.12 }],
     ...Platform.select({
@@ -871,7 +950,21 @@ const S = StyleSheet.create({
     maxWidth: pw(72),
     position: "relative",
     flex: 1,
-    justifyContent: "center",
+    /*
+     * Top-aligned, not centred.
+     *
+     * `flex: 1` makes this section absorb whatever vertical space the header
+     * and the browse row leave, and centring put the copy in the middle of
+     * that — so the gap between the logo and the title was however much slack
+     * the device happened to have, usually several times the gaps inside the
+     * block. No margin could equalise it, because it was not a margin.
+     *
+     * Aligned to the top, the copy sits one `HERO_BLOCK_GAP` under the header
+     * like every other gap here, and the slack falls below the pills instead,
+     * where it reads as breathing room before the browse cards rather than as
+     * a hole in the middle of the copy.
+     */
+    justifyContent: "flex-start",
     marginBottom: ph(1.5),
   },
   heroGradientOverlay: {
@@ -881,19 +974,68 @@ const S = StyleSheet.create({
   },
   heroTitle: {
     fontSize: ps(3.2),
-    color: "#FFFFFF",
-    fontWeight: "600",
-    letterSpacing: 0.4,
-    marginVertical: ph(1.5),
+    color: P.label,
+    fontFamily: THEME.fonts.semibold,
+    /*
+     * Explicit leading, because equal margins were not producing equal gaps.
+     *
+     * With no `lineHeight` the title box is the font's natural leading — about
+     * 1.3x at this size — and all of that extra sits *inside* the text box,
+     * below the glyphs. So the visual gap under the title was the margin plus
+     * roughly a third of a very large font, while the gap under the byline was
+     * the margin plus a third of a small one. The two margins matched and the
+     * two gaps did not.
+     *
+     * 1.22x is about as tight as Inter goes before descenders clip.
+     */
+    lineHeight: ps(3.9),
+    /*
+     * The last thing standing between equal margins and equal gaps, on the one
+     * tier that matters here.
+     *
+     * Android leaves `includeFontPadding` on by default, which adds the font's
+     * own ascent and descent padding *on top of* the line box — and it is not
+     * symmetric, so it lands differently under a 31dp title than under a 13dp
+     * byline. With it off the box is exactly `lineHeight`, which is what every
+     * number here was worked out against. iOS never had the padding.
+     *
+     * TV only, and deliberately: `PHONE_BROWSE_CHROME` sums the *rendered* box
+     * heights of these two strings (the 23 and the 20 in that expression), so
+     * switching the padding off on a handset would change one of them without
+     * the sum following and the browse cards would be sized against a hero
+     * that no longer exists.
+     */
+    ...(Platform.isTV ? { includeFontPadding: false } : null),
+    // Negative, not the +0.4 it had. Apple tightens tracking as type grows, and
+    // at ps(3.2) this is the largest string in the app.
+    letterSpacing: -0.6,
+    // All three gaps in the block are the same value: above the title, under
+    // it, and under the byline. It was ph(0.7) above against ph(2.2) below,
+    // which made the title sit closer to the logo than to its own byline.
+    // Nothing above: the gap over the copy is the header's marginBottom, so it
+    // is stated in one place rather than split between two elements that have
+    // to be kept in step.
+    marginTop: 0,
+    marginBottom: HERO_LINE_GAP,
     textShadowColor: "rgba(0, 0, 0, 0.75)",
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 8,
   },
   heroDesc: {
-    fontSize: ps(1.3),
-    color: "#A2A7BD",
-    lineHeight: ph(2.8),
-    marginBottom: ph(3.5),
+    // Up from ps(1.3). At that size the byline was under half the title's
+    // ps(3.2) and read as a footnote to it rather than as the line that says
+    // what the app is — the one piece of copy on the screen a viewer across a
+    // room actually has to read.
+    fontSize: ps(1.6),
+    color: P.secondaryLabel,
+    // 1.31x the font size, held as the size moved. It was ph(2.8), which
+    // resolved to 1.19x — under the ~1.21 Inter needs, so it was clipping
+    // descenders as well as being unrelated to the title's leading above.
+    lineHeight: ps(2.1),
+    // See the note on heroTitle — the pair has to match or the padding is only
+    // removed from one end of the gap.
+    ...(Platform.isTV ? { includeFontPadding: false } : null),
+    marginBottom: HERO_BLOCK_GAP,
     maxWidth: pw(58),
   },
   heroButtons: {
@@ -934,7 +1076,7 @@ const S = StyleSheet.create({
   },
   heroPillText: {
     color: "#fff",
-    fontWeight: "600",
+    fontFamily: THEME.fonts.semibold,
     fontSize: ps(1.4),
     letterSpacing: 0.5,
   },
@@ -956,15 +1098,18 @@ const S = StyleSheet.create({
     paddingVertical: pw(0.8),
     overflow: "visible",
   },
+  // The same resting hairline the poster grids wear, so a browse card and the
+  // tiles it leads to read as the same object.
   cardBorder: {
     flex: 1,
     borderRadius: CARD_FRAME.borderRadius,
+    borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: "transparent",
+    borderColor: CARD_FRAME.borderColor,
     overflow: "hidden",
   },
   cardBorderFocused: {
-    borderColor: "#FFFFFF",
+    borderColor: THEME.colors.focusRing,
   },
   browseCardInner: {
     flex: 1,
@@ -990,12 +1135,12 @@ const S = StyleSheet.create({
   browseCardTitle: {
     color: "#D8DCE8",
     fontSize: ps(1.8),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 0.3,
   },
   browseCardTitleFocused: {
     color: "#FFFFFF",
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
   },
 
   // ── Play Modal ──
@@ -1034,11 +1179,11 @@ const S = StyleSheet.create({
     justifyContent: "center",
     gap: isPhone ? 10 : 12,
   },
-  modalTitle: { color: "#fff", fontSize: ps(1.9), fontWeight: "900", marginBottom: 12 },
-  modalDescription: { color: "rgba(255,255,255,0.5)", fontSize: ps(1.2), lineHeight: ps(1.4), marginBottom: 18 },
+  modalTitle: { color: "#fff", fontSize: ps(1.9), fontFamily: THEME.fonts.bold, marginBottom: 12 },
+  modalDescription: { color: P.secondaryLabel, fontSize: ps(1.2), lineHeight: ps(1.4), marginBottom: 18 },
   modalMetaRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
   modalBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontWeight: "700" },
+  modalBadgeText: { color: "#fff", fontSize: ps(0.85), fontFamily: THEME.fonts.semibold },
   modalBtnWrapper: { borderRadius: 10, overflow: "visible", width: "100%", maxWidth: 380, alignSelf: "flex-end" },
   modalBtnPill: {
     flexDirection: "row",
@@ -1050,10 +1195,10 @@ const S = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 0,
     borderColor: "transparent",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
   modalBtnPillFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "transparent",
     borderWidth: 0,
     elevation: 8,
@@ -1062,13 +1207,13 @@ const S = StyleSheet.create({
   modalBtnText: {
     color: "#FFFFFF",
     fontSize: ps(1.0),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.3,
   },
   modalBtnTextFocused: {
     color: "#000000",
     fontSize: ps(1.0),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.3,
   },
 });

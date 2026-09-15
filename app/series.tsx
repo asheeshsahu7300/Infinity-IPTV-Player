@@ -9,7 +9,8 @@ import { portalApi, buildImageUrl } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { cacheManager } from "../src/services/cacheManager";
-import { THEME, pw, ph, ps } from "../src/theme/tokens";
+import { THEME, pw, ph, ps, HEADER } from "../src/theme/tokens";
+import { FOCUS, MATERIALS, RADIUS, focusGlowShadow } from "../src/theme/materials";
 import { TABLET_TILE_MAX_WIDTH, TILE_MAX_WIDTH, isTablet, SIDEBAR_WIDTH } from "../src/utils/tabletUtils";
 import { isPhone, PHONE_GRID_COLUMNS, PHONE_SEARCH_BAR_WIDTH } from "../src/utils/phoneUtils";
 import { CinematicBackground, updateCinematicBackground } from "../src/components/CinematicBackground";
@@ -28,6 +29,7 @@ import { Film, Heart, Lock, RefreshCw, Search, X } from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
 import { Text } from '../src/components/Text';
 import { TextInput } from '../src/components/TextInput';
+import * as P from "../src/theme/palette";
 
 
 
@@ -39,73 +41,23 @@ const SCREEN_KEY = "series";
 // ─────────────────────────────────────────────
 const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000000" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: pw(3),
-    height: 56,
-  },
-  headerCenterTitleWrapper: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    pointerEvents: "none",
-  },
-  headerTitle: {
-    color: "#FFFFFF",
-    fontSize: ps(1.6),
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  searchBtnWrapper: {
-    borderRadius: 24,
-    overflow: "hidden",
-  },
-  searchCircleBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#17181c",
-    borderWidth: 0,
-    borderColor: "transparent",
-    overflow: "hidden",
-  },
-  searchCircleBtnFocused: {
-    borderRadius: 22,
-    backgroundColor: "#F5F5F5",
-    borderColor: "transparent",
-    borderWidth: 0,
-    transform: [{ scale: 1.12 }],
-    overflow: "hidden",
-  },
+  // The shared header. These seven were byte-identical in live-tv, vod and
+  // series; see `HEADER` in theme/tokens for why they now live in one place.
+  // The names are kept so the JSX below is untouched.
+  header: HEADER.bar,
+  headerCenterTitleWrapper: HEADER.centerTitleWrapper,
+  headerTitle: HEADER.title,
+  headerRight: HEADER.right,
+  searchBtnWrapper: HEADER.iconButtonWrapper,
+  searchCircleBtn: HEADER.iconButton,
+  searchCircleBtnFocused: HEADER.iconButtonFocused,
+  // Width is the one thing that is genuinely per-screen here, so the shared
+  // bar supplies everything else and this adds the measurement.
   searchOpenBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#17181c",
-    borderRadius: 22,
-    paddingHorizontal: pw(1.4),
-    height: 44,
+    ...HEADER.searchBar,
     width: isPhone ? PHONE_SEARCH_BAR_WIDTH : pw(36),
-    borderWidth: 0,
-    borderColor: "transparent",
   },
-  searchInput: {
-    flex: 1,
-    color: "#FFFFFF",
-    fontSize: ps(1.15),
-    fontWeight: "600",
-    paddingVertical: 0,
-    textAlignVertical: "center",
-  },
+  searchInput: HEADER.searchInput,
   body: { flex: 1, flexDirection: "row", marginTop: 10 },
   portraitPillsWrapper: {
     paddingVertical: 4,
@@ -137,24 +89,25 @@ const S = StyleSheet.create({
   seriesCardContainerFocused: {},
   posterFrame: {
     width: "100%",
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
+    borderCurve: "continuous",
     overflow: "hidden",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 1,
-    borderColor: "transparent",
+    borderColor: MATERIALS.thin.edge,
   },
   posterFrameFocused: {
-    borderColor: "#ffffff",
+    borderColor: FOCUS.edge,
     borderWidth: 1,
-    transform: [{ scale: 1.03 }],
-    elevation: 12,
+    transform: [{ scale: FOCUS.scale }],
+    ...focusGlowShadow,
   },
-  posterImage: { width: "100%", height: "100%" },
+  posterImage: { width: "100%", height: "100%" ,borderRadius: RADIUS.lg, overflow: "hidden" },
   posterFallback: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
   cornerRatingBadge: {
     position: "absolute",
@@ -170,7 +123,7 @@ const S = StyleSheet.create({
   cornerRatingText: {
     color: "#FFFFFF",
     fontSize: ps(0.85),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.2,
   },
   favoriteBadge: {
@@ -190,20 +143,20 @@ const S = StyleSheet.create({
     padding: 5,
   },
   seriesTitleText: {
-    color: "rgba(255,255,255,0.75)",
+    color: P.label,
     fontSize: ps(0.92),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     marginTop: 8,
     lineHeight: 20,
   },
   seriesTitleTextFocused: {
     color: "#FFFFFF",
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
   },
   loadingCenter: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { color: "#B8B8B8", marginTop: 15, fontSize: ps(1.05), fontWeight: "600" },
+  loadingText: { color: "#B8B8B8", marginTop: 15, fontSize: ps(1.05), fontFamily: THEME.fonts.semibold },
   emptyState: { flex: 1, justifyContent: "center", alignItems: "center", paddingVertical: ph(6) },
-  emptyTitle: { color: "#FFFFFF", fontSize: ps(1.4), marginTop: 12, fontWeight: "800" },
+  emptyTitle: { color: "#FFFFFF", fontSize: ps(1.4), marginTop: 12, fontFamily: THEME.fonts.bold },
   emptySubtitle: { color: "#B8B8B8", fontSize: ps(1.05), marginTop: 6, textAlign: "center" },
   retryBtn: { marginTop: ph(2.5), borderRadius: 16, overflow: "visible" },
   retryInner: {
@@ -221,7 +174,7 @@ const S = StyleSheet.create({
     borderColor: "#FFC857",
     elevation: 8,
   },
-  retryText: { color: "#FFFFFF", fontSize: ps(1.05), fontWeight: "800", marginLeft: pw(0.6) },
+  retryText: { color: "#FFFFFF", fontSize: ps(1.05), fontFamily: THEME.fonts.bold, marginLeft: pw(0.6) },
 });
 
 // ─────────────────────────────────────────────
@@ -331,7 +284,7 @@ const SeriesItem = React.memo(function SeriesItem({
                 />
               ) : (
                 <View style={[StyleSheet.absoluteFill, S.posterFallback]}>
-                  <Film size={ps(4.2)} color="rgba(255,255,255,0.32)" />
+                  <Film size={ps(4.2)} color={P.tertiaryLabel} />
                 </View>
               )}
 
@@ -1177,14 +1130,18 @@ export default function SeriesScreen() {
 
   return (
     <View style={[S.container, { paddingTop: isPortrait ? Math.max(insets.top, 24) + 8 : insets.top }]}>
-      <CinematicBackground />
+      <CinematicBackground followsFocus />
 
       <View style={S.header}>
         <View style={{ width: 38 }} />
 
-        <View style={S.headerCenterTitleWrapper}>
-          <Text style={S.headerTitle}>TV Series</Text>
-        </View>
+        {/* Hidden while the search field is open — the field expands across
+            the same strip this is centred in, and both were drawing at once. */}
+        {!isSearchOpen && (
+          <View style={S.headerCenterTitleWrapper}>
+            <Text style={S.headerTitle}>TV Series</Text>
+          </View>
+        )}
 
         <View style={S.headerRight}>
           {isSearchOpen ? (
@@ -1192,7 +1149,7 @@ export default function SeriesScreen() {
               <Pressable onPress={() => commitSearch()} style={{ padding: 2 }}>
                 <Search
                   size={ps(1.8)}
-                  color="rgba(255,255,255,0.75)"
+                  color={P.secondaryLabel}
                   style={{ marginRight: pw(0.8) }}
                 />
               </Pressable>
@@ -1200,7 +1157,7 @@ export default function SeriesScreen() {
                 ref={searchInputRef}
                 style={S.searchInput}
                 placeholder="Search series..."
-                placeholderTextColor="rgba(255,255,255,0.4)"
+                placeholderTextColor={P.placeholderText}
                 value={searchQuery}
                 onChangeText={(text) => {
                   searchQueryRef.current = text;
@@ -1233,7 +1190,7 @@ export default function SeriesScreen() {
                   <View style={focused ? { transform: [{ scale: 1.15 }] } : undefined}>
                     <X
                       size={ps(2.1)}
-                      color={focused ? "#ffffff" : "rgba(255,255,255,0.75)"}
+                      color={focused ? P.label : P.secondaryLabel}
                     />
                   </View>
                 )}
@@ -1260,7 +1217,8 @@ export default function SeriesScreen() {
                     { borderRadius: 22 },
                   ]}
                 >
-                  <Search size={ps(2.2)} color={focused ? "#000000" : "#ffffff"} />
+                  {/* Dark when focused: the button fills with the off-white tint. */}
+                  <Search size={ps(2.2)} color={focused ? P.onTint : P.label} />
                 </View>
               )}
             </Focusable>
@@ -1327,7 +1285,7 @@ export default function SeriesScreen() {
                   <DynamicIcon
                     name={loadFailed ? "cloud-off-outline" : "television-play"}
                     size={ps(4)}
-                    color="rgba(255,255,255,0.05)"
+                    color={P.quaternaryLabel}
                   />
                   <Text style={S.emptyTitle}>
                     {loadFailed ? "Couldn't Load Series" : "No Series Available"}

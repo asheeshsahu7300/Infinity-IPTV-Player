@@ -3,13 +3,14 @@ import { Animated, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CinematicBackground } from '../src/components/CinematicBackground';
-import { ph, phoneDp, psRaw as ps, pw, THEME } from '../src/theme/tokens';
+import { ph, phoneDp, psRaw as ps, pw, THEME, PAGE_HEADER } from '../src/theme/tokens';
 import { isPhone } from '../src/utils/phoneUtils';
 import { isTouch } from '../src/utils/tabletUtils';
 import { useDPad } from '../src/tv';
 import { Check, Copy, MessageCircle, ShieldCheck } from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
 import { Text } from '../src/components/Text';
+import * as P from "../src/theme/palette";
 
 
 type IconName = any;
@@ -80,7 +81,7 @@ function PolicySection({ section, first }: { section: Section; first: boolean })
     <View style={[S.section, first && S.sectionFirst]}>
       <View style={S.sectionHeader}>
         <View style={S.sectionIcon}>
-          <DynamicIcon name={section.icon} size={ps(1.6)} color="rgba(255,255,255,0.85)" />
+          <DynamicIcon name={section.icon} size={ps(1.6)} color={P.label} />
         </View>
         <Text style={S.sectionTitle}>{section.title}</Text>
       </View>
@@ -156,7 +157,7 @@ function ContactSection() {
     <View style={S.section}>
       <View style={S.sectionHeader}>
         <View style={S.sectionIcon}>
-          <MessageCircle size={ps(1.6)} color="rgba(255,255,255,0.85)" />
+          <MessageCircle size={ps(1.6)} color={P.label} />
         </View>
         <Text style={S.sectionTitle}>Contact</Text>
       </View>
@@ -166,7 +167,7 @@ function ContactSection() {
       <View style={S.contactRows}>
         {CONTACT_ROWS.map((row) => (
           <View key={row.label} style={S.contactRow}>
-            <DynamicIcon name={row.icon} size={ps(1.5)} color="rgba(255,255,255,0.4)" />
+            <DynamicIcon name={row.icon} size={ps(1.5)} color={P.secondaryLabel} />
             <View style={S.contactRowText}>
               <Text style={S.contactLabel}>{row.label}</Text>
               <Text style={S.contactValue} numberOfLines={1}>
@@ -232,11 +233,10 @@ export default function PrivacyPolicyScreen() {
 
       <View style={[
         S.header,
-        isTouch && { paddingHorizontal: 24, paddingTop: ph(3), paddingBottom: ph(1.5) },
-        isPhone && { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6 },
+        isTouch && { paddingHorizontal: 24, paddingTop: ph(1.5) },
+        isPhone && { paddingHorizontal: 14, paddingTop: 4 },
       ]}>
         <Text style={S.headerTitle}>Privacy Policy</Text>
-        <Text style={S.headerSubtitle}>Infinity IPTV Player · Updated {LAST_UPDATED}</Text>
       </View>
 
       <View style={S.scrollArea} onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}>
@@ -292,22 +292,10 @@ const S = StyleSheet.create({
   },
 
   // ── Header ────────────────────────────────────────────────────────────────
-  header: {
-    paddingHorizontal: pw(8),
-    paddingTop: ph(5),
-    paddingBottom: ph(2),
-  },
-  headerTitle: {
-    fontSize: isPhone ? 20.7 : ps(2.6),
-    color: '#fff',
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  headerSubtitle: {
-    fontSize: isPhone ? 12.6 : ps(1.1),
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: ph(0.6),
-  },
+  // The shared page header — see `PAGE_HEADER` in theme/tokens for the table of
+  // what the six copies of this had drifted to.
+  header: PAGE_HEADER.bar,
+  headerTitle: PAGE_HEADER.title,
 
   // ── Scroll area ───────────────────────────────────────────────────────────
   scrollArea: {
@@ -329,7 +317,7 @@ const S = StyleSheet.create({
     gap: pw(2.5),
     padding: ps(3),
     borderRadius: 18,
-    backgroundColor: '#17181c',
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 0,
     borderColor: 'transparent',
     marginBottom: ph(3),
@@ -350,20 +338,20 @@ const S = StyleSheet.create({
   heroTitle: {
     fontSize: isPhone ? 15.5 : ps(1.6),
     color: '#fff',
-    fontWeight: '700',
+    fontFamily: THEME.fonts.semibold,
     marginBottom: ph(1),
   },
   heroBody: {
     fontSize: isPhone ? 15 : ps(1.4),
     lineHeight: isPhone ? 20.7 : ps(2.2),
-    color: 'rgba(255,255,255,0.65)',
+    color: P.secondaryLabel,
   },
   // ── Document ──────────────────────────────────────────────────────────────
   /** One surface holding every section, with hairlines between them instead of
    *  a box around each. Sections are separated, not boxed. */
   document: {
     borderRadius: 18,
-    backgroundColor: '#17181c',
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 0,
     borderColor: 'transparent',
     paddingHorizontal: ps(3),
@@ -394,13 +382,13 @@ const S = StyleSheet.create({
     flex: 1,
     fontSize: isPhone ? 15.5 : ps(1.6),
     color: '#FFFFFF',
-    fontWeight: '700',
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 0.3,
   },
   paragraph: {
     fontSize: isPhone ? 13.8 : ps(1.2),
     lineHeight: isPhone ? 19.5 : ps(1.9),
-    color: 'rgba(255,255,255,0.6)',
+    color: P.secondaryLabel,
     marginBottom: ph(1),
   },
   /** Two abreast on TV. Safe to wrap where the cards were not: every bullet is
@@ -428,7 +416,7 @@ const S = StyleSheet.create({
   bulletText: {
     flex: 1,
     fontSize: isPhone ? 13.8 : ps(1.2),
-    color: 'rgba(255,255,255,0.75)',
+    color: P.label,
   },
 
   // ── Contact ───────────────────────────────────────────────────────────────
@@ -459,23 +447,23 @@ const S = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.14)',
   },
-  copyBtnDone: { backgroundColor: '#F5F5F5', borderColor: '#F5F5F5' },
-  copyBtnText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.8, color: '#fff' },
+  copyBtnDone: { backgroundColor: P.tint, borderColor: P.tint },
+  copyBtnText: { fontSize: 11, fontFamily: THEME.fonts.bold, letterSpacing: 0.8, color: '#fff' },
   copyBtnTextDone: { color: '#000' },
   contactRowText: {
     flex: 1,
   },
   contactLabel: {
     fontSize: isPhone ? 12.6 : ps(1.1),
-    color: 'rgba(255,255,255,0.35)',
-    fontWeight: '600',
+    color: P.tertiaryLabel,
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   contactValue: {
     fontSize: isPhone ? 15 : ps(1.5),
     color: '#fff',
-    fontWeight: '700',
+    fontFamily: THEME.fonts.semibold,
     marginTop: 2,
   },
 });

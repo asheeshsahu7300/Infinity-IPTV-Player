@@ -83,7 +83,7 @@ class MainActivity : ReactActivity() {
       androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
       val controller = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
       controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-      controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+      controller.hide(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
     } catch (e: Exception) {}
 
     try {
@@ -92,9 +92,7 @@ class MainActivity : ReactActivity() {
         android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
           or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
           or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-          or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
           or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-          or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
       )
     } catch (e: Exception) {}
   }

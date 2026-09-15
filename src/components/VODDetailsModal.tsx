@@ -6,6 +6,9 @@ import { THEME, pw, ph, ps } from "../theme/tokens";
 import { launchExternalPlayer } from "../utils/externalPlayer";
 import { Clock, Play, Star, Tv } from 'lucide-react-native';
 import { Text } from './Text';
+import { GlassSurface } from './GlassSurface';
+import { RADIUS } from '../theme/materials';
+import * as P from '../theme/palette';
 
 
 interface VODDetailsModalProps {
@@ -94,7 +97,15 @@ function ModalButton({
         >
           <View style={S.btnContent}>
             {icon}
-            <Text style={[S.btnText, variant === "ghost" && S.btnTextGhost]}>{label}</Text>
+            <Text
+              style={[
+                S.btnText,
+                variant === "filled" && S.btnTextFilled,
+                variant === "ghost" && S.btnTextGhost,
+              ]}
+            >
+              {label}
+            </Text>
           </View>
         </Focusable>
       </LinearGradient>
@@ -128,7 +139,9 @@ export default function VODDetailsModal({
 
   return (
     <Overlay visible={visible} onClose={onClose}>
-      <View style={S.sheet}>
+      {/* `thick`, the sheet material — this is a presented sheet and the
+          screen behind it should recede without disappearing. */}
+      <GlassSurface material="thick" radius={RADIUS.sheet} shadow="sheet" style={S.sheet}>
         {/* Title */}
         <Text style={S.title} numberOfLines={2}>
           {title || "Play"}
@@ -145,13 +158,13 @@ export default function VODDetailsModal({
         <View style={S.metaRow}>
           {meta?.rating ? (
             <View style={S.badge}>
-              <Star size={ps(0.9)} color="#fbbf24" />
+              <Star size={ps(0.9)} color={P.systemYellow} />
               <Text style={S.badgeText}>{meta.rating}</Text>
             </View>
           ) : null}
           {meta?.duration ? (
             <View style={S.badge}>
-              <Clock size={ps(0.9)} color="#93c5fd" />
+              <Clock size={ps(0.9)} color={P.secondaryLabel} />
               <Text style={S.badgeText}>{formatDuration(meta.duration)}</Text>
             </View>
           ) : null}
@@ -163,14 +176,16 @@ export default function VODDetailsModal({
         {/* Action Buttons */}
         <ModalButton
           label="Play in App"
-          icon={<Play size={ps(1.1)} color="#fff" style={{ marginRight: pw(1) }} />}
+          // Dark, not white: this is the one filled button on the sheet, so the
+          // glyph sits on the off-white tint alongside `btnTextFilled`.
+          icon={<Play size={ps(1.1)} color={P.onTint} style={{ marginRight: pw(1) }} />}
           onPress={() => { onClose(); onPlay(); }}
           variant="filled"
           autoFocus
         />
         <ModalButton
           label="External Player"
-          icon={<Tv size={ps(1.1)} color="rgba(255,255,255,0.7)" style={{ marginRight: pw(1) }} />}
+          icon={<Tv size={ps(1.1)} color={P.secondaryLabel} style={{ marginRight: pw(1) }} />}
           onPress={handleExternalPlay}
           variant="outline"
         />
@@ -179,7 +194,7 @@ export default function VODDetailsModal({
           onPress={onClose}
           variant="ghost"
         />
-      </View>
+      </GlassSurface>
     </Overlay>
   );
 }
@@ -188,22 +203,20 @@ export default function VODDetailsModal({
 const S = StyleSheet.create({
   sheet: {
     width: pw(45),
-    backgroundColor: "#09090f",
     paddingHorizontal: pw(3),
     paddingTop: ph(2.5),
     paddingBottom: ph(3),
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    // Radius, fill and edge belong to the `thick` material now.
   },
   title: {
-    color: "#fff",
+    color: P.label,
     fontSize: ps(1.6),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.semibold,
+    letterSpacing: -0.3,
     marginBottom: ph(1),
   },
   description: {
-    color: "rgba(255,255,255,0.55)",
+    color: P.secondaryLabel,
     fontSize: ps(1),
     lineHeight: ps(1.6),
     marginBottom: ph(1),
@@ -218,38 +231,41 @@ const S = StyleSheet.create({
   badge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: P.tertiarySystemFill,
     paddingHorizontal: pw(1.5),
     paddingVertical: ph(0.5),
-    borderRadius: 999,
+    borderRadius: RADIUS.full,
     gap: 5,
   },
   badgeText: {
-    color: "#e5e7eb",
+    color: P.secondaryLabel,
     fontSize: ps(0.85),
     fontFamily: THEME.fonts.medium,
   },
   divider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    // A hairline that reads *through* the material, which is what Apple's
+    // `separator` is for — the opaque one is only right between opaque rows.
+    height: StyleSheet.hairlineWidth * 2,
+    backgroundColor: P.separator,
     marginBottom: ph(1.5),
   },
 
   // ── Button sub-components ──────────────────────────
   btnOuter: {
     marginBottom: ph(1),
-    borderRadius: 12,
+    borderRadius: RADIUS.card,
     overflow: "visible",
   },
   btnGradientBorder: {
     padding: 1.5,
-    borderRadius: 12,
+    borderRadius: RADIUS.card,
   },
   btnInner: {
     paddingVertical: ph(1.3),
     paddingHorizontal: pw(2),
-    borderRadius: 10,
-    backgroundColor: "#111118",
+    borderRadius: RADIUS.card - 2,
+    borderCurve: "continuous",
+    backgroundColor: P.tertiarySystemFill,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -269,14 +285,26 @@ const S = StyleSheet.create({
     justifyContent: "center",
   },
   btnText: {
-    color: "#fff",
+    color: P.label,
     fontSize: ps(1.0),
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    fontFamily: THEME.fonts.semibold,
+    letterSpacing: 0,
+  },
+  /**
+   * The filled variant's ink, and the reason this style exists separately.
+   *
+   * `btnFilled` fills with `THEME.colors.primary`, which is the off-white
+   * tint — so `btnText`'s white would be white on white. This is the same
+   * latent bug the file already shipped once, when the accent was `#F5F5F5`
+   * and every variant shared one white label; it was briefly correct while the
+   * accent was blue, and is wrong again now. The fix is the general rule
+   * rather than a local one: ink on a tint fill is always `onTint`.
+   */
+  btnTextFilled: {
+    color: P.onTint,
   },
   btnTextGhost: {
-    color: "rgba(255,255,255,0.4)",
+    color: P.tertiaryLabel,
     fontSize: ps(0.9),
-    fontWeight: "500",
   },
 });

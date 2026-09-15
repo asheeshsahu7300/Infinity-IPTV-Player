@@ -16,6 +16,7 @@ import { StyleSheet, View } from 'react-native';
 import { THEME, ph, ps, pw } from "../theme/tokens";
 import type { MediaMeta } from "../store/portalStore";
 import { Text } from './Text';
+import * as P from '../theme/palette';
 
 
 export interface MediaMetaPanelProps {
@@ -167,14 +168,16 @@ const S = StyleSheet.create({
   wrapCompact: { gap: ph(0.9) },
 
   tags: {
-    color: "rgba(255,255,255,0.6)",
+    color: P.secondaryLabel,
     fontSize: ps(1),
-    fontWeight: "700",
     letterSpacing: 0.8,
   },
 
   plot: {
-    color: "rgba(255,255,255,0.82)",
+    // Deliberately brighter than `secondaryLabel`: this is body copy meant to
+    // be read, not a supporting caption, and Apple's secondary level is for
+    // text that supports something else.
+    color: "rgba(235, 235, 245, 0.85)",
     fontSize: ps(1.2),
     // Generous leading: a four-line synopsis set tight is the hardest thing on
     // the screen to read across a room.
@@ -185,15 +188,13 @@ const S = StyleSheet.create({
   // gap between the credit lines themselves — one block, not three loose rows.
   credits: { gap: ph(0.7) },
   credit: {
-    color: "rgba(255,255,255,0.8)",
+    color: "rgba(235, 235, 245, 0.85)",
     fontSize: ps(1.05),
-    fontWeight: "600",
     lineHeight: ps(1.6),
   },
   creditLabel: {
-    color: "rgba(255,255,255,0.4)",
+    color: P.tertiaryLabel,
     fontSize: ps(0.85),
-    fontWeight: "900",
     letterSpacing: 1.2,
   },
 });

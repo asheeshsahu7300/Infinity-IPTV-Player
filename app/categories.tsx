@@ -5,26 +5,27 @@
 // dozen. This is the screen that makes the other three hundred and eighty go
 // away.
 //
-// Hidden is not locked: everything here is reversible without a PIN, and the
-// count at the top always says how many are hidden so a category cannot go
-// missing without explanation. Anything genuinely restrictive belongs in
-// Parental Control instead — see src/services/hiddenCategories.ts.
+// Hidden is not locked: everything here is reversible without a PIN, and every
+// category stays in this list with its eye icon showing its state, so one can
+// never go missing without explanation. Anything genuinely restrictive belongs
+// in Parental Control instead — see src/services/hiddenCategories.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, StatusBar, StyleSheet, View } from 'react-native';
+import { FlatList, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { usePortalStore, Category } from "../src/store/portalStore";
 import { hiddenCategories } from "../src/services/hiddenCategories";
 import type { MediaKind } from "../src/services/parentalControl";
 import { CinematicBackground } from "../src/components/CinematicBackground";
-import { THEME, ph, psRaw as ps, pw, TILE_FRAME } from "../src/theme/tokens";
+import { THEME, ph, psRaw as ps, pw, PAGE_HEADER } from "../src/theme/tokens";
 import { isPhone } from "../src/utils/phoneUtils";
 import { isTouch } from "../src/utils/tabletUtils";
 import { Focusable, FocusGroup } from "../src/tv";
-import { Eye, FolderOpen , LucideIcon} from 'lucide-react-native';
+import { Eye, FolderOpen } from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
 import { Text } from '../src/components/Text';
+import * as P from "../src/theme/palette";
 
 
 const KINDS: { key: MediaKind; label: string; icon: string }[] = [
@@ -75,7 +76,7 @@ const CategoryRow = React.memo(
             <DynamicIcon
               name={hidden ? "eye-off-outline" : "eye-outline"}
               size={ps(1.5)}
-              color={focused ? "#000" : hidden ? "rgba(255,255,255,0.3)" : "#fff"}
+              color={focused ? P.onTint : hidden ? P.tertiaryLabel : P.label}
             />
             <Text
               style={[
@@ -172,17 +173,10 @@ export default function CategoriesScreen() {
 
       <View style={[
         S.header,
-        isTouch && { paddingHorizontal: 24, paddingTop: ph(3) },
-        isPhone && { paddingHorizontal: 14, paddingTop: 10 },
+        isTouch && { paddingHorizontal: 24, paddingTop: ph(1.5) },
+        isPhone && { paddingHorizontal: 14, paddingTop: 4 },
       ]}>
         <Text style={S.headerTitle}>Categories</Text>
-        <Text style={S.headerSubtitle}>
-          {categories.length === 0
-            ? "No categories loaded for this library yet"
-            : hiddenCount > 0
-              ? `${hiddenCount} of ${categories.length} hidden from the sidebar`
-              : `All ${categories.length} shown`}
-        </Text>
       </View>
 
       {/* ─── Library switcher ─── */}
@@ -201,12 +195,12 @@ export default function CategoriesScreen() {
                 <DynamicIcon
                   name={k.icon}
                   size={ps(1.8)}
-                  color={focused || kind === k.key ? "#000" : "#fff"}
+                  color={focused || kind === k.key ? P.onTint : P.label}
                 />
                 <Text
                   style={[
                     S.tabText,
-                    (focused || kind === k.key) && { color: "#000" },
+                    (focused || kind === k.key) && { color: P.onTint },
                   ]}
                 >
                   {k.label}
@@ -237,7 +231,7 @@ export default function CategoriesScreen() {
           contentContainerStyle={[S.listContent, isTouch && { paddingBottom: insets.bottom + 20 }]}
           ListEmptyComponent={
             <View style={S.empty}>
-              <FolderOpen size={ps(3)} color="rgba(255,255,255,0.1)" />
+              <FolderOpen size={ps(3)} color={P.quaternaryLabel} />
               <Text style={S.emptyText}>
                 Open this library once so its categories load, then come back.
               </Text>
@@ -261,7 +255,7 @@ export default function CategoriesScreen() {
         >
           {(focused) => (
             <View style={[S.action, focused && S.actionFocused, hiddenCount === 0 && S.actionDisabled]}>
-              <Eye size={ps(1.3)} color={isPhone || focused ? "#000" : "#fff"} />
+              <Eye size={ps(1.3)} color={isPhone || focused ? P.onTint : P.label} />
               <Text style={[S.actionText, focused && S.actionTextFocused]}>SHOW ALL</Text>
             </View>
           )}
@@ -272,15 +266,13 @@ export default function CategoriesScreen() {
 }
 
 const S = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000000" },
+  container: { flex: 1, backgroundColor: P.systemBackground },
 
-  header: {
-    paddingHorizontal: pw(8),
-    paddingTop: ph(5),
-    paddingBottom: ph(1),
-  },
-  headerTitle: { color: "#fff", fontSize: ps(2.2), fontWeight: "900", letterSpacing: 0.5 },
-  headerSubtitle: { color: THEME.colors.textDim, fontSize: isPhone ? 14.4 : ps(1.1), marginTop: ph(0.6) },
+  // The shared page header — see `PAGE_HEADER` in theme/tokens for the table of
+  // what the six copies of this had drifted to.
+  header: PAGE_HEADER.bar,
+  headerTitle: PAGE_HEADER.title,
+
 
   /*
    * The three tabs have to fit one row on a phone, and at the TV's padding they
@@ -299,13 +291,13 @@ const S = StyleSheet.create({
     paddingHorizontal: isPhone ? 12 : pw(3),
     paddingVertical: isPhone ? 9 : ph(1.6),
     borderRadius: 18,
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 0,
     borderColor: "transparent",
   },
-  tabActive: { backgroundColor: "#F5F5F5" },
-  tabFocused: { backgroundColor: "#F5F5F5", borderColor: "transparent", borderWidth: 0 },
-  tabText: { color: "#fff", fontSize: isPhone ? 14.4 : ps(1.3), fontWeight: "900", letterSpacing: 1 },
+  tabActive: { backgroundColor: P.tint },
+  tabFocused: { backgroundColor: P.tint, borderColor: "transparent", borderWidth: 0 },
+  tabText: { color: P.label, fontSize: isPhone ? 14.4 : ps(1.3), fontFamily: THEME.fonts.semibold, letterSpacing: 1 },
 
   listHost: { flex: 1, paddingHorizontal: pw(8) },
   listContent: { paddingBottom: ph(4), paddingTop: ph(1) },
@@ -320,12 +312,12 @@ const S = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 0,
     borderColor: "transparent",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
-  rowFocused: { backgroundColor: "#F5F5F5", borderColor: "transparent", borderWidth: 0 },
-  rowName: { flex: 1, color: "#fff", fontSize: isPhone ? 16.7 : ps(1.5), fontWeight: "700" },
-  rowNameHidden: { color: "rgba(255,255,255,0.35)" },
-  onFocus: { color: "#000" },
+  rowFocused: { backgroundColor: P.tint, borderColor: "transparent", borderWidth: 0 },
+  rowName: { flex: 1, color: P.label, fontSize: isPhone ? 16.7 : ps(1.5), fontFamily: THEME.fonts.semibold },
+  rowNameHidden: { color: P.tertiaryLabel },
+  onFocus: { color: P.onTint },
 
   /*
    * Same absolute geometry as the settings switch, and for the same reason:
@@ -337,19 +329,19 @@ const S = StyleSheet.create({
     width: isPhone ? 44 : ps(3.8),
     height: isPhone ? 26 : ps(2),
     borderRadius: isPhone ? 13 : ps(1),
-    backgroundColor: "rgba(255,255,255,0.14)",
+    backgroundColor: P.tertiarySystemFill,
     padding: isPhone ? 3 : 2,
     justifyContent: "center",
   },
   switchTrackFocused: { backgroundColor: "rgba(0,0,0,0.15)" },
-  switchTrackOn: { backgroundColor: "#4ade80" },
-  switchKnob: { width: isPhone ? 18 : ps(1.6), height: isPhone ? 18 : ps(1.6), borderRadius: isPhone ? 9 : ps(0.8), backgroundColor: "rgba(255,255,255,0.6)" },
+  switchTrackOn: { backgroundColor: P.systemGreen },
+  switchKnob: { width: isPhone ? 18 : ps(1.6), height: isPhone ? 18 : ps(1.6), borderRadius: isPhone ? 9 : ps(0.8), backgroundColor: P.label },
   switchKnobFocused: { backgroundColor: "#000" },
   switchKnobOn: { alignSelf: "flex-end", backgroundColor: "#0E0F14" },
 
   empty: { alignItems: "center", justifyContent: "center", paddingVertical: ph(10), gap: ph(1.5) },
   emptyText: {
-    color: "rgba(255,255,255,0.3)",
+    color: P.tertiaryLabel,
     fontSize: isPhone ? 13.8 : ps(1),
     textAlign: "center",
     maxWidth: pw(40),
@@ -365,12 +357,12 @@ const S = StyleSheet.create({
     paddingVertical: ph(1.6),
     borderRadius: 18,
     // White on a phone — the dark fill is a resting state only a remote lifts.
-    backgroundColor: isPhone ? "#F5F5F5" : "#17181c",
+    backgroundColor: isPhone ? P.tint : P.secondaryElevatedSystemBackground,
     borderWidth: 0,
     borderColor: "transparent",
   },
   actionFocused: { backgroundColor: "#fff", borderColor: "transparent", borderWidth: 0 },
   actionDisabled: { opacity: 0.45 },
-  actionText: { color: isPhone ? "#000" : "#fff", fontSize: isPhone ? 15 : ps(1.3), fontWeight: "900", letterSpacing: 1 },
+  actionText: { color: isPhone ? "#000" : "#fff", fontSize: isPhone ? 15 : ps(1.3), fontFamily: THEME.fonts.bold, letterSpacing: 1 },
   actionTextFocused: { color: "#000" },
 });

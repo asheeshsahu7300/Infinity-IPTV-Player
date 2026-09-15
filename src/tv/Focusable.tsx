@@ -19,6 +19,15 @@ import { useIsFocusTrapped, InsideOverlayContext, NextFocusTags } from "./FocusT
 import { useDPad, DPAD_PRIORITY } from "./useDPad";
 import { remoteFocusEnabled } from "../utils/tabletUtils";
 
+function safeFindNodeHandle(node: any): number | undefined {
+  if (!node) return undefined;
+  try {
+    return (findNodeHandle(node) as number | undefined) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface FocusableProps {
   children?: React.ReactNode | ((focused: boolean) => React.ReactNode);
 
@@ -148,15 +157,15 @@ export const Focusable = forwardRef<View, FocusableProps>(
       []
     );
 
-    // Register with overlay focus controller if inside an overlay
+    // Register with overlay focus controller if inside an overlay (remote focus devices only)
     React.useEffect(() => {
-      if (!overlayController) return;
+      if (!remoteFocusEnabled || !overlayController) return;
       return overlayController.registerItem(idRef.current, nativeRef as React.RefObject<View>);
     }, [overlayController]);
 
     // Subscribe to overlay controller updates to recalculate nextFocus tags
     React.useEffect(() => {
-      if (!overlayController) return;
+      if (!remoteFocusEnabled || !overlayController) return;
       const updateTags = () => {
         const tags = overlayController.getNextFocus(idRef.current);
         setOverlayNextFocus(tags);

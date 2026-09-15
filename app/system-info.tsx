@@ -7,7 +7,7 @@
 // from a sofa, and everything is copyable in one press rather than transcribed.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useState } from "react";
-import { ScrollView, StatusBar, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,7 +23,9 @@ import {
 import { epgService } from "../src/services/epgService";
 import { parentalControl } from "../src/services/parentalControl";
 import { CinematicBackground } from "../src/components/CinematicBackground";
-import { THEME, ph, ps, pw } from "../src/theme/tokens";
+import { THEME, ph, ps, pw, PAGE_HEADER, DATA_TILE } from "../src/theme/tokens";
+import * as P from "../src/theme/palette";
+import { RADIUS } from "../src/theme/materials";
 import { isPhone } from "../src/utils/phoneUtils";
 import { isTouch } from "../src/utils/tabletUtils";
 import { Focusable, FocusGroup } from "../src/tv";
@@ -144,13 +146,10 @@ export default function SystemInfoScreen() {
 
       <View style={[
         S.header,
-        isTouch && { paddingHorizontal: 24, paddingTop: ph(3) },
-        isPhone && { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 },
+        isTouch && { paddingHorizontal: 24, paddingTop: ph(1.5) },
+        isPhone && { paddingHorizontal: 14, paddingTop: 4 },
       ]}>
         <Text style={S.headerTitle}>System Information</Text>
-        <Text style={S.headerSubtitle}>
-          Device specifications, network status and streaming capabilities
-        </Text>
       </View>
 
       <ScrollView
@@ -220,7 +219,7 @@ export default function SystemInfoScreen() {
                 <DynamicIcon
                   name={copied ? "checkmark" : "copy-outline"}
                   size={ps(1.4)}
-                  color={isPhone || focused ? "#000" : "#fff"}
+                  color={isPhone || focused ? P.onTint : P.label}
                 />
                 <Text style={[S.actionText, focused && S.actionTextFocused]}>
                   {copied ? "COPIED" : "COPY ALL"}
@@ -237,7 +236,7 @@ export default function SystemInfoScreen() {
           >
             {(focused) => (
               <View style={[S.action, focused && S.actionFocused]}>
-                <Gauge size={ps(1.4)} color={isPhone || focused ? "#000" : "#fff"} />
+                <Gauge size={ps(1.4)} color={isPhone || focused ? P.onTint : P.label} />
                 <Text style={[S.actionText, focused && S.actionTextFocused]}>SPEED TEST</Text>
               </View>
             )}
@@ -251,18 +250,18 @@ export default function SystemInfoScreen() {
 const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: THEME.colors.background },
 
-  header: { paddingHorizontal: pw(4), paddingTop: ph(2), paddingBottom: ph(1) },
-  headerTitle: { color: "#fff", fontSize: ps(2), fontWeight: "900" },
-  headerSubtitle: { color: THEME.colors.textDim, fontSize: ps(1), marginTop: ph(0.4) },
+  // The shared page header — see `PAGE_HEADER` in theme/tokens for the table of
+  // what the six copies of this had drifted to.
+  header: PAGE_HEADER.bar,
+  headerTitle: PAGE_HEADER.title,
 
-  scroll: { paddingHorizontal: pw(4), paddingBottom: ph(6) },
+  // Was `pw(4)` — half the gutter every other page in this menu uses, and it
+  // had to move with the header or the two would no longer line up.
+  scroll: { paddingHorizontal: pw(8), paddingBottom: ph(6) },
 
   section: { marginTop: ph(2) },
   sectionLabel: {
-    color: "rgba(255,255,255,0.32)",
-    fontSize: ps(0.85),
-    fontWeight: "900",
-    letterSpacing: 2,
+    ...PAGE_HEADER.sectionLabel,
     marginBottom: ph(1),
   },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: isPhone ? 10 : pw(1.2) },
@@ -283,41 +282,72 @@ const S = StyleSheet.create({
     flexBasis: isTouch ? "46%" : pw(24),
     minHeight: isPhone ? 62 : undefined,
     padding: isPhone ? 12 : pw(1.4),
-    borderRadius: ps(0.9),
-    backgroundColor: "rgba(255,255,255,0.035)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    // Flat, not a material — see `DATA_TILE` for why glass was wrong here.
+    ...DATA_TILE,
     gap: ph(0.3),
   },
+  // `secondaryLabel`, not tertiary. Tertiary is 30% alpha, which on this tile
+  // is about 2.4:1 against the fill — under AA and, on a phone held at arm's
+  // length, genuinely hard to read. Tertiary is for placeholders and disabled
+  // text; a caption naming the value beneath it has to be legible.
   fieldLabel: {
-    color: "rgba(255,255,255,0.32)",
+    color: P.secondaryLabel,
     fontSize: isPhone ? 11.5 : ps(0.78),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.medium,
     letterSpacing: 0.8,
   },
-  fieldValue: { color: "#fff", fontSize: isPhone ? 15 : ps(1.1), fontWeight: "700" },
+  fieldValue: {
+    color: P.label,
+    fontSize: isPhone ? 15 : ps(1.1),
+    fontFamily: THEME.fonts.medium,
+  },
+  /**
+   * The fields support asks for — MAC and device ID.
+   *
+   * Emphasis is **weight and figures only, never size.** A larger size here
+   * broke the grid twice over: every tile is a fixed height, so the two
+   * emphasised values sat visibly taller than their neighbours, and a MAC
+   * address at 17.3dp no longer fits a half-width tile on a 393dp phone — it
+   * wrapped to "00:1A:79:BC:AD:" / "4A", splitting the one value on this page
+   * most likely to be read aloud down a phone line.
+   *
+   * Tabular figures are the other half of the emphasis and matter in their own
+   * right: they keep the digit columns even in a value being dictated.
+   *
+   * It also used to take `THEME.colors.primary`, a *coloured* accent at the
+   * time and an off-white now — indistinguishable from `label` on the same
+   * tile, so colour cannot carry this either.
+   */
   fieldValueEmphasis: {
-    color: THEME.colors.primary,
-    fontSize: isPhone ? 17.3 : ps(1.25),
+    color: P.label,
+    fontFamily: THEME.fonts.bold,
     fontVariant: ["tabular-nums"],
   },
 
   actions: { flexDirection: "row", gap: isPhone ? 10 : pw(1.5), marginTop: ph(3), flexWrap: "wrap" },
-  actionWrapper: { borderRadius: ps(1) },
+  actionWrapper: { borderRadius: RADIUS.card },
   action: {
     flexDirection: "row",
     alignItems: "center",
     gap: pw(0.8),
     paddingHorizontal: pw(2.5),
     paddingVertical: ph(1.3),
-    borderRadius: ps(1),
-    // White on a phone — the translucent fill is a resting state only a
-    // remote's focus ever lifts. Same as the speed-test actions.
-    backgroundColor: isPhone ? "#fff" : "rgba(255,255,255,0.07)",
+    borderRadius: RADIUS.card,
+    borderCurve: "continuous",
+    // Filled on a phone — the translucent fill is a resting state only a
+    // remote's focus ever lifts. Same as the speed-test actions, and the same
+    // rule `selectionRung` encodes: with no cursor, the control is always in
+    // its filled state.
+    backgroundColor: isPhone ? P.tint : P.tertiarySystemFill,
     borderWidth: 1,
     borderColor: "transparent",
   },
-  actionFocused: { backgroundColor: "#fff", borderColor: "#fff", transform: [{ scale: 1.04 }] },
-  actionText: { color: isPhone ? "#000" : "#fff", fontSize: isPhone ? 15 : ps(1), fontWeight: "900", letterSpacing: 1 },
-  actionTextFocused: { color: "#000" },
+  actionFocused: { backgroundColor: P.tint, borderColor: P.tint, transform: [{ scale: 1.04 }] },
+  actionText: {
+    color: isPhone ? P.onTint : P.label,
+    fontSize: isPhone ? 15 : ps(1),
+    fontFamily: THEME.fonts.semibold,
+    letterSpacing: 1,
+  },
+  actionTextFocused: { color: P.onTint },
 });

@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { View, StyleSheet, Animated, Dimensions } from 'react-native';
+import * as P from '../theme/palette';
+import { RADIUS } from '../theme/materials';
 import { Text } from './Text';
 
 
@@ -184,8 +186,11 @@ export const SkeletonList: React.FC<SkeletonListProps> = ({
 // ============================================================================
 
 const styles = StyleSheet.create({
+  // The shimmer's base. Apple's quaternary fill rather than a flat slate:
+  // a skeleton is a placeholder *shape*, so it should read as the same absence
+  // of content everywhere it appears rather than as a coloured block.
   skeleton: {
-    backgroundColor: "#111827",
+    backgroundColor: P.quaternarySystemFill,
   },
 
   hiddenText: {
@@ -197,8 +202,9 @@ const styles = StyleSheet.create({
   channelListItem: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
-    borderRadius: 12,
+    backgroundColor: P.quaternarySystemFill,
+    borderRadius: RADIUS.card,
+    borderCurve: "continuous",
     padding: 12,
     marginBottom: 10,
   },
@@ -220,8 +226,9 @@ const styles = StyleSheet.create({
     width: "30%",
     height: 70,
     alignItems: "center",
-    backgroundColor: "#111827",
-    borderRadius: 12,
+    backgroundColor: P.quaternarySystemFill,
+    borderRadius: RADIUS.card,
+    borderCurve: "continuous",
     paddingVertical: 16,
     marginBottom: 12,
   },

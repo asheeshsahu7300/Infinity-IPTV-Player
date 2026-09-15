@@ -19,6 +19,9 @@ import type { QueueItem } from "../services/playbackQueue";
 import { CornerDownLeft, Film, Play } from 'lucide-react-native';
 import { DynamicIcon } from '../components/DynamicIcon';
 import { Text } from './Text';
+import { GlassSurface } from './GlassSurface';
+import { RADIUS } from '../theme/materials';
+import * as P from "../theme/palette";
 
 
 export interface QueueListProps {
@@ -96,7 +99,7 @@ const QueueRow = React.memo(
                 <DynamicIcon
                   name="checkmark-circle"
                   size={isTouch ? phoneDp(14) : ps(1)}
-                  color={focused ? "rgba(0,0,0,0.5)" : "#34c759"}
+                  color={focused ? P.onTint : P.systemGreen}
                 />
               ) : null}
             </View>
@@ -116,7 +119,7 @@ const QueueRow = React.memo(
               ) : (
                 <Film
                   size={isTouch ? phoneDp(18) : ps(1.6)}
-                  color={focused ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.3)"}
+                  color={focused ? P.onTintSecondary : P.tertiaryLabel}
                 />
               )}
             </View>
@@ -130,7 +133,7 @@ const QueueRow = React.memo(
               </Text>
               {item.description || item.subtitle ? (
                 <Text
-                  style={[S.description, isTouch && { fontSize: 11 }, focused && { color: "rgba(0,0,0,0.6)" }]}
+                  style={[S.description, isTouch && { fontSize: 11 }, focused && S.onFocusSecondary]}
                   numberOfLines={1}
                 >
                   {item.description || item.subtitle}
@@ -139,7 +142,7 @@ const QueueRow = React.memo(
 
               {facts ? (
                 <Text
-                  style={[S.facts, isTouch && { fontSize: 10 }, focused && { color: "rgba(0,0,0,0.5)" }]}
+                  style={[S.facts, isTouch && { fontSize: 10 }, focused && S.onFocusSecondary]}
                   numberOfLines={1}
                 >
                   {facts}
@@ -148,11 +151,11 @@ const QueueRow = React.memo(
 
               {/* Only drawn while partway through */}
               {progress > 0 && !watched ? (
-                <View style={[S.track, focused && { backgroundColor: "rgba(0,0,0,0.18)" }]}>
+                <View style={[S.track, focused && { backgroundColor: "rgba(28, 28, 30, 0.22)" }]}>
                   <View
                     style={[
                       S.fill,
-                      focused && { backgroundColor: "#000" },
+                      focused && { backgroundColor: P.onTint },
                       { width: `${Math.round(progress * 100)}%` },
                     ]}
                   />
@@ -161,7 +164,7 @@ const QueueRow = React.memo(
             </View>
 
             {isCurrent ? (
-              <Play size={ps(1.2)} color={focused ? "#000" : "#fff"} />
+              <Play size={ps(1.2)} color={focused ? P.onTint : P.label} />
             ) : null}
           </View>
         )}
@@ -251,7 +254,14 @@ export function QueueList({
         onPress={onClose}
         accessibilityLabel="Close queue list"
       />
-      <View style={[S.panel, isTouch && { width: panelWidth, minWidth: undefined, maxWidth: 420 }]}>
+      {/* `thick` over live video, matching ChannelZapList — the two are the
+          same gesture and must not read as two different panels. */}
+      <GlassSurface
+        material="thick"
+        radius={0}
+        bordered={false}
+        style={[S.panel, isTouch && { width: panelWidth, minWidth: undefined, maxWidth: 420 }]}
+      >
         <View style={[S.header, isTouch && { paddingTop: Math.max(16, insets.top + 8) }]}>
           <Text style={S.headerTitle} numberOfLines={2}>
             {title || "Up Next"}
@@ -276,10 +286,10 @@ export function QueueList({
         </FocusGroup>
 
         <View style={[S.footer, isTouch && { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
-          <CornerDownLeft size={ps(1)} color="rgba(255,255,255,0.4)" style={{ marginRight: ps(0.4) }} />
+          <CornerDownLeft size={ps(1)} color={P.tertiaryLabel} style={{ marginRight: ps(0.4) }} />
           <Text style={S.footerHint}>OK to play · BACK to close</Text>
         </View>
-      </View>
+      </GlassSurface>
     </Overlay>
   );
 }
@@ -306,7 +316,7 @@ const S = StyleSheet.create({
     width: pw(34),
     minWidth: 360,
     maxWidth: 500,
-    backgroundColor: "rgba(10, 12, 18, 0.96)",
+    // Fill and edge belong to the `thick` material now.
     zIndex: 90,
     elevation: 20,
     flexDirection: "column",
@@ -320,22 +330,22 @@ const S = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
-    color: "#ffffff",
+    color: P.label,
     fontSize: ps(1.2),
-    fontWeight: "900",
-    letterSpacing: 0.5,
+    fontFamily: THEME.fonts.semibold,
+    letterSpacing: -0.2,
     marginRight: ps(0.6),
   },
   badge: {
     paddingHorizontal: ps(0.6),
     paddingVertical: ps(0.22),
-    borderRadius: ps(0.4),
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: RADIUS.full,
+    backgroundColor: P.quaternarySystemFill,
   },
   headerCount: {
-    color: THEME.colors.textDim,
+    color: P.secondaryLabel,
     fontSize: ps(0.95),
-    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
   },
   list: {
     flex: 1,
@@ -358,14 +368,18 @@ const S = StyleSheet.create({
     gap: ps(1.0),
     paddingHorizontal: ps(0.9),
     paddingVertical: ps(0.6),
-    borderRadius: ps(0.7),
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderRadius: RADIUS.sm,
+    borderCurve: "continuous",
+    backgroundColor: P.quaternarySystemFill,
   },
+  // The episode playing now: a tint wash rather than the solid tint a focused
+  // row takes, so "this is the one running" and "this is the one under the
+  // cursor" stay distinguishable when they are not the same row.
   rowCurrent: {
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: P.tintFill,
   },
   rowFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
   },
 
   numberCol: {
@@ -374,17 +388,16 @@ const S = StyleSheet.create({
     justifyContent: "center",
   },
   number: {
-    color: "rgba(255, 255, 255, 0.55)",
+    color: P.secondaryLabel,
     fontSize: ps(1.1),
-    fontWeight: "800",
     fontVariant: ["tabular-nums"],
   },
 
   thumbPortrait: {
     width: ps(3.7),
     height: ps(5.5),
-    borderRadius: ps(0.55),
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderRadius: RADIUS.xs,
+    backgroundColor: P.quaternarySystemFill,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -392,8 +405,8 @@ const S = StyleSheet.create({
   thumbLandscape: {
     width: ps(5.4),
     height: ps(3.4),
-    borderRadius: ps(0.55),
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderRadius: RADIUS.xs,
+    backgroundColor: P.quaternarySystemFill,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -408,23 +421,33 @@ const S = StyleSheet.create({
     gap: 2,
   },
   title: {
-    color: "#ffffff",
+    color: P.label,
     fontSize: ps(1.05),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.medium,
   },
   facts: {
-    color: "rgba(255,255,255,0.32)",
+    color: P.tertiaryLabel,
     fontSize: ps(0.78),
-    fontWeight: "700",
     letterSpacing: 0.4,
     marginTop: 2,
   },
   description: {
-    color: "rgba(255, 255, 255, 0.5)",
+    color: P.secondaryLabel,
     fontSize: ps(0.85),
   },
+  /**
+   * Ink on a focused row, at the same two levels the resting row uses.
+   *
+   * A focused row fills with the off-white tint, so both levels invert to dark
+   * — `onFocus` against the resting `title`, `onFocusSecondary` against
+   * `description` and `facts`. Note that `rowCurrent` is a *wash* rather than
+   * a fill and keeps the light ink; only the solid rung inverts.
+   */
   onFocus: {
-    color: "#000000",
+    color: P.onTint,
+  },
+  onFocusSecondary: {
+    color: P.onTintSecondary,
   },
   dimmed: {
     opacity: 0.6,
@@ -432,8 +455,8 @@ const S = StyleSheet.create({
 
   track: {
     height: ps(0.25),
-    borderRadius: ps(0.15),
-    backgroundColor: "rgba(255, 255, 255, 0.16)",
+    borderRadius: RADIUS.full,
+    backgroundColor: P.quaternarySystemFill,
     marginTop: 4,
     overflow: "hidden",
   },
@@ -447,14 +470,15 @@ const S = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: ps(1.1),
     paddingVertical: ps(0.85),
-    backgroundColor: "rgba(6, 8, 12, 0.98)",
+    // The footer sits inside the panel's own material, so it takes only a
+    // faint deepening rather than a second opaque slab of its own.
+    backgroundColor: "rgba(0, 0, 0, 0.22)",
     marginTop: "auto",
   },
   footerHint: {
-    color: "rgba(255, 255, 255, 0.4)",
+    color: P.tertiaryLabel,
     fontSize: ps(0.85),
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
 });
 

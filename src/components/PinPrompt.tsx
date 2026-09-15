@@ -13,6 +13,8 @@ import { THEME, ph, ps, pw } from "../theme/tokens";
 import { Lock, X } from 'lucide-react-native';
 import { DynamicIcon } from '../components/DynamicIcon';
 import { Text } from './Text';
+import { RADIUS } from '../theme/materials';
+import * as P from '../theme/palette';
 
 
 export interface PinPromptProps {
@@ -167,7 +169,7 @@ export function PinPrompt({
     <Overlay visible={visible} onClose={onCancel} contentStyle={S.content} axis="grid">
       <View style={S.header}>
         <View style={S.lockBadge}>
-          <Lock size={ps(2.6)} color="rgba(255,255,255,0.75)" />
+          <Lock size={ps(2.6)} color={P.label} />
         </View>
         <Text style={S.title}>{title}</Text>
         <Text style={S.message}>{message}</Text>
@@ -206,13 +208,13 @@ export function PinPrompt({
                     ) : item.type === "cancel" ? (
                       <X
                         size={ps(1.4)}
-                        color={focused ? "#000" : "rgba(255,255,255,0.75)"}
+                        color={focused ? P.onTint : P.secondaryLabel}
                       />
                     ) : (
                       <DynamicIcon
                         name="delete"
                         size={ps(1.4)}
-                        color={focused ? "#000" : "rgba(255,255,255,0.75)"}
+                        color={focused ? P.onTint : P.secondaryLabel}
                       />
                     )}
                   </View>
@@ -227,21 +229,29 @@ export function PinPrompt({
 }
 
 const S = StyleSheet.create({
+  /**
+   * Styled by hand rather than built from `GlassSurface`, because this is
+   * handed to `Overlay` as `contentStyle` — it styles a view the overlay
+   * owns, so there is nothing here to wrap. It is given the elevated
+   * background and a hairline so it still reads as the same family of surface
+   * as the sheets that do go through the primitive.
+   */
   content: {
     width: ps(30),
     paddingHorizontal: pw(3),
     paddingVertical: ph(3),
-    borderRadius: 18,
-    backgroundColor: "#17181c",
-    borderWidth: 0,
-    borderColor: "transparent",
+    borderRadius: RADIUS.sheet,
+    borderCurve: "continuous",
+    backgroundColor: P.elevatedSystemBackground,
+    borderWidth: 1,
+    borderColor: P.glassEdge,
     alignItems: "center",
   },
   header: { alignItems: "center", gap: ph(0.8) },
   lockBadge: {
     marginBottom: ph(1),
   },
-  title: { color: "#fff", fontSize: ps(2), fontWeight: "900", letterSpacing: 0.5 },
+  title: { color: P.label, fontSize: ps(2), fontFamily: THEME.fonts.semibold, letterSpacing: -0.4 },
   message: {
     color: THEME.colors.textMuted,
     fontSize: ps(1.1),
@@ -254,16 +264,18 @@ const S = StyleSheet.create({
   dot: {
     width: ps(1.2),
     height: ps(1.2),
-    borderRadius: ps(0.6),
-    backgroundColor: "rgba(255,255,255,0.16)",
+    borderRadius: RADIUS.full,
+    backgroundColor: P.quaternarySystemFill,
   },
-  dotFilled: { backgroundColor: "#fff" },
-  dotError: { backgroundColor: "rgba(255,80,80,0.75)" },
+  // A filled dot takes the tint rather than plain white. It is the only
+  // running feedback the viewer gets while typing, and the tint is what this
+  // app uses everywhere else to mean progress.
+  dotFilled: { backgroundColor: P.tint },
+  dotError: { backgroundColor: P.systemRed },
 
   error: {
-    color: "#ff6b6b",
+    color: P.systemRed,
     fontSize: ps(1),
-    fontWeight: "700",
     marginTop: ph(0.8),
     height: ps(1.5),
   },
@@ -285,16 +297,21 @@ const S = StyleSheet.create({
   keyWrapper: { flex: 1 },
   key: {
     height: ps(4),
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: RADIUS.card,
+    borderCurve: "continuous",
+    backgroundColor: P.quaternarySystemFill,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 0,
     borderColor: "transparent",
   },
-  keyFocused: { backgroundColor: "#fff", borderColor: "transparent", borderWidth: 0 },
-  keyText: { color: "#fff", fontSize: ps(1.8), fontWeight: "800" },
-  keyTextFocused: { color: "#000" },
+  // A focused key fills with the off-white tint and inverts its digit to dark.
+  // On a PIN pad that inversion is doing real work beyond decoration: it is the
+  // only feedback that the key under the cursor is the one about to be entered,
+  // and the digits are otherwise identical to each other.
+  keyFocused: { backgroundColor: P.tint, borderColor: "transparent", borderWidth: 0 },
+  keyText: { color: P.label, fontSize: ps(1.8), fontFamily: THEME.fonts.medium, fontVariant: ["tabular-nums"] },
+  keyTextFocused: { color: P.onTint },
 });
 
 export default PinPrompt;

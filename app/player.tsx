@@ -43,6 +43,7 @@ import PinPrompt from "../src/components/PinPrompt";
 import { AlertCircle, Check, ChevronDown, ChevronUp, Film, Gauge, Info, List, Monitor, Music, Settings, SkipBack, SkipForward, StepBack, StepForward, Subtitles, TriangleAlert, Wifi, X } from 'lucide-react-native';
 import { DynamicIcon } from '../src/components/DynamicIcon';
 import { Text } from '../src/components/Text';
+import * as P from "../src/theme/palette";
 
 
 /**
@@ -298,6 +299,25 @@ export default function PlayerScreen() {
       ScreenOrientation.lockAsync(
         ScreenOrientation.OrientationLock.PORTRAIT_UP
       ).catch(() => {});
+    };
+  }, []);
+
+  /**
+   * The one screen with no status bar.
+   *
+   * Every other screen shows it; a full-bleed video is the case it would sit
+   * on top of. Hidden on mount and restored on unmount, the same shape as the
+   * orientation lock above and for the same reason — the setting is
+   * process-wide, so whatever this screen changes it has to change back.
+   *
+   * Not gated on `isPhone`: a box has no status bar to hide and the call is a
+   * no-op there, whereas a tablet does have one and wants it gone over video
+   * just as much as a handset does.
+   */
+  useEffect(() => {
+    StatusBar.setHidden(true, "fade");
+    return () => {
+      StatusBar.setHidden(false, "fade");
     };
   }, []);
 
@@ -2450,7 +2470,7 @@ export default function PlayerScreen() {
       {/* ── Network lost overlay ─────────────────────────────────────────── */}
       {isNetworkLost && (
         <View style={S.loadingOverlay} pointerEvents="none">
-          <Wifi size={52} color="rgba(255,255,255,0.45)" />
+          <Wifi size={52} color={P.secondaryLabel} />
           <Text style={S.loadingText}>No network connection</Text>
           <Text style={[S.loadingText, { fontSize: ps(0.85), opacity: 0.5, marginTop: 2 }]}>
             Waiting to reconnect…
@@ -2461,7 +2481,7 @@ export default function PlayerScreen() {
       {/* ── VOD hard failure ─────────────────────────────────────────────── */}
       {isShowingHardFailure && !isNetworkLost && (
         <View style={S.loadingOverlay}>
-          <TriangleAlert size={44} color="rgba(255,255,255,0.7)" />
+          <TriangleAlert size={44} color={P.label} />
           <Text style={S.loadingText}>Stream unavailable</Text>
           <Focusable
             ringOnFocus={false}
@@ -2504,7 +2524,7 @@ export default function PlayerScreen() {
               </View>
             ) : (
               <View style={S.vodPosterFallback}>
-                <Film size={ps(3)} color="rgba(255,255,255,0.45)" />
+                <Film size={ps(3)} color={P.secondaryLabel} />
               </View>
             )}
 
@@ -2678,7 +2698,7 @@ export default function PlayerScreen() {
                   <View style={S.timeRow}>
                     <Text style={S.timeText}>
                       {formatTime(position)}
-                      {duration > 0 && <Text style={{ color: "rgba(255,255,255,0.4)" }}> / {formatTime(duration)}</Text>}
+                      {duration > 0 && <Text style={{ color: P.secondaryLabel }}> / {formatTime(duration)}</Text>}
                     </Text>
                     {duration > position && (
                       <Text style={[S.timeText, { opacity: 0.5 }]}>-{formatTime(duration - position)}</Text>
@@ -3122,7 +3142,7 @@ function TrackSelectionModal({
 
         {mediaTracks.length === 0 && !isVideo ? (
           <View style={S.emptyState}>
-            <AlertCircle size={32} color="rgba(255,255,255,0.2)" />
+            <AlertCircle size={32} color={P.quaternaryLabel} />
             <Text style={S.emptyText}>No tracks found</Text>
           </View>
         ) : (
@@ -3269,7 +3289,7 @@ const S = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.16)",
   },
-  resumeTitle: { color: "#fff", fontSize: ps(1), fontWeight: "700" },
+  resumeTitle: { color: "#fff", fontSize: ps(1), fontFamily: THEME.fonts.semibold },
   resumeBtnWrapper: { borderRadius: ps(0.7) },
   resumeBtn: {
     flexDirection: "row",
@@ -3283,7 +3303,7 @@ const S = StyleSheet.create({
     borderColor: "transparent",
   },
   resumeBtnFocused: { backgroundColor: "#fff", borderColor: "#fff" },
-  resumeBtnText: { color: "#fff", fontSize: ps(0.82), fontWeight: "900", letterSpacing: 0.8 },
+  resumeBtnText: { color: "#fff", fontSize: ps(0.82), fontFamily: THEME.fonts.bold, letterSpacing: 0.8 },
 
   loadingOverlay: {
     ...StyleSheet.absoluteFill,
@@ -3296,7 +3316,7 @@ const S = StyleSheet.create({
     color: "#fff",
     marginTop: 10,
     fontSize: ps(1.1),
-    fontWeight: "600",
+    fontFamily: THEME.fonts.semibold,
     textAlign: "center",
     paddingHorizontal: 24,
   },
@@ -3365,23 +3385,19 @@ const S = StyleSheet.create({
   vodBadgeText: {
     color: "#ffffff",
     fontSize: ps(0.85),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 1,
   },
-  // No fontFamily on any of these: Tenor Sans has no bold cut, so pairing it
-  // with weight 600/800 makes Android synthesise one — smeared, doubled
-  // glyphs. Enlarging the card only makes that more visible. See the note on
-  // THEME.fonts in src/theme/tokens.ts.
   vodLoadingTitle: {
     color: "#ffffff",
     fontSize: ps(1.55),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     lineHeight: ps(1.95),
   },
   vodLoadingSubtitle: {
-    color: "rgba(255, 255, 255, 0.7)",
+    color: P.label,
     fontSize: ps(1.05),
-    fontWeight: "600",
+    fontFamily: THEME.fonts.semibold,
   },
   vodSpinnerRow: {
     flexDirection: "row",
@@ -3390,9 +3406,9 @@ const S = StyleSheet.create({
     marginTop: ps(0.9),
   },
   vodLoadingStatus: {
-    color: "rgba(255, 255, 255, 0.8)",
+    color: P.label,
     fontSize: ps(1.05),
-    fontWeight: "600",
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 0.2,
   },
   midstreamBufferingOverlay: {
@@ -3420,7 +3436,7 @@ const S = StyleSheet.create({
   midstreamBufferingText: {
     color: "#ffffff",
     fontSize: ps(1.0),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 0.3,
   },
 
@@ -3436,7 +3452,7 @@ const S = StyleSheet.create({
   retryBtnText: {
     color: "#fff",
     fontSize: ps(1),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 2,
   },
 
@@ -3491,7 +3507,7 @@ const S = StyleSheet.create({
   seekIndicatorText: {
     color: "#FFFFFF",
     fontSize: ps(1.6),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.8,
   },
 
@@ -3510,7 +3526,7 @@ const S = StyleSheet.create({
   qualityBadgeText: {
     color: "#fff",
     fontSize: ps(1.3),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 1,
     opacity: 0.9,
   },
@@ -3541,7 +3557,7 @@ const S = StyleSheet.create({
   },
   skipBtnFocused: {
     transform: [{ scale: 1.18 }],
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     elevation: 12,
     shadowOpacity: 0.8,
   },
@@ -3560,7 +3576,7 @@ const S = StyleSheet.create({
   },
   mainPlayBtnFocused: {
     transform: [{ scale: 1.18 }],
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     elevation: 16,
     shadowOpacity: 0.9,
   },
@@ -3606,7 +3622,7 @@ const S = StyleSheet.create({
   liveReconnectText: {
     color: "#FFFFFF",
     fontSize: ps(0.8),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
   },
 
   progressSection: { gap: 4, marginBottom: 4 },
@@ -3614,7 +3630,7 @@ const S = StyleSheet.create({
   timeText: {
     color: "#fff",
     fontSize: ps(0.8),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
   },
   progressBarWrapper: {
     paddingVertical: 8,
@@ -3644,7 +3660,7 @@ const S = StyleSheet.create({
     height: "100%",
     borderRadius: ps(0.35),
     overflow: "hidden",
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
   },
   scrubber: {
     position: "absolute",
@@ -3654,7 +3670,7 @@ const S = StyleSheet.create({
     marginTop: -ps(0.7),
     marginLeft: -ps(0.7),
     borderRadius: ps(0.7),
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.8,
@@ -3669,7 +3685,7 @@ const S = StyleSheet.create({
   liveText: {
     color: "#fff",
     fontSize: ps(0.85),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 1,
   },
 
@@ -3677,7 +3693,7 @@ const S = StyleSheet.create({
   iconChip: { padding: 6, borderRadius: 6, borderWidth: 1, borderColor: "transparent" },
   iconChipFocused: {
     borderColor: "#FFFFFF",
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     transform: [{ scale: 1.15 }],
     elevation: 8,
     shadowColor: "#000000",
@@ -3747,7 +3763,7 @@ const S = StyleSheet.create({
   modalTitle: {
     color: "#FFFFFF",
     fontSize: ps(1.6),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.5,
     textAlign: "center",
   },
@@ -3761,18 +3777,18 @@ const S = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.12)",
   },
   modalSubtitleText: {
-    color: "rgba(255, 255, 255, 0.6)",
+    color: P.secondaryLabel,
     fontSize: ps(0.85),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 0.3,
   },
   modalDivider: { height: 0, backgroundColor: "transparent" },
   modalScroll: { paddingHorizontal: pw(1.6), paddingVertical: ph(1.2) },
   emptyState: { alignItems: "center", paddingVertical: ph(3), gap: ph(1.2) },
   emptyText: {
-    color: "rgba(255,255,255,0.35)",
+    color: P.tertiaryLabel,
     fontSize: ps(1.1),
-    fontWeight: "600",
+    fontFamily: THEME.fonts.semibold,
   },
   modalOption: {
     flexDirection: "row",
@@ -3790,7 +3806,7 @@ const S = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.32)",
   },
   modalOptionFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "#FFFFFF",
     transform: [{ scale: 1.02 }],
     elevation: 8,
@@ -3808,13 +3824,13 @@ const S = StyleSheet.create({
   modalOptionLeft: { flexDirection: "row", alignItems: "center", gap: pw(1.2), flex: 1 },
   trackTitleCol: { flex: 1, gap: 2 },
   modalOptionSubtext: {
-    color: "rgba(255, 255, 255, 0.45)",
+    color: P.secondaryLabel,
     fontSize: ps(0.85),
-    fontWeight: "600",
+    fontFamily: THEME.fonts.semibold,
   },
   modalOptionSubtextFocused: {
     color: "rgba(0, 0, 0, 0.6)",
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
   },
   trackIndexBadge: {
     width: ps(2.4),
@@ -3831,9 +3847,9 @@ const S = StyleSheet.create({
     backgroundColor: "#000000",
   },
   trackIndexText: {
-    color: "rgba(255, 255, 255, 0.6)",
+    color: P.secondaryLabel,
     fontSize: ps(0.9),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
   },
   trackIndexTextActive: {
     color: "#FFFFFF",
@@ -3844,22 +3860,22 @@ const S = StyleSheet.create({
   modalOptionText: {
     color: "#FFFFFF",
     fontSize: ps(1.15),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     flex: 1,
   },
   modalOptionTextSelected: {
     color: "#FFFFFF",
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
   },
   modalOptionTextFocused: {
     color: "#000000",
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
   },
   checkBadge: {
     width: ps(1.8),
     height: ps(1.8),
     borderRadius: ps(0.9),
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -3883,12 +3899,12 @@ const S = StyleSheet.create({
     marginTop: ph(0.6),
     marginBottom: isPhone ? 10 : ph(1.4),
     borderRadius: 14,
-    backgroundColor: isPhone ? "#F5F5F5" : "rgba(255, 255, 255, 0.08)",
+    backgroundColor: isPhone ? P.tint : "rgba(255, 255, 255, 0.08)",
     borderWidth: isPhone ? 0 : 1.5,
     borderColor: "rgba(255, 255, 255, 0.14)",
   },
   modalCloseBtnFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "#FFFFFF",
     transform: [{ scale: 1.02 }],
     elevation: 8,
@@ -3906,7 +3922,7 @@ const S = StyleSheet.create({
   modalCloseBtnText: {
     color: isPhone ? "#000000" : "#FFFFFF",
     fontSize: isPhone ? 13.8 : ps(1.0),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 2,
   },
   modalCloseBtnTextFocused: {
@@ -3925,10 +3941,10 @@ const S = StyleSheet.create({
   vSeparator: { width: 1, height: 12, backgroundColor: "rgba(255,255,255,0.2)" },
   seekHint: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   seekHintText: {
-    color: "rgba(255,255,255,0.5)",
+    color: P.secondaryLabel,
     fontSize: ps(0.7),
-    fontWeight: "600",
+    fontFamily: THEME.fonts.semibold,
   },
   actionLabelBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
-  actionLabel: { color: "#fff", fontSize: ps(0.75), fontWeight: "900" },
+  actionLabel: { color: "#fff", fontSize: ps(0.75), fontFamily: THEME.fonts.bold },
 });

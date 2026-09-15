@@ -21,6 +21,9 @@ import { THEME, ph, ps, pw } from "../theme/tokens";
 import type { QueueItem } from "../services/playbackQueue";
 import { Film, Play, X } from 'lucide-react-native';
 import { Text } from './Text';
+import { GlassSurface } from './GlassSurface';
+import { RADIUS } from '../theme/materials';
+import * as P from '../theme/palette';
 
 
 export interface UpNextCardProps {
@@ -82,7 +85,9 @@ export function UpNextCard({
 
   return (
     <View style={S.host}>
-      <View style={S.card}>
+      {/* `thick` over live video: the picture stays visible behind the card
+          without ever competing with the title of what is coming next. */}
+      <GlassSurface material="thick" radius={RADIUS.lg} shadow="popover" style={S.card}>
         <View style={S.thumb}>
           {item.poster ? (
             <Image
@@ -92,7 +97,7 @@ export function UpNextCard({
               cachePolicy="memory-disk"
             />
           ) : (
-            <Film size={ps(2)} color="rgba(255,255,255,0.2)" />
+            <Film size={ps(2)} color={P.quaternaryLabel} />
           )}
         </View>
 
@@ -123,7 +128,7 @@ export function UpNextCard({
             >
               {(focused) => (
                 <View style={[S.action, focused && S.actionFocused]}>
-                  <X size={ps(1.2)} color={focused ? "#000" : "#fff"} />
+                  <X size={ps(1.2)} color={focused ? P.onTint : P.label} />
                   <Text style={[S.actionText, focused && S.actionTextFocused]}>CANCEL</Text>
                 </View>
               )}
@@ -137,14 +142,14 @@ export function UpNextCard({
             >
               {(focused) => (
                 <View style={[S.action, S.actionPrimary, focused && S.actionFocused]}>
-                  <Play size={ps(1.2)} color={focused ? "#000" : "#fff"} />
+                  <Play size={ps(1.2)} color={focused ? P.onTint : P.label} />
                   <Text style={[S.actionText, focused && S.actionTextFocused]}>PLAY NOW</Text>
                 </View>
               )}
             </Focusable>
           </FocusGroup>
         </View>
-      </View>
+      </GlassSurface>
     </View>
   );
 }
@@ -161,16 +166,14 @@ const S = StyleSheet.create({
     gap: pw(1.6),
     padding: pw(1.6),
     width: pw(42),
-    borderRadius: ps(1.2),
-    backgroundColor: "rgba(10,11,16,0.96)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
+    // Radius, fill and edge belong to the `thick` material now.
   },
   thumb: {
     width: ps(6),
     height: ps(8),
-    borderRadius: ps(0.6),
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: RADIUS.sm,
+    borderCurve: "continuous",
+    backgroundColor: P.quaternarySystemFill,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -178,41 +181,52 @@ const S = StyleSheet.create({
   thumbImage: { width: "100%", height: "100%" },
 
   body: { flex: 1, gap: ph(0.4) },
+  // The countdown eyebrow. Uppercase with wide tracking is Apple's own
+  // treatment for a caption that labels what follows rather than one that is
+  // read as a sentence — and it is the one place on this card where the
+  // tracking is deliberately loose rather than tight.
   eyebrow: {
-    color: THEME.colors.textDim,
+    color: P.tertiaryLabel,
     fontSize: ps(0.8),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.medium,
     letterSpacing: 1.5,
   },
-  title: { color: "#fff", fontSize: ps(1.3), fontWeight: "800" },
-  subtitle: { color: "rgba(255,255,255,0.45)", fontSize: ps(0.9), fontWeight: "600" },
+  title: { color: P.label, fontSize: ps(1.3), fontFamily: THEME.fonts.semibold, letterSpacing: -0.2 },
+  subtitle: { color: P.secondaryLabel, fontSize: ps(0.9) },
 
   track: {
     height: 3,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: RADIUS.full,
+    backgroundColor: P.quaternarySystemFill,
     overflow: "hidden",
     marginVertical: ph(0.8),
   },
-  fill: { height: "100%", backgroundColor: "#fff" },
+  // The countdown bar carries the tint: it is the one element on this card
+  // about elapsing time rather than about content, and the tint is what the
+  // rest of the app uses to mean "this is the thing that is happening".
+  fill: { height: "100%", backgroundColor: P.tint },
 
   actions: { flexDirection: "row", gap: pw(1) },
-  actionWrapper: { borderRadius: ps(0.8) },
+  actionWrapper: { borderRadius: RADIUS.sm },
   action: {
     flexDirection: "row",
     alignItems: "center",
     gap: pw(0.6),
     paddingHorizontal: pw(1.6),
     paddingVertical: ph(0.9),
-    borderRadius: ps(0.8),
-    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: RADIUS.sm,
+    borderCurve: "continuous",
+    backgroundColor: P.quaternarySystemFill,
     borderWidth: 1,
     borderColor: "transparent",
   },
-  actionPrimary: { backgroundColor: "rgba(255,255,255,0.16)" },
-  actionFocused: { backgroundColor: "#fff", borderColor: "#fff" },
-  actionText: { color: "#fff", fontSize: ps(0.9), fontWeight: "900", letterSpacing: 1 },
-  actionTextFocused: { color: "#000" },
+  actionPrimary: { backgroundColor: P.tertiarySystemFill },
+  // Focus fills with the tint rather than with white. The label and glyph stay
+  // white through both states, so focus is a change of ground rather than an
+  // inversion — which is what let the icon colours above stop branching.
+  actionFocused: { backgroundColor: P.tint, borderColor: P.tint },
+  actionText: { color: P.label, fontSize: ps(0.9), fontFamily: THEME.fonts.semibold, letterSpacing: 0.8 },
+  actionTextFocused: { color: P.onTint },
 });
 
 export default UpNextCard;

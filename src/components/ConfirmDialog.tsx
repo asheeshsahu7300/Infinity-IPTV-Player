@@ -3,34 +3,48 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 
 import { Focusable, Overlay } from "../tv";
-import { ph, psRaw as ps, pw } from "../theme/tokens";
+import { THEME, ph, psRaw as ps, pw } from "../theme/tokens";
+import * as P from "../theme/palette";
+import { RADIUS } from "../theme/materials";
 
 import { HelpCircle, AlertCircle, CheckCircle, LucideIcon } from "lucide-react-native";
 import { Text } from './Text';
 import { DynamicIcon } from "./DynamicIcon";
+import { GlassSurface } from "./GlassSurface";
 
 
 export type DialogTone = "neutral" | "danger" | "success";
 
 /**
- * Black and white throughout, whatever the tone.
+ * The card is achromatic on every tone. Only one thing is still coloured.
  *
- * The tones used to carry colour — red for danger, green for success — and on
- * this app's surfaces that red was the loudest thing on the screen: a red
- * ringed icon, red label and red border all shouting at once for what is a
- * two-button question. The rest of the interface is monochrome, so a coloured
- * dialog read as belonging to a different app.
+ * This has now moved twice, so it is worth writing down where it landed and
+ * why. First the tones were colourless; then red came back on the theory that
+ * Apple spends it on the action's label; now the surface is white again,
+ * because this app's accent is achromatic by decision and a red badge plus a
+ * red slab was the loudest thing on screen for what is a two-button question.
  *
- * `DialogTone` is kept as a type and the three entries stay distinct so call
- * sites can still say what they mean, and so a colour can be reintroduced in
- * one place if it is ever wanted. What separates a destructive action from an
- * ordinary one here is the wording and which button takes focus — see
- * `preferCancel` below, which puts the cursor on Cancel for a danger dialog.
+ * What survives is the one place red is unambiguously doing work: a focused
+ * destructive button fills with white and takes `systemRedOnTint` for its ink.
+ * That colour exists for precisely this — see the note beside it in the
+ * palette — and it is the only red left in the component. Everything the eye
+ * lands on first (badge ring, glyph, title, message, resting labels) is white
+ * or grey, on all three tones.
+ *
+ * `success` is now identical to `neutral`. That is not an oversight: leaving
+ * green behind while red went white would have been incoherent, and the tone
+ * still earns its keep by picking the default icon.
+ *
+ * `accent` tints the badge glyph, `fill` is the button's filled state once it
+ * takes focus, and `fillText` is what stays legible on top of it.
+ *
+ * Which button opens focused is the primary signal now that colour is not, and
+ * it was always doing the heavier lifting — see `preferCancel` below.
  */
 const TONES: Record<DialogTone, { accent: string; badge: string; fill: string; fillText: string }> = {
-  neutral: { accent: "#FFFFFF", badge: "rgba(255,255,255,0.08)", fill: "#FFFFFF", fillText: "#000000" },
-  danger: { accent: "#FFFFFF", badge: "rgba(255,255,255,0.08)", fill: "#FFFFFF", fillText: "#000000" },
-  success: { accent: "#FFFFFF", badge: "rgba(255,255,255,0.08)", fill: "#FFFFFF", fillText: "#000000" },
+  neutral: { accent: P.label, badge: P.tintFill, fill: P.tint, fillText: P.onTint },
+  danger: { accent: P.label, badge: P.tintFill, fill: P.tintStrong, fillText: P.systemRedOnTint },
+  success: { accent: P.label, badge: P.tintFill, fill: P.tint, fillText: P.onTint },
 };
 
 const DEFAULT_ICON: Record<DialogTone, LucideIcon> = {
@@ -75,9 +89,20 @@ interface ActionProps {
 function DialogAction({ label, variant, tone, onPress, preferred, busy, disabled }: ActionProps) {
   const t = TONES[tone];
   const isConfirm = variant === "confirm";
-  const restColor = "#fff";
-  const restBorder =
-    isConfirm ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.12)";
+
+  /**
+   * At rest both labels are white: `accent` is `P.label` on every tone now, so
+   * the resting card carries no colour at all.
+   *
+   * On focus the confirm button fills white and its label inverts — dark ink
+   * on neutral and success, dark red on danger, which is the whole of what
+   * distinguishes a destructive dialog once the badge has gone achromatic.
+   * Cancel fills with a plain grey, because a focused Cancel is not a warning,
+   * and keeps white ink.
+   */
+  const restColor = isConfirm ? t.accent : P.label;
+  const focusFill = isConfirm ? t.fill : P.systemFill;
+  const focusColor = isConfirm ? t.fillText : P.label;
 
   return (
     <Focusable
@@ -92,19 +117,16 @@ function DialogAction({ label, variant, tone, onPress, preferred, busy, disabled
         <View
           style={[
             S.action,
-            { borderColor: restBorder },
             focused && S.actionFocused,
-            focused && (isConfirm
-              ? { backgroundColor: t.fill, borderColor: t.fill }
-              : { backgroundColor: "#fff", borderColor: "#fff" }),
+            focused && { backgroundColor: focusFill, borderColor: focusFill },
             disabled && S.actionDisabled,
           ]}
         >
           {busy ? (
-            <ActivityIndicator size="small" color={focused ? t.fillText : "#fff"} />
+            <ActivityIndicator size="small" color={focused ? focusColor : restColor} />
           ) : (
             <Text
-              style={[S.actionText, { color: restColor }, focused && { color: isConfirm ? t.fillText : "#000" }]}
+              style={[S.actionText, { color: focused ? focusColor : restColor }]}
               numberOfLines={1}
             >
               {label}
@@ -156,8 +178,14 @@ export function ConfirmDialog({
       onClose={busy ? undefined : onCancel}
       contentStyle={S.overlayContent}
     >
-      <View key={dialogKey ?? title} style={S.card}>
-        <View style={[S.badge, { backgroundColor: t.badge, borderColor: t.accent + "33" }]}>
+      <GlassSurface
+        key={dialogKey ?? title}
+        material="thick"
+        radius={RADIUS.sheet}
+        shadow="sheet"
+        style={S.card}
+      >
+        <View style={[S.badge, { backgroundColor: t.badge, borderColor: t.accent }]}>
           <DynamicIcon name={iconToRender} size={ps(3)} color={t.accent} />
         </View>
 
@@ -185,7 +213,7 @@ export function ConfirmDialog({
             disabled={busy}
           />
         </View>
-      </View>
+      </GlassSurface>
     </Overlay>
   );
 }
@@ -308,18 +336,21 @@ const S = StyleSheet.create({
     alignItems: "center",
     paddingVertical: ps(3.5),
     paddingHorizontal: ps(3.5),
-    borderRadius: ps(2.5),
-    // Effectively opaque. At 0.95 the portal card behind this dialog showed
-    // through its own text — the card's name and URL were legible straight
-    // across the message. A confirmation has to sit on something solid.
-    backgroundColor: "rgba(10, 11, 16, 0.99)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
+    // Radius, border and fill all belong to the `thick` material now.
+    //
+    // The old fill was `rgba(10,11,16,0.99)` with a note explaining that at
+    // 0.95 the portal card behind showed through its own text. `thick` fills at
+    // 0.93 without a blur, which sounds like a regression and is not: the
+    // overlay's own backdrop is `rgba(0,0,0,0.85)`, so anything behind is
+    // already down to 15% before this surface is composited over it. The two
+    // together land past 0.99 effective — the same solidity, arrived at by
+    // stacking rather than by one opaque slab, which is what lets a real blur
+    // show through on the platforms that have one.
   },
   badge: {
     width: ps(6),
     height: ps(6),
-    borderRadius: ps(3),
+    borderRadius: RADIUS.full,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -327,15 +358,18 @@ const S = StyleSheet.create({
   },
   title: {
     fontSize: ps(2.1),
-    fontWeight: "700",
-    color: "#fff",
+    fontFamily: THEME.fonts.regular,
+    color: P.label,
     textAlign: "center",
-    letterSpacing: 0.3,
+    // Negative tracking at display sizes: Apple tightens as type grows, and at
+    // ps(2.1) the previous +0.3 read noticeably loose against the message.
+    letterSpacing: -0.4,
   },
   message: {
     fontSize: ps(1.3),
+    fontFamily: THEME.fonts.regular,
     lineHeight: ps(1.9),
-    color: "rgba(255,255,255,0.6)",
+    color: P.secondaryLabel,
     textAlign: "center",
     marginTop: ph(1.2),
   },
@@ -349,16 +383,18 @@ const S = StyleSheet.create({
   actionWrapper: {
     flex: 1,
     maxWidth: pw(22),
-    borderRadius: ps(1.2),
+    borderRadius: RADIUS.sm,
   },
   action: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: ph(1.6),
     paddingHorizontal: pw(2),
-    borderRadius: ps(1.2),
-    borderWidth: 1.5,
-    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: RADIUS.sm,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: P.glassEdge,
+    backgroundColor: P.quaternarySystemFill,
   },
   actionFocused: {
     transform: [{ scale: 1.04 }],
@@ -368,8 +404,11 @@ const S = StyleSheet.create({
   },
   actionText: {
     fontSize: ps(1.3),
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    fontFamily: THEME.fonts.semibold,
+    // Apple sets button labels at their natural tracking. The +0.5 here was
+    // doing the job a bold weight would have done, and this app cannot use one
+    // — see the note on THEME.fonts.
+    letterSpacing: 0,
   },
 });
 

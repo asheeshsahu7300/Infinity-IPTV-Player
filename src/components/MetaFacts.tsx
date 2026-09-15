@@ -17,7 +17,8 @@ import React, { useMemo } from "react";
 import { StyleSheet, View } from 'react-native';
 
 
-import { ph, ps, pw } from "../theme/tokens";
+import { ph, ps, pw, THEME } from "../theme/tokens";
+import * as P from '../theme/palette';
 
 import { DynamicIcon } from "./DynamicIcon";
 import { Text } from './Text';
@@ -68,7 +69,7 @@ export const MetaFacts = React.memo(function MetaFacts({ facts, compact }: MetaF
             <DynamicIcon
               name={fact.icon}
               size={ps(1.05)}
-              color={fact.iconColor ?? "rgba(255,255,255,0.55)"}
+              color={fact.iconColor ?? P.secondaryLabel}
             />
           ) : null}
           <Text style={[S.text, fact.tone === "accent" && S.textAccent]} numberOfLines={1}>
@@ -85,18 +86,19 @@ const S = StyleSheet.create({
   rowCompact: {},
   fact: { flexDirection: "row", alignItems: "center", gap: pw(0.45) },
   separator: {
-    color: "rgba(255,255,255,0.28)",
+    color: P.quaternaryLabel,
     fontSize: ps(1.05),
-    fontWeight: "700",
     marginHorizontal: pw(0.8),
   },
   text: {
-    color: "rgba(255,255,255,0.78)",
+    color: "rgba(235, 235, 245, 0.80)",
     fontSize: ps(1.05),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.medium,
     letterSpacing: 0.2,
   },
-  textAccent: { color: "#4ade80" },
+  // systemGreen, not the Tailwind `#4ade80` it was. This is the "resume from
+  // here" fact, and it is the only coloured thing on the line.
+  textAccent: { color: P.systemGreen },
 });
 
 export default MetaFacts;

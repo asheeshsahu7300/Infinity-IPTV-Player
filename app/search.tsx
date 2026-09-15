@@ -15,6 +15,7 @@ import { CinematicBackground } from "../src/components/CinematicBackground";
 import { Focusable, FocusGroup, Overlay, useIsFocusTrapped, useDPad, FocusMemory } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
 import { THEME, pw, ph, phoneDp, ps, psRaw, CARD_FRAME, CARD_FRAME_INNER_RADIUS, TILE_FRAME, TILE_FRAME_FOCUSED } from "../src/theme/tokens";
+import { FOCUS, MATERIALS, RADIUS, focusGlowShadow } from "../src/theme/materials";
 import {
   isPhone,
   PHONE_GRID_COLUMNS,
@@ -28,6 +29,7 @@ import { Calendar, ExternalLink, Play, Search, Star, X } from 'lucide-react-nati
 import { DynamicIcon } from '../src/components/DynamicIcon';
 import { Text } from '../src/components/Text';
 import { TextInput } from '../src/components/TextInput';
+import * as P from "../src/theme/palette";
 
 
 
@@ -158,7 +160,7 @@ const CardInner = React.memo(function CardInner({
             <DynamicIcon
               name={isLive ? "television" : "filmstrip"}
               size={isTouch ? (isLive ? phoneDp(22) : phoneDp(30)) : (isLive ? ps(2.8) : ps(4.2))}
-              color="rgba(255,255,255,0.32)"
+              color={P.tertiaryLabel}
             />
           </View>
         )}
@@ -1225,7 +1227,7 @@ export default function SearchScreen() {
                 !isLoading ? (
                   <View style={S.emptyState}>
                     <View style={S.emptyIconWrap}>
-                      <Search size={ps(4)} color="rgba(255,255,255,0.4)" />
+                      <Search size={ps(4)} color={P.secondaryLabel} />
                     </View>
                     <Text style={S.emptyTitle}>No Results Found</Text>
                     <Text style={S.emptyText}>
@@ -1274,7 +1276,7 @@ export default function SearchScreen() {
                   <DynamicIcon
                     name={selectedItem?.type === "series" ? "albums-outline" : "film-outline"}
                     size={ps(3.2)}
-                    color="rgba(255, 255, 255, 0.3)"
+                    color={P.tertiaryLabel}
                   />
                 </View>
               )}
@@ -1390,7 +1392,7 @@ const S = StyleSheet.create({
   headerTitle: {
     color: "#FFFFFF",
     fontSize: ps(1.6),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.5,
   },
   headerRight: {
@@ -1407,14 +1409,14 @@ const S = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 0,
     borderColor: "transparent",
     overflow: "hidden",
   },
   searchCircleBtnFocused: {
     borderRadius: 22,
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "transparent",
     borderWidth: 0,
     transform: [{ scale: 1.12 }],
@@ -1434,13 +1436,13 @@ const S = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: pw(1.2),
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 1,
     borderColor: "transparent",
   },
   searchBarContainerFocused: {
     borderColor: "#ffffff",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
   searchInput: {
     flex: 1,
@@ -1448,7 +1450,7 @@ const S = StyleSheet.create({
     fontSize: ps(1.15),
     marginLeft: 8,
     paddingVertical: 0,
-    fontWeight: "500",
+    fontFamily: THEME.fonts.medium,
   },
   clearBtnWrapper: {
     borderRadius: 16,
@@ -1485,33 +1487,33 @@ const S = StyleSheet.create({
     paddingHorizontal: ps(1.5),
     height: 44,
     borderRadius: 18,
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 0,
     borderColor: "transparent",
   },
   filterChipActive: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "transparent",
     borderWidth: 0,
   },
   filterChipFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "transparent",
     borderWidth: 0,
     transform: [{ scale: 1.06 }],
   },
   filterChipText: {
-    color: "rgba(255, 255, 255, 0.75)",
+    color: P.label,
     fontSize: ps(1.15),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
   },
   filterChipTextActive: {
     color: "#111111",
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
   },
   filterChipTextFocused: {
     color: "#111111",
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
   },
 
   // ── Rails ──
@@ -1525,14 +1527,14 @@ const S = StyleSheet.create({
   railTitle: {
     color: "#FFFFFF",
     fontSize: ps(1.6),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 0.3,
   },
   railSubtitle: {
     color: "rgba(142, 147, 168, 0.65)",
     fontSize: ps(0.95),
     marginTop: 2,
-    fontWeight: "500",
+    fontFamily: THEME.fonts.medium,
   },
   railScrollContent: {
     paddingHorizontal: RAIL_H_PAD,
@@ -1549,7 +1551,7 @@ const S = StyleSheet.create({
   sectionLabelTitle: {
     color: "#FFFFFF",
     fontSize: ps(1.6),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 0.3,
   },
   sectionLabelSubtitle: {
@@ -1574,39 +1576,44 @@ const S = StyleSheet.create({
     overflow: "visible",
   },
   movieCardContainer: {
-    borderRadius: isTouch ? 12 : 16,
+    borderRadius: RADIUS.lg,
     overflow: "visible",
   },
   movieCardContainerFocused: {},
   posterFrame: {
     width: "100%",
-    borderRadius: isTouch ? 12 : 18,
+    borderRadius: RADIUS.lg,
+    borderCurve: "continuous",
     overflow: "hidden",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 1,
-    borderColor: "transparent",
+    borderColor: MATERIALS.thin.edge,
   },
+  // No elevation: in a grid an elevated tile shadows the tiles beside it on
+  // Android. focusGlowShadow is iOS-only by construction.
   posterFrameFocused: {
-    borderColor: "#ffffff",
+    borderColor: FOCUS.edge,
     borderWidth: 1,
-    transform: [{ scale: 1.03 }],
-    elevation: 12,
+    transform: [{ scale: FOCUS.scale }],
+    ...focusGlowShadow,
   },
   posterImage: {
     width: "100%",
     height: "100%",
+    borderRadius: RADIUS.lg,
+    overflow: "hidden",
   },
   posterFallback: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#2C2D32",
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
   cornerRatingBadge: {
     position: "absolute",
     bottom: 6,
     right: 6,
-    backgroundColor: "rgba(0, 0, 0, 0.78)",
+    backgroundColor: P.scrimHeavy,
     borderWidth: 0,
     paddingHorizontal: 7,
     paddingVertical: 2.5,
@@ -1614,43 +1621,43 @@ const S = StyleSheet.create({
     elevation: 4,
   },
   cornerRatingText: {
-    color: "#FFFFFF",
+    color: P.label,
     fontSize: ps(0.85),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.2,
   },
   movieTitleText: {
-    color: "rgba(255,255,255,0.75)",
+    color: P.label,
     fontSize: isTouch ? 12 : ps(0.92),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     marginTop: isTouch ? 5 : 8,
     lineHeight: isTouch ? 16 : 20,
   },
   movieTitleTextFocused: {
-    color: "#ffffff",
-    fontWeight: "900",
+    color: P.label,
+    fontFamily: THEME.fonts.bold,
   },
   movieSubText: {
-    color: "rgba(255,255,255,0.45)",
+    color: P.secondaryLabel,
     fontSize: isTouch ? 10.5 : ps(0.8),
-    fontWeight: "500",
+    fontFamily: THEME.fonts.medium,
     marginTop: 2,
   },
   qualityBadge: {
     position: "absolute",
     top: 6,
     left: 6,
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    backgroundColor: P.scrimHeavy,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 5,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.2)",
+    borderColor: P.glassEdge,
   },
   qualityBadgeText: {
-    color: "#FFFFFF",
+    color: P.label,
     fontSize: ps(0.72),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
   },
   liveBadge: {
     position: "absolute",
@@ -1668,12 +1675,12 @@ const S = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 2.5,
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
   },
   liveBadgeText: {
     color: "#FFFFFF",
     fontSize: ps(0.68),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.5,
   },
   channelNumBadge: {
@@ -1687,9 +1694,9 @@ const S = StyleSheet.create({
     borderWidth: 0,
   },
   channelNumText: {
-    color: "rgba(255,255,255,0.85)",
+    color: P.label,
     fontSize: ps(0.7),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
   },
 
   // ── Empty State ──
@@ -1714,7 +1721,7 @@ const S = StyleSheet.create({
   emptyTitle: {
     color: "#FFFFFF",
     fontSize: ps(2),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     marginBottom: ph(1),
     letterSpacing: 0.3,
   },
@@ -1733,9 +1740,11 @@ const S = StyleSheet.create({
     borderTopRightRadius: ps(2),
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255, 255, 255, 0.2)",
+    borderColor: P.glassEdge,
     borderBottomWidth: 0,
-    backgroundColor: "rgba(10, 12, 18, 0.95)",
+    // The thick material's own fill, so this sheet and every sheet built from
+    // GlassSurface are the same surface.
+    backgroundColor: P.elevatedSystemBackground,
   },
   modalBody: {
     padding: isPhone ? PHONE_H_PAD : ps(2.2),
@@ -1757,9 +1766,10 @@ const S = StyleSheet.create({
   modalPosterWrapper: {
     width: isPhone ? 72 : pw(11),
     aspectRatio: 2 / 3,
-    borderRadius: ps(0.8),
+    borderRadius: RADIUS.sm,
+    borderCurve: "continuous",
     overflow: "hidden",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: P.quaternarySystemFill,
     marginRight: isPhone ? 12 : pw(2),
   },
   modalPosterImg: {
@@ -1771,20 +1781,20 @@ const S = StyleSheet.create({
     height: "100%",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: P.quaternarySystemFill,
   },
   modalTypeBadge: {
     alignSelf: "flex-start",
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: P.tertiarySystemFill,
     paddingHorizontal: ps(0.6),
     paddingVertical: ps(0.2),
-    borderRadius: ps(0.3),
+    borderRadius: RADIUS.xs,
     marginBottom: ps(0.5),
   },
   modalTypeBadgeText: {
-    color: "#FFFFFF",
+    color: P.secondaryLabel,
     fontSize: ps(0.7),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 1,
   },
   modalLeft: {
@@ -1802,14 +1812,18 @@ const S = StyleSheet.create({
     justifyContent: "center",
     gap: isPhone ? 10 : ps(0.8),
   },
+  // Matched to series-details' sheet: semibold with negative tracking rather
+  // than bold with none. Apple tightens as type grows, and bold at ps(1.6) on
+  // a dark sheet reads heavier than the title of the page behind it.
   modalTitle: {
-    color: "#FFFFFF",
+    color: P.label,
     fontSize: ps(1.6),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.semibold,
+    letterSpacing: -0.3,
     marginBottom: ps(0.6),
   },
   modalDescription: {
-    color: "rgba(255, 255, 255, 0.6)",
+    color: P.secondaryLabel,
     fontSize: ps(0.95),
     lineHeight: ps(1.3),
     marginTop: ps(0.4),
@@ -1824,18 +1838,18 @@ const S = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: ps(0.3),
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: P.tertiarySystemFill,
     paddingHorizontal: ps(0.6),
     paddingVertical: ps(0.3),
-    borderRadius: ps(0.4),
+    borderRadius: RADIUS.xs,
   },
   modalBadgeText: {
-    color: "#FFFFFF",
+    color: P.secondaryLabel,
     fontSize: ps(0.8),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
   },
   modalBtnWrapper: {
-    borderRadius: 18,
+    borderRadius: RADIUS.sheet,
     overflow: "visible",
     width: "100%",
   },
@@ -1849,25 +1863,26 @@ const S = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 0,
     borderColor: "transparent",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
   modalBtnPillFocused: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: P.tint,
     borderColor: "transparent",
     borderWidth: 0,
     elevation: 8,
     transform: [{ scale: 1.05 }],
   },
   modalBtnText: {
-    color: "#FFFFFF",
+    color: P.label,
     fontSize: ps(1.0),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.3,
   },
+  // Dark, because the focused pill fills with the off-white tint.
   modalBtnTextFocused: {
-    color: "#000000",
+    color: P.onTint,
     fontSize: ps(1.0),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.3,
   },
 });

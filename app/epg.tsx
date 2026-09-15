@@ -46,12 +46,13 @@ import {
 import { StreamManager } from "../src/services/StreamManager";
 import { CinematicBackground } from "../src/components/CinematicBackground";
 import PinPrompt from "../src/components/PinPrompt";
-import { THEME, ph, phoneDp, psRaw as ps, pw } from "../src/theme/tokens";
+import { THEME, ph, phoneDp, psRaw as ps, pw, SELECTION } from "../src/theme/tokens";
 import { remoteFocusEnabled, isTouch } from "../src/utils/tabletUtils";
 import { isPhone } from "../src/utils/phoneUtils";
 import { Focusable, FocusGroup } from "../src/tv";
 import { Calendar, ChevronDown, Filter, Lock, Play, Tv, X } from 'lucide-react-native';
 import { Text } from '../src/components/Text';
+import * as P from "../src/theme/palette";
 
 
 /**
@@ -75,23 +76,29 @@ const PHASE_TEXT: Record<EpgLoadPhase, string> = {
 };
 
 /**
- * The active (selected) channel row: white on touch, dark on the box.
+ * The active (selected) channel row: white, on every tier.
  *
- * Every other selected state in the app -- the category sidebar, the zap
- * list, the search filter chips -- is a #F5F5F5 pill with dark ink, and on a
- * tablet this now matches them.
+ * This used to be white on touch and a dark #22232a on the box, because with
+ * only one shade of white available a white selected row and a white focused
+ * row were indistinguishable and the viewer could not tell which row the D-pad
+ * was on from which channel was showing. That was a real conflict and the dark
+ * fallback was the wrong answer to it: it left the guide as the one list in
+ * the app whose selection was not the tint, on the tier where the guide is
+ * most used.
  *
- * The box keeps its dark #22232a instead, because there `channelRowFocused`
- * is itself #F5F5F5: making selected white too would leave the viewer unable
- * to tell which row the D-pad is on from which channel is showing. Touch has
- * no focus, so only one of the two ever appears and the conflict cannot arise.
+ * The rest of the app had already solved it. `SELECTION` runs three rungs, and
+ * the top two are *two different whites*: `marked` is the off-white `tint` and
+ * `filled` is pure `tintStrong` plus a soft ring. The channel rows follow that
+ * split now -- selected is `tint`, focused is `tintStrong` with the ring -- so
+ * both can be white and still be told apart, the same way the category pills
+ * and the sidebar have been for a while.
  *
  * Background and ink are declared together deliberately -- they were split
  * across a style and a render-time ternary before, which is how the row ended
  * up painting near-black text onto a near-black background.
  */
-const ACTIVE_ROW_BG = isTouch ? "#F5F5F5" : "#22232a";
-const ACTIVE_ROW_INK = isTouch ? "#000000" : "#FFFFFF";
+const ACTIVE_ROW_BG = SELECTION.marked.backgroundColor;
+const ACTIVE_ROW_INK = SELECTION.markedInk.color;
 
 /*
  * The touch type scale for the guide.
@@ -796,7 +803,7 @@ export default function EPGScreen() {
                 ? "All Categories"
                 : (epgCategories.find((c) => String(c.id) === String(selectedCategory))?.name || "Category")}
             </Text>
-            <ChevronDown size={isPhone ? 17.3 : 14} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />
+            <ChevronDown size={isPhone ? 17.3 : 14} color={P.label} style={{ marginLeft: 4 }} />
           </TouchableOpacity>
         )}
       </View>
@@ -926,7 +933,7 @@ export default function EPGScreen() {
                   </>
                 ) : (
                   <>
-                    <Calendar size={ps(3)} color="rgba(255,255,255,0.1)" />
+                    <Calendar size={ps(3)} color={P.quaternaryLabel} />
                     <Text style={S.emptyTitle}>No guide for this channel</Text>
                     <Text style={S.emptyText}>
                       {guideStatus === "unavailable"
@@ -1026,11 +1033,11 @@ const S = StyleSheet.create({
   headerTitle: {
     color: "#FFFFFF",
     fontSize: ps(2.2),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.regular,
     letterSpacing: 0.5,
   },
   headerSubtitle: {
-    color: "rgba(255,255,255,0.5)",
+    color: P.secondaryLabel,
     fontSize: ps(1.1),
     marginTop: ph(0.6),
   },
@@ -1047,15 +1054,15 @@ const S = StyleSheet.create({
   heroEyebrow: {
     color: THEME.colors.textDim,
     fontSize: ps(1.1),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 1.5,
     marginBottom: ph(0.6),
   },
-  heroTitle: { color: "#fff", fontSize: ps(2.2), fontWeight: "900" },
+  heroTitle: { color: "#fff", fontSize: ps(2.2), fontFamily: THEME.fonts.regular },
   heroTime: {
     color: THEME.colors.textMuted,
     fontSize: ps(1.12),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     marginTop: ph(0.5),
     fontVariant: ["tabular-nums"],
   },
@@ -1070,7 +1077,7 @@ const S = StyleSheet.create({
     width: pw(16),
     height: ph(14),
     borderRadius: 18,
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderWidth: 0,
     borderColor: "transparent",
     alignItems: "center",
@@ -1083,9 +1090,9 @@ const S = StyleSheet.create({
   panes: { flex: 1, flexDirection: "row", paddingHorizontal: pw(2), gap: pw(4) },
   schedulePane: { flex: 1 },
   paneLabel: {
-    color: "rgba(255,255,255,0.65)",
+    color: P.secondaryLabel,
     fontSize: ps(1.45),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 2.5,
     paddingHorizontal: pw(0.5),
     paddingBottom: ph(1.4),
@@ -1101,28 +1108,30 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(2),
     paddingVertical: ph(1.8),
     borderRadius: 18,
-    borderWidth: 0,
+    // 1 at rest rather than 0, in transparent. The focused rung is the only
+    // one that paints a ring, and toggling the *colour* of a border that is
+    // already laid out keeps the content box the same on all three rungs --
+    // switching the width instead would shift every glyph in the row by a
+    // pixel as the cursor arrives.
+    borderWidth: 1,
     borderColor: "transparent",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
   channelRowSelected: {
     backgroundColor: ACTIVE_ROW_BG,
     borderColor: "transparent",
-    borderWidth: 0,
   },
   channelRowFocused: {
-    backgroundColor: "#F5F5F5",
-    borderColor: "transparent",
-    borderWidth: 0,
+    ...SELECTION.filled,
     elevation: 8,
   },
   channelNumber: {
     // Fixed column; the name beside it is what gives way.
     flexShrink: 0,
     minWidth: ps(2.2),
-    color: "rgba(255,255,255,0.5)",
+    color: P.secondaryLabel,
     fontSize: ps(1.2),
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     fontVariant: ["tabular-nums"],
   },
   channelLogo: { width: ps(4.5), height: ps(3.4), alignItems: "center", justifyContent: "center", flexShrink: 0 },
@@ -1138,16 +1147,16 @@ const S = StyleSheet.create({
    * implicit auto floor that would otherwise stop the shrink at the longest
    * unbreakable run.
    */
-  channelName: { color: "#FFFFFF", fontSize: ps(1.6), fontWeight: "800", letterSpacing: 0.2, flexShrink: 1, minWidth: 0 },
-  channelNow: { color: "rgba(255,255,255,0.5)", fontSize: ps(1), fontWeight: "600" },
+  channelName: { color: "#FFFFFF", fontSize: ps(1.6), fontFamily: THEME.fonts.regular, letterSpacing: 0.2, flexShrink: 1, minWidth: 0 },
+  channelNow: { color: P.secondaryLabel, fontSize: ps(1), fontFamily: THEME.fonts.semibold },
   /**
-   * The active (selected) channel: white.
+   * The active (selected) channel: dark ink, because the row under it is now
+   * the off-white tint.
    *
-   * `channelRowSelected` is #22232a -- dark -- so the active row is marked by
-   * going brighter than its neighbours, not by inverting into them. This used
-   * to be #000000 and shared with `textOnFocus` (the Shared block below,
-   * used for #F5F5F5 focused rows), which is why the active row rendered as
-   * near-invisible dark-on-dark.
+   * This has been wrong in both directions. It was #000000 while the row was
+   * dark, which painted the active channel near-invisibly onto itself; then
+   * #FFFFFF once the row went dark on purpose. `ACTIVE_ROW_INK` exists so the
+   * fill and its ink can only ever be changed together -- see the note on it.
    */
   textOnActive: { color: ACTIVE_ROW_INK },
 
@@ -1161,39 +1170,54 @@ const S = StyleSheet.create({
     paddingHorizontal: pw(2.5),
     paddingVertical: ph(2.8),
     borderRadius: 18,
-    borderWidth: 0,
+    borderWidth: 1,
     borderColor: "transparent",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
   },
-  programRowNow: { backgroundColor: "#22232a" },
-  programRowFocused: { backgroundColor: "#F5F5F5", borderColor: "transparent", borderWidth: 0 },
+  /**
+   * "On now" stays dark, and is the one thing here that did not go white.
+   *
+   * It is a property of the programme, not a cursor: it marks what is airing,
+   * and unlike the channel row's selection it is not competing with focus for
+   * the same meaning. Filling it with the tint would also mean inverting every
+   * piece of ink in the row -- time, end time, title, the ON NOW badge and the
+   * progress track are all light-on-dark, and only the `focused` branch flips
+   * them.
+   *
+   * What did change is the colour. `#22232a` was a blue-leaning grey that
+   * belonged to no palette; `tertiarySystemFill` is the neutral one step above
+   * the row's own background, which is the same relationship it was reaching
+   * for.
+   */
+  programRowNow: { backgroundColor: P.tertiarySystemFill },
+  programRowFocused: { ...SELECTION.filled },
   programTimeCol: { alignItems: "flex-start", minWidth: ps(5.5) },
   programTime: {
     color: "#fff",
     fontSize: ps(1.5),
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
     fontVariant: ["tabular-nums"],
   },
   programEnd: {
-    color: "rgba(255,255,255,0.4)",
+    color: P.secondaryLabel,
     fontSize: ps(1.12),
-    fontWeight: "600",
+    fontFamily: THEME.fonts.semibold,
     fontVariant: ["tabular-nums"],
   },
   programBody: { flex: 1, gap: 5 },
   programTitleRow: { flexDirection: "row", alignItems: "center", gap: pw(0.8) },
-  programTitle: { color: "#fff", fontSize: ps(1.5), fontWeight: "700", flexShrink: 1 },
-  programDesc: { color: "rgba(255,255,255,0.5)", fontSize: ps(1.12) },
+  programTitle: { color: "#fff", fontSize: ps(1.5), fontFamily: THEME.fonts.regular, flexShrink: 1 },
+  programDesc: { color: P.secondaryLabel, fontSize: ps(1.12) },
   nowBadge: {
     backgroundColor: "rgba(255,255,255,0.9)",
     paddingHorizontal: pw(0.8),
     paddingVertical: 2,
     borderRadius: 4,
   },
-  nowBadgeText: { color: "#000", fontSize: ps(0.85), fontWeight: "900", letterSpacing: 0.8 },
+  nowBadgeText: { color: "#000", fontSize: ps(0.85), fontFamily: THEME.fonts.bold, letterSpacing: 0.8 },
 
   // ── Shared ──
-  textOnFocus: { color: "#000" },
+  textOnFocus: SELECTION.filledInk,
   dimmed: { opacity: 0.45 },
   miniTrack: {
     height: 2,
@@ -1205,8 +1229,8 @@ const S = StyleSheet.create({
   miniFill: { height: "100%", backgroundColor: "#fff" },
 
   empty: { alignItems: "center", justifyContent: "center", paddingVertical: ph(10), gap: ph(1) },
-  emptyTitle: { color: "rgba(255,255,255,0.45)", fontSize: ps(1.5), fontWeight: "700" },
-  emptyText: { color: "rgba(255,255,255,0.3)", fontSize: ps(1.1), textAlign: "center", maxWidth: pw(30) },
+  emptyTitle: { color: P.secondaryLabel, fontSize: ps(1.5), fontFamily: THEME.fonts.regular },
+  emptyText: { color: P.tertiaryLabel, fontSize: ps(1.1), textAlign: "center", maxWidth: pw(30) },
 
   footer: {
     flexDirection: "row",
@@ -1216,9 +1240,9 @@ const S = StyleSheet.create({
     paddingVertical: ph(1.2),
   },
   footerHint: {
-    color: "rgba(255,255,255,0.35)",
+    color: P.tertiaryLabel,
     fontSize: ps(1),
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     letterSpacing: 0.5,
   },
   footerBusy: { flexDirection: "row", alignItems: "center", gap: pw(0.8) },
@@ -1226,7 +1250,7 @@ const S = StyleSheet.create({
   categoryBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 18,
@@ -1241,7 +1265,7 @@ const S = StyleSheet.create({
   categoryBadgeText: {
     color: "#FFFFFF",
     fontSize: isPhone ? 15 : 12,
-    fontWeight: "700",
+    fontFamily: THEME.fonts.semibold,
     flexShrink: 1,
   },
   scheduleHeaderRow: {
@@ -1265,7 +1289,7 @@ const S = StyleSheet.create({
   watchLiveBtnText: {
     color: "#000000",
     fontSize: isPhone ? 13.8 : 11,
-    fontWeight: "900",
+    fontFamily: THEME.fonts.bold,
     letterSpacing: 0.4,
   },
   modalOverlay: {
@@ -1278,7 +1302,7 @@ const S = StyleSheet.create({
   modalContent: {
     width: "100%",
     maxWidth: 400,
-    backgroundColor: "#17181c",
+    backgroundColor: P.secondaryElevatedSystemBackground,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
@@ -1296,7 +1320,7 @@ const S = StyleSheet.create({
   modalTitle: {
     color: "#FFFFFF",
     fontSize: isPhone ? 20.7 : 17,
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
   },
   categoryModalItem: {
     flexDirection: "row",
@@ -1311,13 +1335,13 @@ const S = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.1)",
   },
   categoryModalItemText: {
-    color: "rgba(255,255,255,0.7)",
+    color: P.label,
     fontSize: isPhone ? 17.3 : 14,
-    fontWeight: "600",
+    fontFamily: THEME.fonts.semibold,
   },
   categoryModalItemTextSelected: {
     color: "#FFFFFF",
-    fontWeight: "800",
+    fontFamily: THEME.fonts.bold,
   },
   categoryCheckDot: {
     width: 8,
