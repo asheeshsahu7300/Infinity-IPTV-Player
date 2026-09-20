@@ -588,6 +588,51 @@ export default function PlayerScreen() {
   const seekTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastProgressTimeRef = useRef(Date.now());
   const lastProgressPositionRef = useRef(0);
+
+  /**
+   * Whether this stream's reported clock has ever been seen to move.
+   *
+   * expo-video's `timeUpdate` is an interval emitter, not a clock-change
+   * event: it ticks every 250ms straight through a freeze, so the arrival of a
+   * progress event proves nothing and only a *changed position* does. That is
+   * the test the watchdogs need.
+   *
+   * The complication is that a few live sources report a position that never
+   * advances at all — window-relative, or simply pinned. Requiring movement
+   * from those would read as a permanent freeze and reconnect them in a loop
+   * every twelve seconds. So movement is only *required* once it has been
+   * observed at least once; until then the old behaviour stands and event
+   * arrival is accepted. A stream whose clock works gets a real freeze
+   * detector; one whose clock does not is no worse off than before.
+   */
+  const positionEverMovedRef = useRef(false);
+
+  /**
+   * Set once we have decided this stream's clock cannot be trusted as a
+   * liveness signal, after it stopped advancing while the player was still
+   * reporting that it was rendering.
+   *
+   * This exists because turning the freeze watchdog on for the first time made
+   * playback worse, not better. It had never fired before — every path into it
+   * was disarmed — so nothing had ever tested its premise, which is that a
+   * reported position which stops moving means a frozen picture. On a stream
+   * whose clock advances for a while and then goes flat while the video plays
+   * on, that premise is false, and the watchdog reloads the source every
+   * twelve seconds: a few seconds of playback, a stop, a few more seconds.
+   *
+   * So the clock gets one strike per source. The first time it looks frozen
+   * the conclusion is "this clock is unreliable", not "this stream is dead" —
+   * `positionEverMovedRef` is cleared, which drops this stream back to the old
+   * behaviour where any `timeUpdate` counts as liveness. After that the only
+   * way to reach the freeze branch again is for the ticks themselves to stop,
+   * which is a genuinely dead player and worth a reconnect.
+   *
+   * Nothing is lost by being wrong here: a real freeze still surfaces through
+   * `playingChange(false)` (the buffering branch above, which has its own
+   * timeout) and through `onError`. This branch is the last line, not the
+   * first.
+   */
+  const clockDistrustedRef = useRef(false);
   const bufferingStartedRef = useRef<number | null>(null);
   /** Mirror of `isBuffering`, readable from the progress tick. */
   const isBufferingRef = useRef(false);
@@ -927,14 +972,25 @@ export default function PlayerScreen() {
   // ── Shared "load complete" handler for VLC player ────────────────────────
   const handleLoadCommon = useCallback(
     (durationMs: number) => {
-      setIsLoading(false);
       setIsBuffering(false);
       setPlaybackFailed(false);
       stopLiveReconnectLoop();
-      if (!hasStartedPlayingRef.current) {
-        hasStartedPlayingRef.current = true;
-        setHasStartedPlaying(true);
-      }
+
+      /*
+       * `hasStartedPlaying` is deliberately NOT set here, and `isLoading` is
+       * deliberately not cleared.
+       *
+       * This runs on `readyToPlay`, which means the first buffer is parsed and
+       * tracks are known — not that a frame has reached the screen. Marking the
+       * stream started here is what made the VOD loading card vanish into a
+       * black screen for however long the first frame actually took, and it
+       * also disarmed the initial-load timeout, which is gated on
+       * `!hasStartedPlayingRef` and is the only thing that retries a source
+       * that loads and then never renders.
+       *
+       * Both are now set from `onPlaying` — i.e. from the player reporting that
+       * it is rendering — or from the position actually advancing.
+       */
 
       if (durationMs > 0) { durationRef.current = durationMs; setDuration(durationMs); }
 
@@ -1579,6 +1635,8 @@ export default function PlayerScreen() {
       upNextArmedRef.current = false;
       lastProgressPositionRef.current = 0;
       lastProgressTimeRef.current = Date.now();
+      positionEverMovedRef.current = false;
+      clockDistrustedRef.current = false;
       stopLiveReconnectLoop();
       setPlaybackFailed(false);
       setIsLoading(true);
@@ -1721,6 +1779,8 @@ export default function PlayerScreen() {
       upNextArmedRef.current = false;
       lastProgressPositionRef.current = 0;
       lastProgressTimeRef.current = Date.now();
+      positionEverMovedRef.current = false;
+      clockDistrustedRef.current = false;
       stopLiveReconnectLoop();
       setPlaybackFailed(false);
       setIsLoading(true);
@@ -1928,8 +1988,22 @@ export default function PlayerScreen() {
 
   const qualityLabel = getQualityLabel(networkQuality, is4K);
   const isShowingHardFailure = playbackFailed && !isLive;
+  /**
+   * The VOD/series loading card: up until the film is actually running.
+   *
+   * `hasStartedPlaying` now means "the player reported playing, or the clock
+   * moved", rather than "the source loaded" — so this card stays up across the
+   * whole gap between readyToPlay and the first frame, which is exactly the
+   * stretch that used to show as a black screen.
+   *
+   * `isPlaying` guards the one case that leaves: a title resumed with autoPlay
+   * off starts parked, and a loading card that never resolves because nothing
+   * is trying to load is worse than none. It reads intent, not state — an
+   * involuntary stall no longer clears it.
+   */
   const isVodLoading =
     !isLive &&
+    isPlaying &&
     (!hasStartedPlaying || (isLoading && position === 0)) &&
     !isShowingHardFailure &&
     !isNetworkLost;
@@ -1970,15 +2044,24 @@ export default function PlayerScreen() {
         !mountedRef.current ||
         !isPlayingRef.current ||
         isRetryingRef.current ||
-        isSeeking.current ||
-        isLoadingRef.current
+        isSeeking.current
       ) {
         return;
       }
 
       const now = Date.now();
 
-      // If stream has not yet started playing (waiting for initial buffer and first frame):
+      /*
+       * If the stream has not yet started playing (waiting for the initial
+       * buffer and the first frame).
+       *
+       * `isLoadingRef` is checked *after* this branch rather than in the guard
+       * above, and the order is the whole point: `isLoading` now stays true
+       * until playback is actually observed, so a check up there would switch
+       * this timeout off for exactly the window it exists to police — a source
+       * that reaches readyToPlay and then never renders a frame. That is the
+       * only thing in the screen that retries such a source.
+       */
       if (!hasStartedPlayingRef.current) {
         const timeSinceTune = now - lastProgressTimeRef.current;
         const initialTimeout = is4K ? 25000 : 15000;
@@ -1989,6 +2072,10 @@ export default function PlayerScreen() {
         }
         return;
       }
+
+      // Past the first frame, a raised loading flag means a fresh source is
+      // being attached under us; leave it alone until it settles.
+      if (isLoadingRef.current) return;
 
       // If player is actively in a legitimate buffering phase:
       if (isBufferingRef.current) {
@@ -2004,22 +2091,34 @@ export default function PlayerScreen() {
 
       // Stream was actively playing: check if progress has frozen mid-stream.
       const timeSinceLastProgress = now - lastProgressTimeRef.current;
-      if (isLive) {
-        // Live broadcast: if decoder heartbeat stops producing progress ticks for >12s (20s for 4K),
-        // the server dropped the connection or stalled. Trigger reconnect.
-        const liveStallThreshold = is4K ? 20000 : 12000;
-        if (timeSinceLastProgress > liveStallThreshold) {
-          console.warn(`[Player] Live stream frozen (no progress for ${timeSinceLastProgress}ms). Triggering silent reconnect.`);
+      const frozenThreshold = isLive
+        ? (is4K ? 20000 : 12000)
+        : (is4K ? 35000 : 25000);
+      const canCheckFreeze = isLive || durationRef.current > 0;
+
+      if (canCheckFreeze && timeSinceLastProgress > frozenThreshold) {
+        /*
+         * The clock's one strike. See `clockDistrustedRef`.
+         *
+         * Reaching here means the reported position has not changed for the
+         * whole window while the player has not reported a stall — which is
+         * either a frozen picture or a clock that is not a clock. The second
+         * is both more common and far cheaper to be wrong about, so it is
+         * assumed first, once.
+         */
+        if (!clockDistrustedRef.current && positionEverMovedRef.current) {
+          clockDistrustedRef.current = true;
+          positionEverMovedRef.current = false;
           lastProgressTimeRef.current = now;
-          schedulePlayerRecovery("liveStreamFrozen", true);
+          console.warn(
+            `[Player] ${isLive ? "Live" : "VOD"} position stopped advancing for ${timeSinceLastProgress}ms while the player reported no stall. Treating this stream's clock as unreliable and falling back to tick liveness rather than reconnecting.`
+          );
+          return;
         }
-      } else if (durationRef.current > 0) {
-        const stallThreshold = is4K ? 35000 : 25000;
-        if (timeSinceLastProgress > stallThreshold) {
-          console.warn(`[Player] VOD stream frozen (no progress for ${timeSinceLastProgress}ms). Triggering silent reconnect.`);
-          lastProgressTimeRef.current = now;
-          schedulePlayerRecovery("streamFrozen", true);
-        }
+
+        console.warn(`[Player] ${isLive ? "Live" : "VOD"} stream frozen (no progress for ${timeSinceLastProgress}ms). Triggering silent reconnect.`);
+        lastProgressTimeRef.current = now;
+        schedulePlayerRecovery(isLive ? "liveStreamFrozen" : "streamFrozen", true);
       }
     }, 2000);
 
@@ -2130,17 +2229,11 @@ export default function PlayerScreen() {
           selectedSubtitleTrack={selectedTextTrack}
           selectedVideoTrack={selectedVideoTrack}
           onLoad={({ duration: durationMs, audioTracks: aTracks, textTracks: sTracks, videoTracks: vTracks, currentAudioTrack }) => {
+            // Neither `isLoading` nor `hasStartedPlaying` is cleared here; both
+            // wait for playback to actually start. See handleLoadCommon.
             if (isBufferingRef.current) {
               isBufferingRef.current = false;
               setIsBuffering(false);
-            }
-            if (isLoadingRef.current) {
-              isLoadingRef.current = false;
-              setIsLoading(false);
-            }
-            if (!hasStartedPlayingRef.current) {
-              hasStartedPlayingRef.current = true;
-              setHasStartedPlaying(true);
             }
             retryCount.current = 0;
             handleLoadCommon(durationMs);
@@ -2222,11 +2315,61 @@ export default function PlayerScreen() {
             }, 20000);
           }}
           onProgress={(currentMs, durationMs) => {
+            // Duration can firm up on a tick that carries no playback progress,
+            // so it is read before the liveness test rather than inside it.
+            if (durationMs > 0 && Math.abs(durationRef.current - durationMs) > 1000) {
+              durationRef.current = durationMs;
+              setDuration(durationMs);
+            }
+
+            /*
+             * Everything below this line is gated on the clock having MOVED.
+             *
+             * This handler used to run unconditionally, and that is what made
+             * the recovery machinery dead code. `timeUpdate` fires every 250ms
+             * whether or not anything is decoding, so:
+             *
+             *   - the `recoveryTimeoutRef` disarm at the top tore down any
+             *     grace-period reconnect within a quarter second of it being
+             *     armed, which meant `onError` and `bufferStalled` — both of
+             *     which schedule with a grace period — could never fire;
+             *   - `lastProgressTimeRef` was refreshed on every tick, so the
+             *     freeze watchdog's "no progress for 12s" could never become
+             *     true;
+             *   - the VOD branch's own position check was defeated by its
+             *     `|| currentMs > 0`, which is satisfied by any non-zero
+             *     position, frozen or not;
+             *   - and live had no position check at all.
+             *
+             * A frozen stream therefore sat spinning forever instead of
+             * reconnecting. `positionEverMovedRef` is what lets live share this
+             * test safely — see the note on it.
+             */
+            const moved = currentMs !== lastProgressPositionRef.current;
+            if (moved) positionEverMovedRef.current = true;
+            if (!moved && positionEverMovedRef.current) {
+              handleNormalizedProgress(currentMs, durationMs);
+              return;
+            }
+
             if (recoveryTimeoutRef.current) {
               clearTimeout(recoveryTimeoutRef.current);
               recoveryTimeoutRef.current = null;
             }
-            if (!hasStartedPlayingRef.current) {
+            /*
+             * Only a clock that actually moved proves the picture is up.
+             *
+             * The fallback above — accept any tick until movement has been
+             * seen once — is there to keep the freeze watchdog off the back of
+             * streams with a pinned clock. Letting it also decide "playback
+             * has started" would undo the VOD loading card fix entirely: the
+             * first tick of a title that begins at 0 has `moved === false` and
+             * `positionEverMovedRef === false`, so it lands here about 250ms
+             * in, which is exactly the premature signal the card was moved off
+             * `onLoad` to escape. `onPlaying` is the other way in, and it is
+             * the one that fires for a stream whose clock never moves.
+             */
+            if (moved && !hasStartedPlayingRef.current) {
               hasStartedPlayingRef.current = true;
               setHasStartedPlaying(true);
             }
@@ -2239,21 +2382,9 @@ export default function PlayerScreen() {
               setIsBuffering(false);
             }
 
-            if (durationMs > 0 && Math.abs(durationRef.current - durationMs) > 1000) {
-              durationRef.current = durationMs;
-              setDuration(durationMs);
-            }
-
-            // On Live TV, the stream is an ongoing broadcast (currentMs may be fixed or window-relative).
-            // Any onProgress signal confirms that the player is decoding and alive.
-            if (isLive) {
-              lastProgressTimeRef.current = Date.now();
-              bufferingStartedRef.current = null;
-            } else if (currentMs !== lastProgressPositionRef.current || currentMs > 0) {
-              lastProgressPositionRef.current = currentMs;
-              lastProgressTimeRef.current = Date.now();
-              bufferingStartedRef.current = null;
-            }
+            lastProgressPositionRef.current = currentMs;
+            lastProgressTimeRef.current = Date.now();
+            bufferingStartedRef.current = null;
 
             handleNormalizedProgress(currentMs, durationMs);
           }}

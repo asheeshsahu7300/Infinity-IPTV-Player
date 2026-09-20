@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { View, StyleSheet, ActivityIndicator, FlatList, Platform, InteractionManager, BackHandler, Pressable , TextInput as RNTextInput, useWindowDimensions } from 'react-native';
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
 
@@ -12,7 +12,7 @@ import { XtreamApi } from "../src/services/xtreamApi";
 import { StreamManager } from "../src/services/StreamManager";
 import { cacheManager } from "../src/services/cacheManager";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
-import { TABLET_TILE_MAX_WIDTH, TILE_MAX_WIDTH, isTablet, SIDEBAR_WIDTH } from "../src/utils/tabletUtils";
+import { TABLET_TILE_MAX_WIDTH, TILE_MAX_WIDTH, isTablet, SIDEBAR_WIDTH, remoteFocusEnabled } from "../src/utils/tabletUtils";
 import {
   isPhone,
   PHONE_GRID_COLUMNS,
@@ -553,6 +553,53 @@ const ChannelRow = React.memo(function ChannelRow({
   return true;
 });
 
+/**
+ * Whether a category is one the viewer can actually land on.
+ *
+ * The exclusions drop the synthetic "everything" bucket that portals emit
+ * under half a dozen spellings; this screen lists real categories only, the
+ * same as VOD and Series.
+ *
+ * It exists as one function because it was two copies: the same seven
+ * comparisons were inlined in the `selectedCategory` initialiser and again in
+ * `sidebarCategories`, and only the second of them also dropped hidden
+ * categories. That difference is the bug — the screen opened with a category
+ * selected that the sidebar was not drawing, so nothing looked active until an
+ * effect noticed and corrected it a frame or two later.
+ */
+function isSelectableLiveCategory(c: { id: any; name?: string }): boolean {
+  if (!c?.name) return false;
+  const lower = String(c.name).trim().toLowerCase();
+  const idLower = String(c.id).trim().toLowerCase();
+  return (
+    lower !== "all" &&
+    lower !== "all channels" &&
+    lower !== "all live" &&
+    lower !== "all live channels" &&
+    idLower !== "all" &&
+    idLower !== "all channels" &&
+    idLower !== "*"
+  );
+}
+
+/**
+ * The first category the sidebar will actually draw, or "" if there is none.
+ *
+ * Deliberately built from the same two filters, in the same order, that
+ * `sidebarCategories` uses. Anything that picks a default any other way can
+ * disagree with what is on screen.
+ *
+ * `hiddenCategories.filter` is synchronous but its backing set loads
+ * asynchronously, so on a cold start this can return a category that is about
+ * to be hidden. That is what the reconciling effect below is for; this gets
+ * the common case right on the first paint instead of after it.
+ */
+function firstAvailableLiveCategoryId(cats: Category[] | undefined): string {
+  const live = (cats || []).filter((c) => c.type === "live" && isSelectableLiveCategory(c));
+  const visible = hiddenCategories.filter("live", live);
+  return visible[0]?.id ? String(visible[0].id) : "";
+}
+
 // ─────────────────────────────────────────────
 // Main Screen
 // ─────────────────────────────────────────────
@@ -572,23 +619,9 @@ export default function LiveTVScreen() {
   const setChannels = usePortalStore((s) => s.setChannels);
   const setCategories = usePortalStore((s) => s.setCategories);
 
-  const [selectedCategory, setSelectedCategory] = useState<string>(() => {
-    const cats = (usePortalStore.getState().categories || []).filter((c) => c.type === "live");
-    const valid = cats.filter((c) => {
-      const lower = (c.name || "").trim().toLowerCase();
-      const idLower = String(c.id).trim().toLowerCase();
-      return (
-        lower !== "all" &&
-        lower !== "all channels" &&
-        lower !== "all live" &&
-        lower !== "all live channels" &&
-        idLower !== "all" &&
-        idLower !== "all channels" &&
-        idLower !== "*"
-      );
-    });
-    return valid[0]?.id ? String(valid[0].id) : "";
-  });
+  const [selectedCategory, setSelectedCategory] = useState<string>(() =>
+    firstAvailableLiveCategoryId(usePortalStore.getState().categories)
+  );
   const [displayChannels, setDisplayChannels] = useState<Channel[]>([]);
   const displayChannelsRef = useRef<Channel[]>([]);
   displayChannelsRef.current = displayChannels;
@@ -1358,20 +1391,7 @@ export default function LiveTVScreen() {
     () => [
       ...hiddenCategories.filter(
         "live",
-        (localCategories || []).filter((c) => {
-          if (!c.name) return false;
-          const lower = c.name.trim().toLowerCase();
-          const idLower = String(c.id).trim().toLowerCase();
-          return (
-            lower !== "all" &&
-            lower !== "all channels" &&
-            lower !== "all live" &&
-            lower !== "all live channels" &&
-            idLower !== "all" &&
-            idLower !== "all channels" &&
-            idLower !== "*"
-          );
-        })
+        (localCategories || []).filter(isSelectableLiveCategory)
       ),
     ],
     [localCategories, hiddenVersion]
@@ -1388,13 +1408,34 @@ export default function LiveTVScreen() {
     return rawA === rawB;
   }, []);
 
+  // On TV, focus must always start from the first category when entering Live TV
+  useFocusEffect(
+    useCallback(() => {
+      if (!remoteFocusEnabled) return;
+      isSidebarFocusedRef.current = true;
+      focusedIdRef.current = "";
+
+      if (sidebarCategories.length > 0) {
+        const firstCat = String(sidebarCategories[0].id);
+        setSelectedCategory(firstCat);
+        FocusMemory.set("category-sidebar", firstCat);
+        FocusMemory.restoreWithRetry("category-sidebar", 8, 50);
+      }
+    }, [sidebarCategories])
+  );
+
   useEffect(() => {
     if (sidebarCategories.length === 0) return;
     if (!hasInitializedCategoryRef.current) {
       hasInitializedCategoryRef.current = true;
-      const firstCat = sidebarCategories[0].id;
+      const firstCat = String(sidebarCategories[0].id);
       setSelectedCategory(firstCat);
       FocusMemory.set("category-sidebar", firstCat);
+      if (remoteFocusEnabled) {
+        isSidebarFocusedRef.current = true;
+        focusedIdRef.current = "";
+        FocusMemory.restoreWithRetry("category-sidebar", 8, 50);
+      }
       return;
     }
     if (
@@ -1404,9 +1445,14 @@ export default function LiveTVScreen() {
     ) {
       return;
     }
-    const defaultCat = sidebarCategories[0].id;
+    const defaultCat = String(sidebarCategories[0].id);
     setSelectedCategory(defaultCat);
     FocusMemory.set("category-sidebar", defaultCat);
+    if (remoteFocusEnabled) {
+      isSidebarFocusedRef.current = true;
+      focusedIdRef.current = "";
+      FocusMemory.restoreWithRetry("category-sidebar", 8, 50);
+    }
   }, [sidebarCategories, selectedCategory, isSameCat]);
 
   const focusSidebar = useInitialFocusPulse(sidebarCategories.length > 0);
@@ -1565,7 +1611,10 @@ export default function LiveTVScreen() {
       <View style={[S.body, isPortrait ? { flex: 1, height: undefined, flexDirection: "column", marginTop: 2 } : { height: EXACT_GRID_HEIGHT }]}>
         {/* Left sidebar (Landscape only) */}
         {!isPortrait && (
-          <FocusGroup style={{ width: SIDEBAR_WIDTH_VAL, height: EXACT_GRID_HEIGHT }}>
+          <FocusGroup
+            autoFocus={remoteFocusEnabled}
+            style={{ width: SIDEBAR_WIDTH_VAL, height: EXACT_GRID_HEIGHT }}
+          >
             <CategorySidebar
               categories={sidebarCategories}
               selectedId={selectedCategory || (sidebarCategories[0]?.id ?? "")}

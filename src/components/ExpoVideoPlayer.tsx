@@ -243,6 +243,20 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
     const currentUrlRef = useRef(streamUrl);
     const lastProgressEmitTime = useRef(0);
 
+    /**
+     * The `paused` prop, readable from the event listeners.
+     *
+     * `playingChange` cannot distinguish a pause from a stall on its own — see
+     * the listener below — and the listener effect deliberately does not depend
+     * on `paused`, because re-subscribing every time playback is toggled would
+     * drop events during the gap. A ref is how the listener reads the current
+     * intent without being torn down to get it.
+     */
+    const pausedRef = useRef(paused);
+
+    /** Set by `playToEnd`; distinguishes "finished" from "stopped dead". */
+    const endedRef = useRef(false);
+
     // Build referentially stable VideoSource object
     const source = useMemo<VideoSource>(
       () => ({
@@ -300,6 +314,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
 
     // Synchronize play / pause state
     useEffect(() => {
+      pausedRef.current = paused;
       if (!player) return;
       try {
         if (paused) {
@@ -457,6 +472,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         if (status === "loading") {
           onBuffering?.(true);
         } else if (status === "readyToPlay") {
+          endedRef.current = false;
           onBuffering?.(false);
           if (isFirstLoadRef.current) {
             isFirstLoadRef.current = false;
@@ -485,12 +501,37 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         }
       });
 
+      /**
+       * `playingChange(false)` does NOT mean the viewer paused.
+       *
+       * expo-video reports `playing` as "actively rendering", so it drops to
+       * false for a user pause, for a rebuffer, and for a dropped connection
+       * alike. Forwarding all three as `onPaused` was the whole reason a
+       * dropped stream never came back: the screen turns that into
+       * `setIsPlaying(false)`, which it feeds straight back in as
+       * `paused={true}`, so the effect above calls `player.pause()` and a
+       * transient stall latches into a real, permanent pause. The freeze
+       * watchdog is gated on the same flag, so it stopped looking at the exact
+       * moment it was needed.
+       *
+       * `pausedRef` is the arbiter, and it is reliable in the direction that
+       * matters: a deliberate pause always sets the prop *before* the native
+       * call that makes the player stop, so by the time this event arrives the
+       * ref is already true. Anything else is involuntary, and involuntary is
+       * reported as buffering — which is what a stall is, and which the stall
+       * watchdog already knows how to escalate into a reconnect.
+       */
       const subPlaying = player.addListener("playingChange", ({ isPlaying }: any) => {
         if (isPlaying) {
+          endedRef.current = false;
           onPlaying?.();
           onBuffering?.(false);
-        } else {
+          return;
+        }
+        if (pausedRef.current) {
           onPaused?.();
+        } else if (!endedRef.current) {
+          onBuffering?.(true);
         }
       });
 
@@ -569,6 +610,10 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
       });
 
       const subEnd = player.addListener("playToEnd", () => {
+        // Recorded before the handler runs: the `playingChange(false)` that
+        // follows the end of a file is not a stall, and must not be escalated
+        // into a reconnect.
+        endedRef.current = true;
         onEnd?.();
       });
 

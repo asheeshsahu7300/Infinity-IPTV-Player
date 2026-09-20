@@ -52,6 +52,40 @@ import { Text } from '../src/components/Text';
 
 const RAIL_H_PAD = pw(5);
 
+/**
+ * The hero's vertical rhythm: one block of copy with equal air either side.
+ *
+ * "Unlimited Entertainment" and the line under it are one thing — a masthead
+ * and its caption — so the seam between them is the tightest gap on the
+ * screen, and the space above the pair matches the space below it.
+ *
+ * It was three loose lines before: `heroTitle` carried a single
+ * `marginVertical`, so the gap between the heading and its own byline was
+ * exactly the gap between the heading and the header above it, and the byline's
+ * own `marginBottom` was larger again. Nothing read as belonging together.
+ *
+ * The outer gap lives on `heroTitle.marginTop` and `heroDesc.marginBottom` —
+ * above the first line and below the last, both inside the hero card — rather
+ * than being split across the header's margin and the title's. Two values, one
+ * boundary each, so they can be compared by reading them.
+ *
+ * It is a margin rather than padding on `heroSection` because the gradient card
+ * is an `absoluteFillObject` child of that container, and Yoga lays absolute
+ * children out inside the parent's padding — so padding would have moved the
+ * card's top edge down past the air it created, leaving the title sitting above
+ * the panel it belongs to.
+ */
+const HERO_BLOCK_GAP = ph(3.2);
+
+/**
+ * The seam inside the pair.
+ *
+ * Not zero: on TV the title is large and its line box sits tight to the glyphs,
+ * so with no margin at all the two baselines crowd. ph(0.6) is about a third of
+ * what separated them before.
+ */
+const HERO_LINE_GAP = ph(0.6);
+
 // ─── Components ───────────────────────────────────────────────────────────────
 
 const HeroPill = ({
@@ -426,7 +460,12 @@ export default function DashboardScreen() {
             // reading the same 20dp title as a 393dp phone. The tablet gets its
             // own step now.
             fontSize: isPhone ? 15 : isPortrait ? 18 : (isTablet ? tps(28) : 20),
-            marginVertical: isPhone ? 0 : isTablet && !isPortrait ? vGap(2, 6) : 6,
+            // Bound to the byline below it, the same as the TV tier: a tight
+            // seam inside the pair, and above it the same air the byline has
+            // below it a few lines down. The two expressions are deliberately
+            // identical — that pairing is the whole point.
+            marginTop: isPhone ? 10 : isPortrait ? 18 : (isTablet ? vGap(10, 26) : 14),
+            marginBottom: isPhone ? 2 : isTablet && !isPortrait ? vGap(1, 3) : 3,
           }
         ]}>
           Unlimited Entertainment
@@ -438,6 +477,8 @@ export default function DashboardScreen() {
             !Platform.isTV && {
               fontSize: isPhone ? 11 : isPortrait ? 12 : (isTablet ? tps(15) : 13),
               lineHeight: isPhone ? 14 : isPortrait ? 15 : (isTablet ? tps(22) : 19),
+              // Matches heroTitle's marginTop above — that pair is the "equal
+              // air either side" this block is arranged around.
               marginBottom: isPhone ? 10 : isPortrait ? 18 : (isTablet ? vGap(10, 26) : 14),
               // A measure, not a width: 560 was chosen against a 1280 panel and
               // is a short line on a 1506 one.
@@ -808,7 +849,21 @@ const S = StyleSheet.create({
     maxWidth: pw(72),
     position: "relative",
     flex: 1,
-    justifyContent: "center",
+    /*
+     * Top-aligned, not centred.
+     *
+     * With `flex: 1` and `justifyContent: "center"` the leftover height of the
+     * hero was split above the title and below the buttons, which meant the
+     * gap over the copy was the title's `marginTop` *plus* an unknown share of
+     * the free space — so it could never be made equal to the gap under the
+     * byline no matter what the two were set to. Aligned to the start, that
+     * margin is the gap, and the slack falls below the buttons where nothing is
+     * being measured against it.
+     *
+     * Only TV is affected: every non-TV branch overrides this to `flex: 0`, so
+     * there was no free space to distribute in the first place.
+     */
+    justifyContent: "flex-start",
     marginBottom: ph(1.5),
   },
   heroGradientOverlay: {
@@ -821,7 +876,8 @@ const S = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "600",
     letterSpacing: 0.4,
-    marginVertical: ph(1.5),
+    marginTop: HERO_BLOCK_GAP,
+    marginBottom: HERO_LINE_GAP,
     textShadowColor: "rgba(0, 0, 0, 0.75)",
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 8,
@@ -830,7 +886,7 @@ const S = StyleSheet.create({
     fontSize: ps(1.3),
     color: "#A2A7BD",
     lineHeight: ph(2.8),
-    marginBottom: ph(3.5),
+    marginBottom: HERO_BLOCK_GAP,
     maxWidth: pw(58),
   },
   heroButtons: {
