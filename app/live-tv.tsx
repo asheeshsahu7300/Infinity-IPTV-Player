@@ -645,6 +645,16 @@ export default function LiveTVScreen() {
   const currentGridTopRowRef = useRef(0);
   const gridScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasInitializedCategoryRef = useRef(false);
+  const isReturningFromPlayerRef = useRef(false);
+  const [sidebarFocusPulse, setSidebarFocusPulse] = useState(false);
+  const pulseSidebarFocus = useCallback(() => {
+    if (!remoteFocusEnabled) return;
+    setSidebarFocusPulse(true);
+    const timer = setTimeout(() => {
+      setSidebarFocusPulse(false);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -1070,6 +1080,8 @@ export default function LiveTVScreen() {
   const openChannel = useCallback(async (channel: Channel) => {
     if (!activePortal || !channel.streamUrl) return;
 
+    isReturningFromPlayerRef.current = true;
+
     const categoryId = selectedCategoryRef.current;
     const categoryName =
       categoryId && categoryId !== "all"
@@ -1325,7 +1337,10 @@ export default function LiveTVScreen() {
   useStbKeys(
     {
       onDigit: tuner.pushDigit,
-      onGuide: () => router.push("/epg"),
+      onGuide: () => {
+        isReturningFromPlayerRef.current = true;
+        router.push("/epg");
+      },
     },
     { enabled: !pinTarget, priority: STB_PRIORITY.SCREEN }
   );
@@ -1408,10 +1423,57 @@ export default function LiveTVScreen() {
     return rawA === rawB;
   }, []);
 
-  // On TV, focus must always start from the first category when entering Live TV
+  // On TV, focus must always start from the first category when entering Live TV.
+  // When returning from player, preserve the currently selected category and restore channel focus.
   useFocusEffect(
     useCallback(() => {
       if (!remoteFocusEnabled) return;
+
+      if (isReturningFromPlayerRef.current) {
+        isReturningFromPlayerRef.current = false;
+
+        const tunedChannel = liveChannelSession.channel;
+        if (
+          tunedChannel?.categoryId &&
+          !isSameCat(tunedChannel.categoryId, selectedCategoryRef.current)
+        ) {
+          const matchCat = sidebarCategories.find((c) => isSameCat(c.id, tunedChannel.categoryId));
+          if (matchCat) {
+            setSelectedCategory(String(matchCat.id));
+            FocusMemory.set("category-sidebar", String(matchCat.id));
+          }
+        }
+
+        const tunedId = tunedChannel
+          ? String(tunedChannel.id)
+          : (focusedIdRef.current || FocusMemory.get(SCREEN_KEY));
+
+        if (tunedId && !isSidebarFocusedRef.current) {
+          focusedIdRef.current = tunedId;
+          setTunedFocusId(tunedId);
+          FocusMemory.set(SCREEN_KEY, tunedId);
+
+          const timer = setTimeout(() => setTunedFocusId(null), 500);
+
+          const idx = displayChannelsRef.current.findIndex((c) => String(c.id) === tunedId);
+          if (idx >= 0 && flatListRef.current) {
+            const rowIndex = Math.floor(idx / numColumns);
+            currentGridTopRowRef.current = rowIndex;
+            try {
+              flatListRef.current.scrollToOffset({
+                offset: rowIndex * ROW_HEIGHT,
+                animated: false,
+              });
+            } catch { /* ignore */ }
+          }
+          return () => clearTimeout(timer);
+        } else if (isSidebarFocusedRef.current) {
+          pulseSidebarFocus();
+        }
+        return;
+      }
+
+      // Fresh entry to Live TV: focus starts from first category
       isSidebarFocusedRef.current = true;
       focusedIdRef.current = "";
 
@@ -1419,9 +1481,9 @@ export default function LiveTVScreen() {
         const firstCat = String(sidebarCategories[0].id);
         setSelectedCategory(firstCat);
         FocusMemory.set("category-sidebar", firstCat);
-        FocusMemory.restoreWithRetry("category-sidebar", 8, 50);
+        pulseSidebarFocus();
       }
-    }, [sidebarCategories])
+    }, [sidebarCategories, isSameCat, numColumns, ROW_HEIGHT, pulseSidebarFocus])
   );
 
   useEffect(() => {
@@ -1434,7 +1496,7 @@ export default function LiveTVScreen() {
       if (remoteFocusEnabled) {
         isSidebarFocusedRef.current = true;
         focusedIdRef.current = "";
-        FocusMemory.restoreWithRetry("category-sidebar", 8, 50);
+        pulseSidebarFocus();
       }
       return;
     }
@@ -1451,9 +1513,9 @@ export default function LiveTVScreen() {
     if (remoteFocusEnabled) {
       isSidebarFocusedRef.current = true;
       focusedIdRef.current = "";
-      FocusMemory.restoreWithRetry("category-sidebar", 8, 50);
+      pulseSidebarFocus();
     }
-  }, [sidebarCategories, selectedCategory, isSameCat]);
+  }, [sidebarCategories, selectedCategory, isSameCat, pulseSidebarFocus]);
 
   const focusSidebar = useInitialFocusPulse(sidebarCategories.length > 0);
 
@@ -1571,6 +1633,7 @@ export default function LiveTVScreen() {
             <Focusable
               screenKey={SCREEN_KEY}
               focusKey="live-search-btn"
+              disabled={sidebarCategories.length === 0}
               onPress={() => {
                 setIsSearchOpen(true);
                 setSearchQuery("");
@@ -1612,7 +1675,6 @@ export default function LiveTVScreen() {
         {/* Left sidebar (Landscape only) */}
         {!isPortrait && (
           <FocusGroup
-            autoFocus={remoteFocusEnabled}
             style={{ width: SIDEBAR_WIDTH_VAL, height: EXACT_GRID_HEIGHT }}
           >
             <CategorySidebar
@@ -1622,7 +1684,7 @@ export default function LiveTVScreen() {
               onFocus={handleCategoryFocus}
               width={SIDEBAR_WIDTH_VAL}
               height={EXACT_GRID_HEIGHT}
-              autoFocusFirst={focusSidebar}
+              autoFocusFirst={focusSidebar || sidebarFocusPulse}
             />
           </FocusGroup>
         )}
