@@ -595,10 +595,14 @@ function isSelectableLiveCategory(c: { id: any; name?: string }): boolean {
  * the common case right on the first paint instead of after it.
  */
 function firstAvailableLiveCategoryId(cats: Category[] | undefined): string {
-  const live = (cats || []).filter((c) => c.type === "live" && isSelectableLiveCategory(c));
+  if (!cats || cats.length === 0) return "";
+  const live = cats.filter((c) => (c.type === "live" || !c.type) && isSelectableLiveCategory(c));
   const visible = hiddenCategories.filter("live", live);
-  return visible[0]?.id ? String(visible[0].id) : "";
+  return visible[0]?.id ? String(visible[0].id) : (live[0]?.id ? String(live[0].id) : "");
 }
+
+let lastLiveTvCategoryId = "";
+let hasVisitedPlayerFromLiveTv = false;
 
 // ─────────────────────────────────────────────
 // Main Screen
@@ -610,6 +614,8 @@ export default function LiveTVScreen() {
   const isFocusTrapped = useIsFocusTrapped();
 
   const safeGoBack = useCallback(() => {
+    hasVisitedPlayerFromLiveTv = false;
+    lastLiveTvCategoryId = "";
     safeBack();
   }, []);
 
@@ -619,9 +625,12 @@ export default function LiveTVScreen() {
   const setChannels = usePortalStore((s) => s.setChannels);
   const setCategories = usePortalStore((s) => s.setCategories);
 
-  const [selectedCategory, setSelectedCategory] = useState<string>(() =>
-    firstAvailableLiveCategoryId(usePortalStore.getState().categories)
-  );
+  const [selectedCategory, setSelectedCategory] = useState<string>(() => {
+    if (hasVisitedPlayerFromLiveTv && lastLiveTvCategoryId) {
+      return lastLiveTvCategoryId;
+    }
+    return firstAvailableLiveCategoryId(usePortalStore.getState().categories);
+  });
   const [displayChannels, setDisplayChannels] = useState<Channel[]>([]);
   const displayChannelsRef = useRef<Channel[]>([]);
   displayChannelsRef.current = displayChannels;
@@ -1081,6 +1090,8 @@ export default function LiveTVScreen() {
     if (!activePortal || !channel.streamUrl) return;
 
     isReturningFromPlayerRef.current = true;
+    hasVisitedPlayerFromLiveTv = true;
+    lastLiveTvCategoryId = selectedCategoryRef.current;
 
     const categoryId = selectedCategoryRef.current;
     const categoryName =
@@ -1423,15 +1434,68 @@ export default function LiveTVScreen() {
     return rawA === rawB;
   }, []);
 
-  // On TV, focus must always start from the first category when entering Live TV.
+  // On TV and Phone: focus/selection starts from the first category when entering Live TV.
   // When returning from player, preserve the currently selected category and restore channel focus.
   useFocusEffect(
     useCallback(() => {
-      if (!remoteFocusEnabled) return;
+      const isReturning = isReturningFromPlayerRef.current || hasVisitedPlayerFromLiveTv;
+      isReturningFromPlayerRef.current = false;
+      hasVisitedPlayerFromLiveTv = false;
 
-      if (isReturningFromPlayerRef.current) {
-        isReturningFromPlayerRef.current = false;
+      if (!remoteFocusEnabled) {
+        // Phone / touch device
+        if (isReturning) {
+          // Returning from player on phone: keep the currently selected category!
+          const tunedChannel = liveChannelSession.channel;
+          if (
+            tunedChannel?.categoryId &&
+            !isSameCat(tunedChannel.categoryId, selectedCategoryRef.current)
+          ) {
+            const matchCat = sidebarCategories.find((c) => isSameCat(c.id, tunedChannel.categoryId));
+            if (matchCat) {
+              const matchedId = String(matchCat.id);
+              lastLiveTvCategoryId = matchedId;
+              setSelectedCategory(matchedId);
+              FocusMemory.set("category-sidebar", matchedId);
+              return;
+            }
+          }
+          if (lastLiveTvCategoryId) {
+            const matchLast = sidebarCategories.find((c) => isSameCat(c.id, lastLiveTvCategoryId));
+            if (matchLast) {
+              const matchedId = String(matchLast.id);
+              setSelectedCategory(matchedId);
+              FocusMemory.set("category-sidebar", matchedId);
+              return;
+            }
+          }
+          if (
+            selectedCategoryRef.current &&
+            sidebarCategories.some((c) => isSameCat(c.id, selectedCategoryRef.current))
+          ) {
+            return;
+          }
+        }
 
+        // On phone, if we ALREADY have a valid selected category, NEVER overwrite it with the first category!
+        if (
+          selectedCategoryRef.current &&
+          sidebarCategories.some((c) => isSameCat(c.id, selectedCategoryRef.current))
+        ) {
+          return;
+        }
+
+        // Only on fresh entry (or if currently selected category is missing/empty):
+        if (sidebarCategories.length > 0) {
+          const firstCat = String(sidebarCategories[0].id);
+          lastLiveTvCategoryId = firstCat;
+          setSelectedCategory(firstCat);
+          FocusMemory.set("category-sidebar", firstCat);
+        }
+        return;
+      }
+
+      if (isReturning) {
         const tunedChannel = liveChannelSession.channel;
         if (
           tunedChannel?.categoryId &&
@@ -1490,6 +1554,14 @@ export default function LiveTVScreen() {
     if (sidebarCategories.length === 0) return;
     if (!hasInitializedCategoryRef.current) {
       hasInitializedCategoryRef.current = true;
+      if (lastLiveTvCategoryId) {
+        const matchLast = sidebarCategories.find((c) => isSameCat(c.id, lastLiveTvCategoryId));
+        if (matchLast) {
+          setSelectedCategory(String(matchLast.id));
+          FocusMemory.set("category-sidebar", String(matchLast.id));
+          return;
+        }
+      }
       const firstCat = String(sidebarCategories[0].id);
       setSelectedCategory(firstCat);
       FocusMemory.set("category-sidebar", firstCat);
@@ -1497,6 +1569,18 @@ export default function LiveTVScreen() {
         isSidebarFocusedRef.current = true;
         focusedIdRef.current = "";
         pulseSidebarFocus();
+      }
+      return;
+    }
+    // For phone: if current selectedCategory is valid and in visible categories, preserve it!
+    if (!remoteFocusEnabled || isPhone) {
+      if (selectedCategory && sidebarCategories.some((c) => isSameCat(c.id, selectedCategory))) {
+        return;
+      }
+      if (!selectedCategory) {
+        const firstCat = String(sidebarCategories[0].id);
+        setSelectedCategory(firstCat);
+        FocusMemory.set("category-sidebar", firstCat);
       }
       return;
     }
@@ -1557,6 +1641,7 @@ export default function LiveTVScreen() {
     isSidebarFocusedRef.current = false;
     focusedIdRef.current = "";
     FocusMemory.set("category-sidebar", catId);
+    lastLiveTvCategoryId = catId;
     setSelectedCategory(catId);
     setSearchQuery("");
     setDebouncedQuery("");

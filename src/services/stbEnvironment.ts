@@ -55,25 +55,25 @@ export const BUFFER_PROFILES: Record<BufferProfile, BufferTuning & { label: stri
     profile: "instant",
     label: "Instant",
     detail: "Fastest channel change. Needs a steady connection.",
-    liveCacheMs: 1500,
-    vodCacheMs: 1200,
-    stallTimeoutMs: 10000,
+    liveCacheMs: 2000,
+    vodCacheMs: 2000,
+    stallTimeoutMs: 20000,
   },
   balanced: {
     profile: "balanced",
     label: "Balanced",
     detail: "Fast zapping with enough buffer to absorb minor network variance.",
-    liveCacheMs: 3000,
-    vodCacheMs: 2500,
-    stallTimeoutMs: 15000,
+    liveCacheMs: 4000,
+    vodCacheMs: 3500,
+    stallTimeoutMs: 30000,
   },
   smooth: {
     profile: "smooth",
     label: "Smooth",
     detail: "Deepest buffer. Best on Wi-Fi or a congested line.",
-    liveCacheMs: 5000,
-    vodCacheMs: 4000,
-    stallTimeoutMs: 20000,
+    liveCacheMs: 8000,
+    vodCacheMs: 6000,
+    stallTimeoutMs: 45000,
   },
 };
 
@@ -191,21 +191,21 @@ class StbEnvironmentImpl {
       if (this.settings.bufferProfile === "instant") {
         return {
           profile: "instant",
-          liveCacheMs: 1500,
-          vodCacheMs: 1200,
-          stallTimeoutMs: 10000,
+          liveCacheMs: 2000,
+          vodCacheMs: 2000,
+          stallTimeoutMs: 20000,
         };
       }
 
       if (this.settings.bufferProfile === "balanced") {
         const liveMs = Number.isFinite(serverBufSec) && serverBufSec > 0
-          ? Math.min(4500, Math.max(2500, Math.round(serverBufSec * 250)))
-          : 3000;
+          ? Math.min(6000, Math.max(3000, Math.round(serverBufSec * 500)))
+          : 4000;
         return {
           profile: "balanced",
           liveCacheMs: liveMs,
-          vodCacheMs: 2500,
-          stallTimeoutMs: 15000,
+          vodCacheMs: 3500,
+          stallTimeoutMs: 30000,
         };
       }
     }

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { View, TouchableOpacity, StyleSheet, FlatList, Animated, StyleProp, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { Category } from '../store/portalStore';
@@ -15,6 +15,17 @@ interface CategoryPillsProps {
   contentContainerStyle?: StyleProp<ViewStyle>;
 }
 
+const isSameId = (a: any, b: any): boolean => {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  const sa = String(a).trim();
+  const sb = String(b).trim();
+  if (sa === sb) return true;
+  const rawA = sa.includes(":") ? sa.split(":")[1] : sa;
+  const rawB = sb.includes(":") ? sb.split(":")[1] : sb;
+  return rawA === rawB;
+};
+
 const PillItem = React.memo(({ item, isActive, isFocused, onSelect, onFocus, onBlur, index }: {
   item: Category;
   isActive: boolean;
@@ -25,7 +36,7 @@ const PillItem = React.memo(({ item, isActive, isFocused, onSelect, onFocus, onB
   index: number;
 }) => {
   const handleSelect = useCallback(() => {
-    onSelect(item.id);
+    onSelect(String(item.id));
   }, [onSelect, item.id]);
 
   const handleFocus = useCallback(() => {
@@ -142,20 +153,26 @@ export default function CategoryPills({
     }
   }, []);
 
+  // Derive the active category id: prefer matching selectedId, otherwise fallback to first visible category
+  const activeId = useMemo(() => {
+    if (selectedId && categories.some((c) => isSameId(c.id, selectedId))) {
+      return String(selectedId);
+    }
+    return categories[0]?.id ? String(categories[0].id) : "";
+  }, [categories, selectedId]);
+
   // Auto-scroll to selected item on mount/update (only if not focusing manually to avoid fighting)
   useEffect(() => {
-    if (categories.length > 0 && selectedId && !focusedId) {
-      const index = categories.findIndex((c) => c.id === selectedId);
+    if (categories.length > 0 && activeId && !focusedId) {
+      const index = categories.findIndex((c) => isSameId(c.id, activeId));
       if (index !== -1) {
         // Delay slightly to ensure layout
         setTimeout(() => {
           if (isMounted.current) scrollToIndex(index);
-        }, 200);
+        }, 150);
       }
     }
-  }, [selectedId, categories, focusedId, scrollToIndex]);
-
-
+  }, [activeId, categories, focusedId, scrollToIndex]);
 
   const handleFocus = useCallback((id: string, idx: number) => {
     setFocusedId(id);
@@ -175,13 +192,13 @@ export default function CategoryPills({
           <PillItem
             item={item}
             index={index}
-            isActive={selectedId === item.id}
-            isFocused={focusedId === item.id}
+            isActive={isSameId(activeId, item.id)}
+            isFocused={focusedId === String(item.id)}
             onSelect={onSelect}
             onFocus={handleFocus}
             onBlur={handleBlur}
           />
-        ), [selectedId, focusedId, onSelect, handleFocus, handleBlur])}
+        ), [activeId, focusedId, onSelect, handleFocus, handleBlur])}
         keyExtractor={(item) => String(item.id)}
         horizontal
         showsHorizontalScrollIndicator={false}

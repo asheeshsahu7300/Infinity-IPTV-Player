@@ -121,6 +121,167 @@ function detectNetworkQuality(
 }
 
 /**
+ * Global flag tracking whether hardware/system AC3 decoding has failed on this device.
+ * Once MediaCodec throws [-49999], we remember that this specific Android device
+ * lacks AC3 support and skip AC3/E-AC3 for all subsequent channel changes.
+ */
+let hasAc3DecoderFailedOnDevice = false;
+
+/**
+ * Checks whether an audio track uses AC3 / E-AC3 (Dolby Digital / Digital Plus).
+ */
+export const isAc3Audio = (track: any): boolean => {
+  const codec = String(
+    track?.format?.sampleMimeType ||
+    track?.mimeType ||
+    track?.raw?.sampleMimeType ||
+    track?.raw?.mimeType ||
+    ""
+  ).toLowerCase();
+  const id = String(track?.id || "").toLowerCase();
+  const title = String(track?.title || track?.name || "").toLowerCase();
+
+  return (
+    codec === "audio/ac3" ||
+    codec === "audio/eac3" ||
+    codec.includes("ac3") ||
+    codec.includes("eac3") ||
+    codec.includes("dolby") ||
+    id.includes("ac3") ||
+    id.includes("eac3") ||
+    title.includes("ac3") ||
+    title.includes("eac3") ||
+    title.includes("dolby")
+  );
+};
+
+/**
+ * Checks whether an audio track uses a universally supported Android audio codec:
+ *   AAC       → audio/mp4a-latm
+ *   MP3       → audio/mpeg
+ *   Opus      → audio/opus
+ *   Vorbis    → audio/vorbis
+ */
+export const isUniversalAudio = (track: any): boolean => {
+  const codec = String(
+    track?.format?.sampleMimeType ||
+    track?.mimeType ||
+    track?.raw?.sampleMimeType ||
+    track?.raw?.mimeType ||
+    ""
+  ).toLowerCase();
+
+  return (
+    codec === "audio/mp4a-latm" ||
+    codec === "audio/mpeg" ||
+    codec === "audio/opus" ||
+    codec === "audio/vorbis" ||
+    codec.includes("mp4a") ||
+    codec.includes("aac") ||
+    codec.includes("mpeg") ||
+    codec.includes("opus") ||
+    codec.includes("vorbis")
+  );
+};
+
+/**
+ * Checks decoder capability for an audio track:
+ * - Universal codecs (AAC, MP3, Opus, Vorbis) are always supported.
+ * - AC3 / E-AC3 is allowed if the device/ExoPlayer reports `isSupported === true`
+ *   AND has not experienced a decoder failure on this device.
+ */
+export const isAudioTrackSupported = (track: any): boolean => {
+  if (!track) return false;
+
+  // If native ExoPlayer explicitly flagged track as unsupported
+  if (track.isSupported === false || track.raw?.isSupported === false) {
+    return false;
+  }
+
+  // If this device previously failed to decode AC3, treat all AC3/EAC3 as unsupported
+  if (hasAc3DecoderFailedOnDevice && isAc3Audio(track)) {
+    return false;
+  }
+
+  return true;
+};
+
+/**
+ * Smart audio track selector implementing the decision pipeline:
+ *
+ *   Detect audio tracks
+ *          ↓
+ *      Check codec
+ *          ↓
+ *   AAC/MP3/Opus → preferred
+ *          ↓
+ *       AC3/E-AC3
+ *          ↓
+ *   Check decoder capability
+ *          ↓
+ *   Supported → allow
+ *   Unsupported → skip
+ *          ↓
+ *   Select next compatible audio track (with preferred language: Hindi / English / active)
+ */
+export function resolveOptimalAudioTrack(
+  tracks: any[],
+  currentTrack?: any,
+  selectedId?: string | number,
+  preferredLanguage?: string
+): any {
+  if (!tracks || tracks.length === 0) return undefined;
+
+  // 1. If user explicitly picked a track, keep it if it exists
+  if (selectedId !== undefined && selectedId !== null && selectedId !== -1) {
+    const existing = tracks.find((t) => String(t.id) === String(selectedId));
+    if (existing && isAudioTrackSupported(existing)) return existing;
+  }
+
+  // 2. Filter down to candidate tracks whose decoder capability is supported
+  const supportedTracks = tracks.filter((t) => isAudioTrackSupported(t));
+  const candidatePool = supportedTracks.length > 0 ? supportedTracks : tracks;
+
+  // 3. Priority Tier A: Universal codecs (AAC, MP3, Opus, Vorbis)
+  const universalTracks = candidatePool.filter((t) => isUniversalAudio(t) && !isAc3Audio(t));
+
+  // Helper to match language preference (e.g. Hindi, English)
+  const matchLang = (list: any[]) => {
+    if (preferredLanguage) {
+      const pref = preferredLanguage.toLowerCase();
+      const found = list.find((t) => {
+        const lang = String(t.language || "").toLowerCase();
+        const title = String(t.title || t.name || "").toLowerCase();
+        return lang.includes(pref) || title.includes(pref);
+      });
+      if (found) return found;
+    }
+    // Prefer non-empty language
+    return list.find((t) => t.language && t.language !== "und") || list[0];
+  };
+
+  if (universalTracks.length > 0) {
+    // If current player-selected track is in the universal tier, preserve it
+    if (currentTrack && universalTracks.some((t) => String(t.id) === String(currentTrack.id))) {
+      return currentTrack;
+    }
+    return matchLang(universalTracks);
+  }
+
+  // 4. Priority Tier B: AC3/E-AC3 tracks that are supported
+  const supportedAc3 = candidatePool.filter((t) => isAc3Audio(t) && isAudioTrackSupported(t));
+  if (supportedAc3.length > 0) {
+    if (currentTrack && supportedAc3.some((t) => String(t.id) === String(currentTrack.id))) {
+      return currentTrack;
+    }
+    return matchLang(supportedAc3);
+  }
+
+  // 5. Fallback to currentTrack or first candidate
+  return currentTrack || candidatePool[0];
+}
+
+/**
  * Adaptive buffer size (ms) tuned per network quality and content type.
  * 4K streams get 1.5× more buffer — decode latency on MediaCodec is higher.
  */
@@ -190,10 +351,10 @@ function resolveCacheMs(
   is4K: boolean,
   boost: number
 ): number {
-  const preference = isLive ? (tuning?.liveCacheMs || 3000) : (tuning?.vodCacheMs || 2500);
+  const preference = isLive ? (tuning?.liveCacheMs || 4000) : (tuning?.vodCacheMs || 3500);
   const floor = calcNetworkCacheMs(quality, isLive, is4K);
-  // Cap at 15s for Live TV (to prevent unbounded live latency drift) and 30s for VOD / 4K
-  const maxCap = isLive ? (is4K ? 15000 : 10000) : (is4K ? 30000 : 20000);
+  // Cap at 20s for Live TV (to prevent unbounded live latency drift) and 40s for VOD / 4K
+  const maxCap = isLive ? (is4K ? 20000 : 15000) : (is4K ? 40000 : 30000);
   return Math.min(maxCap, Math.round(Math.max(preference, floor) * boost));
 }
 
@@ -523,8 +684,10 @@ export default function PlayerScreen() {
         active4K,
         boost
       );
-      networkCacheMsRef.current = resolved;
-      setNetworkCacheMs(resolved);
+      if (resolved !== networkCacheMsRef.current) {
+        networkCacheMsRef.current = resolved;
+        setNetworkCacheMs(resolved);
+      }
       return resolved;
     },
     [isLive, is4K, isDetected4K]
@@ -583,6 +746,7 @@ export default function PlayerScreen() {
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bufferingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stablePlaybackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveReconnectIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seekTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -748,6 +912,7 @@ export default function PlayerScreen() {
       safeStorage.removeItem("resume_player_state").catch(() => { });
       if (recoveryTimeoutRef.current) clearTimeout(recoveryTimeoutRef.current);
       if (stablePlaybackTimerRef.current) clearTimeout(stablePlaybackTimerRef.current);
+      if (retryResetTimerRef.current) clearTimeout(retryResetTimerRef.current);
       if (liveReconnectIntervalRef.current) clearInterval(liveReconnectIntervalRef.current);
       if (seekSettlingTimeoutRef.current) clearTimeout(seekSettlingTimeoutRef.current);
       if (seekTimeout.current) clearTimeout(seekTimeout.current);
@@ -1630,6 +1795,10 @@ export default function PlayerScreen() {
         clearTimeout(stablePlaybackTimerRef.current);
         stablePlaybackTimerRef.current = null;
       }
+      if (retryResetTimerRef.current) {
+        clearTimeout(retryResetTimerRef.current);
+        retryResetTimerRef.current = null;
+      }
       hasStartedPlayingRef.current = false;
       setHasStartedPlaying(false);
       upNextArmedRef.current = false;
@@ -1774,6 +1943,18 @@ export default function PlayerScreen() {
       bufferBoostRef.current = 1;
       stallCountRef.current = 0;
       updateResolvedCache(1);
+      if (recoveryTimeoutRef.current) {
+        clearTimeout(recoveryTimeoutRef.current);
+        recoveryTimeoutRef.current = null;
+      }
+      if (stablePlaybackTimerRef.current) {
+        clearTimeout(stablePlaybackTimerRef.current);
+        stablePlaybackTimerRef.current = null;
+      }
+      if (retryResetTimerRef.current) {
+        clearTimeout(retryResetTimerRef.current);
+        retryResetTimerRef.current = null;
+      }
       hasStartedPlayingRef.current = false;
       setHasStartedPlaying(false);
       upNextArmedRef.current = false;
@@ -1979,6 +2160,21 @@ export default function PlayerScreen() {
     return () => { PlaybackState.setActive(false); sub.remove(); };
   }, [stopLiveReconnectLoop]);
 
+  // ── MAG Portal Session Keepalive Watchdog ─────────────────────────────────
+  // MAG / Ministra / Stalker middleware requires periodic watchdog pings. Without this,
+  // the server reaps the session after watchdog_timeout (60-90s) and cuts off stream segments,
+  // causing the player to stall and rebuffer every 1 minute.
+  useEffect(() => {
+    if (!isLive || activePortal?.type !== "mag") return;
+    const periodMs = Math.min(portalApi.watchdogPeriodMs(activePortal), 30000);
+    const interval = setInterval(() => {
+      if (mountedRef.current && isPlayingRef.current && activePortal) {
+        portalApi.watchdog(activePortal).catch(() => {});
+      }
+    }, periodMs);
+    return () => clearInterval(interval);
+  }, [isLive, activePortal]);
+
   // ── Derived values ────────────────────────────────────────────────────────
   const progressPercent = isLive
     ? 0
@@ -2051,6 +2247,12 @@ export default function PlayerScreen() {
 
       const now = Date.now();
 
+      // If native player is actively rendering frames, it is NOT frozen!
+      if (playerRef.current?.isPlaying?.()) {
+        lastProgressTimeRef.current = now;
+        return;
+      }
+
       /*
        * If the stream has not yet started playing (waiting for the initial
        * buffer and the first frame).
@@ -2064,7 +2266,7 @@ export default function PlayerScreen() {
        */
       if (!hasStartedPlayingRef.current) {
         const timeSinceTune = now - lastProgressTimeRef.current;
-        const initialTimeout = is4K ? 25000 : 15000;
+        const initialTimeout = is4K ? 30000 : 20000;
         if (timeSinceTune > initialTimeout) {
           console.warn(`[Player] ${isLive ? "Live" : "VOD"} stream failed to render initial frames after ${timeSinceTune}ms. Triggering reconnect.`);
           lastProgressTimeRef.current = now;
@@ -2080,7 +2282,7 @@ export default function PlayerScreen() {
       // If player is actively in a legitimate buffering phase:
       if (isBufferingRef.current) {
         const buffDuration = bufferingStartedRef.current ? now - bufferingStartedRef.current : 0;
-        const maxBufferingAllowed = is4K ? 35000 : 25000;
+        const maxBufferingAllowed = is4K ? 45000 : 35000;
         if (buffDuration > maxBufferingAllowed) {
           console.warn(`[Player] ${isLive ? "Live" : "VOD"} stream buffer stalled for ${buffDuration}ms. Scheduling recovery.`);
           lastProgressTimeRef.current = now;
@@ -2092,21 +2294,12 @@ export default function PlayerScreen() {
       // Stream was actively playing: check if progress has frozen mid-stream.
       const timeSinceLastProgress = now - lastProgressTimeRef.current;
       const frozenThreshold = isLive
-        ? (is4K ? 20000 : 12000)
-        : (is4K ? 35000 : 25000);
+        ? (is4K ? 40000 : 30000)
+        : (is4K ? 50000 : 45000);
       const canCheckFreeze = isLive || durationRef.current > 0;
 
       if (canCheckFreeze && timeSinceLastProgress > frozenThreshold) {
-        /*
-         * The clock's one strike. See `clockDistrustedRef`.
-         *
-         * Reaching here means the reported position has not changed for the
-         * whole window while the player has not reported a stall — which is
-         * either a frozen picture or a clock that is not a clock. The second
-         * is both more common and far cheaper to be wrong about, so it is
-         * assumed first, once.
-         */
-        if (!clockDistrustedRef.current && positionEverMovedRef.current) {
+        if (!clockDistrustedRef.current) {
           clockDistrustedRef.current = true;
           positionEverMovedRef.current = false;
           lastProgressTimeRef.current = now;
@@ -2249,9 +2442,12 @@ export default function PlayerScreen() {
             if (aTracks && aTracks.length > 0) {
               setAudioTracks(aTracks);
               if (selectedAudioTrack === undefined) {
-                const initialTrackId = currentAudioTrack?.id ?? aTracks[0]?.id;
-                if (initialTrackId !== undefined) {
-                  setSelectedAudioTrack(initialTrackId);
+                const optimal = resolveOptimalAudioTrack(aTracks, currentAudioTrack, selectedAudioTrack);
+                if (optimal?.id !== undefined) {
+                  setSelectedAudioTrack(optimal.id);
+                  if (currentAudioTrack && String(optimal.id) !== String(currentAudioTrack.id)) {
+                    playerRef.current?.selectAudioTrack(optimal.id);
+                  }
                 }
               }
             }
@@ -2272,9 +2468,12 @@ export default function PlayerScreen() {
             if (aTracks && aTracks.length > 0) {
               setAudioTracks(aTracks);
               if (selectedAudioTrack === undefined) {
-                const initialTrackId = currentAudioTrack?.id ?? aTracks[0]?.id;
-                if (initialTrackId !== undefined) {
-                  setSelectedAudioTrack(initialTrackId);
+                const optimal = resolveOptimalAudioTrack(aTracks, currentAudioTrack, selectedAudioTrack);
+                if (optimal?.id !== undefined) {
+                  setSelectedAudioTrack(optimal.id);
+                  if (currentAudioTrack && String(optimal.id) !== String(currentAudioTrack.id)) {
+                    playerRef.current?.selectAudioTrack(optimal.id);
+                  }
                 }
               }
             }
@@ -2308,10 +2507,10 @@ export default function PlayerScreen() {
             lastProgressPositionRef.current = positionRef.current;
             bufferingStartedRef.current = null;
 
-            if (stablePlaybackTimerRef.current) clearTimeout(stablePlaybackTimerRef.current);
-            stablePlaybackTimerRef.current = setTimeout(() => {
+            if (retryResetTimerRef.current) clearTimeout(retryResetTimerRef.current);
+            retryResetTimerRef.current = setTimeout(() => {
               if (mountedRef.current && isPlayingRef.current) retryCount.current = 0;
-              stablePlaybackTimerRef.current = null;
+              retryResetTimerRef.current = null;
             }, 20000);
           }}
           onProgress={(currentMs, durationMs) => {
@@ -2322,32 +2521,11 @@ export default function PlayerScreen() {
               setDuration(durationMs);
             }
 
-            /*
-             * Everything below this line is gated on the clock having MOVED.
-             *
-             * This handler used to run unconditionally, and that is what made
-             * the recovery machinery dead code. `timeUpdate` fires every 250ms
-             * whether or not anything is decoding, so:
-             *
-             *   - the `recoveryTimeoutRef` disarm at the top tore down any
-             *     grace-period reconnect within a quarter second of it being
-             *     armed, which meant `onError` and `bufferStalled` — both of
-             *     which schedule with a grace period — could never fire;
-             *   - `lastProgressTimeRef` was refreshed on every tick, so the
-             *     freeze watchdog's "no progress for 12s" could never become
-             *     true;
-             *   - the VOD branch's own position check was defeated by its
-             *     `|| currentMs > 0`, which is satisfied by any non-zero
-             *     position, frozen or not;
-             *   - and live had no position check at all.
-             *
-             * A frozen stream therefore sat spinning forever instead of
-             * reconnecting. `positionEverMovedRef` is what lets live share this
-             * test safely — see the note on it.
-             */
             const moved = currentMs !== lastProgressPositionRef.current;
-            if (moved) positionEverMovedRef.current = true;
-            if (!moved && positionEverMovedRef.current) {
+            if (moved && !clockDistrustedRef.current) {
+              positionEverMovedRef.current = true;
+            }
+            if (!moved && positionEverMovedRef.current && !clockDistrustedRef.current) {
               handleNormalizedProgress(currentMs, durationMs);
               return;
             }
@@ -2356,20 +2534,8 @@ export default function PlayerScreen() {
               clearTimeout(recoveryTimeoutRef.current);
               recoveryTimeoutRef.current = null;
             }
-            /*
-             * Only a clock that actually moved proves the picture is up.
-             *
-             * The fallback above — accept any tick until movement has been
-             * seen once — is there to keep the freeze watchdog off the back of
-             * streams with a pinned clock. Letting it also decide "playback
-             * has started" would undo the VOD loading card fix entirely: the
-             * first tick of a title that begins at 0 has `moved === false` and
-             * `positionEverMovedRef === false`, so it lands here about 250ms
-             * in, which is exactly the premature signal the card was moved off
-             * `onLoad` to escape. `onPlaying` is the other way in, and it is
-             * the one that fires for a stream whose clock never moves.
-             */
-            if (moved && !hasStartedPlayingRef.current) {
+
+            if ((moved || clockDistrustedRef.current) && !hasStartedPlayingRef.current) {
               hasStartedPlayingRef.current = true;
               setHasStartedPlaying(true);
             }
@@ -2405,7 +2571,7 @@ export default function PlayerScreen() {
               handleReachedEndRef.current();
             }
           }}
-          onError={(e) => {
+          onError={(e, liveTracks) => {
             console.warn("[ExpoVideo] onError", e);
             const errStr = String((e as any)?.message || e || "");
             const isAudioDecoderError =
@@ -2415,11 +2581,37 @@ export default function PlayerScreen() {
               errStr.includes("audio/");
 
             if (isAudioDecoderError) {
-              if (audioTracks.length > 1) {
-                const currentIdx = audioTracks.findIndex((t) => String(t.id) === String(selectedAudioTrack));
-                const nextTrack = audioTracks.find((_, idx) => idx !== currentIdx);
+              const allTracks = (liveTracks && liveTracks.length > 0)
+                ? liveTracks
+                : (playerRef.current?.getAudioTracks?.() || audioTracks);
+
+              if (allTracks.length > 0 && audioTracks.length === 0) {
+                setAudioTracks(allTracks);
+              }
+
+              const failedId = String(selectedAudioTrack ?? "");
+              const failedTrack = allTracks.find((t: any) => String(t.id) === failedId);
+
+              // If the failed track was AC3/E-AC3, flag device AC3 decoder as unsupported
+              if (failedTrack && isAc3Audio(failedTrack)) {
+                hasAc3DecoderFailedOnDevice = true;
+                console.warn("[Player] Device lacks AC3/E-AC3 hardware decoder. Auto-skipping AC3 for this session.");
+              }
+
+              if (allTracks.length > 1) {
+                // Select next compatible track that is supported and not the failed one
+                const compatibleCandidates = allTracks.filter(
+                  (t: any) => String(t.id) !== failedId && isAudioTrackSupported(t)
+                );
+                const nextTrack =
+                  compatibleCandidates.find((t: any) => isUniversalAudio(t)) ||
+                  compatibleCandidates[0] ||
+                  allTracks.find((t: any) => String(t.id) !== failedId);
+
                 if (nextTrack) {
-                  console.log(`[Player] Audio decoder failed on track ${selectedAudioTrack}. Auto-switching to track ${nextTrack.id} (${nextTrack.title})`);
+                  console.log(
+                    `[Player] Audio decoder failed on track ${selectedAudioTrack}. Auto-switching to compatible track ${nextTrack.id} (${nextTrack.title || nextTrack.language})`
+                  );
                   setSelectedAudioTrack(nextTrack.id);
                   playerRef.current?.selectAudioTrack(nextTrack.id);
                   return;
@@ -2427,18 +2619,28 @@ export default function PlayerScreen() {
               }
 
               // If single audio track or no alternative, disable audio so video continues playing smoothly without crashing
-              console.warn(`[Player] Audio decoder unavailable for stream (${errStr.slice(0, 80)}). Disabling audio to maintain video playback.`);
+              console.warn(
+                `[Player] Audio decoder unavailable for stream (${errStr.slice(0, 80)}). Disabling audio to maintain video playback.`
+              );
               setSelectedAudioTrack(-1);
               playerRef.current?.selectAudioTrack(-1);
               return;
             }
 
+            const isSourceError =
+              errStr.includes("Source error") ||
+              errStr.includes("SocketTimeoutException") ||
+              errStr.includes("HttpDataSource") ||
+              errStr.includes("IOException") ||
+              errStr.includes("BehindLiveWindowException");
+
             const now = Date.now();
             if (now - lastErrorTimeRef.current < 1000) return;
             lastErrorTimeRef.current = now;
             if (!isRetryingRef.current && !playbackFailed) {
-              // Grant grace period for transient decoder/network blip to allow native auto-recovery
-              schedulePlayerRecovery("onError", false);
+              // Fatal network and source errors cannot self-recover without reconnecting;
+              // retry immediately instead of stalling for 15s
+              schedulePlayerRecovery(isSourceError ? "sourceError" : "onError", isSourceError);
             }
           }}
         />

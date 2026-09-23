@@ -33,6 +33,8 @@ export interface ExpoVideoPlayerRef {
   selectVideoTrack: (trackIdOrIndex: string | number | undefined) => void;
   reloadSource: () => Promise<void>;
   getPlayer: () => any;
+  isPlaying?: () => boolean;
+  getAudioTracks?: () => NormalizedTrackOption[];
 }
 
 export interface ExpoVideoPlayerProps {
@@ -71,7 +73,7 @@ export interface ExpoVideoPlayerProps {
   onPlaying?: () => void;
   onPaused?: () => void;
   onEnd?: () => void;
-  onError?: (error: any) => void;
+  onError?: (error: any, audioTracks?: NormalizedTrackOption[]) => void;
 }
 
 /**
@@ -80,12 +82,18 @@ export interface ExpoVideoPlayerProps {
 function normalizeAudioTracks(tracks: AudioTrack[]): NormalizedTrackOption[] {
   return (tracks || []).map((t, idx) => {
     const label = t.label || (t as any).name || (t.language ? t.language.toUpperCase() : `Audio ${idx + 1}`);
+    const mime = (t as any).mimeType || (t as any).raw?.sampleMimeType || "";
     return {
       id: t.id ?? idx,
       index: idx,
       title: label,
       name: label,
       language: t.language || "",
+      mimeType: mime,
+      isSupported: (t as any).isSupported !== false,
+      format: {
+        sampleMimeType: mime,
+      },
       raw: t,
     };
   });
@@ -170,32 +178,33 @@ export function calculateExpoBufferOptions({
     ? networkCacheMs / 1000
     : (isLive ? 3.0 : 4.0);
 
-  let minBufferSec = 1.5;
-  let forwardBufferSec = 8.0;
+  let minBufferSec = 0.8;
+  let forwardBufferSec = 30.0;
 
   if (profile === "instant") {
-    // Instant zap: start playback as soon as 0.8s (live) or 1.0s (VOD) is buffered
-    minBufferSec = isLive ? 0.8 : 1.0;
+    // Instant zap: start playback as soon as 0.5s (live) or 0.8s (VOD) is buffered,
+    // while maintaining deep 20s-30s forward buffer to avoid starvation.
+    minBufferSec = isLive ? 0.5 : 0.8;
     forwardBufferSec = isLive
-      ? Math.max(2.0, baseCacheSec)
-      : Math.max(4.0, baseCacheSec * 1.5);
+      ? Math.max(20.0, baseCacheSec * 3)
+      : Math.max(30.0, baseCacheSec * 4);
   } else if (profile === "smooth") {
-    // Smooth: deep buffer to absorb high jitter / weak Wi-Fi
-    minBufferSec = isLive ? 2.5 : 3.0;
+    // Smooth: higher start cushion for jittery/weak Wi-Fi
+    minBufferSec = isLive ? 2.0 : 2.5;
     forwardBufferSec = isLive
-      ? Math.max(10.0, baseCacheSec * 2.0)
-      : Math.max(18.0, baseCacheSec * 2.5);
+      ? Math.max(45.0, baseCacheSec * 5)
+      : Math.max(60.0, baseCacheSec * 6);
   } else {
-    // Balanced (default)
-    minBufferSec = isLive ? 1.5 : 2.0;
+    // Balanced (default): fast <1s start (0.8s live, 1.2s VOD) with deep 30s-50s forward buffer
+    minBufferSec = isLive ? 0.8 : 1.2;
     forwardBufferSec = isLive
-      ? Math.max(5.0, baseCacheSec * 1.5)
-      : Math.max(10.0, baseCacheSec * 2.0);
+      ? Math.max(30.0, baseCacheSec * 4)
+      : Math.max(50.0, baseCacheSec * 5);
   }
 
   if (is4K) {
     minBufferSec += 0.5;
-    forwardBufferSec = Math.round(forwardBufferSec * 1.3 * 10) / 10;
+    forwardBufferSec = Math.max(forwardBufferSec, isLive ? 40.0 : 60.0);
   }
 
   return {
@@ -203,6 +212,7 @@ export function calculateExpoBufferOptions({
     minBufferForPlayback: Math.round(minBufferSec * 10) / 10,
     maxBufferBytes: 0,
     prioritizeTimeOverSizeThreshold: true,
+    waitsToMinimizeStalling: true,
   };
 }
 
@@ -299,16 +309,23 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
       }
     });
 
+    const lastBufferOptionsRef = useRef<string>("");
+
     // Dynamic buffer tuning when profile, network cache, or stream type change
     useEffect(() => {
       if (!player) return;
       try {
-        player.bufferOptions = calculateExpoBufferOptions({
+        const newOpts = calculateExpoBufferOptions({
           networkCacheMs,
           bufferTuning,
           isLive,
           is4K,
         });
+        const serialized = JSON.stringify(newOpts);
+        if (lastBufferOptionsRef.current !== serialized) {
+          lastBufferOptionsRef.current = serialized;
+          player.bufferOptions = newOpts;
+        }
       } catch {}
     }, [player, networkCacheMs, bufferTuning, isLive, is4K]);
 
@@ -494,7 +511,8 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           }
         } else if (status === "error") {
           onBuffering?.(false);
-          onError?.(error || new Error("Playback error"));
+          const aTracks = normalizeAudioTracks(player.availableAudioTracks || []);
+          onError?.(error || new Error("Playback error"), aTracks);
         } else if (status === "idle" && isLive && !isFirstLoadRef.current) {
           // If Live TV reaches idle state after having started, the stream dropped/ended
           onEnd?.();
@@ -679,6 +697,14 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           }
         },
         getPlayer: () => player,
+        isPlaying: () => {
+          try {
+            return !!player?.playing;
+          } catch {
+            return false;
+          }
+        },
+        getAudioTracks: () => normalizeAudioTracks(player.availableAudioTracks || []),
       }),
       [player, streamUrl, headers, paused, autoPlay, applyAudioTrack, applySubtitleTrack, applyVideoTrack]
     );

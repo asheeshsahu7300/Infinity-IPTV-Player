@@ -403,7 +403,7 @@ export default function SettingsScreen() {
         try {
           await usePortalStore.getState().setActivePortal(null);
           usePortalStore.getState().clearPortalData();
-        } catch {}
+        } catch { }
         router.replace('/portals');
       },
     });
@@ -475,7 +475,7 @@ export default function SettingsScreen() {
                   <Text style={S.largeValue} numberOfLines={1}>{activePortal.config.url}</Text>
                 </View>
                 <View style={S.infoCol}>
-                  <Text style={S.tinyLabel}>DEVICE MAC ADDRESS</Text>
+                  <Text style={S.tinyLabel}>MAC ADDRESS</Text>
                   <Text style={S.largeValue}>{activePortal.config.mac || '00:1A:79:XX:XX:XX'}</Text>
                 </View>
               </View>
