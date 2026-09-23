@@ -125,6 +125,27 @@ index 1c7a55c..b6ade8f 100644
      .setLooper(context.mainLooper)
      .setLoadControl(loadControl)
      .build()
+@@ -194,6 +245,20 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+     }
+ 
+     override fun onTracksChanged(tracks: Tracks) {
++      for (group in tracks.groups) {
++        for (i in 0 until group.length) {
++          val format = group.getTrackFormat(i)
++
++          android.util.Log.i(
++            "ExpoVideo",
++            "TRACK id=${format.id}, mime=${format.sampleMimeType}, " +
++              "codec=${format.codecs}, channels=${format.channelCount}, " +
++              "sampleRate=${format.sampleRate}, bitrate=${format.bitrate}, " +
++              "supported=${group.isTrackSupported(i)}"
++          )
++        }
++      }
++
+       val oldSubtitleTracks = ArrayList(subtitles.availableSubtitleTracks)
+       val oldAudioTracks = ArrayList(audioTracks.availableAudioTracks)
+       val oldCurrentTrack = subtitles.currentSubtitleTrack
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerAudioTracks.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerAudioTracks.kt
 index 0cdcc0b..87a278f 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerAudioTracks.kt
