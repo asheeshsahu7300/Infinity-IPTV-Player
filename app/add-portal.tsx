@@ -372,7 +372,7 @@ export default function AddPortalScreen() {
             <ThemedInput isFocused={focusedField === "name"}>
               <TextInput
                 style={S.textInput}
-                placeholder="TV"
+                placeholder="Enter the name"
                 placeholderTextColor="rgba(255, 255, 255, 0.65)"
                 value={name}
                 onChangeText={setName}
@@ -387,7 +387,7 @@ export default function AddPortalScreen() {
             <ThemedInput isFocused={focusedField === "url"}>
               <TextInput
                 style={S.textInput}
-                placeholder={type === "m3u" ? "http://livebox.pro/playlist.m3u" : "http://livebox.pro/"}
+                placeholder={type === "m3u" ? "http://playlist.m3u" : "http://portal-url.com"}
                 placeholderTextColor="rgba(255, 255, 255, 0.65)"
                 value={url}
                 onChangeText={setUrl}
@@ -437,7 +437,7 @@ export default function AddPortalScreen() {
               <ThemedInput isFocused={focusedField === "mac"}>
                 <TextInput
                   style={S.textInput}
-                  placeholder="00:1a:79:bc:ad:4a"
+                  placeholder="00:1a:79:xx:xx:xx"
                   placeholderTextColor="rgba(255, 255, 255, 0.65)"
                   value={mac}
                   onChangeText={setMac}

@@ -17,7 +17,7 @@ import { CinematicBackground, updateCinematicBackground } from "../src/component
 import CategorySidebar from "../src/components/CategorySidebar";
 import CategoryPills from "../src/components/CategoryPills";
 import { AppBootManager } from "../src/services/AppBootManager";
-import { filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
+import { bareCategoryId, filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
 import { useNetworkActivity } from "../src/services/networkActivity";
 import { Focusable, FocusGroup, FocusMemory, useInitialFocusPulse, useIsFocusTrapped } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
@@ -715,7 +715,14 @@ export default function SeriesScreen() {
       if (portal.type === "m3u") {
         cats = await new M3UApi({ url: portal.config.url }).getSeriesCategories();
       } else if (portal.type === "xtream") {
-        cats = await xtreamApiRef.current!.getSeriesCategories();
+        if (!xtreamApiRef.current) {
+          xtreamApiRef.current = new XtreamApi({
+            url: portal.config.url,
+            username: portal.config.username!,
+            password: portal.config.password!,
+          });
+        }
+        cats = await xtreamApiRef.current.getSeriesCategories();
       } else {
         cats = await portalApi.getSeriesCategories(portal);
       }
@@ -724,33 +731,64 @@ export default function SeriesScreen() {
         type: "series" as const,
       }));
 
+      const currentCategories = usePortalStore.getState().categories || [];
+      const existingValidSeries = currentCategories.filter(
+        (c) => c.type === "series" && c.name && !/^\d+$/.test(c.name.trim())
+      );
+
+      // If API returned empty categories and we already have valid named categories in store, do NOT overwrite
+      if (fetchedSeriesCats.length === 0 && existingValidSeries.length > 0) {
+        return;
+      }
+
       // Fallback: derive categories from cached/store Series items if API returns empty
       if (fetchedSeriesCats.length === 0 && allSeriesCacheRef.current.length > 0) {
+        const catNameById = new Map<string, string>();
+        for (const cat of currentCategories) {
+          const bare = bareCategoryId(cat.id);
+          if (cat.name && !/^\d+$/.test(cat.name.trim())) {
+            catNameById.set(bare, cat.name);
+          }
+        }
         const seen = new Set<string>();
         fetchedSeriesCats = [];
         for (const item of allSeriesCacheRef.current) {
           const cId = item.categoryId || item.category;
-          const cName = item.category || item.categoryId;
-          if (cId && !seen.has(cId) && cId !== "all" && cId !== "*") {
-            seen.add(cId);
-            fetchedSeriesCats.push({
-              id: cId.startsWith("series:") ? cId : `series:${cId}`,
-              name: cName || cId,
-              type: "series" as const,
-            });
-          }
+          if (!cId || seen.has(cId) || cId === "all" || cId === "*") continue;
+          seen.add(cId);
+          const bare = bareCategoryId(cId);
+          const rawName = item.category ? String(item.category).trim() : "";
+          const resolvedName =
+            (rawName && !/^\d+$/.test(rawName) ? rawName : null) ||
+            catNameById.get(bare) ||
+            `Category ${bare}`;
+          fetchedSeriesCats.push({
+            id: cId.startsWith("series:") ? cId : `series:${cId}`,
+            name: resolvedName,
+            type: "series" as const,
+          });
         }
       }
 
-      const currentCategories = usePortalStore.getState().categories || [];
       const others = currentCategories.filter((c) => c.type && c.type !== "series");
       if (fetchedSeriesCats.length > 0) {
-        setCategories([...others, ...fetchedSeriesCats]);
+        const isAllDigits = fetchedSeriesCats.every((c) => /^\d+$/.test(c.name.trim()));
+        if (!isAllDigits) {
+          setCategories([...others, ...fetchedSeriesCats]);
+        }
       }
     } catch (e) {
       console.warn("Failed to load series categories:", e);
     }
   }, [setCategories]);
+
+  // Auto-heal corrupted numeric categories
+  useEffect(() => {
+    const sCats = (usePortalStore.getState().categories || []).filter((c) => c.type === "series");
+    if (sCats.length > 0 && sCats.every((c) => /^\d+$/.test(String(c.name || "").trim()))) {
+      loadCategories(true);
+    }
+  }, [loadCategories]);
 
   useEffect(() => {
     if (!activePortal) {

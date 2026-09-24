@@ -224,12 +224,8 @@ const S = StyleSheet.create({
     height: ps(5.4),
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: ps(0.8),
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
   },
-  logo: { width: "95%", height: "95%" },
+  logo: { width: "100%", height: "100%" },
 
   detail: { flex: 1, gap: ph(0.5) },
   titleRow: { flexDirection: "row", alignItems: "center", gap: pw(0.8) },

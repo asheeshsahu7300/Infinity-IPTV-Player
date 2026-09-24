@@ -83,28 +83,45 @@ export class XtreamApi {
 
     return requestManager.request(cacheKey, async () => {
       const cached = await cacheManager.get<any[]>(cacheKey);
-      if (cached) return cached;
+      if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
       await this.auth().catch(() => {});
 
       const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_live_categories`;
-      const res = await requestManager.axiosWithRetry<any[]>({
+      const res = await requestManager.axiosWithRetry<any>({
         method: "get",
         url,
         timeout: 15000,
       });
 
-      const rawData = Array.isArray(res.data) ? res.data : [];
+      const rawData = Array.isArray(res.data)
+        ? res.data
+        : (res.data && typeof res.data === "object" ? Object.values(res.data) : []);
+
       const categories = rawData
-        .filter((c: any) => {
-          const lower = String(c.category_name ?? "").trim().toLowerCase();
-          const id = String(c.category_id ?? "").trim().toLowerCase();
-          return lower !== "all" && lower !== "all channels" && lower !== "all live" && id !== "all" && id !== "*";
+        .map((c: any) => {
+          if (!c || typeof c !== "object") return null;
+          const rawId = String(c.category_id ?? c.id ?? c.gid ?? "").trim();
+          const rawName = String(c.category_name ?? c.name ?? c.genre_name ?? c.title ?? "").trim();
+          return { id: rawId, name: rawName };
         })
-        .map((c: any) => ({
-          id: `live:${c.category_id}`,
-          name: c.category_name,
-          type: "live",
+        .filter((c: any): c is { id: string; name: string } => {
+          if (!c || !c.id || !c.name) return false;
+          const lower = c.name.toLowerCase();
+          const idLower = c.id.toLowerCase();
+          return (
+            lower !== "all" &&
+            lower !== "all channels" &&
+            lower !== "all live" &&
+            idLower !== "all" &&
+            idLower !== "*" &&
+            idLower !== "0"
+          );
+        })
+        .map((c) => ({
+          id: `live:${c.id}`,
+          name: c.name,
+          type: "live" as const,
         }));
 
       if (categories.length > 0) {
@@ -174,28 +191,45 @@ export class XtreamApi {
 
     return requestManager.request(cacheKey, async () => {
       const cached = await cacheManager.get<any[]>(cacheKey);
-      if (cached) return cached;
+      if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
       await this.auth().catch(() => {});
 
       const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_vod_categories`;
-      const res = await requestManager.axiosWithRetry<any[]>({
+      const res = await requestManager.axiosWithRetry<any>({
         method: "get",
         url,
         timeout: 15000,
       });
 
-      const rawData = Array.isArray(res.data) ? res.data : [];
+      const rawData = Array.isArray(res.data)
+        ? res.data
+        : (res.data && typeof res.data === "object" ? Object.values(res.data) : []);
+
       const categories = rawData
-        .filter((c: any) => {
-          const lower = String(c.category_name ?? "").trim().toLowerCase();
-          const id = String(c.category_id ?? "").trim().toLowerCase();
-          return lower !== "all" && lower !== "all movies" && lower !== "all vod" && id !== "all" && id !== "*";
+        .map((c: any) => {
+          if (!c || typeof c !== "object") return null;
+          const rawId = String(c.category_id ?? c.id ?? c.gid ?? "").trim();
+          const rawName = String(c.category_name ?? c.name ?? c.genre_name ?? c.title ?? "").trim();
+          return { id: rawId, name: rawName };
         })
-        .map((c: any) => ({
-          id: `vod:${c.category_id}`,
-          name: c.category_name,
-          type: "vod",
+        .filter((c: any): c is { id: string; name: string } => {
+          if (!c || !c.id || !c.name) return false;
+          const lower = c.name.toLowerCase();
+          const idLower = c.id.toLowerCase();
+          return (
+            lower !== "all" &&
+            lower !== "all movies" &&
+            lower !== "all vod" &&
+            idLower !== "all" &&
+            idLower !== "*" &&
+            idLower !== "0"
+          );
+        })
+        .map((c) => ({
+          id: `vod:${c.id}`,
+          name: c.name,
+          type: "vod" as const,
         }));
 
       if (categories.length > 0) {
@@ -270,28 +304,44 @@ export class XtreamApi {
 
     return requestManager.request(cacheKey, async () => {
       const cached = await cacheManager.get<any[]>(cacheKey);
-      if (cached) return cached;
+      if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
       await this.auth().catch(() => {});
 
       const url = `${this.config.url}/player_api.php?username=${this.config.username}&password=${this.config.password}&action=get_series_categories`;
-      const res = await requestManager.axiosWithRetry<any[]>({
+      const res = await requestManager.axiosWithRetry<any>({
         method: "get",
         url,
         timeout: 15000,
       });
 
-      const rawData = Array.isArray(res.data) ? res.data : [];
+      const rawData = Array.isArray(res.data)
+        ? res.data
+        : (res.data && typeof res.data === "object" ? Object.values(res.data) : []);
+
       const categories = rawData
-        .filter((c: any) => {
-          const lower = String(c.category_name ?? "").trim().toLowerCase();
-          const id = String(c.category_id ?? "").trim().toLowerCase();
-          return lower !== "all" && lower !== "all series" && id !== "all" && id !== "*";
+        .map((c: any) => {
+          if (!c || typeof c !== "object") return null;
+          const rawId = String(c.category_id ?? c.id ?? c.gid ?? "").trim();
+          const rawName = String(c.category_name ?? c.name ?? c.genre_name ?? c.title ?? "").trim();
+          return { id: rawId, name: rawName };
         })
-        .map((c: any) => ({
-          id: `series:${c.category_id}`,
-          name: c.category_name,
-          type: "series",
+        .filter((c: any): c is { id: string; name: string } => {
+          if (!c || !c.id || !c.name) return false;
+          const lower = c.name.toLowerCase();
+          const idLower = c.id.toLowerCase();
+          return (
+            lower !== "all" &&
+            lower !== "all series" &&
+            idLower !== "all" &&
+            idLower !== "*" &&
+            idLower !== "0"
+          );
+        })
+        .map((c) => ({
+          id: `series:${c.id}`,
+          name: c.name,
+          type: "series" as const,
         }));
 
       if (categories.length > 0) {

@@ -10,6 +10,7 @@ import { View, StyleSheet, Dimensions, Platform, ActivityIndicator, StatusBar, S
 import { useLocalSearchParams } from "expo-router";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { isPhone } from "../src/utils/phoneUtils";
+import { isTouch } from "../src/utils/tabletUtils";
 import { ExpoVideoPlayer, ExpoVideoPlayerRef } from "../src/components/ExpoVideoPlayer";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { safeStorage } from "../src/services/safeStorage";
@@ -83,6 +84,25 @@ const END_OF_MEDIA_MS = 2000;
  * to elapse, and cancelling leaves the current episode playing to its end.
  */
 const UP_NEXT_LEAD_MS = 2 * 60 * 1000;
+
+/**
+ * How close to the stated duration an end-of-stream has to land to be believed.
+ *
+ * A container can run a few seconds short of its own metadata, so this cannot
+ * be zero; it also cannot be generous, or a stream that drops a minute before
+ * the credits gets recorded as watched. Fifteen seconds clears real endings
+ * comfortably and catches everything else.
+ */
+const END_OF_TITLE_TOLERANCE_MS = 15000;
+
+/**
+ * How many times one title may have its end-of-stream rejected as a drop.
+ *
+ * The bound is what makes the check safe against duration metadata that
+ * overstates the file: after this many reconnects that each run straight back
+ * into the end, the end is taken at face value.
+ */
+const MAX_TRUNCATED_END_RETRIES = 2;
 
 const ASPECT_RATIOS: { key: AspectRatioType; label: string; contentFit: "contain" | "cover" | "fill" }[] = [
   { key: "fit", label: "Fit", contentFit: "contain" },
@@ -485,6 +505,18 @@ export default function PlayerScreen() {
     if (!isPlayableStreamUrl(raw)) return "";
     return applySameHostStreamProxy(raw, activePortal, params.cmd);
   });
+  /**
+   * The live stream URL, for code that runs outside a render.
+   *
+   * `handleSilentRetry` used to compare the retried URL against the `streamUrl`
+   * captured in its closure, and `streamUrl` is not one of its dependencies —
+   * so after a zap or an episode change it was comparing against whatever was
+   * playing when the screen mounted. When the retry came back with the URL
+   * already set, `setStreamUrl` was a no-op and the guarded `reloadSource()`
+   * did not fire either, and the reconnect quietly did nothing.
+   */
+  const streamUrlRef = useRef(streamUrl);
+  streamUrlRef.current = streamUrl;
 
   useEffect(() => {
     if (params.url && isPlayableStreamUrl(params.url)) {
@@ -817,6 +849,8 @@ export default function PlayerScreen() {
   const accumulatedDelta = useRef(0);
   const hasSetInitialPosition = useRef(false);
   const savedResumePosition = useRef(0);
+  /** Attempts left to land the resume seek; see `applyPendingResume`. */
+  const resumeAttemptsRef = useRef(0);
   const retryCount = useRef(0);
 
   // Ref mirrors (stable captures for timers/effects without stale closures)
@@ -852,6 +886,15 @@ export default function PlayerScreen() {
   const showQueueListRef = useRef(false);
   /** Set once the up-next card has been offered for the current title. */
   const upNextArmedRef = useRef(false);
+  /** Ends rejected as truncations for the current title; see `handleReachedEnd`. */
+  const truncatedEndsRef = useRef(0);
+  /**
+   * True from the moment an episode switch starts until the new source is
+   * loaded or playing. See the note in `handleNormalizedProgress` — this is
+   * what keeps the outgoing episode's last few progress ticks from being read
+   * as the incoming one's.
+   */
+  const queueSwitchPendingRef = useRef(false);
 
   // ── Ref sync effects ──────────────────────────────────────────────────────
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
@@ -958,6 +1001,31 @@ export default function PlayerScreen() {
   // ── Progress handler for video onProgress ──────────────────────────────────
   const handleNormalizedProgress = useCallback(
     (positionMs: number, durationMs: number) => {
+      /*
+       * Everything in here reasons about *which title* is playing, and during a
+       * switch that question has no answer yet.
+       *
+       * Changing episode is not instant: `playQueueItem` swaps the content id
+       * and the queue index straight away, then awaits the saved position and
+       * the resolved URL before the new source reaches the player. The old
+       * source keeps running for that whole window — expo-video's own 500 ms
+       * heartbeat sees to that — so its dying ticks arrive carrying the
+       * *previous* episode's position and duration, attributed to the episode
+       * that has just started. Two things went wrong with that:
+       *
+       *   • those ticks report seconds of runtime remaining, which armed Up
+       *     Next all over again — and against the episode *after* the one just
+       *     started, because the queue index had already moved. The card came
+       *     back the instant it was dismissed and the box walked the season ten
+       *     seconds at a time, which is the bug this gate exists for;
+       *   • they were also written to the resume index, so a freshly started
+       *     episode was immediately recorded as nearly finished.
+       *
+       * The gate lifts when the new source loads or starts playing, which is
+       * the first tick that is actually about the new title.
+       */
+      if (queueSwitchPendingRef.current) return;
+
       if (isSeeking.current) {
         const timeSinceCommit = Date.now() - seekCommitTimeRef.current;
         const target = seekTargetRef.current;
@@ -1010,6 +1078,10 @@ export default function PlayerScreen() {
 
       positionRef.current = positionMs;
       durationRef.current = durationMs;
+
+      // Duration usually only becomes known here, a few ticks after the source
+      // loaded, so this is where a resume actually gets applied on a reconnect.
+      applyPendingResumeRef.current();
 
       const now = Date.now();
       const updateInterval = showControlsRef.current ? 250 : 1000;
@@ -1106,8 +1178,13 @@ export default function PlayerScreen() {
 
   // ── Unified seek ──────────────────────────────────────────────────────────
   const performSeek = useCallback(
-    (positionMs: number) => {
+    (positionMs: number, isResumeSeek = false) => {
       if (!durationRef.current || durationRef.current <= 0) return;
+      // A seek the viewer asked for settles the question of where the title
+      // should start, so it retires any resume that is still being retried.
+      // Without this, choosing a spot during the first seconds of playback got
+      // undone by a resume attempt landing a moment later.
+      if (!isResumeSeek) hasSetInitialPosition.current = true;
       const clamped = Math.max(0, Math.min(positionMs, durationRef.current));
       isSeeking.current = true;
       seekTargetRef.current = clamped;
@@ -1134,9 +1211,60 @@ export default function PlayerScreen() {
     [resetControlsTimeout]
   );
 
+  /**
+   * Puts an on-demand title back where the viewer left it.
+   *
+   * Called on load and again on every progress tick until it succeeds, because
+   * neither half of the precondition is reliably true at load time:
+   *
+   *   • `duration` is often still 0 at `readyToPlay` — expo-video fills it in
+   *     once the container is parsed, which on a reconnect is several ticks
+   *     later, and `performSeek` refuses to seek without it;
+   *   • the seek itself can be dropped by the native player when it is issued
+   *     against a source that has only just been replaced.
+   *
+   * So a single attempt at load is exactly the case that fails, and failing it
+   * is what restarts a film from the beginning after a dropped connection. The
+   * attempt counter is what stops this from fighting a viewer who seeks
+   * somewhere else while it is still trying.
+   */
+  const applyPendingResume = useCallback(() => {
+    if (isLive) return;
+    if (hasSetInitialPosition.current) return;
+    const target = savedResumePosition.current;
+    if (target <= 0) return;
+    if (durationRef.current <= 0) return;
+
+    // Already there — nothing to do, and nothing left to retry.
+    if (Math.abs(positionRef.current - target) < 5000) {
+      hasSetInitialPosition.current = true;
+      return;
+    }
+
+    if (resumeAttemptsRef.current >= 4) {
+      hasSetInitialPosition.current = true;
+      return;
+    }
+    resumeAttemptsRef.current += 1;
+    performSeek(target, true);
+  }, [isLive, performSeek]);
+
+  const applyPendingResumeRef = useRef(applyPendingResume);
+  applyPendingResumeRef.current = applyPendingResume;
+
+  /** Arms a resume for the next thing that loads, and resets the retry budget. */
+  const armResume = useCallback((positionMs: number) => {
+    savedResumePosition.current = positionMs > 0 ? positionMs : 0;
+    hasSetInitialPosition.current = positionMs > 0 ? false : true;
+    resumeAttemptsRef.current = 0;
+  }, []);
+
   // ── Shared "load complete" handler for VLC player ────────────────────────
   const handleLoadCommon = useCallback(
     (durationMs: number) => {
+      // The first thing the new source says about itself, so the switch is over
+      // and its progress ticks can be believed again.
+      queueSwitchPendingRef.current = false;
       setIsBuffering(false);
       setPlaybackFailed(false);
       stopLiveReconnectLoop();
@@ -1159,12 +1287,19 @@ export default function PlayerScreen() {
 
       if (durationMs > 0) { durationRef.current = durationMs; setDuration(durationMs); }
 
-      if (!hasSetInitialPosition.current && savedResumePosition.current > 0 && params.type !== "live" && durationMs > 0) {
-        hasSetInitialPosition.current = true;
-        performSeek(savedResumePosition.current);
-      }
+      /*
+       * The resume seek is *attempted* here, not completed here.
+       *
+       * `duration` is frequently still 0 at `readyToPlay` — expo-video reports
+       * it once the container has been parsed, which on a reconnect can be
+       * several progress ticks later. The old code required `durationMs > 0`
+       * and had no second chance, so a reconnect whose duration arrived late
+       * silently restarted the title from zero. `applyPendingResume` runs
+       * again from the progress handler until it lands.
+       */
+      applyPendingResumeRef.current();
     },
-    [params.type, performSeek, stopLiveReconnectLoop]
+    [stopLiveReconnectLoop]
   );
 
   // ── Focus helpers ─────────────────────────────────────────────────────────
@@ -1280,15 +1415,13 @@ export default function PlayerScreen() {
         if (params.contentId && params.type !== "live") {
           const saved = await StreamManager.getPlaybackPosition(params.contentId);
           if (saved && saved.position > 0 && saved.duration - saved.position > 5000) {
-            savedResumePosition.current = saved.position;
+            armResume(saved.position);
             // Ask rather than jump. The seek still happens by default — the
             // card times out into it — but "start over" stops being impossible.
             setResumeOffer({ position: saved.position });
-            // If duration is already known, apply resume seek immediately
-            if (!hasSetInitialPosition.current && durationRef.current > 0) {
-              hasSetInitialPosition.current = true;
-              performSeek(saved.position);
-            }
+            // If the source is already loaded this lands now; otherwise the
+            // load and progress handlers keep trying until it does.
+            applyPendingResumeRef.current();
           }
         }
       } catch (e) {
@@ -1296,7 +1429,7 @@ export default function PlayerScreen() {
       }
     };
     load();
-  }, [params.contentId, params.type, performSeek]);
+  }, [params.contentId, params.type, armResume]);
 
   // ── Action handlers ───────────────────────────────────────────────────────
   const cycleAspectRatio = useCallback(() => {
@@ -1364,12 +1497,18 @@ export default function PlayerScreen() {
 
   /**
    * Claims the touch for the bar itself, so the tap reaches this instead of the
-   * `Focusable` wrapping it — whose press is `togglePlay`. Phone only; a remote
-   * has no responder to grant and the TV path must keep its `onPress`.
+   * `Focusable` wrapping it — whose press is `togglePlay`.
+   *
+   * Gated on `isTouch`, not `isPhone`. A tablet wears the TV layout but is
+   * still a touch device, and asking the phone question here meant the
+   * responder was never attached on one: the bar could be moved with a remote
+   * and not with a finger. `isPhone` is for the phone *tier*; the touch/TV
+   * branch is `isTouch` — see the note on it in `tabletUtils`. A remote has no
+   * responder to grant, so the TV path keeps its `onPress` either way.
    */
   const scrubResponder = useMemo(
     () =>
-      isPhone
+      isTouch
         ? {
             onStartShouldSetResponder: () => true,
             onMoveShouldSetResponder: () => true,
@@ -1702,8 +1841,12 @@ export default function PlayerScreen() {
         upNextArmedRef.current = false;
 
         if (!isLive) {
-          hasSetInitialPosition.current = false;
-          savedResumePosition.current = positionRef.current;
+          // Guarded on the current position being real. A second reconnect that
+          // lands while the replaced source is still sitting at zero used to
+          // overwrite the resume point with 0 — which is precisely the case
+          // that made a film restart from the beginning after a bad patch of
+          // network, since a bad patch is exactly when retries come in pairs.
+          armResume(positionRef.current > 0 ? positionRef.current : savedResumePosition.current);
         }
 
         setIsBuffering(false);
@@ -1714,8 +1857,13 @@ export default function PlayerScreen() {
         if (retryCount.current >= 3 || !playerRef.current) {
           setBufferGeneration((prev) => prev + 1);
         }
+        // Compared against the ref, not the closed-over state: this callback
+        // does not list `streamUrl` as a dependency, so after a zap or an
+        // episode change the captured value was the one from screen mount and
+        // a same-URL reconnect reloaded nothing at all.
+        const sameUrl = streamUrlRef.current === newUrl;
         setStreamUrl(newUrl);
-        if (playerRef.current && streamUrl === newUrl) {
+        if (playerRef.current && sameUrl) {
           playerRef.current.reloadSource();
         }
         stopLiveReconnectLoop();
@@ -1731,7 +1879,7 @@ export default function PlayerScreen() {
         setIsRetrying(false);
       }
     }
-  }, [activePortal, params, isLive, maxRetries, stopLiveReconnectLoop]);
+  }, [activePortal, params, isLive, maxRetries, stopLiveReconnectLoop, armResume]);
 
   useEffect(() => { handleSilentRetryRef.current = handleSilentRetry; }, [handleSilentRetry]);
 
@@ -1802,6 +1950,7 @@ export default function PlayerScreen() {
       hasStartedPlayingRef.current = false;
       setHasStartedPlaying(false);
       upNextArmedRef.current = false;
+      truncatedEndsRef.current = 0;
       lastProgressPositionRef.current = 0;
       lastProgressTimeRef.current = Date.now();
       positionEverMovedRef.current = false;
@@ -1931,6 +2080,10 @@ export default function PlayerScreen() {
     if (!item?.streamUrl || zapInFlightRef.current) return;
 
     zapInFlightRef.current = true;
+    // Raised before anything else and before the first `await`: the old source
+    // is still running and still reporting, and from here on none of what it
+    // says is about the episode this player is now showing.
+    queueSwitchPendingRef.current = true;
     try {
       setUpNext(null);
       setResumeOffer(null);
@@ -1958,6 +2111,7 @@ export default function PlayerScreen() {
       hasStartedPlayingRef.current = false;
       setHasStartedPlaying(false);
       upNextArmedRef.current = false;
+      truncatedEndsRef.current = 0;
       lastProgressPositionRef.current = 0;
       lastProgressTimeRef.current = Date.now();
       positionEverMovedRef.current = false;
@@ -1982,10 +2136,10 @@ export default function PlayerScreen() {
 
       // A new title has its own resume point, and its own right to be sought
       // to once the duration is known.
-      hasSetInitialPosition.current = false;
       const saved = await StreamManager.getPlaybackPosition(item.id);
-      savedResumePosition.current =
-        saved && saved.position > 0 && saved.duration - saved.position > 5000 ? saved.position : 0;
+      armResume(
+        saved && saved.position > 0 && saved.duration - saved.position > 5000 ? saved.position : 0
+      );
       // Stepping back to a half-watched episode gets the same offer arriving at
       // one does — it resumes, and says so, and can be started over.
       if (savedResumePosition.current > 0) {
@@ -2004,27 +2158,44 @@ export default function PlayerScreen() {
           url = result.url;
         } else {
           console.warn("[playQueueItem] Stream resolution failed for", item.title, result.error);
+          queueSwitchPendingRef.current = false;
           setIsLoading(false);
           setPlaybackFailed(true);
           return;
         }
       }
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) {
+        queueSwitchPendingRef.current = false;
+        return;
+      }
 
       const finalUrl = applySameHostStreamProxy(url, activePortal, item.streamUrl);
       if (!finalUrl || !/^(https?|rtsp|mms):\/\//i.test(finalUrl)) {
         console.warn("[playQueueItem] Invalid final stream URL:", finalUrl);
+        queueSwitchPendingRef.current = false;
         setIsLoading(false);
         setPlaybackFailed(true);
         return;
       }
 
+      // Replaying what is already loaded — picking the current episode out of
+      // the list, or an episode whose URL the portal resolves to the same
+      // thing — leaves `setStreamUrl` a no-op, so nothing reloads, no load is
+      // reported, and the switch gate above would never lift.
+      const sameUrl = streamUrlRef.current === finalUrl;
       setStreamUrl(finalUrl);
+      if (sameUrl) {
+        if (playerRef.current) {
+          playerRef.current.reloadSource();
+        } else {
+          queueSwitchPendingRef.current = false;
+        }
+      }
       flashBanner();
     } finally {
       zapInFlightRef.current = false;
     }
-  }, [activePortal, flashBanner, stopLiveReconnectLoop]);
+  }, [activePortal, flashBanner, stopLiveReconnectLoop, armResume]);
 
   playQueueItemRef.current = playQueueItem;
 
@@ -2045,6 +2216,55 @@ export default function PlayerScreen() {
    * a nearly-full progress bar over something already watched.
    */
   const handleReachedEnd = useCallback(() => {
+    // The outgoing episode reaching its end *after* the next one has been asked
+    // for is the old source finishing, not the new one. Acting on it wiped the
+    // incoming episode's resume point and armed Up Next against the episode
+    // after it — the same confusion the progress gate exists for.
+    if (queueSwitchPendingRef.current) return;
+
+    /*
+     * End of *stream* is not end of *title*, and on IPTV they part company
+     * often.
+     *
+     * ExoPlayer reports `playToEnd` the moment the source runs out of input.
+     * For a progressive VOD file served by a portal, that happens whenever the
+     * connection is cut mid-transfer — an expired token, a session reaped for
+     * exceeding a connection limit, a proxy timing out. The player cannot tell
+     * that from a file that genuinely finished, and neither could this screen:
+     * it wiped the resume point, recorded the title as fully watched, and
+     * stopped. Playing it again then started from the beginning, which is the
+     * "stops after a while and restarts from zero" this guard is here for.
+     *
+     * The position says which it was. Short of the duration by more than a few
+     * seconds means the stream was cut, so it is reconnected and resumed like
+     * any other drop, rather than being buried.
+     */
+    const duration = durationRef.current;
+    const position = positionRef.current;
+    if (
+      !isLive &&
+      duration > 0 &&
+      position > 0 &&
+      duration - position > END_OF_TITLE_TOLERANCE_MS &&
+      truncatedEndsRef.current < MAX_TRUNCATED_END_RETRIES
+    ) {
+      truncatedEndsRef.current += 1;
+      console.warn(
+        `[Player] Stream ended ${Math.round((duration - position) / 1000)}s short of its ${Math.round(duration / 1000)}s duration. Treating it as a dropped connection, not the end of the title, and reconnecting at ${Math.round(position / 1000)}s.`
+      );
+      // Armed before the retry rather than left to it: the retry reads the
+      // position after its backoff, and nothing guarantees it survives that.
+      armResume(position);
+      // `isPlaying` is deliberately left true — this is a reconnect, and the
+      // new source has to start on its own.
+      handleSilentRetryRef.current();
+      return;
+    }
+
+    // A real ending. The counter belongs to the title that just finished.
+    truncatedEndsRef.current = 0;
+    setIsPlaying(false);
+
     const finishedId = activeContentIdRef.current || params.contentId;
     if (finishedId) {
       StreamManager.clearPlaybackPosition(finishedId).catch(() => { });
@@ -2064,7 +2284,7 @@ export default function PlayerScreen() {
     // takes the focus, so nothing starts without the viewer being able to stop it.
     const next = playbackQueue.current?.items[playbackQueue.index + 1];
     if (next) setUpNext(next);
-  }, [params.contentId]);
+  }, [params.contentId, isLive, armResume]);
 
   handleReachedEndRef.current = handleReachedEnd;
 
@@ -2145,8 +2365,7 @@ export default function PlayerScreen() {
       } else if (prevAppStateRef.current !== "active") {
         // Only reconnect and resume if stream was actively playing before backgrounding
         if (wasPlayingBeforeBackgroundRef.current) {
-          savedResumePosition.current = positionRef.current;
-          hasSetInitialPosition.current = false;
+          if (!isLive) armResume(positionRef.current);
           retryCount.current = 0;
           isRetryingRef.current = false;
           stopLiveReconnectLoop();
@@ -2158,7 +2377,7 @@ export default function PlayerScreen() {
       prevAppStateRef.current = state;
     });
     return () => { PlaybackState.setActive(false); sub.remove(); };
-  }, [stopLiveReconnectLoop]);
+  }, [stopLiveReconnectLoop, isLive, armResume]);
 
   // ── MAG Portal Session Keepalive Watchdog ─────────────────────────────────
   // MAG / Ministra / Stalker middleware requires periodic watchdog pings. Without this,
@@ -2482,6 +2701,9 @@ export default function PlayerScreen() {
             }
           }}
           onPlaying={() => {
+            // Backstop for the switch gate, in case a source starts rendering
+            // without ever having reported a load.
+            queueSwitchPendingRef.current = false;
             if (recoveryTimeoutRef.current) {
               clearTimeout(recoveryTimeoutRef.current);
               recoveryTimeoutRef.current = null;
@@ -2509,11 +2731,25 @@ export default function PlayerScreen() {
 
             if (retryResetTimerRef.current) clearTimeout(retryResetTimerRef.current);
             retryResetTimerRef.current = setTimeout(() => {
-              if (mountedRef.current && isPlayingRef.current) retryCount.current = 0;
+              if (mountedRef.current && isPlayingRef.current) {
+                retryCount.current = 0;
+                // Twenty seconds of real playback means the last end-of-stream
+                // was a one-off cut, not a file that ends short of its stated
+                // duration. The budget in `handleReachedEnd` only needs to bound
+                // an immediate loop, so it is spent per stall, not per title —
+                // otherwise a long film on a flaky line ran out of reconnects
+                // and got filed as watched halfway through.
+                truncatedEndsRef.current = 0;
+              }
               retryResetTimerRef.current = null;
             }, 20000);
           }}
           onProgress={(currentMs, durationMs) => {
+            // Still the outgoing episode talking — see the note in
+            // `handleNormalizedProgress`. Nothing it reports describes the
+            // title this player has already moved on to.
+            if (queueSwitchPendingRef.current) return;
+
             // Duration can firm up on a tick that carries no playback progress,
             // so it is read before the liveness test rather than inside it.
             if (durationMs > 0 && Math.abs(durationRef.current - durationMs) > 1000) {
@@ -2563,15 +2799,25 @@ export default function PlayerScreen() {
             }
           }}
           onEnd={() => {
+            // An end reported while the next episode is still being set up is
+            // the outgoing source finishing. Pausing on it stopped the episode
+            // that had just been asked for before it ever started.
+            if (queueSwitchPendingRef.current) return;
             if (isLive) {
               console.warn("[Player] Live TV stream ended / dropped (input EOS). Triggering silent reconnect.");
               schedulePlayerRecovery("liveStreamEnded", true);
             } else {
-              setIsPlaying(false);
+              // Pausing is `handleReachedEnd`'s call now: an end that turns out
+              // to be a cut connection has to stay playing so the reconnect
+              // resumes instead of parking the viewer on a stopped player.
               handleReachedEndRef.current();
             }
           }}
           onError={(e, liveTracks) => {
+            // Also lifts the switch gate: a source that fails never loads and
+            // never plays, and leaving it raised would mute the stall
+            // watchdogs for everything that came after.
+            queueSwitchPendingRef.current = false;
             console.warn("[ExpoVideo] onError", e);
             const errStr = String((e as any)?.message || e || "");
             const isAudioDecoderError =
@@ -2861,10 +3107,12 @@ export default function PlayerScreen() {
           {/* Bottom controls */}
           {/* `box-none`: the panel itself must not take touches, or it steals
               every tap aimed at the transport buttons centred behind it. Its
-              children still receive their own. */}
+              children still receive their own. Wanted on every touch device,
+              not only handsets — a tablet was swallowing those taps for the
+              same reason a phone did. */}
           <View
             style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2) }]}
-            pointerEvents={isPhone ? "box-none" : "auto"}
+            pointerEvents={isTouch ? "box-none" : "auto"}
           >
             {/* The banner is the top half of this panel rather than a separate
                 island floating above it. It used to be pinned at a fixed
@@ -3160,7 +3408,14 @@ export default function PlayerScreen() {
         onPlayNow={() => {
           const next = upNext;
           setUpNext(null);
-          if (next) playQueueItem(next, queueIndex + 1);
+          if (!next) return;
+          // Located by identity rather than by `queueIndex + 1`. The card can
+          // outlive the index it was built against — the countdown runs for
+          // ten seconds and a jump from the episode list moves the index under
+          // it — and an off-by-one here plays the wrong episode.
+          const items = playbackQueue.current?.items ?? [];
+          const found = items.findIndex((i) => String(i.id) === String(next.id));
+          playQueueItem(next, found >= 0 ? found : queueIndex + 1);
         }}
         onCancel={() => setUpNext(null)}
       />

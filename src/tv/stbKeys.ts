@@ -30,7 +30,7 @@
 // module existed, and claiming it in both registries delivers every press
 // twice.
 // ─────────────────────────────────────────────────────────────────────────────
-import { Platform } from "react-native";
+import { DeviceEventEmitter, Platform } from "react-native";
 import * as ReactNative from "react-native";
 
 import { isKeyPress, resetKeyPressState } from "./keyPress";
@@ -151,7 +151,7 @@ function dispatch(raw: any) {
   // Not a key-down filter. The bridge only delivers ACTION_UP unless a native
   // feature flag is on, so filtering for key-down discarded every number key —
   // see the note at the top of keyPress.ts.
-  if (!isKeyPress(eventType, raw)) return;
+  if (!isKeyPress(eventType, raw, "stb")) return;
 
   sawNativeKey = true;
   activeSubscriber()?.handler.current({ key, digit });
@@ -164,6 +164,15 @@ function attach() {
   try {
     if (TVEventHandler && typeof (TVEventHandler as any).addListener === "function") {
       nativeSub = (TVEventHandler as any).addListener(dispatch);
+    } else if (!TVEventHandler) {
+      // No `TVEventHandler` export. That happens when the JS half resolves to
+      // stock react-native while the native half is still the TV fork — the
+      // number pad then looks dead even though the events are being emitted.
+      //
+      // `TVEventHandler` is only a wrapper over the `onHWKeyEvent` device
+      // event, so subscribing to it directly reaches the same stream. Only
+      // used as a fallback: with both attached every key would arrive twice.
+      nativeSub = DeviceEventEmitter.addListener("onHWKeyEvent", dispatch);
     } else if (typeof TVEventHandler === "function") {
       // The older class-based API, whose teardown is `disable()` — wrapped to
       // match the { remove } shape the newer one returns.
@@ -185,7 +194,7 @@ function attach() {
 }
 
 function detachIfIdle() {
-  if (subscribers.length === 0) resetKeyPressState();
+  if (subscribers.length === 0) resetKeyPressState("stb");
   if (subscribers.length === 0 && nativeSub) {
     nativeSub.remove();
     nativeSub = null;

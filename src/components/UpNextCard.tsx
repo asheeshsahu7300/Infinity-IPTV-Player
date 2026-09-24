@@ -74,7 +74,10 @@ export function UpNextCard({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [visible, seconds]);
+    // `item` is in here so a card that is handed a different episode without
+    // first being hidden restarts its countdown instead of finishing the one
+    // it had already begun for the previous episode.
+  }, [visible, seconds, item?.id]);
 
   if (!visible || !item) return null;
 

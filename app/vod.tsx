@@ -20,7 +20,7 @@ import { launchExternalPlayer } from "../src/utils/externalPlayer";
 import CategorySidebar from "../src/components/CategorySidebar";
 import CategoryPills from "../src/components/CategoryPills";
 import { AppBootManager } from "../src/services/AppBootManager";
-import { filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
+import { bareCategoryId, filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
 import { useNetworkActivity } from "../src/services/networkActivity";
 import { Focusable, FocusGroup, Overlay, FocusMemory, useInitialFocusPulse, useIsFocusTrapped } from "../src/tv";
 import { useDialog } from "../src/components/ConfirmDialog";
@@ -968,39 +968,77 @@ export default function VODScreen() {
       if (portal.type === "m3u") {
         cats = await new M3UApi({ url: portal.config.url }).getVodCategories();
       } else if (portal.type === "xtream") {
-        cats = await xtreamApiRef.current!.getVodCategories();
+        if (!xtreamApiRef.current) {
+          xtreamApiRef.current = new XtreamApi({
+            url: portal.config.url,
+            username: portal.config.username!,
+            password: portal.config.password!,
+          });
+        }
+        cats = await xtreamApiRef.current.getVodCategories();
       } else {
         cats = await portalApi.getVodCategories(portal);
       }
 
+      const currentCategories = usePortalStore.getState().categories || [];
+      const existingValidVod = currentCategories.filter(
+        (c) => c.type === "vod" && c.name && !/^\d+$/.test(c.name.trim())
+      );
+
+      // If API returned empty categories and we already have valid named categories in store, do NOT overwrite
+      if ((!cats || cats.length === 0) && existingValidVod.length > 0) {
+        return;
+      }
+
       // Fallback: If API returned empty categories, try deriving categories from cached/store VOD items
       if ((!cats || cats.length === 0) && allVodCacheRef.current.length > 0) {
+        const catNameById = new Map<string, string>();
+        for (const cat of currentCategories) {
+          const bare = bareCategoryId(cat.id);
+          if (cat.name && !/^\d+$/.test(cat.name.trim())) {
+            catNameById.set(bare, cat.name);
+          }
+        }
         const seen = new Set<string>();
         cats = [];
         for (const item of allVodCacheRef.current) {
           const cId = item.categoryId || item.category;
-          const cName = item.category || item.categoryId;
-          if (cId && !seen.has(cId) && cId !== "all" && cId !== "*") {
-            seen.add(cId);
-            cats.push({
-              id: cId.startsWith("vod:") ? cId : `vod:${cId}`,
-              name: cName || cId,
-              type: "vod",
-            });
-          }
+          if (!cId || seen.has(cId) || cId === "all" || cId === "*") continue;
+          seen.add(cId);
+          const bare = bareCategoryId(cId);
+          const rawName = item.category ? String(item.category).trim() : "";
+          const resolvedName =
+            (rawName && !/^\d+$/.test(rawName) ? rawName : null) ||
+            catNameById.get(bare) ||
+            `Category ${bare}`;
+          cats.push({
+            id: cId.startsWith("vod:") ? cId : `vod:${cId}`,
+            name: resolvedName,
+            type: "vod",
+          });
         }
       }
 
       // Read live state at call-time to avoid overwriting live/series categories
-      const currentCategories = usePortalStore.getState().categories || [];
       const others = currentCategories.filter(c => c.type !== "vod");
       if (Array.isArray(cats) && cats.length > 0) {
-        setCategories([...others, ...cats]);
+        const isAllDigits = cats.every((c) => /^\d+$/.test(c.name.trim()));
+        if (!isAllDigits) {
+          setCategories([...others, ...cats]);
+        }
       }
     } catch (e) {
       console.warn("Failed to load VOD categories:", e);
     }
   }, [setCategories]);
+
+  // Auto-heal corrupted numeric categories
+  useEffect(() => {
+    const vodCats = (usePortalStore.getState().categories || []).filter((c) => c.type === "vod");
+    if (vodCats.length > 0 && vodCats.every((c) => /^\d+$/.test(String(c.name || "").trim()))) {
+      loadCategories(true);
+    }
+  }, [loadCategories]);
 
   const hasInitializedCategoryRef = useRef(false);
 

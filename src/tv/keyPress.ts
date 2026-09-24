@@ -31,16 +31,35 @@
 const ACTION_DOWN = 0;
 const ACTION_UP = 1;
 
-/** Keys whose ACTION_DOWN has been counted and whose ACTION_UP must not be. */
-const pendingDown = new Set<string>();
+/**
+ * Keys whose ACTION_DOWN has been counted and whose ACTION_UP must not be.
+ *
+ * Keyed per *scope*, not globally, because `useDPad` and `stbKeys` each attach
+ * their own listener to the same native `onHWKeyEvent` stream. Sharing one set
+ * meant whichever module dispatched first consumed the DOWN and the second one
+ * then treated the paired UP as a fresh press — every number key entered twice
+ * on any build where `enableKeyDownEvents` is on.
+ */
+const pendingDown = new Map<string, Set<string>>();
+
+function pendingFor(scope: string): Set<string> {
+  let set = pendingDown.get(scope);
+  if (!set) {
+    set = new Set<string>();
+    pendingDown.set(scope, set);
+  }
+  return set;
+}
 
 /**
  * Whether this event is the moment to act on, exactly once per physical press.
  *
  * @param key   a stable identity for the button — the eventType is fine.
  * @param event the raw payload, read for `eventKeyAction`.
+ * @param scope the listener asking. Each native listener needs its own, or the
+ *              two of them eat each other's halves of a press.
  */
-export function isKeyPress(key: string, event: any): boolean {
+export function isKeyPress(key: string, event: any, scope = "default"): boolean {
   const raw = event?.eventKeyAction;
 
   // tvOS and some OEM builds omit the field. Nothing to pair up, so every
@@ -51,13 +70,13 @@ export function isKeyPress(key: string, event: any): boolean {
   if (!Number.isFinite(action)) return true;
 
   if (action === ACTION_DOWN) {
-    pendingDown.add(key);
+    pendingFor(scope).add(key);
     return true;
   }
 
   if (action === ACTION_UP) {
     // Its DOWN already counted, so this UP is the tail of the same press.
-    if (pendingDown.delete(key)) return false;
+    if (pendingFor(scope).delete(key)) return false;
     return true;
   }
 
@@ -66,11 +85,12 @@ export function isKeyPress(key: string, event: any): boolean {
 }
 
 /**
- * Drops any half-seen presses.
+ * Drops any half-seen presses for one scope.
  *
  * Called when a subscriber list empties: a DOWN whose UP never arrived (focus
  * moved, an overlay opened) would otherwise swallow the next press of that key.
+ * Scoped, so one module going idle does not clear the other's pending presses.
  */
-export function resetKeyPressState(): void {
-  pendingDown.clear();
+export function resetKeyPressState(scope = "default"): void {
+  pendingDown.get(scope)?.clear();
 }

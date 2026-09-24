@@ -148,7 +148,7 @@ function dispatch(evt: any) {
   // feature flag is enabled, so that line dropped every event. Focus movement
   // kept working because the Android focus engine does it without JS, which is
   // what hid this. See the note at the top of keyPress.ts.
-  if (!isKeyPress(type, evt)) return;
+  if (!isKeyPress(type, evt, "dpad")) return;
 
   // Select keeps a short debounce on top. Some remotes report the OK button
   // through more than one eventType ("select" and "enter"), which pairing
@@ -213,7 +213,7 @@ function attachNative() {
 
 function detachNativeIfIdle() {
   if (subscribers.length === 0) {
-    resetKeyPressState();
+    resetKeyPressState("dpad");
     if (tvEventHandlerInstance && typeof tvEventHandlerInstance.disable === "function") {
       try {
         tvEventHandlerInstance.disable();

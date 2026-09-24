@@ -24,7 +24,7 @@ import CategoryPills from "../src/components/CategoryPills";
 import { Focusable, FocusGroup, FocusMemory, STB_PRIORITY, useInitialFocusPulse, useStbKeys, useIsFocusTrapped } from "../src/tv";
 import { useNetworkActivity } from "../src/services/networkActivity";
 import { AppBootManager } from "../src/services/AppBootManager";
-import { filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
+import { bareCategoryId, filterByCategory, useAdoptStoreContent } from "../src/hooks/useCategoryContent";
 import { epgService } from "../src/services/epgService";
 import { parentalControl } from "../src/services/parentalControl";
 import { hiddenCategories } from "../src/services/hiddenCategories";
@@ -866,38 +866,82 @@ export default function LiveTVScreen() {
         const api = new M3UApi({ url: portal.config.url, portalId: portal.id });
         cats = ((await api.getLiveCategories()) || []) as Category[];
       } else if (portal.type === "xtream") {
-        const raw = (await xtreamApiRef.current!.getitvCategories()) || [];
-        cats = raw.map((c: any) => ({ id: c.id, name: c.name, type: "live" as const }));
+        if (!xtreamApiRef.current) {
+          xtreamApiRef.current = new XtreamApi({
+            url: portal.config.url,
+            username: portal.config.username!,
+            password: portal.config.password!,
+          });
+        }
+        const raw = (await xtreamApiRef.current.getitvCategories()) || [];
+        cats = raw.map((c: any) => ({
+          id: String(c.id ?? (c.category_id ? `live:${c.category_id}` : "")),
+          name: String(c.name ?? c.category_name ?? c.title ?? "").trim(),
+          type: "live" as const
+        })).filter(c => c.id && c.name && !/^\d+$/.test(c.name));
       } else {
         cats = (await portalApi.getLiveCategories(portal)) || [];
       }
 
+      const currentCategories = usePortalStore.getState().categories || [];
+      const existingValidLive = currentCategories.filter(
+        (c) => (c.type === "live" || !c.type) && c.name && !/^\d+$/.test(c.name.trim())
+      );
+
+      // If API returned empty categories and we already have valid named categories in store, do NOT overwrite
+      if (cats.length === 0 && existingValidLive.length > 0) {
+        return;
+      }
+
       if (cats.length === 0 && allChannelsCacheRef.current.length > 0) {
+        const catNameById = new Map<string, string>();
+        for (const cat of currentCategories) {
+          const bare = bareCategoryId(cat.id);
+          if (cat.name && !/^\d+$/.test(cat.name.trim())) {
+            catNameById.set(bare, cat.name);
+          }
+        }
         const seen = new Set<string>();
         cats = [];
         for (const item of allChannelsCacheRef.current) {
           const cId = item.categoryId || item.category;
-          const cName = item.category || item.categoryId;
-          if (cId && !seen.has(cId) && cId !== "all" && cId !== "*") {
-            seen.add(cId);
-            cats.push({
-              id: cId,
-              name: cName || cId,
-              type: "live" as const,
-            });
-          }
+          if (!cId || seen.has(cId) || cId === "all" || cId === "*") continue;
+          seen.add(cId);
+          const bare = bareCategoryId(cId);
+          const rawName = item.category ? String(item.category).trim() : "";
+          const resolvedName =
+            (rawName && !/^\d+$/.test(rawName) ? rawName : null) ||
+            catNameById.get(bare) ||
+            `Category ${bare}`;
+          cats.push({
+            id: cId.includes(":") ? cId : `live:${cId}`,
+            name: resolvedName,
+            type: "live" as const,
+          });
         }
       }
 
-      const currentCategories = usePortalStore.getState().categories || [];
       const others = currentCategories.filter(c => c.type !== "live");
       if (cats.length > 0) {
-        setCategories([...others, ...cats]);
+        const isAllDigits = cats.every((c) => /^\d+$/.test(c.name.trim()));
+        if (!isAllDigits) {
+          setCategories([...others, ...cats]);
+        }
       }
     } catch (e) {
       console.warn("loadCategories error:", e);
     }
   }, [setCategories]);
+
+  // Auto-heal corrupted numeric categories (e.g. "7", "728" caused by legacy fallback)
+  useEffect(() => {
+    if (localCategories.length > 0) {
+      const isCorrupted = localCategories.every((c) => /^\d+$/.test(String(c.name || "").trim()));
+      if (isCorrupted) {
+        loadCategories(true);
+      }
+    }
+  }, [localCategories, loadCategories]);
 
   const fetchAllChannels = useCallback(async (): Promise<Channel[]> => {
     if (!activePortal) return [];
@@ -1294,12 +1338,23 @@ export default function LiveTVScreen() {
     return map;
   }, [allChannelsPool, channelNumbers]);
 
+  /**
+   * Digits the tuner accepts before it commits on width alone.
+   *
+   * Floored at three rather than taken straight from the widest number in the
+   * pool, because the pool is whatever has loaded so far. On the first page —
+   * fifty channels numbered 1–50 — the widest number is two digits, so a
+   * width-derived cap committed "10" the instant the second digit landed and
+   * channel 105 was unreachable until the whole list had arrived. The early
+   * commit in `useChannelTuner` still fires as soon as no longer number could
+   * match, so the wider cap costs nothing on a list that really is short.
+   */
   const tunerMaxDigits = useMemo(() => {
     let widest = 1;
     numberToChannel.forEach((_c, num) => {
       widest = Math.max(widest, String(num).length);
     });
-    return Math.min(5, widest);
+    return Math.min(5, Math.max(3, widest));
   }, [numberToChannel]);
 
   const hasNumberPrefix = useCallback(
@@ -1342,9 +1397,12 @@ export default function LiveTVScreen() {
     onCommit: handleTune,
     hasPrefix: hasNumberPrefix,
     maxDigits: tunerMaxDigits,
-    enabled: !pinTarget,
+    enabled: isScreenFocused && !pinTarget,
   });
 
+  // Gated on focus as well as the PIN prompt: this screen stays mounted under
+  // the player and the guide, and an ungated subscription meant a number key
+  // pressed on one of those screens tuned — and navigated — behind them.
   useStbKeys(
     {
       onDigit: tuner.pushDigit,
@@ -1353,7 +1411,7 @@ export default function LiveTVScreen() {
         router.push("/epg");
       },
     },
-    { enabled: !pinTarget, priority: STB_PRIORITY.SCREEN }
+    { enabled: isScreenFocused && !pinTarget, priority: STB_PRIORITY.SCREEN }
   );
 
   // Back button handler: matches VOD and Series

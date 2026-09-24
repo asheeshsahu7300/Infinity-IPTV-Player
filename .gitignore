@@ -37,3 +37,6 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+/credentials.json
+/credentials/android/keystore.jks
+/android/app/release/app-release.aab

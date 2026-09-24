@@ -160,7 +160,7 @@ const CategoryItem = React.memo(
                     ]}
                     numberOfLines={1}
                   >
-                    {item.name}
+                    {item.name && !/^\d+$/.test(String(item.name).trim()) ? item.name : `Category ${item.name || item.id}`}
                   </Text>
                 </View>
               </Animated.View>

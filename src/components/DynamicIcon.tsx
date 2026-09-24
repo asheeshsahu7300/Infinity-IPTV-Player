@@ -84,6 +84,8 @@ const ICON_MAP: Record<string, any> = {
     "arrow-back-outline": ArrowLeft,
     "arrow-left": ArrowLeft,
     "arrow-left-outline": ArrowLeft,
+    "television": Tv,
+    "television-outline": Tv,
     "television-off": MonitorOff,
     "time-outline": Clock,
     "tv": Tv,
