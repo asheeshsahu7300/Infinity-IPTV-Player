@@ -144,8 +144,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
 
     useImperativeHandle(
       forwardedRef,
-      () => nativeRef.current as View,
-      []
+      () => nativeRef.current as View
     );
 
     // Register with overlay focus controller if inside an overlay

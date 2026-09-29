@@ -22,6 +22,7 @@ export interface FocusGroupProps {
   trapLeft?: boolean;
   trapRight?: boolean;
   destinations?: any[];
+  pointerEvents?: "box-none" | "none" | "box-only" | "auto";
 }
 
 /**
@@ -41,6 +42,7 @@ export const FocusGroup = React.forwardRef<View, FocusGroupProps>(
       trapLeft,
       trapRight,
       destinations,
+      pointerEvents,
     },
     ref
   ) {
@@ -54,6 +56,7 @@ export const FocusGroup = React.forwardRef<View, FocusGroupProps>(
         trapFocusLeft={trapLeft}
         trapFocusRight={trapRight}
         destinations={destinations}
+        pointerEvents={pointerEvents}
       >
         {children}
       </TVFocusGuideView>

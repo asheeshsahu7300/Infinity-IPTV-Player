@@ -10,7 +10,7 @@ import { View, StyleSheet, Dimensions, Platform, ActivityIndicator, StatusBar, S
 import { useLocalSearchParams } from "expo-router";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { isPhone } from "../src/utils/phoneUtils";
-import { isTouch } from "../src/utils/tabletUtils";
+import { isTouch, remoteFocusEnabled } from "../src/utils/tabletUtils";
 import { ExpoVideoPlayer, ExpoVideoPlayerRef } from "../src/components/ExpoVideoPlayer";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { safeStorage } from "../src/services/safeStorage";
@@ -103,6 +103,15 @@ const END_OF_TITLE_TOLERANCE_MS = 15000;
  * into the end, the end is taken at face value.
  */
 const MAX_TRUNCATED_END_RETRIES = 2;
+
+export function formatTime(ms: number) {
+  const s = Math.floor(Math.max(0, ms) / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0)
+    return `${h}:${(m % 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
+  return `${m}:${(s % 60).toString().padStart(2, "0")}`;
+}
 
 const ASPECT_RATIOS: { key: AspectRatioType; label: string; contentFit: "contain" | "cover" | "fill" }[] = [
   { key: "fit", label: "Fit", contentFit: "contain" },
@@ -584,13 +593,16 @@ export default function PlayerScreen() {
       };
     }
   }, [params.url, params.cmd, params.contentId, params.title, params.type, activePortal, streamUrl]);
+  const [playBtnNode, setPlayBtnNode] = useState<number | undefined>(undefined);
   const [seekBarNode, setSeekBarNode] = useState<number | undefined>(undefined);
   const [dummyLeftNode, setDummyLeftNode] = useState<number | undefined>(undefined);
   const [dummyRightNode, setDummyRightNode] = useState<number | undefined>(undefined);
   const [actionsRowNode, setActionsRowNode] = useState<number | undefined>(undefined);
+  const playBtnRef = useRef<any>(null);
   const seekBarRef = useRef<any>(null);
   const dummyLeftRef = useRef<any>(null);
   const dummyRightRef = useRef<any>(null);
+  const [controlsSession, setControlsSession] = useState(0);
   const [showControls, setShowControls] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
@@ -872,6 +884,23 @@ export default function PlayerScreen() {
   const dummyLeftFocusedRef = useRef(false);
   const dummyRightFocusedRef = useRef(false);
   const isNavRowFocusedRef = useRef(false);
+  const isActionsRowFocusedRef = useRef(false);
+
+  // ── Double-tap skip state & refs ──────────────────────────────────────────
+  const [doubleTapFeedback, setDoubleTapFeedback] = useState<{
+    side: "left" | "right";
+    seconds: number;
+  } | null>(null);
+  const doubleTapSecondsRef = useRef(0);
+  const doubleTapTimerRef = useRef<any>(null);
+  const doubleTapAnimOpacity = useRef(new Animated.Value(0)).current;
+  const doubleTapAnimScale = useRef(new Animated.Value(0.85)).current;
+
+  const lastTapTimeRef = useRef(0);
+  const lastTapSideRef = useRef<"left" | "right" | "center" | null>(null);
+  const singleTapTimerRef = useRef<any>(null);
+  const playerWidthRef = useRef(SCREEN_WIDTH);
+
   const accumulateSeekRef = useRef<(delta: number, commitAfterMs?: number) => void>(() => { });
   const handleSilentRetryRef = useRef<() => void>(() => { });
   // The zap helpers are defined further down but the D-pad handlers above need
@@ -1030,9 +1059,9 @@ export default function PlayerScreen() {
         const timeSinceCommit = Date.now() - seekCommitTimeRef.current;
         const target = seekTargetRef.current;
         const hasReachedTarget =
-          target !== null && Math.abs(positionMs - target) < 3000;
+          target !== null && Math.abs(positionMs - target) < 2000;
 
-        if (hasReachedTarget || timeSinceCommit > 1000) {
+        if (hasReachedTarget || timeSinceCommit > 2500) {
           isSeeking.current = false;
           seekTargetRef.current = null;
           if (seekSettlingTimeoutRef.current) {
@@ -1205,6 +1234,9 @@ export default function PlayerScreen() {
       }, 1200);
 
       playerRef.current?.seekTo(clamped);
+      if (isPlayingRef.current) {
+        playerRef.current?.play();
+      }
 
       resetControlsTimeout();
     },
@@ -1308,6 +1340,11 @@ export default function PlayerScreen() {
     onBlur: () => { isNavRowFocusedRef.current = false; },
   };
 
+  const actionsRowFocusHandlers = {
+    onFocus: () => { isActionsRowFocusedRef.current = true; resetControlsTimeout(); },
+    onBlur: () => { isActionsRowFocusedRef.current = false; },
+  };
+
   const handleSeekFocus = useCallback(() => {
     if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
     setSeekBarFocused(true);
@@ -1318,9 +1355,11 @@ export default function PlayerScreen() {
   const handleSeekBlur = useCallback(() => {
     if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
     focusTimeoutRef.current = setTimeout(() => {
-      setSeekBarFocused(false);
-      setVisualFocus(false);
-    }, 150);
+      if (!dummyLeftFocusedRef.current && !dummyRightFocusedRef.current) {
+        setSeekBarFocused(false);
+        setVisualFocus(false);
+      }
+    }, 200);
   }, []);
 
   // ── TV focus node attachment ──────────────────────────────────────────────
@@ -1329,15 +1368,17 @@ export default function PlayerScreen() {
     if (showControls) {
       const attachNodes = () => {
         if (!mounted) return;
+        const play = playBtnRef.current ? findNodeHandle(playBtnRef.current) : null;
         const seek = seekBarRef.current ? findNodeHandle(seekBarRef.current) : null;
         const left = dummyLeftRef.current ? findNodeHandle(dummyLeftRef.current) : null;
         const right = dummyRightRef.current ? findNodeHandle(dummyRightRef.current) : null;
         const row = actionsRowRef.current ? findNodeHandle(actionsRowRef.current) : null;
-        if (seek && left && right && row) {
-          setSeekBarNode(seek);
-          setDummyLeftNode(left);
-          setDummyRightNode(right);
-          setActionsRowNode(row);
+        if (play && seek && left && right && row) {
+          setPlayBtnNode((prev) => (prev !== play ? play : prev));
+          setSeekBarNode((prev) => (prev !== seek ? seek : prev));
+          setDummyLeftNode((prev) => (prev !== left ? left : prev));
+          setDummyRightNode((prev) => (prev !== right ? right : prev));
+          setActionsRowNode((prev) => (prev !== row ? row : prev));
         } else {
           requestAnimationFrame(attachNodes);
         }
@@ -1349,6 +1390,23 @@ export default function PlayerScreen() {
     }
     return () => { mounted = false; };
   }, [showControls, showVideoModal, showAudioModal, showSubtitleModal]);
+
+  // ── Reset focus to play button when controls hide/show ────────────────────
+  useEffect(() => {
+    if (!showControls) {
+      setControlsSession((s) => s + 1);
+      setSeekBarFocused(false);
+      setVisualFocus(false);
+      dummyLeftFocusedRef.current = false;
+      dummyRightFocusedRef.current = false;
+      isActionsRowFocusedRef.current = false;
+    } else {
+      const timer = setTimeout(() => {
+        playBtnRef.current?.focus?.();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [showControls]);
 
   useEffect(() => {
     if (showVideoModal || showAudioModal || showSubtitleModal) {
@@ -1478,10 +1536,17 @@ export default function PlayerScreen() {
     (x: number, commit: boolean) => {
       const width = railWidthRef.current;
       if (!width || isLockedRef.current || duration <= 0 || !isSeekable) return;
-      const target = Math.max(0, Math.min(x / width, 1)) * duration;
+      const clampedX = Math.max(0, Math.min(x, width));
+      const target = (clampedX / width) * duration;
       isSeeking.current = true;
+      seekTargetRef.current = target;
+      seekCommitTimeRef.current = Date.now();
       positionRef.current = target;
       setPosition(target);
+
+      const dur = durationRef.current > 0 ? durationRef.current : duration;
+      setSeekIndicator(`${formatTime(target)} / ${formatTime(dur)}`);
+
       if (commit) {
         try {
           performSeek(target);
@@ -1489,46 +1554,33 @@ export default function PlayerScreen() {
           console.error("Scrub seek error:", e);
           isSeeking.current = false;
           seekTargetRef.current = null;
+        } finally {
+          setTimeout(() => setSeekIndicator(null), 600);
         }
       }
+      resetControlsTimeout();
     },
-    [duration, isSeekable, performSeek]
+    [duration, isSeekable, performSeek, resetControlsTimeout]
   );
 
   /**
-   * Claims the touch for the bar itself, so the tap reaches this instead of the
-   * `Focusable` wrapping it — whose press is `togglePlay`.
-   *
-   * Gated on `isTouch`, not `isPhone`. A tablet wears the TV layout but is
-   * still a touch device, and asking the phone question here meant the
-   * responder was never attached on one: the bar could be moved with a remote
-   * and not with a finger. `isPhone` is for the phone *tier*; the touch/TV
-   * branch is `isTouch` — see the note on it in `tabletUtils`. A remote has no
-   * responder to grant, so the TV path keeps its `onPress` either way.
+   * Claims the touch for the bar itself, so scrubbing smoothly moves
+   * the video position without triggering play/pause.
    */
   const scrubResponder = useMemo(
-    () =>
-      isTouch
-        ? {
-            onStartShouldSetResponder: () => true,
-            onMoveShouldSetResponder: () => true,
-            onResponderTerminationRequest: () => false,
-            onResponderGrant: (e: any) => scrubFromX(e.nativeEvent.locationX, false),
-            onResponderMove: (e: any) => scrubFromX(e.nativeEvent.locationX, false),
-            onResponderRelease: (e: any) => scrubFromX(e.nativeEvent.locationX, true),
-          }
-        : null,
+    () => ({
+      onStartShouldSetResponder: () => true,
+      onMoveShouldSetResponder: () => true,
+      onResponderTerminationRequest: () => false,
+      onResponderGrant: (e: any) => scrubFromX(e.nativeEvent.locationX, false),
+      onResponderMove: (e: any) => scrubFromX(e.nativeEvent.locationX, false),
+      onResponderRelease: (e: any) => scrubFromX(e.nativeEvent.locationX, true),
+    }),
     [scrubFromX]
   );
 
   /**
    * Moves the seek target by `delta` and commits once the presses stop.
-   *
-   * There used to be an `isProgressive` mode that **ignored `delta`** and
-   * walked a 1m/2m/5m/10m ladder instead. Every arrow-key caller passed it,
-   * so a single left press jumped a minute however clearly the call site
-   * said 10 seconds. Nothing wants that ladder — fast-forward and rewind
-   * use seek() directly — so it is gone and the delta is honoured.
    */
   const accumulateSeek = useCallback(
     (delta: number, commitAfterMs = 800) => {
@@ -1547,12 +1599,11 @@ export default function PlayerScreen() {
       const dur = durationRef.current > 0 ? durationRef.current : duration;
       const target = Math.max(0, Math.min(baseSeekPositionRef.current + accumulatedDelta.current, dur));
       targetSeekPosition.current = target;
+      seekTargetRef.current = target;
+      seekCommitTimeRef.current = Date.now();
       positionRef.current = target;
       setPosition(target);
 
-      // Both directions get a sign. Backwards used to get none, so a left
-      // press read "10s" — indistinguishable from a forward jump at a glance,
-      // which is the one thing this indicator exists to tell you.
       const sign = accumulatedDelta.current < 0 ? "-" : "+";
       const absMs = Math.abs(accumulatedDelta.current);
       const displayStr =
@@ -1591,6 +1642,101 @@ export default function PlayerScreen() {
   );
   useEffect(() => { accumulateSeekRef.current = accumulateSeek; }, [accumulateSeek]);
 
+  // ── Double-tap skip gesture handlers ──────────────────────────────────
+  const handleDoubleTapSkip = useCallback(
+    (side: "left" | "right") => {
+      if (isLockedRef.current || duration <= 0 || !isSeekable || isLive) return;
+
+      // Keep controls hidden while skipping on tap
+      if (showControlsRef.current) {
+        setShowControls(false);
+      }
+
+      const delta = side === "left" ? -ARROW_SEEK_MS : ARROW_SEEK_MS;
+      accumulateSeek(delta, 600);
+
+      if (doubleTapTimerRef.current) {
+        clearTimeout(doubleTapTimerRef.current);
+      }
+
+      const newSec =
+        doubleTapFeedback?.side === side
+          ? doubleTapSecondsRef.current + 10
+          : 10;
+      doubleTapSecondsRef.current = newSec;
+      setDoubleTapFeedback({ side, seconds: newSec });
+
+      doubleTapAnimOpacity.setValue(1);
+      doubleTapAnimScale.setValue(0.85);
+      Animated.parallel([
+        Animated.spring(doubleTapAnimScale, {
+          toValue: 1,
+          friction: 6,
+          useNativeDriver: true,
+        }),
+        Animated.timing(doubleTapAnimOpacity, {
+          toValue: 0,
+          delay: 450,
+          duration: 350,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setDoubleTapFeedback(null);
+        doubleTapSecondsRef.current = 0;
+      });
+
+      doubleTapTimerRef.current = setTimeout(() => {
+        setDoubleTapFeedback(null);
+        doubleTapSecondsRef.current = 0;
+      }, 800);
+    },
+    [duration, isSeekable, isLive, accumulateSeek, doubleTapFeedback]
+  );
+
+  const handleBackgroundTouch = useCallback(
+    (e: any) => {
+      if (isLockedRef.current) return;
+      if (showZapList || showQueueList || pinTarget) return;
+
+      const x = e.nativeEvent.locationX ?? e.nativeEvent.pageX ?? 0;
+      const width = playerWidthRef.current || SCREEN_WIDTH;
+      const now = Date.now();
+      const timeSinceLastTap = now - lastTapTimeRef.current;
+
+      const side: "left" | "right" | "center" =
+        x < width * 0.38 ? "left" : x > width * 0.62 ? "right" : "center";
+
+      if (timeSinceLastTap < 350 && side !== "center" && (side === lastTapSideRef.current || !lastTapSideRef.current)) {
+        // Double-tap detected on left or right!
+        if (singleTapTimerRef.current) {
+          clearTimeout(singleTapTimerRef.current);
+          singleTapTimerRef.current = null;
+        }
+        lastTapTimeRef.current = now;
+        lastTapSideRef.current = side;
+        handleDoubleTapSkip(side);
+      } else {
+        // Potential single tap
+        lastTapTimeRef.current = now;
+        lastTapSideRef.current = side;
+
+        if (singleTapTimerRef.current) {
+          clearTimeout(singleTapTimerRef.current);
+        }
+        singleTapTimerRef.current = setTimeout(() => {
+          singleTapTimerRef.current = null;
+          lastTapSideRef.current = null;
+          setShowControls((prev) => {
+            const next = !prev;
+            if (next) resetControlsTimeout();
+            return next;
+          });
+        }, 260);
+      }
+    },
+    [showZapList, showQueueList, pinTarget, handleDoubleTapSkip, resetControlsTimeout]
+  );
+
   // ── D-pad (TV remote / navigation buttons) ──────────────────────────────
   useDPad(
     {
@@ -1606,42 +1752,31 @@ export default function PlayerScreen() {
       },
       onFastForward: () => {
         if (isLockedRef.current) return;
-        setShowControls(true);
-        resetControlsTimeout();
-        if (showControlsRef.current && !isLive) {
-          seek(180000);
+        if (!isLive) {
+          accumulateSeek(30000, 600);
         }
       },
       onRewind: () => {
         if (isLockedRef.current) return;
-        setShowControls(true);
-        resetControlsTimeout();
-        if (showControlsRef.current && !isLive) {
-          seek(-180000);
+        if (!isLive) {
+          accumulateSeek(-30000, 600);
         }
       },
-      // Left and right are the 10-second jumps, as on VLC.
-      //
-      // They seek on the *first* press whether the transport bar is up or
-      // not. Previously a press with the controls hidden only woke the bar,
-      // so skipping back took two presses — one to reveal something the
-      // viewer had not asked for, one to actually move.
-      //
-      // The one exception is the button row: while that has focus, left and
-      // right are how you get between the buttons.
+      // Left and right skip by 10s directly when controls are hidden;
+      // when controls are visible, let TV focus navigation move between buttons and scrub seekbar
       onLeft: () => {
         if (isLockedRef.current) return;
-        if (showControlsRef.current && isNavRowFocusedRef.current) return;
-        if (!isLive) accumulateSeek(-ARROW_SEEK_MS, ARROW_SEEK_COMMIT_MS);
-        setShowControls(true);
-        resetControlsTimeout();
+        if (showControlsRef.current) return;
+        if (!isLive) {
+          accumulateSeek(-ARROW_SEEK_MS, 600);
+        }
       },
       onRight: () => {
         if (isLockedRef.current) return;
-        if (showControlsRef.current && isNavRowFocusedRef.current) return;
-        if (!isLive) accumulateSeek(ARROW_SEEK_MS, ARROW_SEEK_COMMIT_MS);
-        setShowControls(true);
-        resetControlsTimeout();
+        if (showControlsRef.current) return;
+        if (!isLive) {
+          accumulateSeek(ARROW_SEEK_MS, 600);
+        }
       },
       onSelect: () => {
         if (isLockedRef.current) return;
@@ -1651,9 +1786,6 @@ export default function PlayerScreen() {
         } else if (isLive && canZapRef.current) {
           // As in MAG STB: OK while info/controls are already visible opens the Channel Zap List
           setShowZapList(true);
-        } else if (!isLive && !isNavRowFocusedRef.current) {
-          togglePlay();
-          resetControlsTimeout();
         }
       },
       onUp: () => {
@@ -1712,7 +1844,19 @@ export default function PlayerScreen() {
         setShowControls(true);
         resetControlsTimeout();
       },
-      onAny: () => {
+      onAny: (eventType?: any) => {
+        const t = String(eventType || "").toLowerCase();
+        if (
+          t.includes("left") ||
+          t.includes("right") ||
+          t.includes("rewind") ||
+          t.includes("forward")
+        ) {
+          if (showControlsRef.current) {
+            resetControlsTimeout();
+          }
+          return;
+        }
         if (!showControlsRef.current) {
           setShowControls(true);
         }
@@ -1741,14 +1885,6 @@ export default function PlayerScreen() {
     resetControlsTimeout();
   };
 
-  const formatTime = (ms: number) => {
-    const s = Math.floor(ms / 1000);
-    const m = Math.floor(s / 60);
-    const h = Math.floor(m / 60);
-    if (h > 0)
-      return `${h}:${(m % 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
-    return `${m}:${(s % 60).toString().padStart(2, "0")}`;
-  };
 
   // ── Silent retry with exponential backoff (works for either player: it
   //    just fetches a fresh URL from StreamManager and lets the mounted
@@ -2619,7 +2755,7 @@ export default function PlayerScreen() {
   // Render
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <View style={S.container}>
+    <View style={S.container} onLayout={(e) => { playerWidthRef.current = e.nativeEvent.layout.width; }}>
       {/* ── Player: Expo Video Player (Media3 / AVPlayer) ── */}
       {streamUrl && /^(https?|rtsp|mms):\/\//i.test(streamUrl) ? (
         <ExpoVideoPlayer
@@ -2794,6 +2930,7 @@ export default function PlayerScreen() {
             handleBufferingChange(buffering);
           }}
           onPaused={() => {
+            if (isSeeking.current) return;
             if (isPlayingRef.current) {
               setIsPlaying(false);
             }
@@ -2893,7 +3030,7 @@ export default function PlayerScreen() {
       ) : null}
 
       {/* TV: invisible focusable overlay to catch OK press when controls are hidden */}
-      {!showControls && !showQueueList && !showZapList && !upNext && !pinTarget && (
+      {!showControls && !showQueueList && !showZapList && !upNext && !pinTarget && remoteFocusEnabled && (
         <Focusable
           hasTVPreferredFocus={!showControls}
           style={StyleSheet.absoluteFill}
@@ -2903,6 +3040,20 @@ export default function PlayerScreen() {
             resetControlsTimeout();
           }}
         />
+      )}
+
+      {/* Gesture / Tap handler layer (Single-tap toggles controls, Double-tap left/right skips ±10s) */}
+      {!showQueueList && !showZapList && !upNext && !pinTarget && !showVideoModal && !showAudioModal && !showSubtitleModal && (
+        <View
+          style={StyleSheet.absoluteFill}
+          pointerEvents="box-none"
+        >
+          <View
+            style={StyleSheet.absoluteFill}
+            onStartShouldSetResponder={() => true}
+            onResponderRelease={handleBackgroundTouch}
+          />
+        </View>
       )}
 
       {/* ── Network lost overlay ─────────────────────────────────────────── */}
@@ -3027,16 +3178,24 @@ export default function PlayerScreen() {
 
       {/* ── Seek / speed indicator ───────────────────────────────────────── */}
       {seekIndicator !== null && (
-        <View style={S.seekIndicatorOverlay} pointerEvents="none">
+        <View
+          style={[
+            S.seekIndicatorOverlay,
+            showControls && { top: "24%" },
+          ]}
+          pointerEvents="none"
+        >
           <View style={S.seekIndicatorBox}>
             <View style={S.seekIconBadge}>
               <DynamicIcon
                 name={
                   seekIndicator.includes("x")
                     ? "speedometer-outline"
-                    : seekIndicator.startsWith("+")
-                      ? "play-forward"
-                      : "play-back"
+                    : seekIndicator.includes("/")
+                      ? "time-outline"
+                      : seekIndicator.startsWith("+")
+                        ? "play-forward"
+                        : "play-back"
                 }
                 size={ps(2.2)}
                 color="#FFFFFF"
@@ -3047,25 +3206,58 @@ export default function PlayerScreen() {
         </View>
       )}
 
+      {/* ── Double-tap skip indicator (Left / Right) ──────────────────────── */}
+      {doubleTapFeedback !== null && (
+        <View
+          style={[
+            S.doubleTapOverlay,
+            doubleTapFeedback.side === "left" ? S.doubleTapLeft : S.doubleTapRight,
+          ]}
+          pointerEvents="none"
+        >
+          <Animated.View
+            style={[
+              S.doubleTapPill,
+              {
+                opacity: doubleTapAnimOpacity,
+                transform: [{ scale: doubleTapAnimScale }],
+              },
+            ]}
+          >
+            <View style={S.doubleTapIconRow}>
+              {doubleTapFeedback.side === "left" ? (
+                <>
+                  <SkipBack size={ps(2.2)} color="#FFFFFF" />
+                  <Text style={S.doubleTapText}>-{doubleTapFeedback.seconds}s</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={S.doubleTapText}>+{doubleTapFeedback.seconds}s</Text>
+                  <SkipForward size={ps(2.2)} color="#FFFFFF" />
+                </>
+              )}
+            </View>
+          </Animated.View>
+        </View>
+      )}
+
       {/* ── Controls overlay ─────────────────────────────────────────────── */}
       {showControls && !upNext && (
-        <FocusGroup style={S.controlsOverlay}>
+        <FocusGroup
+          style={S.controlsOverlay}
+          pointerEvents="box-none"
+          autoFocus={true}
+          destinations={playBtnNode ? [playBtnNode] : undefined}
+        >
           {/* Center play / seek buttons */}
           {!isLocked && (
-            <View
-              style={[
-                S.centerRow,
-                seekIndicator !== null && { opacity: 0 },
-              ]}
-              pointerEvents={seekIndicator !== null ? "none" : "auto"}
-            >
+            <View style={S.centerRow}>
               {!isLive && (
                 <Focusable
                   ringOnFocus={false}
                   focusStyle={S.skipBtnFocused}
                   style={S.skipBtn}
-                  onPress={() => seek(-10000)}
-                  {...navRowFocusHandlers}
+                  onPress={() => accumulateSeek(-ARROW_SEEK_MS, 600)}
                 >
                   {(focused: boolean) => (
                     <SkipBack size={ps(2.2)} color={focused ? "#000000" : "#FFFFFF"} />
@@ -3074,12 +3266,14 @@ export default function PlayerScreen() {
               )}
               <View style={S.playBtnContainer}>
                 <Focusable
-                  hasTVPreferredFocus
+                  key={`main-play-btn-${controlsSession}`}
+                  ref={playBtnRef}
+                  hasTVPreferredFocus={showControls}
                   ringOnFocus={false}
                   focusStyle={S.mainPlayBtnFocused}
                   style={S.mainPlayBtn}
                   onPress={togglePlay}
-                  {...navRowFocusHandlers}
+                  onFocus={resetControlsTimeout}
                 >
                   {(focused: boolean) => (
                     <DynamicIcon name={isPlaying ? "pause" : "play"} size={ps(3.2)} color={focused ? "#000000" : "#FFFFFF"} />
@@ -3091,8 +3285,7 @@ export default function PlayerScreen() {
                   ringOnFocus={false}
                   focusStyle={S.skipBtnFocused}
                   style={S.skipBtn}
-                  onPress={() => seek(10000)}
-                  {...navRowFocusHandlers}
+                  onPress={() => accumulateSeek(ARROW_SEEK_MS, 600)}
                 >
                   {(focused: boolean) => (
                     <SkipForward size={ps(2.2)} color={focused ? "#000000" : "#FFFFFF"} />
@@ -3153,7 +3346,7 @@ export default function PlayerScreen() {
                       nextFocusDown={seekBarNode}
                       nextFocusLeft={seekBarNode}
                       style={{ width: 1, height: 1, backgroundColor: "transparent", position: "absolute", left: 0 }}
-                      onPress={togglePlay}
+                      onPress={() => {}}
                       onFocus={() => {
                         if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
                         dummyLeftFocusedRef.current = true;
@@ -3161,7 +3354,7 @@ export default function PlayerScreen() {
                         accumulateSeek(-ARROW_SEEK_MS, ARROW_SEEK_COMMIT_MS);
                         seekBarRef.current?.focus();
                       }}
-                      onBlur={() => { dummyLeftFocusedRef.current = false; handleSeekBlur(); }}
+                      onBlur={() => { dummyLeftFocusedRef.current = false; }}
                     />
                     <Focusable
                       ref={seekBarRef}
@@ -3169,10 +3362,11 @@ export default function PlayerScreen() {
                       style={[S.progressBarWrapper, { flex: 1 }]}
                       nextFocusLeft={dummyLeftNode}
                       nextFocusRight={dummyRightNode}
+                      nextFocusUp={playBtnNode}
                       nextFocusDown={actionsRowNode}
                       onFocus={handleSeekFocus}
                       onBlur={handleSeekBlur}
-                      onPress={togglePlay}
+                      onPress={() => {}}
                     >
                       {() => {
                         const effFocused =
@@ -3181,9 +3375,9 @@ export default function PlayerScreen() {
                           <View
                             style={S.progressBarInner}
                             onLayout={(e) => { railWidthRef.current = e.nativeEvent.layout.width; }}
-                            {...(scrubResponder ?? {})}
+                            {...scrubResponder}
                           >
-                            <View style={[S.progressRail, effFocused && S.progressRailFocused]}>
+                            <View pointerEvents="none" style={[S.progressRail, effFocused && S.progressRailFocused]}>
                               {isBuffering && <ShimmerBar />}
                               <View style={[S.progressFill, { width: `${progressPercent}%` }]} />
                             </View>
@@ -3200,7 +3394,7 @@ export default function PlayerScreen() {
                       nextFocusDown={seekBarNode}
                       nextFocusRight={seekBarNode}
                       style={{ width: 1, height: 1, backgroundColor: "transparent", position: "absolute", right: 0 }}
-                      onPress={togglePlay}
+                      onPress={() => {}}
                       onFocus={() => {
                         if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
                         dummyRightFocusedRef.current = true;
@@ -3208,7 +3402,7 @@ export default function PlayerScreen() {
                         accumulateSeek(ARROW_SEEK_MS, ARROW_SEEK_COMMIT_MS);
                         seekBarRef.current?.focus();
                       }}
-                      onBlur={() => { dummyRightFocusedRef.current = false; handleSeekBlur(); }}
+                      onBlur={() => { dummyRightFocusedRef.current = false; }}
                     />
                   </View>
                 </View>
@@ -3217,19 +3411,12 @@ export default function PlayerScreen() {
               {/* Actions row */}
               <FocusGroup ref={actionsRowRef} style={S.actionsRow}>
                 <View style={S.actionsRight}>
-                  {/* No LIVE dot or quality chip here.
-                      The banner directly above already carries both as
-                      badges, and it is now always visible whenever these
-                      controls are — so repeating them put "LIVE  4K" on
-                      screen twice, one line apart, which is what made the
-                      two rows read as competing panels rather than one. */}
-
                   {/* Set-top controls. These duplicate remote keys that most
                       Android TV builds never deliver to JS at all, so on that
                       hardware they are the only way to zap. */}
                   {!isLive && canStepQueue && (
                     <>
-                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => setShowQueueList(true)} accessibilityLabel="Episode list" {...navRowFocusHandlers}>
+                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => setShowQueueList(true)} accessibilityLabel="Episode list" {...actionsRowFocusHandlers}>
                         {(focused: boolean) => (
                           <List size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                         )}
@@ -3243,7 +3430,7 @@ export default function PlayerScreen() {
                             disabled={!hasPrevEpisode}
                             onPress={() => stepQueue(-1)}
                             accessibilityLabel="Previous episode"
-                            {...navRowFocusHandlers}
+                            {...actionsRowFocusHandlers}
                           >
                             {(focused: boolean) => (
                               <StepBack size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
@@ -3256,7 +3443,7 @@ export default function PlayerScreen() {
                             disabled={!hasNextEpisode}
                             onPress={() => stepQueue(1)}
                             accessibilityLabel="Next episode"
-                            {...navRowFocusHandlers}
+                            {...actionsRowFocusHandlers}
                           >
                             {(focused: boolean) => (
                               <StepForward size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
@@ -3268,22 +3455,22 @@ export default function PlayerScreen() {
                   )}
                   {isLive && canZap && (
                     <>
-                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { setShowZapList(true); }} accessibilityLabel="Channel list" {...navRowFocusHandlers}>
+                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { setShowZapList(true); }} accessibilityLabel="Channel list" {...actionsRowFocusHandlers}>
                         {(focused: boolean) => (
                           <List size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                         )}
                       </Focusable>
-                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => zapBy(1)} accessibilityLabel="Channel up" {...navRowFocusHandlers}>
+                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => zapBy(1)} accessibilityLabel="Channel up" {...actionsRowFocusHandlers}>
                         {(focused: boolean) => (
                           <ChevronUp size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                         )}
                       </Focusable>
-                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => zapBy(-1)} accessibilityLabel="Channel down" {...navRowFocusHandlers}>
+                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => zapBy(-1)} accessibilityLabel="Channel down" {...actionsRowFocusHandlers}>
                         {(focused: boolean) => (
                           <ChevronDown size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                         )}
                       </Focusable>
-                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => flashBanner()} accessibilityLabel="Channel info" {...navRowFocusHandlers}>
+                      <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => flashBanner()} accessibilityLabel="Channel info" {...actionsRowFocusHandlers}>
                         {(focused: boolean) => (
                           <Info size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                         )}
@@ -3291,32 +3478,32 @@ export default function PlayerScreen() {
                     </>
                   )}
                   {!isLive && (
-                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cyclePlaybackSpeed} {...navRowFocusHandlers}>
+                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cyclePlaybackSpeed} {...actionsRowFocusHandlers}>
                       {(focused: boolean) => (
                         <Gauge size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                       )}
                     </Focusable>
                   )}
                   {!isLive && videoTracks.length > 1 && (
-                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowVideoModal(true); }} {...navRowFocusHandlers}>
+                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowVideoModal(true); }} {...actionsRowFocusHandlers}>
                       {(focused: boolean) => (
                         <Settings size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                       )}
                     </Focusable>
                   )}
                   {!isLive && (
-                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowSubtitleModal(true); }} {...navRowFocusHandlers}>
+                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowSubtitleModal(true); }} {...actionsRowFocusHandlers}>
                       {(focused: boolean) => (
                         <Subtitles size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                       )}
                     </Focusable>
                   )}
-                  <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowAudioModal(true); }} {...navRowFocusHandlers}>
+                  <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowAudioModal(true); }} {...actionsRowFocusHandlers}>
                     {(focused: boolean) => (
                       <Music size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                     )}
                   </Focusable>
-                  <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cycleAspectRatio} {...navRowFocusHandlers}>
+                  <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={cycleAspectRatio} {...actionsRowFocusHandlers}>
                     {(focused: boolean) => (
                       <Monitor size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                     )}
@@ -4378,6 +4565,49 @@ const S = StyleSheet.create({
   },
   modalCloseBtnTextFocused: {
     color: "#000000",
+  },
+
+  // Double-tap skip ripple feedback overlay
+  doubleTapOverlay: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: "40%",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 99,
+  },
+  doubleTapLeft: {
+    left: 0,
+  },
+  doubleTapRight: {
+    right: 0,
+  },
+  doubleTapPill: {
+    backgroundColor: "rgba(0, 0, 0, 0.72)",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  doubleTapIconRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  doubleTapText: {
+    color: "#FFFFFF",
+    fontSize: ps(1.6),
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
 
   // Unused legacy slots (kept to avoid import errors from other files referencing S)

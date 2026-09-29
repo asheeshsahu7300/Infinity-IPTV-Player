@@ -665,6 +665,9 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         seekTo: (positionMs: number) => {
           try {
             player.currentTime = Math.max(0, positionMs / 1000);
+            if (!pausedRef.current && !player.playing) {
+              player.play();
+            }
           } catch {}
         },
         seekBy: (deltaSeconds: number) => {
