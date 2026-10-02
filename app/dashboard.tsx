@@ -75,7 +75,8 @@ const RAIL_H_PAD = pw(5);
  * card's top edge down past the air it created, leaving the title sitting above
  * the panel it belongs to.
  */
-const HERO_BLOCK_GAP = ph(3.2);
+const HERO_TOP_GAP = ph(2.2);
+const HERO_BOTTOM_GAP = ph(3.8);
 
 /**
  * The seam inside the pair.
@@ -310,7 +311,7 @@ export default function DashboardScreen() {
         S.headerBranding,
         { paddingHorizontal: hPad },
         isPortrait
-          ? { marginTop: isPhone ? 0 : 6, marginBottom: isPhone ? 4 : 18 }
+          ? { marginTop: isPhone ? 0 : 6, marginBottom: isPhone ? 0 : 10 }
           : (!Platform.isTV && { marginTop: 4, marginBottom: isTablet ? vGap(6, 10) : 10 })
       ]}>
         <View style={S.logoRow}>
@@ -423,13 +424,13 @@ export default function DashboardScreen() {
           flexGrow: 0,
           maxWidth: "100%",
           marginTop: isPhone ? 0 : 10,
-          marginBottom: isPhone ? 10 : 20,
+          marginBottom: isPhone ? 10 : (isTablet ? 14 : 12),
         } : (!Platform.isTV && {
           flex: 0,
           flexGrow: 0,
           maxWidth: "100%",
           marginTop: isTablet ? vGap(2, 6) : 6,
-          marginBottom: isTablet ? vGap(10, 18) : 18,
+          marginBottom: isTablet ? vGap(6, 12) : 10,
         })
       ]}>
         {/*
@@ -464,7 +465,7 @@ export default function DashboardScreen() {
             // seam inside the pair, and above it the same air the byline has
             // below it a few lines down. The two expressions are deliberately
             // identical — that pairing is the whole point.
-            marginTop: isPhone ? 10 : isPortrait ? 18 : (isTablet ? vGap(10, 26) : 14),
+            marginTop: isPhone ? -8 : isPortrait ? 0 : (isTablet ? vGap(2, 8) : 4),
             marginBottom: isPhone ? 2 : isTablet && !isPortrait ? vGap(1, 3) : 3,
           }
         ]}>
@@ -477,9 +478,7 @@ export default function DashboardScreen() {
             !Platform.isTV && {
               fontSize: isPhone ? 11 : isPortrait ? 12 : (isTablet ? tps(15) : 13),
               lineHeight: isPhone ? 14 : isPortrait ? 15 : (isTablet ? tps(22) : 19),
-              // Matches heroTitle's marginTop above — that pair is the "equal
-              // air either side" this block is arranged around.
-              marginBottom: isPhone ? 10 : isPortrait ? 18 : (isTablet ? vGap(10, 26) : 14),
+              marginBottom: isPhone ? 18 : isPortrait ? 24 : (isTablet ? vGap(16, 32) : 20),
               // A measure, not a width: 560 was chosen against a 1280 panel and
               // is a short line on a 1506 one.
               maxWidth: isPortrait ? "100%" : (isTablet ? tps(680) : 480),
@@ -848,23 +847,10 @@ const S = StyleSheet.create({
     // paddingHorizontal is applied dynamically in render (hPad)
     maxWidth: pw(72),
     position: "relative",
-    flex: 1,
-    /*
-     * Top-aligned, not centred.
-     *
-     * With `flex: 1` and `justifyContent: "center"` the leftover height of the
-     * hero was split above the title and below the buttons, which meant the
-     * gap over the copy was the title's `marginTop` *plus* an unknown share of
-     * the free space — so it could never be made equal to the gap under the
-     * byline no matter what the two were set to. Aligned to the start, that
-     * margin is the gap, and the slack falls below the buttons where nothing is
-     * being measured against it.
-     *
-     * Only TV is affected: every non-TV branch overrides this to `flex: 0`, so
-     * there was no free space to distribute in the first place.
-     */
+    flex: 0,
+    flexGrow: 0,
     justifyContent: "flex-start",
-    marginBottom: ph(1.5),
+    marginBottom: ph(3.2),
   },
   heroGradientOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -876,7 +862,7 @@ const S = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "600",
     letterSpacing: 0.4,
-    marginTop: HERO_BLOCK_GAP,
+    marginTop: HERO_TOP_GAP,
     marginBottom: HERO_LINE_GAP,
     textShadowColor: "rgba(0, 0, 0, 0.75)",
     textShadowOffset: { width: 0, height: 2 },
@@ -886,12 +872,12 @@ const S = StyleSheet.create({
     fontSize: ps(1.3),
     color: "#A2A7BD",
     lineHeight: ph(2.8),
-    marginBottom: HERO_BLOCK_GAP,
+    marginBottom: HERO_BOTTOM_GAP,
     maxWidth: pw(58),
   },
   heroButtons: {
     flexDirection: "row",
-    gap: pw(1.5),
+    gap: pw(2),
   },
   heroPillWrapper: {
     borderRadius: 100,
@@ -935,7 +921,7 @@ const S = StyleSheet.create({
   // Browse Section ──
   browseSection: {
     // paddingHorizontal is applied dynamically in render (hPad)
-    flex: 1.6,
+    flex: 1,
     marginBottom: ph(3.5),
   },
   browseContainer: {

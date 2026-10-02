@@ -114,8 +114,8 @@ index 1c7a55c..b6ade8f 100644
 -  val trackSelector = DefaultTrackSelector(context)
 +  val trackSelector = DefaultTrackSelector(context).apply {
 +    parameters = buildUponParameters()
-+      .setConstrainAudioChannelCountToDeviceCapabilities(true)
-+      .setExceedRendererCapabilitiesIfNecessary(false)
++      .setConstrainAudioChannelCountToDeviceCapabilities(false)
++      .setExceedRendererCapabilitiesIfNecessary(true)
 +      .build()
 +  }
  
