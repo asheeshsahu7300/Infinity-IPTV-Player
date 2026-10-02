@@ -1,36 +1,3 @@
-diff --git a/node_modules/expo-video/android/.gradle/8.9/checksums/checksums.lock b/node_modules/expo-video/android/.gradle/8.9/checksums/checksums.lock
-new file mode 100644
-index 0000000..125a41d
-Binary files /dev/null and b/node_modules/expo-video/android/.gradle/8.9/checksums/checksums.lock differ
-diff --git a/node_modules/expo-video/android/.gradle/8.9/dependencies-accessors/gc.properties b/node_modules/expo-video/android/.gradle/8.9/dependencies-accessors/gc.properties
-new file mode 100644
-index 0000000..e69de29
-diff --git a/node_modules/expo-video/android/.gradle/8.9/fileChanges/last-build.bin b/node_modules/expo-video/android/.gradle/8.9/fileChanges/last-build.bin
-new file mode 100644
-index 0000000..f76dd23
-Binary files /dev/null and b/node_modules/expo-video/android/.gradle/8.9/fileChanges/last-build.bin differ
-diff --git a/node_modules/expo-video/android/.gradle/8.9/fileHashes/fileHashes.lock b/node_modules/expo-video/android/.gradle/8.9/fileHashes/fileHashes.lock
-new file mode 100644
-index 0000000..1a60e85
-Binary files /dev/null and b/node_modules/expo-video/android/.gradle/8.9/fileHashes/fileHashes.lock differ
-diff --git a/node_modules/expo-video/android/.gradle/8.9/gc.properties b/node_modules/expo-video/android/.gradle/8.9/gc.properties
-new file mode 100644
-index 0000000..e69de29
-diff --git a/node_modules/expo-video/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock b/node_modules/expo-video/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock
-new file mode 100644
-index 0000000..875f863
-Binary files /dev/null and b/node_modules/expo-video/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock differ
-diff --git a/node_modules/expo-video/android/.gradle/buildOutputCleanup/cache.properties b/node_modules/expo-video/android/.gradle/buildOutputCleanup/cache.properties
-new file mode 100644
-index 0000000..81098e1
---- /dev/null
-+++ b/node_modules/expo-video/android/.gradle/buildOutputCleanup/cache.properties
-@@ -0,0 +1,2 @@
-+#Wed Sep 23 17:56:06 IST 2026
-+gradle.version=8.9
-diff --git a/node_modules/expo-video/android/.gradle/vcs-1/gc.properties b/node_modules/expo-video/android/.gradle/vcs-1/gc.properties
-new file mode 100644
-index 0000000..e69de29
 diff --git a/node_modules/expo-video/android/build.gradle b/node_modules/expo-video/android/build.gradle
 index f17d2d4..27ebbec 100644
 --- a/node_modules/expo-video/android/build.gradle
@@ -44,10 +11,10 @@ index f17d2d4..27ebbec 100644
    def fragment_version = "1.6.2"
    implementation "androidx.fragment:fragment:$fragment_version"
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
-index 1c7a55c..b6ade8f 100644
+index 1c7a55c..905d143 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
 +++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
-@@ -48,22 +48,73 @@ import kotlinx.coroutines.launch
+@@ -48,22 +48,69 @@ import kotlinx.coroutines.launch
  import java.io.FileInputStream
  import java.lang.ref.WeakReference
  
@@ -89,12 +56,8 @@ index 1c7a55c..b6ade8f 100644
 +      try {
 +        if (FfmpegLibrary.isAvailable()) {
 +          val ffmpegRenderer = FfmpegAudioRenderer(eventHandler, eventListener, audioSink)
-+          if (extensionRendererMode == DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER) {
-+            out.add(0, ffmpegRenderer)
-+          } else {
-+            out.add(ffmpegRenderer)
-+          }
-+          android.util.Log.i("ExpoVideo", "Successfully registered FfmpegAudioRenderer (FFmpeg v${FfmpegLibrary.getVersion()}, prefer=${extensionRendererMode == DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER})")
++          out.add(ffmpegRenderer)
++          android.util.Log.i("ExpoVideo", "Successfully registered FfmpegAudioRenderer as fallback (FFmpeg v${FfmpegLibrary.getVersion()})")
 +        } else {
 +          android.util.Log.w("ExpoVideo", "FfmpegLibrary is NOT available")
 +        }
@@ -105,7 +68,7 @@ index 1c7a55c..b6ade8f 100644
 +  }
 +    .forceDisableMediaCodecAsynchronousQueueing()
      .setEnableDecoderFallback(true)
-+    .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
++    .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
    private var listeners: MutableList<WeakReference<VideoPlayerListener>> = mutableListOf()
    private var currentPlayerView = MutableWeakReference<PlayerView?>(null)
    val loadControl: VideoPlayerLoadControl = VideoPlayerLoadControl()
@@ -125,7 +88,7 @@ index 1c7a55c..b6ade8f 100644
      .setLooper(context.mainLooper)
      .setLoadControl(loadControl)
      .build()
-@@ -194,6 +245,20 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -194,6 +241,20 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
      }
  
      override fun onTracksChanged(tracks: Tracks) {
@@ -259,7 +222,7 @@ index 20dcbb7..9fd711c 100644
      }
    }
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
-index 7e213f7..e8d3e29 100644
+index 7e213f7..ebcb41f 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
 +++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
 @@ -23,17 +23,27 @@ fun buildBaseDataSourceFactory(context: Context, videoSource: VideoSource): Data
@@ -294,17 +257,16 @@ index 7e213f7..e8d3e29 100644
      val headers = videoSource.headers
      headers?.takeIf { it.isNotEmpty() }?.let {
        setDefaultRequestProperties(it)
-@@ -53,7 +63,18 @@ fun buildCacheDataSourceFactory(context: Context, videoSource: VideoSource): Dat
+@@ -53,7 +63,17 @@ fun buildCacheDataSourceFactory(context: Context, videoSource: VideoSource): Dat
  }
  
  fun buildMediaSourceFactory(context: Context, dataSourceFactory: DataSource.Factory): MediaSource.Factory {
 -  return DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory)
 +  val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
 +    .setConstantBitrateSeekingEnabled(true)
-+    .setTsExtractorMode(androidx.media3.extractor.ts.TsExtractor.MODE_MULTI_PMT)
-+    .setTsExtractorTimestampSearchBytes(112800 * 5)
++    .setTsExtractorMode(androidx.media3.extractor.ts.TsExtractor.MODE_SINGLE_PMT)
++    .setTsExtractorTimestampSearchBytes(112800)
 +    .setTsExtractorFlags(
-+      androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or
 +      androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_IGNORE_SPLICE_INFO_STREAM or
 +      androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS
 +    )
@@ -314,7 +276,7 @@ index 7e213f7..e8d3e29 100644
  }
  
  @OptIn(UnstableApi::class)
-@@ -64,7 +85,14 @@ fun buildExpoVideoMediaSource(context: Context, videoSource: VideoSource): Media
+@@ -64,7 +84,14 @@ fun buildExpoVideoMediaSource(context: Context, videoSource: VideoSource): Media
      buildBaseDataSourceFactory(context, videoSource)
    }
    val mediaSourceFactory = buildMediaSourceFactory(context, dataSourceFactory)
