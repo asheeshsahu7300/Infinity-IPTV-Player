@@ -519,90 +519,74 @@ Run TypeScript validation:
 npx tsc --noEmit
 ```
 
+Run ESLint check:
+
+```bash
+yarn lint
+```
+
 For Android builds:
 
 ```bash
 cd android
 ./gradlew assembleDebug
+cd ..
 ```
+
+*(On Windows PowerShell: `cd android; .\gradlew.bat assembleDebug; cd ..`)*
 
 ---
 
 # Clean Build
 
-If you encounter Android or Gradle build problems:
+If you encounter Android, Metro, or Gradle build problems:
 
 ```bash
 cd android
 ./gradlew clean
 cd ..
-```
-
-Then reinstall dependencies:
-
-```bash
 rm -rf node_modules
-npm install
+yarn install
 ```
 
-On Windows:
+On Windows (PowerShell):
 
 ```powershell
+cd android; .\gradlew.bat clean; cd ..
 Remove-Item -Recurse -Force node_modules
-npm install
+yarn install
 ```
 
 ---
 
 # Contributing
 
-Contributions, bug reports, and feature requests are welcome.
+Contributions, bug reports, and feature requests are welcome! For complete development guidelines, project architecture, D-Pad focus standards, and patch management, please see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
-## 1. Fork the repository
+### Quick Workflow
 
-Create your personal fork of the project.
-
-## 2. Create a feature branch
-
-```bash
-git checkout -b feature/your-feature-name
-```
-
-## 3. Follow the coding standards
-
-* Use TypeScript.
-* Keep components reusable.
-* Follow the existing design system.
-* Maintain Android TV D-Pad compatibility.
-* Use `Focusable` / `FocusGroup` for interactive TV components.
-* Follow the existing theme tokens.
-
-## 4. Validate your changes
-
-```bash
-npx tsc --noEmit
-```
-
-## 5. Commit your changes
-
-```bash
-git add .
-git commit -m "feat: add new feature"
-```
-
-## 6. Push your branch
-
-```bash
-git push origin feature/your-feature-name
-```
-
-## 7. Open a Pull Request
-
-Describe:
-
-* What was changed
-* Why it was changed
-* How it was tested
+1. **Fork & Branch**:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+2. **Follow Coding Standards**:
+   * Use TypeScript with strict types.
+   * Maintain Android TV D-Pad compatibility (`Focusable` / `FocusGroup` from `src/components/Focusable.tsx`).
+   * Adhere to responsive design tokens (`ps`, `pw`, `ph` from `src/theme/tokens.ts`).
+   * Never commit IPTV streams, credentials, or copyrighted playlist URLs.
+3. **Validate**:
+   ```bash
+   npx tsc --noEmit
+   yarn lint
+   ```
+4. **Commit & Push**:
+   ```bash
+   git add .
+   git commit -m "feat: add your feature description"
+   git push origin feature/your-feature-name
+   ```
+5. **Open a Pull Request**:
+   * Fill out the PR summary referencing the [PULL_REQUEST_DESCRIPTION.md](PULL_REQUEST_DESCRIPTION.md) template.
 
 ---
 
@@ -653,4 +637,3 @@ The developers are not responsible for content accessed through third-party serv
   <br />
   Your Player. Your Content. Your Choice.
 </p>
-```
