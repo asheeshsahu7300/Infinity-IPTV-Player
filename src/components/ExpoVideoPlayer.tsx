@@ -515,7 +515,10 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           onError?.(error || new Error("Playback error"), aTracks);
         } else if (status === "idle" && isLive && !isFirstLoadRef.current) {
           // If Live TV reaches idle state after having started, the stream dropped/ended
-          onEnd?.();
+          if (!endedRef.current) {
+            endedRef.current = true;
+            onEnd?.();
+          }
         }
       });
 
@@ -631,8 +634,10 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         // Recorded before the handler runs: the `playingChange(false)` that
         // follows the end of a file is not a stall, and must not be escalated
         // into a reconnect.
-        endedRef.current = true;
-        onEnd?.();
+        if (!endedRef.current) {
+          endedRef.current = true;
+          onEnd?.();
+        }
       });
 
       return () => {

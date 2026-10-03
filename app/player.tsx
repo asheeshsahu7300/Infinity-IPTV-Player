@@ -2521,9 +2521,11 @@ export default function PlayerScreen() {
   // causing the player to stall and rebuffer every 1 minute.
   useEffect(() => {
     if (!isLive || activePortal?.type !== "mag") return;
-    const periodMs = Math.min(portalApi.watchdogPeriodMs(activePortal), 30000);
+    const periodMs = 20000;
+    // Initial ping on channel tune
+    portalApi.watchdog(activePortal).catch(() => {});
     const interval = setInterval(() => {
-      if (mountedRef.current && isPlayingRef.current && activePortal) {
+      if (mountedRef.current && activePortal) {
         portalApi.watchdog(activePortal).catch(() => {});
       }
     }, periodMs);

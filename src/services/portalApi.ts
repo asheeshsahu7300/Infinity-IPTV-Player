@@ -204,6 +204,10 @@ export const formatMac = (mac: string) => {
  */
 
 
+//const STB_MODEL = "MAG254";
+//const STB_USER_AGENT =
+// "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3";
+
 /**
  * Headers for a *stream* request.
  *
@@ -296,8 +300,6 @@ const headers = (mac: string, token?: string, url?: string) => {
     "Accept-Encoding": "gzip",
     Cookie: cookieParts.join("; "),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-
-
     Connection: "Keep-Alive",
   };
 };
@@ -800,13 +802,20 @@ export const portalApi = {
         base +
         "/portal.php?type=watchdog&action=get_events" +
         "&init=0&cur_play_type=1&event_active_id=0&JsHttpRequest=1-xml";
-      await axios.get(url, {
+      const res = await axios.get(url, {
         ...rmAcceptHeader,
         headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
         timeout: 15000,
       });
+      if (!res.data || res.data === "") {
+        await axios.get(`${base}/portal.php?type=stb&action=get_profile&JsHttpRequest=1-xml`, {
+          ...rmAcceptHeader,
+          headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
+          timeout: 15000,
+        }).catch(() => { });
+      }
     } catch {
-      // See above: swallowed on purpose.
+      // Swallowed on purpose
     }
   },
 
