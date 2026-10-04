@@ -107,6 +107,35 @@ class InfinityPlayer(
         ): AudioSink? {
             return audioSafetyController.buildAudioSink(config.audioOutputMode)
         }
+
+        override fun buildAudioRenderers(
+            context: Context,
+            extensionRendererMode: Int,
+            mediaCodecSelector: MediaCodecSelector,
+            enableDecoderFallback: Boolean,
+            audioSink: AudioSink,
+            eventHandler: Handler,
+            eventListener: AudioRendererEventListener,
+            out: java.util.ArrayList<Renderer>
+        ) {
+            try {
+                out.add(androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer(eventHandler, eventListener, audioSink))
+                Log.i(TAG, "Explicitly loaded FfmpegAudioRenderer for software AC3/EAC3/DTS decoding.")
+            } catch (t: Throwable) {
+                Log.w(TAG, "FFmpeg audio extension could not be loaded: ${t.message}")
+            }
+
+            super.buildAudioRenderers(
+                context,
+                extensionRendererMode,
+                mediaCodecSelector,
+                enableDecoderFallback,
+                audioSink,
+                eventHandler,
+                eventListener,
+                out
+            )
+        }
     }
         .forceDisableMediaCodecAsynchronousQueueing()
         .setEnableDecoderFallback(true)
@@ -240,6 +269,7 @@ class InfinityPlayer(
                     val trackId = format.id ?: "${format.sampleMimeType}_${format.channelCount}_${format.sampleRate}_$i"
                     audioFormatMap[trackId] = mediaTrackGroup to i
 
+                    val isTrackSupported = group.isTrackSupported(i)
                     val audioTrack = InfinityAudioTrack(
                         id = trackId,
                         language = format.language,
@@ -251,7 +281,8 @@ class InfinityPlayer(
                         bitrate = if (format.bitrate != Format.NO_VALUE) format.bitrate else null,
                         isDefault = (format.selectionFlags and C.SELECTION_FLAG_DEFAULT) != 0,
                         isForced = (format.selectionFlags and C.SELECTION_FLAG_FORCED) != 0,
-                        isSelected = isSelected
+                        isSelected = isSelected,
+                        isSupported = isTrackSupported
                     )
                     currentAudioTracks.add(audioTrack)
                     if (isSelected) {

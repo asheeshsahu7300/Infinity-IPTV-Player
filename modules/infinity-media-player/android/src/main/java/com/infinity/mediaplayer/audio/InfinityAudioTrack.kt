@@ -11,7 +11,8 @@ data class InfinityAudioTrack(
     val bitrate: Int?,
     val isDefault: Boolean = false,
     val isForced: Boolean = false,
-    val isSelected: Boolean = false
+    val isSelected: Boolean = false,
+    val isSupported: Boolean = true
 ) {
     val displayTitle: String
         get() {

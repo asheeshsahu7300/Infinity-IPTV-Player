@@ -392,7 +392,8 @@ class InfinityMediaPlayerView(
             "bitrate" to t.bitrate,
             "isDefault" to t.isDefault,
             "isForced" to t.isForced,
-            "isSelected" to t.isSelected
+            "isSelected" to t.isSelected,
+            "isSupported" to t.isSupported
         )
     }
 

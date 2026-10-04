@@ -104,7 +104,7 @@ export function normalizeAudioTracks(tracks: any[]): NormalizedTrackOption[] {
       name: label,
       language: t.language || "",
       mimeType: mime,
-      isSupported: true,
+      isSupported: t.isSupported !== false,
       format: {
         sampleMimeType: mime,
       },
