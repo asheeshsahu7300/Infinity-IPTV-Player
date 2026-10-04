@@ -263,6 +263,7 @@ export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVi
     },
     ref
   ) => {
+    const nativeViewRef = useRef<any>(null);
     const isPlayingRef = useRef(!paused && autoPlay);
     const audioTelemetryRef = useRef<AudioTelemetry | null>(null);
     const nvcTelemetryRef = useRef<NvcTelemetry | null>(null);
@@ -271,10 +272,37 @@ export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVi
     // Internal state for imperative controls via props
     const [internalPaused, setInternalPaused] = React.useState(paused);
     const [reloadKey, setReloadKey] = React.useState(0);
+    const [selectedAudioTrackState, setSelectedAudioTrackState] = React.useState<string | undefined>(
+      selectedAudioTrack !== undefined ? String(selectedAudioTrack) : undefined
+    );
+    const [selectedSubtitleTrackState, setSelectedSubtitleTrackState] = React.useState<string | undefined>(
+      selectedSubtitleTrack !== undefined ? String(selectedSubtitleTrack) : undefined
+    );
+    const [selectedVideoTrackState, setSelectedVideoTrackState] = React.useState<string | undefined>(
+      selectedVideoTrack !== undefined ? String(selectedVideoTrack) : undefined
+    );
 
     useEffect(() => {
       setInternalPaused(paused);
     }, [paused]);
+
+    useEffect(() => {
+      if (selectedAudioTrack !== undefined) {
+        setSelectedAudioTrackState(String(selectedAudioTrack));
+      }
+    }, [selectedAudioTrack]);
+
+    useEffect(() => {
+      if (selectedSubtitleTrack !== undefined) {
+        setSelectedSubtitleTrackState(String(selectedSubtitleTrack));
+      }
+    }, [selectedSubtitleTrack]);
+
+    useEffect(() => {
+      if (selectedVideoTrack !== undefined) {
+        setSelectedVideoTrackState(String(selectedVideoTrack));
+      }
+    }, [selectedVideoTrack]);
 
     // Calculate buffer options dynamically
     const bufferOptions = useMemo(
@@ -413,18 +441,34 @@ export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVi
         play: () => {
           setInternalPaused(false);
           isPlayingRef.current = true;
+          nativeViewRef.current?.play?.();
         },
         pause: () => {
           setInternalPaused(true);
           isPlayingRef.current = false;
+          nativeViewRef.current?.pause?.();
         },
-        seekTo: (_positionMs: number) => {
-          // Seeking is handled natively or via position updates
+        seekTo: (positionMs: number) => {
+          nativeViewRef.current?.seekTo?.(positionMs);
         },
-        seekBy: (_deltaSeconds: number) => {},
-        selectAudioTrack: (_trackIdOrIndex) => {},
-        selectSubtitleTrack: (_trackIdOrIndex) => {},
-        selectVideoTrack: (_trackIdOrIndex) => {},
+        seekBy: (deltaSeconds: number) => {
+          nativeViewRef.current?.seekBy?.(deltaSeconds);
+        },
+        selectAudioTrack: (trackIdOrIndex?: string | number) => {
+          const trackId = trackIdOrIndex !== undefined ? String(trackIdOrIndex) : "-1";
+          setSelectedAudioTrackState(trackId);
+          nativeViewRef.current?.selectAudioTrack?.(trackId);
+        },
+        selectSubtitleTrack: (trackIdOrIndex?: string | number) => {
+          const trackId = trackIdOrIndex !== undefined ? String(trackIdOrIndex) : "-1";
+          setSelectedSubtitleTrackState(trackId);
+          nativeViewRef.current?.selectSubtitleTrack?.(trackId);
+        },
+        selectVideoTrack: (trackIdOrIndex?: string | number) => {
+          const trackId = trackIdOrIndex !== undefined ? String(trackIdOrIndex) : "auto";
+          setSelectedVideoTrackState(trackId);
+          nativeViewRef.current?.selectVideoTrack?.(trackId);
+        },
         reloadSource: async () => {
           setReloadKey((k) => k + 1);
         },
@@ -440,6 +484,7 @@ export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVi
     return (
       <View style={[styles.container, style]}>
         <NativeInfinityMediaPlayerView
+          ref={nativeViewRef}
           key={`infinity-view-${reloadKey}`}
           style={StyleSheet.absoluteFill}
           source={sourceProp}
@@ -450,9 +495,9 @@ export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVi
           audioOutputMode={audioOutputMode}
           enableNvcConcealment={enableNvcConcealment}
           bufferOptions={bufferOptions}
-          selectedAudioTrack={selectedAudioTrack !== undefined ? String(selectedAudioTrack) : undefined}
-          selectedSubtitleTrack={selectedSubtitleTrack !== undefined ? String(selectedSubtitleTrack) : undefined}
-          selectedVideoTrack={selectedVideoTrack !== undefined ? String(selectedVideoTrack) : undefined}
+          selectedAudioTrack={selectedAudioTrackState}
+          selectedSubtitleTrack={selectedSubtitleTrackState}
+          selectedVideoTrack={selectedVideoTrackState}
           onLoad={handleLoad}
           onTracksChange={handleTracksChange}
           onProgress={handleProgress}

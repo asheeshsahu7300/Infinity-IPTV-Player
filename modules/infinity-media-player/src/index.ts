@@ -58,6 +58,7 @@ export interface NvcTelemetry {
 }
 
 export interface InfinityMediaPlayerNativeProps extends ViewProps {
+  ref?: any;
   style?: StyleProp<ViewStyle>;
   source?: {
     uri: string;
@@ -92,7 +93,7 @@ export interface InfinityMediaPlayerNativeProps extends ViewProps {
   onLiveRecovered?: (event: { nativeEvent: any }) => void;
 }
 
-export const NativeInfinityMediaPlayerView: React.ComponentType<InfinityMediaPlayerNativeProps> =
+export const NativeInfinityMediaPlayerView: React.ComponentType<any> =
   requireNativeViewManager('InfinityMediaPlayer');
 
 let NativeInfinityMediaPlayerModule: any = null;

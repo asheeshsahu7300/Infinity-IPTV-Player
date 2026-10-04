@@ -110,6 +110,7 @@ class InfinityPlayer(
     }
         .forceDisableMediaCodecAsynchronousQueueing()
         .setEnableDecoderFallback(true)
+        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
 
     // LoadControl with anti-stall hysteresis
     val loadControl = InfinityLoadControl.create(config)
@@ -159,9 +160,35 @@ class InfinityPlayer(
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.e(TAG, "Playback error: ${error.message}", error)
-                if (error.errorCodeName.contains("AUDIO", ignoreCase = true)) {
+                val msg = error.message ?: ""
+                val isAudioError = error.errorCodeName.contains("AUDIO", ignoreCase = true) ||
+                    msg.contains("MediaCodecAudioRenderer", ignoreCase = true) ||
+                    msg.contains("audio/", ignoreCase = true) ||
+                    msg.contains("audio/eac3", ignoreCase = true) ||
+                    msg.contains("audio/ac3", ignoreCase = true)
+
+                if (isAudioError) {
                     audioSafetyController.recordAcdbError()
+
+                    val currentId = activeAudioTrack?.id
+                    val fallbackTrack = currentAudioTracks.firstOrNull {
+                        it.id != currentId &&
+                        (it.mimeType?.contains("aac", ignoreCase = true) == true ||
+                         it.mimeType?.contains("mpeg", ignoreCase = true) == true ||
+                         it.codec?.contains("mp4a", ignoreCase = true) == true)
+                    }
+
+                    if (fallbackTrack != null) {
+                        Log.w(TAG, "Audio codec error on track $currentId. Auto-falling back to track ${fallbackTrack.id}")
+                        selectAudioTrack(fallbackTrack.id)
+                        return
+                    }
+
+                    Log.w(TAG, "Hardware audio decoder unavailable on device. Disabling audio track to maintain uninterrupted video rendering.")
+                    selectAudioTrack("-1")
+                    return
                 }
+
                 listeners.forEach { it.onError(error) }
             }
         })
@@ -305,6 +332,9 @@ class InfinityPlayer(
             exoPlayer.trackSelectionParameters = newParams
             activeAudioTrack = null
             Log.i(TAG, "Audio track disabled")
+            if (exoPlayer.playerError != null) {
+                exoPlayer.prepare()
+            }
             return true
         }
         val target = audioFormatMap[trackId] ?: return false
@@ -315,6 +345,9 @@ class InfinityPlayer(
             .build()
         exoPlayer.trackSelectionParameters = newParams
         Log.i(TAG, "Switched to audio track: $trackId")
+        if (exoPlayer.playerError != null) {
+            exoPlayer.prepare()
+        }
         return true
     }
 
@@ -337,6 +370,9 @@ class InfinityPlayer(
             .build()
         exoPlayer.trackSelectionParameters = newParams
         Log.i(TAG, "Selected subtitle track: $trackId")
+        if (exoPlayer.playerError != null) {
+            exoPlayer.prepare()
+        }
         return true
     }
 
@@ -348,6 +384,9 @@ class InfinityPlayer(
         exoPlayer.trackSelectionParameters = newParams
         activeSubtitleTrack = null
         Log.i(TAG, "Subtitles disabled.")
+        if (exoPlayer.playerError != null) {
+            exoPlayer.prepare()
+        }
     }
 
     // ── First-Class Video APIs ────────────────────────────────────────────────
