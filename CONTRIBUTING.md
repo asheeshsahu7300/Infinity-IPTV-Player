@@ -102,7 +102,7 @@ cd iptv-hub
 yarn install
 ```
 
-> **Note**: Playback is powered by [`infinity-media-player`](https://github.com/asheeshsahu7300/infinity-media-player), a dedicated high-performance Android Media3 player engine featuring Neural Video Latent Concealment (NVC-Live), Qualcomm ACDB audio HAL safety, and low-latency IPTV buffering.
+> **Note**: Playback is powered by [`infinity-media-player`](https://github.com/asheeshsahu7300/infinity-media-player), a dedicated high-performance Android Media3 player engine featuring Neural Video Latent Concealment (NVC-Live), Qualcomm ACDB audio HAL safety, and low-latency live network streaming buffering.
 
 ### Running the Project
 
