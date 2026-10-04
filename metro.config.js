@@ -13,7 +13,7 @@ config.cacheStores = [
 
 
 config.resolver.blockList = [
-  /.*[/\\]build[/\\].*/,
+  /.*[/\\]android[/\\]app[/\\]build[/\\].*/,
   /.*[/\\]\.gradle[/\\].*/,
   /.*[/\\]node_modules[/\\]expo-modules-core[/\\]expo-module-gradle-plugin[/\\]build[/\\].*/,
 ];
