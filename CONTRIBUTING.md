@@ -102,7 +102,7 @@ cd iptv-hub
 yarn install
 ```
 
-> **Note**: `yarn install` automatically executes `patch-package` through the `postinstall` script to apply critical native fixes to dependencies such as `expo-video`.
+> **Note**: Playback is powered by [`infinity-media-player`](https://github.com/asheeshsahu7300/infinity-media-player), a dedicated high-performance Android Media3 player engine featuring Neural Video Latent Concealment (NVC-Live), Qualcomm ACDB audio HAL safety, and low-latency IPTV buffering.
 
 ### Running the Project
 
@@ -124,16 +124,10 @@ adb devices
 yarn android
 ```
 
-### Working with Patches
+### Media Player Architecture
 
-This project uses [`patch-package`](https://github.com/ds300/patch-package) to maintain upstream native fixes (e.g. Media3/ExoPlayer audio calibration, live TS resilience, 4K decoder track selection in `expo-video`).
-
-If you modify files inside `node_modules/`:
-```bash
-# Generate / update the patch file
-npx patch-package expo-video
-```
-Commit the updated `.patch` file inside the `patches/` directory with your PR.
+The playback engine is maintained in `modules/infinity-media-player` and upstreamed at [`https://github.com/asheeshsahu7300/infinity-media-player`](https://github.com/asheeshsahu7300/infinity-media-player).
+It replaces `expo-video` with direct Media3 / ExoPlayer integration and embedded ONNX Runtime NVC-Live frame concealment.
 
 ---
 

@@ -17,13 +17,6 @@
       "exclude": [
         "react-native"
       ]
-    },
-    "autolinking": {
-      "android": {
-        "buildFromSource": [
-          "expo-video"
-        ]
-      }
     }
   },
   "engines": {
@@ -54,7 +47,7 @@
     "expo-screen-orientation": "~9.0.9",
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
-    "expo-video": "~3.0.16",
+    "infinity-media-player": "file:./modules/infinity-media-player",
     "lucide-react-native": "^1.41.0",
     "pako": "^2.1.0",
     "react": "19.1.0",

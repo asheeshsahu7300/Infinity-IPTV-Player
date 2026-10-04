@@ -1,0 +1,11 @@
+{
+  "name": "infinity-media-player",
+  "version": "1.1.0",
+  "description": "All-in-one resilient Android Media Player with Neural Video Latent Concealment (NVC-Live), Qualcomm ACDB audio handling, low-latency IPTV buffering, and Media3 integration.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/asheeshsahu7300/infinity-media-player.git"
+  }
+}
