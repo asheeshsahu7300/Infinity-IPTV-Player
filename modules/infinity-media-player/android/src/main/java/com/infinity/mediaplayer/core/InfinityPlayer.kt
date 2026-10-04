@@ -67,11 +67,11 @@ class InfinityPlayer(
     // Track Selector with safe defaults
     val trackSelector = DefaultTrackSelector(context).apply {
         parameters = buildUponParameters()
-            .setPreferredAudioMimeTypes(MimeTypes.AUDIO_AAC, MimeTypes.AUDIO_MPEG)
+            .setPreferredAudioMimeTypes(MimeTypes.AUDIO_AAC, MimeTypes.AUDIO_MPEG, MimeTypes.AUDIO_OPUS)
             .setPreferredAudioLanguages(*config.preferredAudioLanguages.toTypedArray())
             .setPreferredTextLanguages(*config.preferredSubtitleLanguages.toTypedArray())
             .setConstrainAudioChannelCountToDeviceCapabilities(true)
-            .setExceedRendererCapabilitiesIfNecessary(false)
+            .setExceedRendererCapabilitiesIfNecessary(true)
             .setExceedVideoConstraintsIfNecessary(true)
             .build()
     }
@@ -95,7 +95,7 @@ class InfinityPlayer(
                 enableDecoderFallback,
                 eventHandler,
                 eventListener,
-                allowedVideoJoiningTimeMs,
+                maxOf(allowedVideoJoiningTimeMs, 10000L),
                 out
             )
         }

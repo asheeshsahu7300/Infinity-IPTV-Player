@@ -19,6 +19,9 @@ class InfinityPlayerView @JvmOverloads constructor(
 
     val playerView: PlayerView = PlayerView(context).apply {
         useController = false
+        setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+        setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+        setKeepContentOnPlayerReset(true)
     }
 
     val subtitleView: SubtitleView?
