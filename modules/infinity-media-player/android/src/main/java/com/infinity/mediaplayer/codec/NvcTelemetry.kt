@@ -11,6 +11,8 @@ data class NvcTelemetry(
     val latencyP50Ms: Float = 0.0f,
     val latencyP95Ms: Float = 0.0f,
     val concealedFrames: Long = 0L,
+    val composedFrames: Long = 0L,
+    val failedFrames: Long = 0L,
     val droppedFrames: Long = 0L,
     val missedDeadlines: Long = 0L,
     val activeFrames: Long = 0L,

@@ -61,6 +61,8 @@ export interface NvcTelemetry {
   latencyP50Ms?: number;
   latencyP95Ms?: number;
   concealedFrames?: number;
+  composedFrames?: number;
+  failedFrames?: number;
   droppedFrames?: number;
   missedDeadlines?: number;
   activeFrames?: number;

@@ -529,7 +529,9 @@ export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVi
               <View style={styles.hudItem}>
                 <Text style={styles.hudLabel}>NETWORK</Text>
                 <Text style={styles.hudValue}>
-                  {liveNvcStats?.bitrateKbps ? `${liveNvcStats.bitrateKbps} kbps` : "448 kbps"}
+                  {liveNvcStats?.bitrateKbps && liveNvcStats.bitrateKbps > 0
+                    ? `${liveNvcStats.bitrateKbps} kbps`
+                    : "--"}
                 </Text>
               </View>
               <View style={styles.hudItem}>
@@ -540,7 +542,9 @@ export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVi
                     (liveNvcStats?.packetLossPercent || 0) > 5 ? styles.hudWarn : null,
                   ]}
                 >
-                  {(liveNvcStats?.packetLossPercent || 15.0).toFixed(1)}%
+                  {liveNvcStats?.packetLossPercent !== undefined
+                    ? `${liveNvcStats.packetLossPercent.toFixed(1)}%`
+                    : "0.0%"}
                 </Text>
               </View>
               <View style={styles.hudItem}>
@@ -549,32 +553,60 @@ export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVi
               </View>
               <View style={styles.hudItem}>
                 <Text style={styles.hudLabel}>FPS</Text>
-                <Text style={styles.hudValue}>{(liveNvcStats?.instantFps || 59.9).toFixed(1)}</Text>
+                <Text style={styles.hudValue}>
+                  {liveNvcStats?.instantFps !== undefined && liveNvcStats.instantFps > 0
+                    ? liveNvcStats.instantFps.toFixed(1)
+                    : "--"}
+                </Text>
               </View>
               <View style={styles.hudItem}>
                 <Text style={styles.hudLabel}>INFERENCE (P50/P95)</Text>
                 <Text style={styles.hudValue}>
-                  {(liveNvcStats?.latencyP50Ms || liveNvcStats?.lastInferenceLatencyMs || 1.8).toFixed(1)} /{" "}
-                  {(liveNvcStats?.latencyP95Ms || 2.2).toFixed(1)} ms
+                  {liveNvcStats?.latencyP50Ms !== undefined && liveNvcStats.latencyP50Ms > 0
+                    ? `${liveNvcStats.latencyP50Ms.toFixed(1)} / ${(liveNvcStats.latencyP95Ms ?? liveNvcStats.latencyP50Ms).toFixed(1)} ms`
+                    : liveNvcStats?.lastInferenceLatencyMs !== undefined && liveNvcStats.lastInferenceLatencyMs > 0
+                    ? `${liveNvcStats.lastInferenceLatencyMs.toFixed(1)} ms`
+                    : "-- ms"}
                 </Text>
               </View>
               <View style={styles.hudItem}>
                 <Text style={styles.hudLabel}>BUFFER</Text>
-                <Text style={styles.hudValue}>{(liveNvcStats?.bufferHealthSec || 6.0).toFixed(1)} s</Text>
+                <Text style={styles.hudValue}>
+                  {liveNvcStats?.bufferHealthSec !== undefined
+                    ? `${liveNvcStats.bufferHealthSec.toFixed(1)} s`
+                    : "-- s"}
+                </Text>
               </View>
               <View style={styles.hudItem}>
                 <Text style={styles.hudLabel}>CONCEALED</Text>
                 <Text style={[styles.hudValue, styles.hudHighlight]}>
-                  {liveNvcStats?.concealedFrames || 0}
+                  {liveNvcStats?.concealedFrames ?? 0}
                 </Text>
               </View>
               <View style={styles.hudItem}>
                 <Text style={styles.hudLabel}>MISSED</Text>
-                <Text style={styles.hudValue}>{liveNvcStats?.missedDeadlines || 0}</Text>
+                <Text style={styles.hudValue}>{liveNvcStats?.missedDeadlines ?? 0}</Text>
+              </View>
+              <View style={styles.hudItem}>
+                <Text style={styles.hudLabel}>COMPOSED</Text>
+                <Text style={[styles.hudValue, styles.hudHighlight]}>
+                  {liveNvcStats?.composedFrames ?? 0}
+                </Text>
+              </View>
+              <View style={styles.hudItem}>
+                <Text style={styles.hudLabel}>FAILED</Text>
+                <Text
+                  style={[
+                    styles.hudValue,
+                    (liveNvcStats?.failedFrames ?? 0) > 0 ? styles.hudWarn : null,
+                  ]}
+                >
+                  {liveNvcStats?.failedFrames ?? 0}
+                </Text>
               </View>
               <View style={styles.hudItem}>
                 <Text style={styles.hudLabel}>REBUFFER</Text>
-                <Text style={styles.hudValue}>{liveNvcStats?.rebufferCount || 0}</Text>
+                <Text style={styles.hudValue}>{liveNvcStats?.rebufferCount ?? 0}</Text>
               </View>
               <View style={styles.hudItem}>
                 <Text style={styles.hudLabel}>THERMAL</Text>

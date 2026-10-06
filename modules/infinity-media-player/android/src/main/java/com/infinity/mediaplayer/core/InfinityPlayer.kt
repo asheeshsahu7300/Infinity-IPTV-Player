@@ -200,11 +200,12 @@ class InfinityPlayer(
             Log.i(TAG, "[NVC] Reconstruction triggered: Provider=$provider, count=$count, PTS=$ptsUs")
             val bitmap = neuralConcealer.reconstructDroppedFrame()
             if (bitmap != null) {
-                Log.i(TAG, "[NVC] Frame composed: ${bitmap.width}x${bitmap.height} -> GPU bilinear surface layer")
+                Log.i(TAG, "[NVC] Frame reconstructed: ${bitmap.width}x${bitmap.height} -> Submitting to render layer")
                 mainHandler.post {
                     listeners.forEach { it.onConcealedFrameRendered(bitmap) }
-                    Log.i(TAG, "[NVC] Frame presented: continuity maintained at PTS=$ptsUs (gap=${gapUs}us)")
                 }
+            } else {
+                neuralConcealer.recordFrameFailed()
             }
         }
     }

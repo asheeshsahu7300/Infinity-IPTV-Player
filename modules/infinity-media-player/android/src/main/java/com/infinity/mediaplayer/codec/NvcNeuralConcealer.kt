@@ -37,6 +37,8 @@ class NvcNeuralConcealer(private val context: Context) {
     private val activeFrameCounter = AtomicLong(0)
     private val droppedFrameCounter = AtomicLong(0)
     private val concealedFrameCounter = AtomicLong(0)
+    private val composedFrameCounter = AtomicLong(0)
+    private val failedFrameCounter = AtomicLong(0)
     private val missedDeadlineCounter = AtomicLong(0)
     private var rebufferCounter = 0
 
@@ -172,6 +174,14 @@ class NvcNeuralConcealer(private val context: Context) {
         }
     }
 
+    fun recordFrameComposed() {
+        composedFrameCounter.incrementAndGet()
+    }
+
+    fun recordFrameFailed() {
+        failedFrameCounter.incrementAndGet()
+    }
+
     fun getExecutionProvider(): String = if (isNnapiActive) "NNAPI" else "ARM-CPU"
 
     fun getLatencyP50(): Float {
@@ -262,7 +272,8 @@ class NvcNeuralConcealer(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "NVC reconstruction inference error: ${e.message}")
+            failedFrameCounter.incrementAndGet()
+            Log.w(TAG, "[NVC] Reconstruction failed: ${e.message}")
             null
         }
     }
@@ -327,6 +338,8 @@ class NvcNeuralConcealer(private val context: Context) {
             latencyP50Ms = getLatencyP50(),
             latencyP95Ms = getLatencyP95(),
             concealedFrames = concealedFrameCounter.get(),
+            composedFrames = composedFrameCounter.get(),
+            failedFrames = failedFrameCounter.get(),
             droppedFrames = dropped,
             missedDeadlines = missedDeadlineCounter.get(),
             activeFrames = activeFrameCounter.get(),

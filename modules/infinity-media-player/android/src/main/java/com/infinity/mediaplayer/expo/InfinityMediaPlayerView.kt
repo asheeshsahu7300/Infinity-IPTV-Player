@@ -365,6 +365,8 @@ class InfinityMediaPlayerView(
                 "latencyP50Ms" to telemetry.latencyP50Ms,
                 "latencyP95Ms" to telemetry.latencyP95Ms,
                 "concealedFrames" to telemetry.concealedFrames,
+                "composedFrames" to telemetry.composedFrames,
+                "failedFrames" to telemetry.failedFrames,
                 "droppedFrames" to telemetry.droppedFrames,
                 "missedDeadlines" to telemetry.missedDeadlines,
                 "activeFrames" to telemetry.activeFrames,

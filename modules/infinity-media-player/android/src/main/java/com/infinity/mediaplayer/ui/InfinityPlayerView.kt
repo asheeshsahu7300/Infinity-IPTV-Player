@@ -69,16 +69,23 @@ class InfinityPlayerView @JvmOverloads constructor(
 
     override fun onConcealedFrameRendered(bitmap: Bitmap) {
         mainHandler.post {
-            hideRunnable?.let { mainHandler.removeCallbacks(it) }
-            nvcRenderLayer.setImageBitmap(bitmap)
-            nvcRenderLayer.visibility = View.VISIBLE
+            try {
+                hideRunnable?.let { mainHandler.removeCallbacks(it) }
+                nvcRenderLayer.setImageBitmap(bitmap)
+                nvcRenderLayer.visibility = View.VISIBLE
+                boundPlayer?.neuralConcealer?.recordFrameComposed()
+                android.util.Log.i("InfinityPlayerView", "[NVC] Frame composed: ${bitmap.width}x${bitmap.height} successfully rendered onto GPU surface layer")
 
-            // Automatically clear overlay once next decoded hardware frame renders
-            val runnable = Runnable {
-                nvcRenderLayer.visibility = View.GONE
+                // Automatically clear overlay once next decoded hardware frame renders
+                val runnable = Runnable {
+                    nvcRenderLayer.visibility = View.GONE
+                }
+                hideRunnable = runnable
+                mainHandler.postDelayed(runnable, 65)
+            } catch (t: Throwable) {
+                boundPlayer?.neuralConcealer?.recordFrameFailed()
+                android.util.Log.e("InfinityPlayerView", "[NVC] Frame composition failed: ${t.message}", t)
             }
-            hideRunnable = runnable
-            mainHandler.postDelayed(runnable, 65)
         }
     }
 
