@@ -247,7 +247,7 @@ export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVi
       bufferTuning,
       audioOutputMode = "auto",
       enableNvcConcealment = true,
-      showNvcDemoHud = false,
+      showNvcDemoHud = true,
       selectedAudioTrack,
       selectedSubtitleTrack,
       selectedVideoTrack,
@@ -603,6 +603,10 @@ export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVi
                 >
                   {liveNvcStats?.failedFrames ?? 0}
                 </Text>
+              </View>
+              <View style={styles.hudItem}>
+                <Text style={styles.hudLabel}>DISCONT</Text>
+                <Text style={styles.hudValue}>{liveNvcStats?.timelineDiscontinuities ?? 0}</Text>
               </View>
               <View style={styles.hudItem}>
                 <Text style={styles.hudLabel}>REBUFFER</Text>

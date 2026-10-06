@@ -65,6 +65,7 @@ export interface NvcTelemetry {
   failedFrames?: number;
   droppedFrames?: number;
   missedDeadlines?: number;
+  timelineDiscontinuities?: number;
   activeFrames?: number;
   executionProvider?: string;
   cpuUsagePercent?: number;

@@ -369,6 +369,7 @@ class InfinityMediaPlayerView(
                 "failedFrames" to telemetry.failedFrames,
                 "droppedFrames" to telemetry.droppedFrames,
                 "missedDeadlines" to telemetry.missedDeadlines,
+                "timelineDiscontinuities" to telemetry.timelineDiscontinuities,
                 "activeFrames" to telemetry.activeFrames,
                 "executionProvider" to telemetry.executionProvider,
                 "cpuUsagePercent" to telemetry.cpuUsagePercent,

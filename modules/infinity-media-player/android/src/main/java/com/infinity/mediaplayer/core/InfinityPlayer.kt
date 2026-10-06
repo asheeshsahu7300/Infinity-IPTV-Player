@@ -210,14 +210,29 @@ class InfinityPlayer(
         }
     }
 
+    fun resetDeadlineBaseline(reason: String = "Manual reset") {
+        lastPresentationTimeUs = -1L
+        neuralConcealer?.recordTimelineDiscontinuity()
+        Log.i(TAG, "[NVC] Reset deadline baseline ($reason)")
+    }
+
     private fun setupVideoFrameMetadataListener() {
         exoPlayer.setVideoFrameMetadataListener { presentationTimeUs, _, format, _ ->
             neuralConcealer?.recordRenderedFrame(if (format.bitrate > 0) format.bitrate / 1000 else 0)
             val expectedDurationUs = if (format.frameRate > 0) (1_000_000f / format.frameRate).toLong() else 33_333L
             if (lastPresentationTimeUs > 0) {
                 val gapUs = presentationTimeUs - lastPresentationTimeUs
+
+                // Huge discontinuity (> 500ms or backward jump) indicates seek, stream leap, PCR rollover, or container discontinuity
+                if (gapUs < 0 || gapUs > 500_000L) {
+                    neuralConcealer?.recordTimelineDiscontinuity()
+                    Log.i(TAG, "[NVC] Timeline discontinuity detected: gapUs=$gapUs (resetting PTS baseline without triggering NVC)")
+                    lastPresentationTimeUs = presentationTimeUs
+                    return@setVideoFrameMetadataListener
+                }
+
                 if (gapUs > (expectedDurationUs * 1.8f).toLong()) {
-                    val estimatedDrops = ((gapUs / expectedDurationUs) - 1).coerceAtLeast(1L)
+                    val estimatedDrops = ((gapUs / expectedDurationUs) - 1).coerceIn(1L, 10L)
                     neuralConcealer?.recordDroppedFrames(estimatedDrops)
                     neuralConcealer?.recordMissedDeadline(estimatedDrops)
                     Log.i(TAG, "[NVC] Frame deadline missed: PTS=$presentationTimeUs, expectedDurationUs=$expectedDurationUs, gapUs=$gapUs (estimated drops=$estimatedDrops)")
@@ -230,6 +245,14 @@ class InfinityPlayer(
 
     private fun setupPlayerListener() {
         exoPlayer.addListener(object : Player.Listener {
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int
+            ) {
+                resetDeadlineBaseline("onPositionDiscontinuity(reason=$reason)")
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 val isPlaying = exoPlayer.isPlaying
                 val isBuffering = playbackState == Player.STATE_BUFFERING
@@ -608,6 +631,7 @@ class InfinityPlayer(
     }
 
     fun seekTo(positionMs: Long) {
+        resetDeadlineBaseline("seekTo($positionMs)")
         exoPlayer.seekTo(positionMs)
     }
 

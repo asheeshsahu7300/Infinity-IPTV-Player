@@ -15,6 +15,7 @@ data class NvcTelemetry(
     val failedFrames: Long = 0L,
     val droppedFrames: Long = 0L,
     val missedDeadlines: Long = 0L,
+    val timelineDiscontinuities: Long = 0L,
     val activeFrames: Long = 0L,
     val executionProvider: String = "ARM-CPU",
     val cpuUsagePercent: Float = 0.0f,

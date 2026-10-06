@@ -40,6 +40,7 @@ class NvcNeuralConcealer(private val context: Context) {
     private val composedFrameCounter = AtomicLong(0)
     private val failedFrameCounter = AtomicLong(0)
     private val missedDeadlineCounter = AtomicLong(0)
+    private val timelineDiscontinuityCounter = AtomicLong(0)
     private var rebufferCounter = 0
 
     private var totalInferenceTimeMs = 0.0
@@ -172,6 +173,10 @@ class NvcNeuralConcealer(private val context: Context) {
         if (count > 0) {
             missedDeadlineCounter.addAndGet(count)
         }
+    }
+
+    fun recordTimelineDiscontinuity() {
+        timelineDiscontinuityCounter.incrementAndGet()
     }
 
     fun recordFrameComposed() {
@@ -342,6 +347,7 @@ class NvcNeuralConcealer(private val context: Context) {
             failedFrames = failedFrameCounter.get(),
             droppedFrames = dropped,
             missedDeadlines = missedDeadlineCounter.get(),
+            timelineDiscontinuities = timelineDiscontinuityCounter.get(),
             activeFrames = activeFrameCounter.get(),
             executionProvider = getExecutionProvider(),
             cpuUsagePercent = (12.0f + (currentFps * 0.15f)).coerceAtMost(95.0f),
