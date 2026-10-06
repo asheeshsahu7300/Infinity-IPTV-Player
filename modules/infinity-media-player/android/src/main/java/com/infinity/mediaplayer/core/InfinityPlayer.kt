@@ -88,13 +88,39 @@ class InfinityPlayer(
             allowedVideoJoiningTimeMs: Long,
             out: java.util.ArrayList<Renderer>
         ) {
+            val interceptedVideoListener = object : VideoRendererEventListener {
+                override fun onVideoEnabled(counters: androidx.media3.exoplayer.DecoderCounters) =
+                    eventListener.onVideoEnabled(counters)
+                override fun onVideoDecoderInitialized(decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) =
+                    eventListener.onVideoDecoderInitialized(decoderName, initializedTimestampMs, initializationDurationMs)
+                override fun onVideoInputFormatChanged(
+                    format: Format,
+                    decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?
+                ) = eventListener.onVideoInputFormatChanged(format, decoderReuseEvaluation)
+                override fun onDroppedFrames(count: Int, elapsedMs: Long) {
+                    neuralConcealer?.recordDroppedFrames(count.toLong())
+                    handleFrameLoss(count)
+                    eventListener.onDroppedFrames(count, elapsedMs)
+                }
+                override fun onVideoFrameProcessingOffset(totalProcessingOffsetUs: Long, frameCount: Int) =
+                    eventListener.onVideoFrameProcessingOffset(totalProcessingOffsetUs, frameCount)
+                override fun onRenderedFirstFrame(output: Any, renderTimeMs: Long) =
+                    eventListener.onRenderedFirstFrame(output, renderTimeMs)
+                override fun onVideoDecoderReleased(decoderName: String) =
+                    eventListener.onVideoDecoderReleased(decoderName)
+                override fun onVideoDisabled(counters: androidx.media3.exoplayer.DecoderCounters) =
+                    eventListener.onVideoDisabled(counters)
+                override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) =
+                    eventListener.onVideoSizeChanged(videoSize)
+            }
+
             super.buildVideoRenderers(
                 context,
                 EXTENSION_RENDERER_MODE_OFF,
                 mediaCodecSelector,
                 enableDecoderFallback,
                 eventHandler,
-                eventListener,
+                interceptedVideoListener,
                 maxOf(allowedVideoJoiningTimeMs, 10000L),
                 out
             )
@@ -154,6 +180,7 @@ class InfinityPlayer(
     private var currentUrl: String? = null
     private var isLiveStream: Boolean = false
     private var telemetryRunnable: Runnable? = null
+    private var lastPresentationTimeUs: Long = 0L
 
     // Audio Telemetry fields
     private var activeAudioCodec: String? = null
@@ -163,7 +190,35 @@ class InfinityPlayer(
 
     init {
         setupPlayerListener()
+        setupVideoFrameMetadataListener()
         startTelemetryLoop()
+    }
+
+    private fun handleFrameLoss(count: Int) {
+        if (config.enableNvcConcealment && neuralConcealer != null) {
+            val bitmap = neuralConcealer.reconstructDroppedFrame()
+            if (bitmap != null) {
+                mainHandler.post {
+                    listeners.forEach { it.onConcealedFrameRendered(bitmap) }
+                }
+            }
+        }
+    }
+
+    private fun setupVideoFrameMetadataListener() {
+        exoPlayer.setVideoFrameMetadataListener { presentationTimeUs, _, format, _ ->
+            neuralConcealer?.recordRenderedFrame(if (format.bitrate > 0) format.bitrate / 1000 else 0)
+            val expectedDurationUs = if (format.frameRate > 0) (1_000_000f / format.frameRate).toLong() else 33_333L
+            if (lastPresentationTimeUs > 0) {
+                val gapUs = presentationTimeUs - lastPresentationTimeUs
+                if (gapUs > (expectedDurationUs * 1.8f).toLong()) {
+                    val estimatedDrops = ((gapUs / expectedDurationUs) - 1).coerceAtLeast(1L)
+                    neuralConcealer?.recordDroppedFrames(estimatedDrops)
+                    handleFrameLoss(estimatedDrops.toInt())
+                }
+            }
+            lastPresentationTimeUs = presentationTimeUs
+        }
     }
 
     private fun setupPlayerListener() {
@@ -172,6 +227,13 @@ class InfinityPlayer(
                 val isPlaying = exoPlayer.isPlaying
                 val isBuffering = playbackState == Player.STATE_BUFFERING
                 listeners.forEach { it.onPlaybackStateChanged(isPlaying, isBuffering) }
+
+                if (isBuffering) {
+                    neuralConcealer?.recordRebuffer()
+                    if (exoPlayer.playWhenReady) {
+                        handleFrameLoss(1)
+                    }
+                }
 
                 if (playbackState == Player.STATE_ENDED && isLiveStream) {
                     Log.w(TAG, "Live network stream ended (input EOS). Triggering recovery.")
@@ -229,8 +291,8 @@ class InfinityPlayer(
                 elapsedMs: Long
             ) {
                 if (config.enableNvcConcealment && droppedFrames > 0) {
-                    val dummyLatent = FloatArray(256) { 0.5f }
-                    neuralConcealer?.concealDroppedFrame(dummyLatent)
+                    neuralConcealer?.recordDroppedFrames(droppedFrames.toLong())
+                    handleFrameLoss(droppedFrames)
                 }
             }
 
@@ -483,7 +545,10 @@ class InfinityPlayer(
                         concealer.updateFps(0.0f)
                     }
                     val currentBitrate = exoPlayer.videoFormat?.bitrate?.let { if (it > 0) it / 1000 else 0 } ?: 0
-                    val telemetry = concealer.getTelemetry(currentBitrate)
+                    val currentPos = exoPlayer.currentPosition
+                    val bufferedPos = exoPlayer.bufferedPosition
+                    val bufferHealthSec = maxOf(0.0f, (bufferedPos - currentPos) / 1000.0f)
+                    val telemetry = concealer.getTelemetry(currentBitrate, bufferHealthSec)
                     listeners.forEach { it.onNvcTelemetryUpdated(telemetry) }
                 }
 

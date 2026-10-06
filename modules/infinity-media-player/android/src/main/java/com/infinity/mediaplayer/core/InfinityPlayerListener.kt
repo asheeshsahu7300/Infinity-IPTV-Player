@@ -1,5 +1,6 @@
 package com.infinity.mediaplayer.core
 
+import android.graphics.Bitmap
 import com.infinity.mediaplayer.audio.AudioTelemetry
 import com.infinity.mediaplayer.audio.InfinityAudioTrack
 import com.infinity.mediaplayer.codec.NvcTelemetry
@@ -14,5 +15,6 @@ interface InfinityPlayerListener {
     fun onAudioTracksAvailable(tracks: List<InfinityAudioTrack>, selectedTrack: InfinityAudioTrack?) {}
     fun onSubtitleTracksAvailable(tracks: List<InfinitySubtitleTrack>, selectedTrack: InfinitySubtitleTrack?) {}
     fun onVideoTracksAvailable(tracks: List<InfinityVideoTrack>, selectedTrack: InfinityVideoTrack?) {}
+    fun onConcealedFrameRendered(bitmap: Bitmap) {}
     fun onError(error: Throwable) {}
 }

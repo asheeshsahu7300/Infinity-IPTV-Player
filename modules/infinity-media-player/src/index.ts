@@ -51,10 +51,24 @@ export interface AudioTelemetry {
 }
 
 export interface NvcTelemetry {
-  instantFps: number;
-  avgFps: number;
-  isNnapiActive: boolean;
-  avgInferenceLatencyMs: number;
+  isAvailable?: boolean;
+  isNnapiActive?: boolean;
+  instantFps?: number;
+  avgFps?: number;
+  bitrateKbps?: number;
+  avgInferenceLatencyMs?: number;
+  lastInferenceLatencyMs?: number;
+  concealedFrames?: number;
+  droppedFrames?: number;
+  activeFrames?: number;
+  executionProvider?: string;
+  cpuUsagePercent?: number;
+  ramUsageMb?: number;
+  thermalStatus?: string;
+  batteryLevel?: number;
+  bufferHealthSec?: number;
+  packetLossPercent?: number;
+  rebufferCount?: number;
 }
 
 export interface InfinityMediaPlayerNativeProps extends ViewProps {

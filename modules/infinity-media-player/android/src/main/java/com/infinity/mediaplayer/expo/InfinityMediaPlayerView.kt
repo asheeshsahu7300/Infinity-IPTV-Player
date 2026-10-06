@@ -355,10 +355,24 @@ class InfinityMediaPlayerView(
     override fun onNvcTelemetryUpdated(telemetry: NvcTelemetry) {
         onNvcTelemetry(
             mapOf(
+                "isAvailable" to telemetry.isAvailable,
+                "isNnapiActive" to telemetry.isNnapiActive,
                 "instantFps" to telemetry.instantFps,
                 "avgFps" to telemetry.avgFps,
-                "isNnapiActive" to telemetry.isNnapiActive,
-                "avgInferenceLatencyMs" to telemetry.avgInferenceLatencyMs
+                "bitrateKbps" to telemetry.bitrateKbps,
+                "avgInferenceLatencyMs" to telemetry.avgInferenceLatencyMs,
+                "lastInferenceLatencyMs" to telemetry.lastInferenceLatencyMs,
+                "concealedFrames" to telemetry.concealedFrames,
+                "droppedFrames" to telemetry.droppedFrames,
+                "activeFrames" to telemetry.activeFrames,
+                "executionProvider" to telemetry.executionProvider,
+                "cpuUsagePercent" to telemetry.cpuUsagePercent,
+                "ramUsageMb" to telemetry.ramUsageMb,
+                "thermalStatus" to telemetry.thermalStatus,
+                "batteryLevel" to telemetry.batteryLevel,
+                "bufferHealthSec" to telemetry.bufferHealthSec,
+                "packetLossPercent" to telemetry.packetLossPercent,
+                "rebufferCount" to telemetry.rebufferCount
             )
         )
     }
