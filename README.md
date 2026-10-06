@@ -113,21 +113,21 @@ Favorites can be maintained for:
 
 ---
 
-### Powerful Playback
+### Resilient Media Engine (Infinity Media Player & NVC-Live v1.3.0)
 
-The built-in player supports:
+Powered by the custom native media engine [infinity-media-player](https://github.com/asheeshsahu7300/infinity-media-player):
 
-- Video playback
-- Subtitle switching
-- Audio-track switching
-- Full-screen playback
-- External player support
-
-Compatible external players include:
-
-- VLC
-- MX Player
-- Other Android-compatible video players
+- **AndroidX Media3 Core**: Hardware-accelerated decoding (AVC/H.264, HEVC/H.265, VP9) with seamless dynamic track switching across video resolutions, audio streams, and subtitle formats.
+- **NVC-Live Neural Frame Reconstruction (v1.3.0 Prototype)**:
+  - On-device neural frame reconstruction via quantized ONNX Runtime executing on Android NNAPI (with multi-threaded ARM-CPU fallback).
+  - Dynamic Presentation Timestamp (PTS) delivery deadline tracking detecting missing or delayed frames.
+  - Hardware GPU composition overlay (`nvcRenderLayer`) with bilinear texture filtering submitting reconstructed frames directly to the display pipeline.
+  - On-screen Android TV HUD overlay (`showNvcDemoHud`) with measured hardware telemetry (`CONCEALED`, `MISSED`, `COMPOSED`, `FAILED`, P50/P95 latencies, buffer health, thermal status).
+- **Hardware-Aware Audio Safety (Qualcomm & MediaTek)**:
+  - Protects against fatal Qualcomm Hexagon ADSP ACDB crashes (`0x10012d00`) and MediaTek BesLoudness audio distortions through automatic chipset detection and safe routing.
+  - Bundled software FFmpeg audio decoding for continuous AC-3, E-AC3, and DTS playback on devices lacking hardware decoders.
+- **Adaptive Live Buffering**: 12–15 second live buffer window with a 3-second hysteresis window and automatic reconnection with preserved HTTP headers.
+- **External Player Support**: VLC, MX Player, and other Android-compatible video players.
 
 ---
 
@@ -196,7 +196,7 @@ The interface is designed around a premium streaming experience.
 | Networking | Axios |
 | IPTV APIs | M3U, Xtream Codes, MAG/Stalker |
 | Lists | FlashList / FlatList |
-| Video | Expo Video |
+| Video Engine | Infinity Media Player (Media3 + NVC-Live Neural Concealment + FFmpeg Audio) |
 | TV Navigation | Custom D-Pad Focus Engine |
 | Platform | Android / Android TV |
 
