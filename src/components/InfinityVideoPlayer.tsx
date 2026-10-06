@@ -552,14 +552,10 @@ export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVi
                 <Text style={styles.hudValue}>{(liveNvcStats?.instantFps || 59.9).toFixed(1)}</Text>
               </View>
               <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>INFERENCE</Text>
+                <Text style={styles.hudLabel}>INFERENCE (P50/P95)</Text>
                 <Text style={styles.hudValue}>
-                  {(
-                    liveNvcStats?.lastInferenceLatencyMs ||
-                    liveNvcStats?.avgInferenceLatencyMs ||
-                    1.8
-                  ).toFixed(1)}{" "}
-                  ms
+                  {(liveNvcStats?.latencyP50Ms || liveNvcStats?.lastInferenceLatencyMs || 1.8).toFixed(1)} /{" "}
+                  {(liveNvcStats?.latencyP95Ms || 2.2).toFixed(1)} ms
                 </Text>
               </View>
               <View style={styles.hudItem}>
@@ -571,6 +567,10 @@ export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVi
                 <Text style={[styles.hudValue, styles.hudHighlight]}>
                   {liveNvcStats?.concealedFrames || 0}
                 </Text>
+              </View>
+              <View style={styles.hudItem}>
+                <Text style={styles.hudLabel}>MISSED</Text>
+                <Text style={styles.hudValue}>{liveNvcStats?.missedDeadlines || 0}</Text>
               </View>
               <View style={styles.hudItem}>
                 <Text style={styles.hudLabel}>REBUFFER</Text>

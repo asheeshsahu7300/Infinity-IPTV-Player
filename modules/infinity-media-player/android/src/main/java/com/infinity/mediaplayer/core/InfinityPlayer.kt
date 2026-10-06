@@ -194,12 +194,16 @@ class InfinityPlayer(
         startTelemetryLoop()
     }
 
-    private fun handleFrameLoss(count: Int) {
+    private fun handleFrameLoss(count: Int, ptsUs: Long = 0L, gapUs: Long = 0L) {
         if (config.enableNvcConcealment && neuralConcealer != null) {
+            val provider = neuralConcealer.getExecutionProvider()
+            Log.i(TAG, "[NVC] Reconstruction triggered: Provider=$provider, count=$count, PTS=$ptsUs")
             val bitmap = neuralConcealer.reconstructDroppedFrame()
             if (bitmap != null) {
+                Log.i(TAG, "[NVC] Frame composed: ${bitmap.width}x${bitmap.height} -> GPU bilinear surface layer")
                 mainHandler.post {
                     listeners.forEach { it.onConcealedFrameRendered(bitmap) }
+                    Log.i(TAG, "[NVC] Frame presented: continuity maintained at PTS=$ptsUs (gap=${gapUs}us)")
                 }
             }
         }
@@ -214,7 +218,9 @@ class InfinityPlayer(
                 if (gapUs > (expectedDurationUs * 1.8f).toLong()) {
                     val estimatedDrops = ((gapUs / expectedDurationUs) - 1).coerceAtLeast(1L)
                     neuralConcealer?.recordDroppedFrames(estimatedDrops)
-                    handleFrameLoss(estimatedDrops.toInt())
+                    neuralConcealer?.recordMissedDeadline(estimatedDrops)
+                    Log.i(TAG, "[NVC] Frame deadline missed: PTS=$presentationTimeUs, expectedDurationUs=$expectedDurationUs, gapUs=$gapUs (estimated drops=$estimatedDrops)")
+                    handleFrameLoss(estimatedDrops.toInt(), presentationTimeUs, gapUs)
                 }
             }
             lastPresentationTimeUs = presentationTimeUs

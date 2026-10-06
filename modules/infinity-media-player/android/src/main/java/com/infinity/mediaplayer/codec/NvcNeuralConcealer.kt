@@ -37,11 +37,17 @@ class NvcNeuralConcealer(private val context: Context) {
     private val activeFrameCounter = AtomicLong(0)
     private val droppedFrameCounter = AtomicLong(0)
     private val concealedFrameCounter = AtomicLong(0)
+    private val missedDeadlineCounter = AtomicLong(0)
     private var rebufferCounter = 0
 
     private var totalInferenceTimeMs = 0.0
     private var lastInferenceLatencyMs = 0.0f
     private var inferenceRuns = 0L
+
+    // Sliding window of recent inference latencies for P50 / P95 calculations
+    private val latencyHistory = FloatArray(128)
+    private var latencyHistoryIndex = 0
+    private var latencyHistoryCount = 0
 
     private var lastFpsTimestamp = SystemClock.elapsedRealtime()
     private var lastFrameCount = 0L
@@ -160,6 +166,27 @@ class NvcNeuralConcealer(private val context: Context) {
         }
     }
 
+    fun recordMissedDeadline(count: Long) {
+        if (count > 0) {
+            missedDeadlineCounter.addAndGet(count)
+        }
+    }
+
+    fun getExecutionProvider(): String = if (isNnapiActive) "NNAPI" else "ARM-CPU"
+
+    fun getLatencyP50(): Float {
+        if (latencyHistoryCount == 0) return lastInferenceLatencyMs
+        val copy = latencyHistory.copyOfRange(0, latencyHistoryCount).sortedArray()
+        return copy[copy.size / 2]
+    }
+
+    fun getLatencyP95(): Float {
+        if (latencyHistoryCount == 0) return lastInferenceLatencyMs
+        val copy = latencyHistory.copyOfRange(0, latencyHistoryCount).sortedArray()
+        val p95Idx = ((copy.size - 1) * 0.95f).toInt()
+        return copy[p95Idx]
+    }
+
     fun recordRebuffer() {
         rebufferCounter++
     }
@@ -221,6 +248,15 @@ class NvcNeuralConcealer(private val context: Context) {
                     totalInferenceTimeMs += elapsedMs
                     inferenceRuns++
                     concealedFrameCounter.incrementAndGet()
+
+                    // Record into sliding window
+                    val hIdx = latencyHistoryIndex % latencyHistory.size
+                    latencyHistory[hIdx] = elapsedMs
+                    latencyHistoryIndex++
+                    if (latencyHistoryCount < latencyHistory.size) latencyHistoryCount++
+
+                    val provider = getExecutionProvider()
+                    Log.i(TAG, "[NVC] Reconstruction complete: Provider=$provider, Inference=${String.format("%.2f", elapsedMs)}ms, Output=${outW}x${outH}")
 
                     Bitmap.createBitmap(rgbPixels, outW, outH, Bitmap.Config.ARGB_8888)
                 }
@@ -288,10 +324,13 @@ class NvcNeuralConcealer(private val context: Context) {
             bitrateKbps = currentBitrateKbps,
             avgInferenceLatencyMs = avgInference,
             lastInferenceLatencyMs = lastInferenceLatencyMs,
+            latencyP50Ms = getLatencyP50(),
+            latencyP95Ms = getLatencyP95(),
             concealedFrames = concealedFrameCounter.get(),
             droppedFrames = dropped,
+            missedDeadlines = missedDeadlineCounter.get(),
             activeFrames = activeFrameCounter.get(),
-            executionProvider = if (isNnapiActive) "NNAPI" else "ARM-CPU",
+            executionProvider = getExecutionProvider(),
             cpuUsagePercent = (12.0f + (currentFps * 0.15f)).coerceAtMost(95.0f),
             ramUsageMb = getRamUsageMb(),
             thermalStatus = getThermalStatusString(),

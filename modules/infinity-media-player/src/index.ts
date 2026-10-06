@@ -58,8 +58,11 @@ export interface NvcTelemetry {
   bitrateKbps?: number;
   avgInferenceLatencyMs?: number;
   lastInferenceLatencyMs?: number;
+  latencyP50Ms?: number;
+  latencyP95Ms?: number;
   concealedFrames?: number;
   droppedFrames?: number;
+  missedDeadlines?: number;
   activeFrames?: number;
   executionProvider?: string;
   cpuUsagePercent?: number;
