@@ -37,6 +37,9 @@ class InfinityPlayerView @JvmOverloads constructor(
     private val nvcRenderLayer: ImageView = ImageView(context).apply {
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         scaleType = ImageView.ScaleType.FIT_CENTER
+        // Enable bilinear hardware filtering for smooth GPU upscaling to display resolution
+        val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG)
+        setLayerType(View.LAYER_TYPE_HARDWARE, paint)
         visibility = View.GONE
     }
 

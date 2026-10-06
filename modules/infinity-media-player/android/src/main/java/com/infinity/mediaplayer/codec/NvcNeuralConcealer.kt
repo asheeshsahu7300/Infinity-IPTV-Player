@@ -74,10 +74,59 @@ class NvcNeuralConcealer(private val context: Context) {
                     setInterOpNumThreads(2)
                 }
             }
-            session = env?.createSession(modelFile.absolutePath, sessionOptions)
-            Log.i(TAG, "NVC Neural Reconstructor initialized successfully. NNAPI=$isNnapiActive")
+            val sess = env?.createSession(modelFile.absolutePath, sessionOptions)
+            session = sess
+            val provider = if (isNnapiActive) "NNAPI" else "ARM-CPU"
+            val inputInfo = sess?.inputInfo?.entries?.joinToString { "${it.key}: ${it.value.info}" }
+            val outputInfo = sess?.outputInfo?.entries?.joinToString { "${it.key}: ${it.value.info}" }
+            Log.i(TAG, "==================================================")
+            Log.i(TAG, "NVC-Live Prototype: Model loaded successfully")
+            Log.i(TAG, "Provider: $provider")
+            Log.i(TAG, "Inputs: $inputInfo")
+            Log.i(TAG, "Outputs: $outputInfo")
+            Log.i(TAG, "==================================================")
+
+            runDeterministicVerification(sess)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize NVC reconstructor model: ${e.message}", e)
+        }
+    }
+
+    private fun runDeterministicVerification(sess: OrtSession?) {
+        val s = sess ?: return
+        val ortEnv = env ?: return
+        try {
+            val testBuffer = FloatArray(BASE_CHANNELS * LATENT_H * LATENT_W) { 0.5f }
+            val shape = longArrayOf(1, BASE_CHANNELS.toLong(), LATENT_H.toLong(), LATENT_W.toLong())
+            val tensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(testBuffer), shape)
+
+            val t0 = SystemClock.elapsedRealtimeNanos()
+            tensor.use { t ->
+                s.run(mapOf("y_base" to t)).use { results ->
+                    val elapsedMs = (SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000.0f
+                    val outTensor = results[0] as OnnxTensor
+                    @Suppress("UNCHECKED_CAST")
+                    val rgbOutput = outTensor.value as Array<Array<Array<FloatArray>>>
+                    val outH = rgbOutput[0][0].size
+                    val outW = rgbOutput[0][0][0].size
+
+                    var minVal = Float.MAX_VALUE
+                    var maxVal = Float.MIN_VALUE
+                    for (c in 0 until 3) {
+                        for (r in 0 until outH) {
+                            for (col in 0 until outW) {
+                                val v = rgbOutput[0][c][r][col]
+                                if (v < minVal) minVal = v
+                                if (v > maxVal) maxVal = v
+                            }
+                        }
+                    }
+                    Log.i(TAG, "[NVC Deterministic Test] Input min=0.5, max=0.5, shape=[1,$BASE_CHANNELS,$LATENT_H,$LATENT_W]")
+                    Log.i(TAG, "[NVC Deterministic Test] Output min=$minVal, max=$maxVal, shape=[1,3,$outH,$outW], time=${elapsedMs}ms")
+                }
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Deterministic verification test warning: ${t.message}")
         }
     }
 
