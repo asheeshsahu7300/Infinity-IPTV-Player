@@ -230,6 +230,27 @@ export function calculateExpoBufferOptions({
   };
 }
 
+/** Formats network bitrate gracefully (kbps or Mbps) */
+const formatBitrate = (kbps?: number): string => {
+  if (!kbps || kbps <= 0) return "--";
+  if (kbps >= 1000) return `${(kbps / 1000).toFixed(1)} Mbps`;
+  return `${kbps} kbps`;
+};
+
+/** Formats inference latency cleanly */
+const formatLatency = (p50?: number, p95?: number, last?: number): string => {
+  if (p50 !== undefined && p50 > 0) {
+    if (p95 !== undefined && p95 > 0 && Math.abs(p95 - p50) > 0.5) {
+      return `${p50.toFixed(0)}/${p95.toFixed(0)} ms`;
+    }
+    return `${p50.toFixed(1)} ms`;
+  }
+  if (last !== undefined && last > 0) {
+    return `${last.toFixed(1)} ms`;
+  }
+  return "-- ms";
+};
+
 export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVideoPlayerProps>(
   (
     {
@@ -517,104 +538,152 @@ export const InfinityVideoPlayer = forwardRef<InfinityVideoPlayerRef, InfinityVi
           onLiveRecovered={handleLiveRecovered}
         />
         {showNvcDemoHud && (
-          <View style={styles.hudContainer} pointerEvents="none">
-            <View style={styles.hudBadge}>
-              <View style={styles.hudDot} />
-              <Text style={styles.hudTitle}>NVC-LIVE RECONSTRUCTION</Text>
-              <Text style={styles.hudProvider}>
-                {liveNvcStats?.executionProvider || (liveNvcStats?.isNnapiActive ? "NNAPI" : "ARM-CPU")}
-              </Text>
-            </View>
-            <View style={styles.hudRow}>
-              <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>NETWORK</Text>
-                <Text style={styles.hudValue}>
-                  {liveNvcStats?.bitrateKbps && liveNvcStats.bitrateKbps > 0
-                    ? `${liveNvcStats.bitrateKbps} kbps`
-                    : "--"}
-                </Text>
+          <View style={styles.hudWrapper} pointerEvents="none">
+            <View style={styles.hudCard}>
+              <View style={styles.hudBadge}>
+                <View style={styles.hudBadgeLeft}>
+                  <View style={styles.hudDot} />
+                  <Text style={styles.hudTitle}>NVC NEURAL RECONSTRUCTION</Text>
+                  <Text style={styles.hudModelTag}>v1.3</Text>
+                </View>
+                <View style={styles.hudBadgeRight}>
+                  <Text style={styles.hudProvider}>
+                    {liveNvcStats?.executionProvider || (liveNvcStats?.isNnapiActive ? "NNAPI" : "ARM-CPU")}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>PACKET LOSS</Text>
-                <Text
-                  style={[
-                    styles.hudValue,
-                    (liveNvcStats?.packetLossPercent || 0) > 5 ? styles.hudWarn : null,
-                  ]}
-                >
-                  {liveNvcStats?.packetLossPercent !== undefined
-                    ? `${liveNvcStats.packetLossPercent.toFixed(1)}%`
-                    : "0.0%"}
-                </Text>
-              </View>
-              <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>RES</Text>
-                <Text style={styles.hudValue}>{is4K ? "4K" : "1080p"}</Text>
-              </View>
-              <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>FPS</Text>
-                <Text style={styles.hudValue}>
-                  {liveNvcStats?.instantFps !== undefined && liveNvcStats.instantFps > 0
-                    ? liveNvcStats.instantFps.toFixed(1)
-                    : "--"}
-                </Text>
-              </View>
-              <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>INFERENCE (P50/P95)</Text>
-                <Text style={styles.hudValue}>
-                  {liveNvcStats?.latencyP50Ms !== undefined && liveNvcStats.latencyP50Ms > 0
-                    ? `${liveNvcStats.latencyP50Ms.toFixed(1)} / ${(liveNvcStats.latencyP95Ms ?? liveNvcStats.latencyP50Ms).toFixed(1)} ms`
-                    : liveNvcStats?.lastInferenceLatencyMs !== undefined && liveNvcStats.lastInferenceLatencyMs > 0
-                    ? `${liveNvcStats.lastInferenceLatencyMs.toFixed(1)} ms`
-                    : "-- ms"}
-                </Text>
-              </View>
-              <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>BUFFER</Text>
-                <Text style={styles.hudValue}>
-                  {liveNvcStats?.bufferHealthSec !== undefined
-                    ? `${liveNvcStats.bufferHealthSec.toFixed(1)} s`
-                    : "-- s"}
-                </Text>
-              </View>
-              <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>CONCEALED</Text>
-                <Text style={[styles.hudValue, styles.hudHighlight]}>
-                  {liveNvcStats?.concealedFrames ?? 0}
-                </Text>
-              </View>
-              <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>MISSED</Text>
-                <Text style={styles.hudValue}>{liveNvcStats?.missedDeadlines ?? 0}</Text>
-              </View>
-              <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>COMPOSED</Text>
-                <Text style={[styles.hudValue, styles.hudHighlight]}>
-                  {liveNvcStats?.composedFrames ?? 0}
-                </Text>
-              </View>
-              <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>FAILED</Text>
-                <Text
-                  style={[
-                    styles.hudValue,
-                    (liveNvcStats?.failedFrames ?? 0) > 0 ? styles.hudWarn : null,
-                  ]}
-                >
-                  {liveNvcStats?.failedFrames ?? 0}
-                </Text>
-              </View>
-              <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>DISCONT</Text>
-                <Text style={styles.hudValue}>{liveNvcStats?.timelineDiscontinuities ?? 0}</Text>
-              </View>
-              <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>REBUFFER</Text>
-                <Text style={styles.hudValue}>{liveNvcStats?.rebufferCount ?? 0}</Text>
-              </View>
-              <View style={styles.hudItem}>
-                <Text style={styles.hudLabel}>THERMAL</Text>
-                <Text style={styles.hudValue}>{liveNvcStats?.thermalStatus || "NOMINAL"}</Text>
+
+              <View style={styles.hudRow}>
+                {/* Group 1: Stream Telemetry */}
+                <View style={styles.hudGroup}>
+                  <View style={styles.hudItem}>
+                    <Text style={styles.hudLabel}>NET</Text>
+                    <Text style={styles.hudValue}>{formatBitrate(liveNvcStats?.bitrateKbps)}</Text>
+                  </View>
+                  <View style={styles.hudItem}>
+                    <Text style={styles.hudLabel}>LOSS</Text>
+                    <Text
+                      style={[
+                        styles.hudValue,
+                        (liveNvcStats?.packetLossPercent || 0) > 2 ? styles.hudWarn : null,
+                      ]}
+                    >
+                      {liveNvcStats?.packetLossPercent !== undefined
+                        ? `${liveNvcStats.packetLossPercent.toFixed(1)}%`
+                        : "0.0%"}
+                    </Text>
+                  </View>
+                  <View style={styles.hudItem}>
+                    <Text style={styles.hudLabel}>RES</Text>
+                    <Text style={styles.hudValue}>{is4K ? "4K" : "1080p"}</Text>
+                  </View>
+                  <View style={styles.hudItem}>
+                    <Text style={styles.hudLabel}>FPS</Text>
+                    <Text style={styles.hudValue}>
+                      {liveNvcStats?.instantFps !== undefined && liveNvcStats.instantFps > 0
+                        ? liveNvcStats.instantFps.toFixed(1)
+                        : "--"}
+                    </Text>
+                  </View>
+                  <View style={styles.hudItem}>
+                    <Text style={styles.hudLabel}>BUFFER</Text>
+                    <Text style={styles.hudValue}>
+                      {liveNvcStats?.bufferHealthSec !== undefined
+                        ? `${liveNvcStats.bufferHealthSec.toFixed(1)}s`
+                        : "--"}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Divider 1 */}
+                <View style={styles.hudDivider} />
+
+                {/* Group 2: Neural Concealment & Composition */}
+                <View style={styles.hudGroup}>
+                  <View style={styles.hudItem}>
+                    <Text style={styles.hudLabel}>LATENCY</Text>
+                    <Text style={styles.hudValue}>
+                      {formatLatency(
+                        liveNvcStats?.latencyP50Ms,
+                        liveNvcStats?.latencyP95Ms,
+                        liveNvcStats?.lastInferenceLatencyMs
+                      )}
+                    </Text>
+                  </View>
+                  <View style={styles.hudItem}>
+                    <Text style={styles.hudLabel}>CONCEALED</Text>
+                    <Text style={[styles.hudValue, styles.hudHighlightGreen]}>
+                      {liveNvcStats?.concealedFrames ?? 0}
+                    </Text>
+                  </View>
+                  <View style={styles.hudItem}>
+                    <Text style={styles.hudLabel}>COMPOSED</Text>
+                    <Text style={[styles.hudValue, styles.hudHighlightCyan]}>
+                      {liveNvcStats?.composedFrames ?? 0}
+                    </Text>
+                  </View>
+                  <View style={styles.hudItem}>
+                    <Text style={styles.hudLabel}>FAILED</Text>
+                    <Text
+                      style={[
+                        styles.hudValue,
+                        (liveNvcStats?.failedFrames ?? 0) > 0 ? styles.hudDanger : styles.hudMuted,
+                      ]}
+                    >
+                      {liveNvcStats?.failedFrames ?? 0}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Divider 2 */}
+                <View style={styles.hudDivider} />
+
+                {/* Group 3: Diagnostics & Stability */}
+                <View style={styles.hudGroup}>
+                  <View style={styles.hudItem}>
+                    <Text style={styles.hudLabel}>MISSED</Text>
+                    <Text
+                      style={[
+                        styles.hudValue,
+                        (liveNvcStats?.missedDeadlines ?? 0) > 0 ? styles.hudWarn : styles.hudMuted,
+                      ]}
+                    >
+                      {liveNvcStats?.missedDeadlines ?? 0}
+                    </Text>
+                  </View>
+                  <View style={styles.hudItem}>
+                    <Text style={styles.hudLabel}>DISCONT</Text>
+                    <Text style={styles.hudValue}>
+                      {liveNvcStats?.timelineDiscontinuities ?? 0}
+                    </Text>
+                  </View>
+                  <View style={styles.hudItem}>
+                    <Text style={styles.hudLabel}>REBUFF</Text>
+                    <Text
+                      style={[
+                        styles.hudValue,
+                        (liveNvcStats?.rebufferCount ?? 0) > 0 ? styles.hudDanger : styles.hudMuted,
+                      ]}
+                    >
+                      {liveNvcStats?.rebufferCount ?? 0}
+                    </Text>
+                  </View>
+                  <View style={styles.hudItem}>
+                    <Text style={styles.hudLabel}>THERMAL</Text>
+                    <Text
+                      style={[
+                        styles.hudValue,
+                        liveNvcStats?.thermalStatus === "NOMINAL" || !liveNvcStats?.thermalStatus
+                          ? styles.hudThermalNominal
+                          : liveNvcStats?.thermalStatus === "LIGHT" || liveNvcStats?.thermalStatus === "MODERATE"
+                          ? styles.hudThermalWarm
+                          : styles.hudThermalHot,
+                      ]}
+                    >
+                      {liveNvcStats?.thermalStatus || "NOMINAL"}
+                    </Text>
+                  </View>
+                </View>
               </View>
             </View>
           </View>
@@ -634,74 +703,128 @@ const styles = StyleSheet.create({
     backgroundColor: "#000000",
     overflow: "hidden",
   },
-  hudContainer: {
+  hudWrapper: {
     position: "absolute",
-    top: 24,
-    right: 24,
-    backgroundColor: "rgba(10, 15, 25, 0.88)",
-    paddingVertical: 10,
+    top: 12,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 9999,
+  },
+  hudCard: {
+    backgroundColor: "rgba(8, 14, 26, 0.92)",
+    paddingVertical: 6,
     paddingHorizontal: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(0, 220, 255, 0.4)",
+    borderColor: "rgba(0, 220, 255, 0.35)",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 6,
-    zIndex: 9999,
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 8,
   },
   hudBadge: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    justifyContent: "space-between",
+    marginBottom: 5,
+    paddingBottom: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255, 255, 255, 0.12)",
+  },
+  hudBadgeLeft: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   hudDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: "#00ffcc",
     marginRight: 6,
   },
   hudTitle: {
-    color: "#ffffff",
-    fontSize: 11,
+    color: "#e2e8f0",
+    fontSize: 10,
     fontWeight: "700",
     letterSpacing: 0.8,
   },
+  hudModelTag: {
+    color: "#64748b",
+    fontSize: 8.5,
+    fontWeight: "600",
+    marginLeft: 6,
+    letterSpacing: 0.5,
+  },
+  hudBadgeRight: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   hudProvider: {
-    marginLeft: "auto",
     color: "#00ffcc",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
-    backgroundColor: "rgba(0, 255, 204, 0.15)",
+    backgroundColor: "rgba(0, 255, 204, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(0, 255, 204, 0.35)",
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 1,
     borderRadius: 4,
+    letterSpacing: 0.5,
   },
   hudRow: {
     flexDirection: "row",
-    gap: 12,
+    alignItems: "center",
+  },
+  hudGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+  hudDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    marginHorizontal: 8,
   },
   hudItem: {
     alignItems: "center",
   },
   hudLabel: {
-    color: "#8899aa",
-    fontSize: 9,
-    fontWeight: "600",
-    marginBottom: 2,
+    color: "#7e92a8",
+    fontSize: 8,
+    fontWeight: "700",
+    marginBottom: 1,
     letterSpacing: 0.5,
   },
   hudValue: {
     color: "#ffffff",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
   },
-  hudHighlight: {
+  hudHighlightGreen: {
     color: "#00ffcc",
   },
+  hudHighlightCyan: {
+    color: "#38bdf8",
+  },
   hudWarn: {
-    color: "#ffaa00",
+    color: "#fbbf24",
+  },
+  hudDanger: {
+    color: "#f87171",
+  },
+  hudMuted: {
+    color: "#94a3b8",
+  },
+  hudThermalNominal: {
+    color: "#34d399",
+  },
+  hudThermalWarm: {
+    color: "#fbbf24",
+  },
+  hudThermalHot: {
+    color: "#ef4444",
   },
 });
