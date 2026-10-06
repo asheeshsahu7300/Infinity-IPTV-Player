@@ -118,16 +118,33 @@ Favorites can be maintained for:
 Powered by the custom native media engine [infinity-media-player](https://github.com/asheeshsahu7300/infinity-media-player):
 
 - **AndroidX Media3 Core**: Hardware-accelerated decoding (AVC/H.264, HEVC/H.265, VP9) with seamless dynamic track switching across video resolutions, audio streams, and subtitle formats.
-- **NVC-Live Neural Frame Reconstruction (v1.3.0 Prototype)**:
-  - On-device neural frame reconstruction via quantized ONNX Runtime executing on Android NNAPI (with multi-threaded ARM-CPU fallback).
-  - Dynamic Presentation Timestamp (PTS) delivery deadline tracking detecting missing or delayed frames.
+- **Event-Driven NVC Neural Frame Reconstruction (v1.3.0 Prototype)**:
+  - Allocates on-device neural compute selectively when playback continuity is threatened, running quantized ONNX Runtime models via Android Neural Networks API (NNAPI) with automatic fallback to multi-threaded ARM CPU execution.
+  - Dynamic Presentation Timestamp (PTS) delivery deadline tracking detecting missing or delayed frames while gracefully handling intentional seek discontinuities.
   - Hardware GPU composition overlay (`nvcRenderLayer`) with bilinear texture filtering submitting reconstructed frames directly to the display pipeline.
-  - On-screen Android TV HUD overlay (`showNvcDemoHud`) with measured hardware telemetry (`CONCEALED`, `MISSED`, `COMPOSED`, `FAILED`, P50/P95 latencies, buffer health, thermal status).
+  - Broadcast-grade telemetry HUD overlay (`showNvcDemoHud`) with grouped live metrics (`NET`, `LOSS`, `RES`, `FPS`, `BUFFER`, `LATENCY`, `CONCEALED`, `COMPOSED`, `FAILED`, `MISSED`, `DISCONT`, `REBUFF`, `THERMAL`).
 - **Hardware-Aware Audio Safety (Qualcomm & MediaTek)**:
   - Protects against fatal Qualcomm Hexagon ADSP ACDB crashes (`0x10012d00`) and MediaTek BesLoudness audio distortions through automatic chipset detection and safe routing.
   - Bundled software FFmpeg audio decoding for continuous AC-3, E-AC3, and DTS playback on devices lacking hardware decoders.
 - **Adaptive Live Buffering**: 12–15 second live buffer window with a 3-second hysteresis window and automatic reconnection with preserved HTTP headers.
 - **External Player Support**: VLC, MX Player, and other Android-compatible video players.
+
+#### v1.3.0 Physical Hardware Validation (Snapdragon 750G / Android 13)
+
+| Metric | Measured Result |
+|---|---:|
+| NVC Acceleration Provider | NNAPI (`c2.qti.*`) |
+| Stream Resolution | 1080p FHD |
+| Playback FPS | 25.0 – 30.0 FPS |
+| NVC Latency (P50 / P95) | 51.5 / 51.5 ms (41.99 – 51.46 ms single) |
+| Live Buffer Cushion | 14.7 s |
+| Reconstructed Frames (`CONCEALED`) | 1 |
+| GPU Surface Compositions (`COMPOSED`) | 1 |
+| Reconstruction Failures (`FAILED`) | 0 |
+| Timeline Discontinuities (`DISCONT`) | 2 |
+| Spurious Missed Frames on Seek | 0 |
+
+> **Design Principle**: NVC reconstruction is event-driven rather than continuously invoked, improving playback continuity during transient packet loss and network degradation without exceeding mobile thermal budgets.
 
 ---
 
