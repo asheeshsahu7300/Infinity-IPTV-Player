@@ -23,6 +23,7 @@ import kotlin.math.sin
 class NvcNeuralConcealer(private val context: Context) {
     companion object {
         private const val TAG = "NvcNeuralConcealer"
+        private const val ENCODER_MODEL_NAME = "nvc_encoder.onnx"
         private const val RECONSTRUCTOR_MODEL_NAME = "nvc_reconstructor_e2e.onnx"
         private const val CONCEALER_MODEL_NAME = "nvc_latent_concealer.onnx"
         private const val BASE_CHANNELS = 48
@@ -33,11 +34,13 @@ class NvcNeuralConcealer(private val context: Context) {
     }
 
     private var env: OrtEnvironment? = null
+    private var encoderSession: OrtSession? = null
     private var reconstructorSession: OrtSession? = null
     private var concealerSession: OrtSession? = null
     private var isNnapiActive: Boolean = false
+    private var isNeuralEncoderActive: Boolean = false
 
-    // Analysis Feature Extractor (v1.4.0)
+    // Analysis Feature Extractor (v1.4.0 fallback)
     private val featureExtractor = NvcFeatureExtractor(BASE_CHANNELS, LATENT_H, LATENT_W)
     private var isPixelLatentExtracted: Boolean = false
     private var lastLatentUpdateTimeMs: Long = 0L
@@ -112,12 +115,25 @@ class NvcNeuralConcealer(private val context: Context) {
                 Log.w(TAG, "Optional NVC Latent Concealer not loaded: ${ce.message}")
             }
 
+            // 3. Learned Neural Analysis Encoder Session (v1.5.0)
+            try {
+                val encModelFile = getOrCopyModelFile(ENCODER_MODEL_NAME)
+                val encOptions = createSessionOptions()
+                encoderSession = env?.createSession(encModelFile.absolutePath, encOptions)
+                isNeuralEncoderActive = (encoderSession != null)
+                Log.i(TAG, "NVC-Live v1.5: Learned Neural Encoder loaded ($ENCODER_MODEL_NAME)")
+            } catch (ee: Exception) {
+                isNeuralEncoderActive = false
+                Log.w(TAG, "Optional NVC Learned Encoder not loaded: ${ee.message}")
+            }
+
             val provider = if (isNnapiActive) "NNAPI" else "ARM-CPU"
             Log.i(TAG, "==================================================")
-            Log.i(TAG, "NVC-Live v1.4 Pipeline Initialized")
+            Log.i(TAG, "NVC-Live v1.5 Pipeline Initialized")
             Log.i(TAG, "Provider: $provider")
             Log.i(TAG, "Reconstructor: ${reconstructorSession != null}")
             Log.i(TAG, "Two-Stage Latent Predictor: ${concealerSession != null}")
+            Log.i(TAG, "Learned Neural Encoder: $isNeuralEncoderActive")
             Log.i(TAG, "==================================================")
 
             runDeterministicVerification(reconstructorSession)
@@ -237,21 +253,87 @@ class NvcNeuralConcealer(private val context: Context) {
     }
 
     /**
-     * Extracts and updates base latent from actual decoded video frame pixels (v1.4.0).
+     * Executes learned neural analysis encoder (v1.5.0):
+     * Decoded RGB pixels -> [1, 3, 128, 128] planar FloatBuffer -> nvc_encoder.onnx -> y_base [1, 48, 32, 32]
+     */
+    private fun runNeuralEncoder(pixels: IntArray, width: Int, height: Int): Boolean {
+        val s = encoderSession ?: return false
+        val ortEnv = env ?: return false
+
+        return try {
+            val chwBuffer = FloatArray(3 * OUT_H * OUT_W)
+            val planeSize = OUT_H * OUT_W
+
+            for (y in 0 until OUT_H) {
+                val srcY = (y * height / OUT_H).coerceIn(0, height - 1)
+                val rowOffset = srcY * width
+                for (x in 0 until OUT_W) {
+                    val srcX = (x * width / OUT_W).coerceIn(0, width - 1)
+                    val pixel = pixels[rowOffset + srcX]
+
+                    val r = ((pixel ushr 16) and 0xFF) / 255.0f
+                    val g = ((pixel ushr 8) and 0xFF) / 255.0f
+                    val b = (pixel and 0xFF) / 255.0f
+
+                    val outIdx = y * OUT_W + x
+                    chwBuffer[0 * planeSize + outIdx] = r
+                    chwBuffer[1 * planeSize + outIdx] = g
+                    chwBuffer[2 * planeSize + outIdx] = b
+                }
+            }
+
+            val shape = longArrayOf(1, 3, OUT_H.toLong(), OUT_W.toLong())
+            val buffer = FloatBuffer.wrap(chwBuffer)
+
+            OnnxTensor.createTensor(ortEnv, buffer, shape).use { tensor ->
+                s.run(mapOf("rgb_input" to tensor)).use { results ->
+                    val outTensor = results[0] as OnnxTensor
+                    @Suppress("UNCHECKED_CAST")
+                    val outVal = outTensor.value as Array<Array<Array<FloatArray>>>
+                    val channels = outVal[0].size
+                    val h = outVal[0][0].size
+                    val w = outVal[0][0][0].size
+                    var idx = 0
+                    for (c in 0 until channels) {
+                        for (row in 0 until h) {
+                            val rArr = outVal[0][c][row]
+                            for (col in 0 until w) {
+                                currentBaseLatent[idx++] = rArr[col]
+                            }
+                        }
+                    }
+                    true
+                }
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Neural encoder inference failed, using feature extractor fallback: ${t.message}")
+            false
+        }
+    }
+
+    /**
+     * Extracts and updates base latent from actual decoded video frame pixels (v1.5.0).
+     * Uses learned neural analysis encoder (nvc_encoder.onnx) when available, falling back
+     * to deterministic spatio-temporal feature construction.
      */
     fun updateBaseLatentFromPixels(pixels: IntArray, width: Int, height: Int) {
-        featureExtractor.extractLatentFromRgbPixels(pixels, width, height, currentBaseLatent)
+        val success = if (isNeuralEncoderActive) runNeuralEncoder(pixels, width, height) else false
+        if (!success) {
+            featureExtractor.extractLatentFromRgbPixels(pixels, width, height, currentBaseLatent)
+        }
         isPixelLatentExtracted = true
         lastLatentUpdateTimeMs = SystemClock.uptimeMillis()
     }
 
     /**
-     * Extracts and updates base latent from decoded Bitmap (v1.4.0).
+     * Extracts and updates base latent from decoded Bitmap (v1.5.0).
      */
     fun updateBaseLatentFromBitmap(bitmap: Bitmap) {
-        featureExtractor.extractLatentFromBitmap(bitmap, currentBaseLatent)
-        isPixelLatentExtracted = true
-        lastLatentUpdateTimeMs = SystemClock.uptimeMillis()
+        val w = bitmap.width
+        val h = bitmap.height
+        val px = IntArray(w * h)
+        bitmap.getPixels(px, 0, w, 0, 0, w, h)
+        updateBaseLatentFromPixels(px, w, h)
     }
 
     /**
@@ -498,12 +580,15 @@ class NvcNeuralConcealer(private val context: Context) {
             rebufferCount = rebufferCounter,
             isPixelLatentExtracted = isPixelLatentExtracted,
             isTwoStagePipelineActive = concealerSession != null,
+            isNeuralEncoderActive = isNeuralEncoderActive,
             latentAgeMs = latentAge
         )
     }
 
     fun release() {
         try {
+            encoderSession?.close()
+            encoderSession = null
             reconstructorSession?.close()
             reconstructorSession = null
             concealerSession?.close()

@@ -55,6 +55,7 @@ export interface NvcTelemetry {
   isNnapiActive?: boolean;
   isPixelLatentExtracted?: boolean;
   isTwoStagePipelineActive?: boolean;
+  isNeuralEncoderActive?: boolean;
   instantFps?: number;
   avgFps?: number;
   bitrateKbps?: number;

@@ -359,6 +359,7 @@ class InfinityMediaPlayerView(
                 "isNnapiActive" to telemetry.isNnapiActive,
                 "isPixelLatentExtracted" to telemetry.isPixelLatentExtracted,
                 "isTwoStagePipelineActive" to telemetry.isTwoStagePipelineActive,
+                "isNeuralEncoderActive" to telemetry.isNeuralEncoderActive,
                 "instantFps" to telemetry.instantFps,
                 "avgFps" to telemetry.avgFps,
                 "bitrateKbps" to telemetry.bitrateKbps,

@@ -26,5 +26,6 @@ data class NvcTelemetry(
     val rebufferCount: Int = 0,
     val isPixelLatentExtracted: Boolean = false,
     val isTwoStagePipelineActive: Boolean = false,
+    val isNeuralEncoderActive: Boolean = false,
     val latentAgeMs: Long = 0L
 )
