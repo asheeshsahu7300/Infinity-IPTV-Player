@@ -21,8 +21,10 @@ data class NvcTelemetry(
     val cpuUsagePercent: Float = 0.0f,
     val ramUsageMb: Float = 0.0f,
     val thermalStatus: String = "NOMINAL",
-    val batteryLevel: Int = -1,
     val bufferHealthSec: Float = 0.0f,
     val packetLossPercent: Float = 0.0f,
-    val rebufferCount: Int = 0
+    val rebufferCount: Int = 0,
+    val isPixelLatentExtracted: Boolean = false,
+    val isTwoStagePipelineActive: Boolean = false,
+    val latentAgeMs: Long = 0L
 )

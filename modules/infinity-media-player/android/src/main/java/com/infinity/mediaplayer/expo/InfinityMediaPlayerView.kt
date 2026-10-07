@@ -357,6 +357,8 @@ class InfinityMediaPlayerView(
             mapOf(
                 "isAvailable" to telemetry.isAvailable,
                 "isNnapiActive" to telemetry.isNnapiActive,
+                "isPixelLatentExtracted" to telemetry.isPixelLatentExtracted,
+                "isTwoStagePipelineActive" to telemetry.isTwoStagePipelineActive,
                 "instantFps" to telemetry.instantFps,
                 "avgFps" to telemetry.avgFps,
                 "bitrateKbps" to telemetry.bitrateKbps,
@@ -378,7 +380,8 @@ class InfinityMediaPlayerView(
                 "batteryLevel" to telemetry.batteryLevel,
                 "bufferHealthSec" to telemetry.bufferHealthSec,
                 "packetLossPercent" to telemetry.packetLossPercent,
-                "rebufferCount" to telemetry.rebufferCount
+                "rebufferCount" to telemetry.rebufferCount,
+                "latentAgeMs" to telemetry.latentAgeMs
             )
         )
     }

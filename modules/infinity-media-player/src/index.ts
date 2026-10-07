@@ -53,6 +53,8 @@ export interface AudioTelemetry {
 export interface NvcTelemetry {
   isAvailable?: boolean;
   isNnapiActive?: boolean;
+  isPixelLatentExtracted?: boolean;
+  isTwoStagePipelineActive?: boolean;
   instantFps?: number;
   avgFps?: number;
   bitrateKbps?: number;
@@ -75,6 +77,7 @@ export interface NvcTelemetry {
   bufferHealthSec?: number;
   packetLossPercent?: number;
   rebufferCount?: number;
+  latentAgeMs?: number;
 }
 
 export interface InfinityMediaPlayerNativeProps extends ViewProps {

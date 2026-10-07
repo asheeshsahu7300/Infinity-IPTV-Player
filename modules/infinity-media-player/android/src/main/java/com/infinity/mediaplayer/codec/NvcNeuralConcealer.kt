@@ -6,7 +6,6 @@ import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.BatteryManager
-import android.os.Build
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
@@ -17,12 +16,15 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.FloatBuffer
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.sin
 
 class NvcNeuralConcealer(private val context: Context) {
     companion object {
         private const val TAG = "NvcNeuralConcealer"
-        private const val MODEL_ASSET_NAME = "nvc_reconstructor_e2e.onnx"
+        private const val RECONSTRUCTOR_MODEL_NAME = "nvc_reconstructor_e2e.onnx"
+        private const val CONCEALER_MODEL_NAME = "nvc_latent_concealer.onnx"
         private const val BASE_CHANNELS = 48
         private const val LATENT_H = 32
         private const val LATENT_W = 32
@@ -31,8 +33,14 @@ class NvcNeuralConcealer(private val context: Context) {
     }
 
     private var env: OrtEnvironment? = null
-    private var session: OrtSession? = null
+    private var reconstructorSession: OrtSession? = null
+    private var concealerSession: OrtSession? = null
     private var isNnapiActive: Boolean = false
+
+    // Analysis Feature Extractor (v1.4.0)
+    private val featureExtractor = NvcFeatureExtractor(BASE_CHANNELS, LATENT_H, LATENT_W)
+    private var isPixelLatentExtracted: Boolean = false
+    private var lastLatentUpdateTimeMs: Long = 0L
 
     private val activeFrameCounter = AtomicLong(0)
     private val droppedFrameCounter = AtomicLong(0)
@@ -59,45 +67,62 @@ class NvcNeuralConcealer(private val context: Context) {
     // Running temporal latent state (base representation)
     private var currentBaseLatent = FloatArray(BASE_CHANNELS * LATENT_H * LATENT_W) { 0.1f }
 
+    // Real CPU measurement tracking
+    private var lastCpuTimeMs = android.os.Process.getElapsedCpuTime()
+    private var lastCpuTimestampMs = SystemClock.elapsedRealtime()
+    private var realCpuUsagePercent = 0.0f
+
     // Reusable pixel buffer for Bitmap generation
     private val rgbPixels = IntArray(OUT_H * OUT_W)
 
     init {
-        initializeSession()
+        initializeSessions()
     }
 
-    private fun initializeSession() {
+    private fun createSessionOptions(): OrtSession.SessionOptions {
+        return OrtSession.SessionOptions().apply {
+            try {
+                addNnapi()
+                isNnapiActive = true
+            } catch (t: Throwable) {
+                isNnapiActive = false
+                val numThreads = max(2, Runtime.getRuntime().availableProcessors() / 2)
+                setIntraOpNumThreads(numThreads)
+                setInterOpNumThreads(2)
+            }
+        }
+    }
+
+    private fun initializeSessions() {
         try {
             env = OrtEnvironment.getEnvironment()
-            val modelFile = getOrCopyModelFile()
-            val sessionOptions = OrtSession.SessionOptions().apply {
-                try {
-                    addNnapi()
-                    isNnapiActive = true
-                    Log.i(TAG, "NNAPI hardware acceleration enabled successfully for NVC-Live.")
-                } catch (t: Throwable) {
-                    isNnapiActive = false
-                    Log.w(TAG, "NNAPI not supported on this device. Falling back to multi-threaded ARM CPU: ${t.message}")
-                    val numThreads = max(2, Runtime.getRuntime().availableProcessors() / 2)
-                    setIntraOpNumThreads(numThreads)
-                    setInterOpNumThreads(2)
-                }
+
+            // 1. Primary Reconstructor Session (Synthesis Decoder)
+            val recModelFile = getOrCopyModelFile(RECONSTRUCTOR_MODEL_NAME)
+            val recOptions = createSessionOptions()
+            reconstructorSession = env?.createSession(recModelFile.absolutePath, recOptions)
+
+            // 2. Secondary Latent Concealer Session (Temporal Latent Predictor)
+            try {
+                val concModelFile = getOrCopyModelFile(CONCEALER_MODEL_NAME)
+                val concOptions = createSessionOptions()
+                concealerSession = env?.createSession(concModelFile.absolutePath, concOptions)
+                Log.i(TAG, "NVC-Live v1.4: Latent Concealer loaded ($CONCEALER_MODEL_NAME)")
+            } catch (ce: Exception) {
+                Log.w(TAG, "Optional NVC Latent Concealer not loaded: ${ce.message}")
             }
-            val sess = env?.createSession(modelFile.absolutePath, sessionOptions)
-            session = sess
+
             val provider = if (isNnapiActive) "NNAPI" else "ARM-CPU"
-            val inputInfo = sess?.inputInfo?.entries?.joinToString { "${it.key}: ${it.value.info}" }
-            val outputInfo = sess?.outputInfo?.entries?.joinToString { "${it.key}: ${it.value.info}" }
             Log.i(TAG, "==================================================")
-            Log.i(TAG, "NVC-Live Prototype: Model loaded successfully")
+            Log.i(TAG, "NVC-Live v1.4 Pipeline Initialized")
             Log.i(TAG, "Provider: $provider")
-            Log.i(TAG, "Inputs: $inputInfo")
-            Log.i(TAG, "Outputs: $outputInfo")
+            Log.i(TAG, "Reconstructor: ${reconstructorSession != null}")
+            Log.i(TAG, "Two-Stage Latent Predictor: ${concealerSession != null}")
             Log.i(TAG, "==================================================")
 
-            runDeterministicVerification(sess)
+            runDeterministicVerification(reconstructorSession)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize NVC reconstructor model: ${e.message}", e)
+            Log.e(TAG, "Failed to initialize NVC model sessions: ${e.message}", e)
         }
     }
 
@@ -139,10 +164,10 @@ class NvcNeuralConcealer(private val context: Context) {
         }
     }
 
-    private fun getOrCopyModelFile(): File {
-        val modelFile = File(context.cacheDir, MODEL_ASSET_NAME)
+    private fun getOrCopyModelFile(assetName: String): File {
+        val modelFile = File(context.cacheDir, assetName)
         if (!modelFile.exists() || modelFile.length() == 0L) {
-            context.assets.open(MODEL_ASSET_NAME).use { input ->
+            context.assets.open(assetName).use { input ->
                 FileOutputStream(modelFile).use { output ->
                     input.copyTo(output)
                 }
@@ -163,6 +188,10 @@ class NvcNeuralConcealer(private val context: Context) {
         }
     }
 
+    fun updateFps(fps: Float) {
+        // Maintained for caller compatibility; authoritative FPS measured by recordRenderedFrame()
+    }
+
     fun recordDroppedFrames(count: Long) {
         if (count > 0) {
             droppedFrameCounter.addAndGet(count)
@@ -177,6 +206,7 @@ class NvcNeuralConcealer(private val context: Context) {
 
     fun recordTimelineDiscontinuity() {
         timelineDiscontinuityCounter.incrementAndGet()
+        featureExtractor.resetTemporalState()
     }
 
     fun recordFrameComposed() {
@@ -198,24 +228,127 @@ class NvcNeuralConcealer(private val context: Context) {
     fun getLatencyP95(): Float {
         if (latencyHistoryCount == 0) return lastInferenceLatencyMs
         val copy = latencyHistory.copyOfRange(0, latencyHistoryCount).sortedArray()
-        val p95Idx = ((copy.size - 1) * 0.95f).toInt()
-        return copy[p95Idx]
+        val p95Index = ((copy.size - 1) * 0.95f).toInt()
+        return copy[p95Index]
     }
 
     fun recordRebuffer() {
         rebufferCounter++
     }
 
-    fun updateFps(fps: Float) {
-        currentFps = fps
-        if (fps > 0) {
-            activeFrameCounter.addAndGet((fps * 0.35f).toLong().coerceAtLeast(1L))
+    /**
+     * Extracts and updates base latent from actual decoded video frame pixels (v1.4.0).
+     */
+    fun updateBaseLatentFromPixels(pixels: IntArray, width: Int, height: Int) {
+        featureExtractor.extractLatentFromRgbPixels(pixels, width, height, currentBaseLatent)
+        isPixelLatentExtracted = true
+        lastLatentUpdateTimeMs = SystemClock.uptimeMillis()
+    }
+
+    /**
+     * Extracts and updates base latent from decoded Bitmap (v1.4.0).
+     */
+    fun updateBaseLatentFromBitmap(bitmap: Bitmap) {
+        featureExtractor.extractLatentFromBitmap(bitmap, currentBaseLatent)
+        isPixelLatentExtracted = true
+        lastLatentUpdateTimeMs = SystemClock.uptimeMillis()
+    }
+
+    /**
+     * Updates stream-conditioned base latent representation based on incoming frame metadata.
+     * Used as a prior when direct decoded pixel buffers are not yet available.
+     */
+    fun updateBaseLatentFromFrame(
+        ptsUs: Long,
+        width: Int,
+        height: Int,
+        bitrateKbps: Int
+    ) {
+        if (isPixelLatentExtracted) return // Prioritize real pixel features once available
+
+        val ptsSec = ptsUs / 1_000_000.0f
+        val aspectRatio = if (height > 0) width.toFloat() / height.toFloat() else 1.777f
+        val bitrateEnergy = (bitrateKbps.coerceIn(500, 25000) / 25000.0f) * 0.4f + 0.1f
+
+        var idx = 0
+        for (c in 0 until BASE_CHANNELS) {
+            val freqC = (c + 1) * 0.35f
+            val phaseC = c * 0.25f
+            val baseChannelVal = sin(ptsSec * freqC + phaseC) * 0.15f * bitrateEnergy
+            for (y in 0 until LATENT_H) {
+                val ny = (y.toFloat() / LATENT_H) * 2.0f - 1.0f
+                for (x in 0 until LATENT_W) {
+                    val nx = ((x.toFloat() / LATENT_W) * 2.0f - 1.0f) * aspectRatio
+                    val spatialHarmonic = cos(nx * 1.5f + ny * 1.5f + c.toFloat()) * 0.05f
+                    currentBaseLatent[idx++] = (baseChannelVal + spatialHarmonic).coerceIn(-1.0f, 1.0f)
+                }
+            }
+        }
+    }
+
+    /**
+     * Sets an explicit custom base latent tensor (e.g. from an upstream neural encoder).
+     */
+    fun updateBaseLatent(customLatent: FloatArray) {
+        if (customLatent.size == currentBaseLatent.size) {
+            System.arraycopy(customLatent, 0, currentBaseLatent, 0, currentBaseLatent.size)
+            isPixelLatentExtracted = true
+        }
+    }
+
+    private fun getProcessCpuUsagePercent(): Float {
+        val currentCpuTime = android.os.Process.getElapsedCpuTime()
+        val now = SystemClock.elapsedRealtime()
+        val cpuDelta = currentCpuTime - lastCpuTimeMs
+        val timeDelta = now - lastCpuTimestampMs
+        if (timeDelta >= 350) {
+            val numCores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+            realCpuUsagePercent = ((cpuDelta.toFloat() / (timeDelta * numCores)) * 100.0f).coerceIn(0.0f, 100.0f)
+            lastCpuTimeMs = currentCpuTime
+            lastCpuTimestampMs = now
+        }
+        return realCpuUsagePercent
+    }
+
+    /**
+     * Runs Stage 1: Neural Latent Concealment / Temporal Propagation
+     * Input: y_base [1, 48, 32, 32] -> Output: predicted_enhancement [1, 48, 32, 32]
+     */
+    private fun runLatentConcealerStage(inputLatent: FloatArray, shape: LongArray): FloatArray? {
+        val s = concealerSession ?: return null
+        val ortEnv = env ?: return null
+        return try {
+            val buffer = FloatBuffer.wrap(inputLatent)
+            OnnxTensor.createTensor(ortEnv, buffer, shape).use { tensor ->
+                s.run(mapOf("y_base" to tensor)).use { results ->
+                    val outTensor = results[0] as OnnxTensor
+                    @Suppress("UNCHECKED_CAST")
+                    val outVal = outTensor.value as Array<Array<Array<FloatArray>>>
+                    val channels = outVal[0].size
+                    val h = outVal[0][0].size
+                    val w = outVal[0][0][0].size
+                    val output = FloatArray(channels * h * w)
+                    var idx = 0
+                    for (c in 0 until channels) {
+                        for (r in 0 until h) {
+                            val row = outVal[0][c][r]
+                            for (col in 0 until w) {
+                                output[idx++] = row[col]
+                            }
+                        }
+                    }
+                    output
+                }
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Latent concealer stage fallback: ${t.message}")
+            null
         }
     }
 
     /**
      * Executes real end-to-end NVC neural frame reconstruction:
-     * Base latent [1, 48, H, W] -> Neural Concealer + Decoder -> Reconstructed RGB Bitmap [OUT_W x OUT_H]
+     * Base latent [1, 48, H, W] -> (Stage 1 Latent Predictor) -> (Stage 2 Synthesis Decoder) -> Reconstructed RGB Bitmap [128x128]
      */
     @Synchronized
     fun reconstructDroppedFrame(
@@ -223,15 +356,23 @@ class NvcNeuralConcealer(private val context: Context) {
         targetWidth: Int = LATENT_W,
         targetHeight: Int = LATENT_H
     ): Bitmap? {
-        val sess = session ?: return null
+        val sess = reconstructorSession ?: return null
         val ortEnv = env ?: return null
         val startTime = SystemClock.elapsedRealtimeNanos()
 
         val latentToUse = customLatent ?: currentBaseLatent
         val shape = longArrayOf(1, BASE_CHANNELS.toLong(), targetHeight.toLong(), targetWidth.toLong())
 
+        // Stage 1: Neural Latent Propagation (if concealerSession is available and no custom latent provided)
+        val stage1Latent = if (concealerSession != null && customLatent == null) {
+            runLatentConcealerStage(latentToUse, shape) ?: latentToUse
+        } else {
+            latentToUse
+        }
+
+        // Stage 2: Synthesis Reconstruction to RGB
         return try {
-            val buffer = FloatBuffer.wrap(latentToUse)
+            val buffer = FloatBuffer.wrap(stage1Latent)
             OnnxTensor.createTensor(ortEnv, buffer, shape).use { tensor ->
                 sess.run(mapOf("y_base" to tensor)).use { results ->
                     val outputTensor = results[0] as OnnxTensor
@@ -271,7 +412,8 @@ class NvcNeuralConcealer(private val context: Context) {
                     if (latencyHistoryCount < latencyHistory.size) latencyHistoryCount++
 
                     val provider = getExecutionProvider()
-                    Log.i(TAG, "[NVC] Reconstruction complete: Provider=$provider, Inference=${String.format("%.2f", elapsedMs)}ms, Output=${outW}x${outH}")
+                    val modeStr = if (concealerSession != null) "Two-Stage" else "Single-Stage"
+                    Log.i(TAG, "[NVC] Reconstruction complete: Pipeline=$modeStr, Provider=$provider, Inference=${String.format("%.2f", elapsedMs)}ms, Output=${outW}x${outH}")
 
                     Bitmap.createBitmap(rgbPixels, outW, outH, Bitmap.Config.ARGB_8888)
                 }
@@ -284,28 +426,24 @@ class NvcNeuralConcealer(private val context: Context) {
     }
 
     fun concealDroppedFrame(previousLatent: FloatArray? = null): FloatArray? {
-        reconstructDroppedFrame()
+        reconstructDroppedFrame(customLatent = previousLatent)
         return previousLatent
     }
 
     private fun getThermalStatusString(): String {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try {
-                val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-                when (powerManager?.currentThermalStatus) {
-                    PowerManager.THERMAL_STATUS_NONE -> "NOMINAL"
-                    PowerManager.THERMAL_STATUS_LIGHT -> "LIGHT"
-                    PowerManager.THERMAL_STATUS_MODERATE -> "MODERATE"
-                    PowerManager.THERMAL_STATUS_SEVERE -> "SEVERE"
-                    PowerManager.THERMAL_STATUS_CRITICAL -> "CRITICAL"
-                    PowerManager.THERMAL_STATUS_EMERGENCY -> "EMERGENCY"
-                    PowerManager.THERMAL_STATUS_SHUTDOWN -> "SHUTDOWN"
-                    else -> "NOMINAL"
-                }
-            } catch (t: Throwable) {
-                "NOMINAL"
+        return try {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            when (powerManager?.currentThermalStatus) {
+                PowerManager.THERMAL_STATUS_NONE -> "NOMINAL"
+                PowerManager.THERMAL_STATUS_LIGHT -> "LIGHT"
+                PowerManager.THERMAL_STATUS_MODERATE -> "MODERATE"
+                PowerManager.THERMAL_STATUS_SEVERE -> "SEVERE"
+                PowerManager.THERMAL_STATUS_CRITICAL -> "CRITICAL"
+                PowerManager.THERMAL_STATUS_EMERGENCY -> "EMERGENCY"
+                PowerManager.THERMAL_STATUS_SHUTDOWN -> "SHUTDOWN"
+                else -> "NOMINAL"
             }
-        } else {
+        } catch (t: Throwable) {
             "NOMINAL"
         }
     }
@@ -332,8 +470,10 @@ class NvcNeuralConcealer(private val context: Context) {
         val totalObserved = activeFrameCounter.get() + dropped
         val lossPercent = if (totalObserved > 0) (dropped.toFloat() / totalObserved * 100.0f) else 0.0f
 
+        val latentAge = if (lastLatentUpdateTimeMs > 0L) (SystemClock.uptimeMillis() - lastLatentUpdateTimeMs) else 0L
+
         return NvcTelemetry(
-            isAvailable = session != null,
+            isAvailable = reconstructorSession != null,
             isNnapiActive = isNnapiActive,
             instantFps = currentFps,
             avgFps = currentFps,
@@ -350,24 +490,28 @@ class NvcNeuralConcealer(private val context: Context) {
             timelineDiscontinuities = timelineDiscontinuityCounter.get(),
             activeFrames = activeFrameCounter.get(),
             executionProvider = getExecutionProvider(),
-            cpuUsagePercent = (12.0f + (currentFps * 0.15f)).coerceAtMost(95.0f),
+            cpuUsagePercent = getProcessCpuUsagePercent(),
             ramUsageMb = getRamUsageMb(),
             thermalStatus = getThermalStatusString(),
-            batteryLevel = getBatteryLevel(),
             bufferHealthSec = bufferHealthSec,
             packetLossPercent = lossPercent,
-            rebufferCount = rebufferCounter
+            rebufferCount = rebufferCounter,
+            isPixelLatentExtracted = isPixelLatentExtracted,
+            isTwoStagePipelineActive = concealerSession != null,
+            latentAgeMs = latentAge
         )
     }
 
     fun release() {
         try {
-            session?.close()
-            session = null
+            reconstructorSession?.close()
+            reconstructorSession = null
+            concealerSession?.close()
+            concealerSession = null
             env?.close()
             env = null
         } catch (e: Exception) {
-            Log.w(TAG, "Error closing ONNX session: ${e.message}")
+            Log.w(TAG, "Error closing ONNX sessions: ${e.message}")
         }
     }
 }

@@ -98,8 +98,8 @@ class InfinityPlayer(
                     decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?
                 ) = eventListener.onVideoInputFormatChanged(format, decoderReuseEvaluation)
                 override fun onDroppedFrames(count: Int, elapsedMs: Long) {
-                    neuralConcealer?.recordDroppedFrames(count.toLong())
-                    handleFrameLoss(count)
+                    // Forward directly to original Media3 listener without duplicate NVC triggering;
+                    // AnalyticsListener and VideoFrameMetadataListener serve as authoritative sources.
                     eventListener.onDroppedFrames(count, elapsedMs)
                 }
                 override fun onVideoFrameProcessingOffset(totalProcessingOffsetUs: Long, frameCount: Int) =
@@ -187,6 +187,7 @@ class InfinityPlayer(
     private var activeAudioSampleRate: Int = 0
     private var activeAudioChannels: Int = 0
     private var activeAudioDecoderName: String? = null
+    private var measuredAudioLatencyMs: Long = 25L
 
     init {
         setupPlayerListener()
@@ -216,9 +217,30 @@ class InfinityPlayer(
         Log.i(TAG, "[NVC] Reset deadline baseline ($reason)")
     }
 
+    /**
+     * Updates NVC base latent directly from decoded RGB pixel buffers (v1.4.0).
+     */
+    fun updateLatentFromPixels(pixels: IntArray, width: Int, height: Int) {
+        neuralConcealer?.updateBaseLatentFromPixels(pixels, width, height)
+    }
+
+    /**
+     * Updates NVC base latent directly from decoded Bitmap (v1.4.0).
+     */
+    fun updateLatentFromBitmap(bitmap: android.graphics.Bitmap) {
+        neuralConcealer?.updateBaseLatentFromBitmap(bitmap)
+    }
+
     private fun setupVideoFrameMetadataListener() {
         exoPlayer.setVideoFrameMetadataListener { presentationTimeUs, _, format, _ ->
-            neuralConcealer?.recordRenderedFrame(if (format.bitrate > 0) format.bitrate / 1000 else 0)
+            val bitrateKbps = if (format.bitrate > 0) format.bitrate / 1000 else 0
+            neuralConcealer?.recordRenderedFrame(bitrateKbps)
+            neuralConcealer?.updateBaseLatentFromFrame(
+                ptsUs = presentationTimeUs,
+                width = format.width,
+                height = format.height,
+                bitrateKbps = bitrateKbps
+            )
             val expectedDurationUs = if (format.frameRate > 0) (1_000_000f / format.frameRate).toLong() else 33_333L
             if (lastPresentationTimeUs > 0) {
                 val gapUs = presentationTimeUs - lastPresentationTimeUs
@@ -260,9 +282,8 @@ class InfinityPlayer(
 
                 if (isBuffering) {
                     neuralConcealer?.recordRebuffer()
-                    if (exoPlayer.playWhenReady) {
-                        handleFrameLoss(1)
-                    }
+                    // Rebuffering is a network starvation state, not a dropped video frame.
+                    // Do not invoke NVC here; allow presentation timeline detector to handle frame loss upon resume.
                 }
 
                 if (playbackState == Player.STATE_ENDED && isLiveStream) {
@@ -321,8 +342,19 @@ class InfinityPlayer(
                 elapsedMs: Long
             ) {
                 if (config.enableNvcConcealment && droppedFrames > 0) {
+                    // Authoritative telemetry source for renderer-reported dropped frames
                     neuralConcealer?.recordDroppedFrames(droppedFrames.toLong())
-                    handleFrameLoss(droppedFrames)
+                }
+            }
+
+            override fun onAudioPositionAdvancing(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                playoutStartSystemTimeMs: Long
+            ) {
+                val now = android.os.SystemClock.elapsedRealtime()
+                val latency = (now - playoutStartSystemTimeMs).coerceAtLeast(0L)
+                if (latency in 1..500) {
+                    measuredAudioLatencyMs = latency
                 }
             }
 
@@ -592,7 +624,7 @@ class InfinityPlayer(
                     underruns = audioSafetyController.underrunCount,
                     droppedAudioFrames = 0L,
                     acdbErrorCount = audioSafetyController.acdbErrorCount,
-                    audioLatencyMs = 40L,
+                    audioLatencyMs = measuredAudioLatencyMs,
                     isSafetyLayerActive = true
                 )
                 listeners.forEach { it.onAudioTelemetryUpdated(audioTelem) }
@@ -671,7 +703,7 @@ class InfinityPlayer(
             decoderName = activeAudioDecoderName,
             underruns = audioSafetyController.underrunCount,
             acdbErrorCount = audioSafetyController.acdbErrorCount,
-            audioLatencyMs = 40L
+            audioLatencyMs = measuredAudioLatencyMs
         )
     }
 
