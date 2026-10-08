@@ -74,11 +74,47 @@ To eliminate reliance on a single synthetic trajectory, the evaluation was repli
 
 | Burst Gap Duration | Mean PSNR Gain | Median PSNR Gain | Standard Deviation | 95% Confidence Interval | Empirical Status |
 |---|---:|---:|---:|---|---|
-| **Gap = 1 frame** ($41.7\text{ ms}$) | **+13.11 dB** | **+13.41 dB** | 18.47 dB | **[+3.43 dB, +22.78 dB]** | Confirmed Superiority |
-| **Gap = 2 frames** ($83.4\text{ ms}$) | **+11.07 dB** | **+11.74 dB** | 18.82 dB | **[+1.21 dB, +20.93 dB]** | Confirmed Superiority |
-| **Gap = 3 frames** ($125.1\text{ ms}$) | **+9.22 dB** | **+11.18 dB** | 20.15 dB | [-1.34 dB, +19.77 dB] | Strongly Supported |
-| **Gap = 4 frames** ($166.8\text{ ms}$) | **+8.82 dB** | **+10.40 dB** | 19.42 dB | [-1.35 dB, +19.00 dB] | Strongly Supported |
-| **Gap = 6 frames** ($250.2\text{ ms}$) | **+7.70 dB** | **+5.19 dB** | 17.71 dB | [-1.58 dB, +16.98 dB] | Strongly Supported |
+| **Gap = 1 frame** ($41.7\text{ ms}$) | **+13.11 dB** | **+13.41 dB** | 18.47 dB | **[+3.43 dB, +22.78 dB]** | **Statistically supported superiority** |
+| **Gap = 2 frames** ($83.4\text{ ms}$) | **+11.07 dB** | **+11.74 dB** | 18.82 dB | **[+1.21 dB, +20.93 dB]** | **Statistically supported superiority** |
+| **Gap = 3 frames** ($125.1\text{ ms}$) | **+9.22 dB** | **+11.18 dB** | 20.15 dB | [-1.34 dB, +19.77 dB] | **Positive trend; CI crosses zero** |
+| **Gap = 4 frames** ($166.8\text{ ms}$) | **+8.82 dB** | **+10.40 dB** | 19.42 dB | [-1.35 dB, +19.00 dB] | **Positive trend; CI crosses zero** |
+| **Gap = 6 frames** ($250.2\text{ ms}$) | **+7.70 dB** | **+5.19 dB** | 17.71 dB | [-1.58 dB, +16.98 dB] | **Positive trend; CI crosses zero** |
+
+> **Confidence Interval Interpretation**: At gaps 1 and 2, the 95% confidence intervals lie entirely above zero, providing statistically supported superiority across the unstratified heterogeneous corpus. For gaps 3–6, the lower bound crosses zero (−1.34 to −1.58 dB) across the full 14-sequence set because stationary and micro-motion sequences suffer negative gains (-14 dB to -22 dB). Consequently, zero mean gain cannot be rejected at the 95% level on the unstratified dataset.
+
+### 4.3 Per-Sequence Breakdown & Active-Motion Stratification
+
+| Seq ID | Content Class | Seed / Dynamics | Gap 1 Gain | Gap 2 Gain | Gap 3 Gain | Gap 4 Gain | Gap 6 Gain | Direction |
+|---|---|---|---:|---:|---:|---:|---:|---|
+| **S01** | `static_low_motion` | Seed A (0.35 px/f) | -14.12 dB | -16.50 dB | -21.80 dB | -20.60 dB | -14.90 dB | Negative |
+| **S02** | `static_low_motion` | Seed B (0.44 px/f) | -14.60 dB | -17.06 dB | -22.68 dB | -21.34 dB | -15.46 dB | Negative |
+| **S03** | `talking_head` | Seed A (1.2 px/f) | -2.10 dB | -1.95 dB | -2.85 dB | -3.10 dB | -3.90 dB | Negative |
+| **S04** | `talking_head` | Seed B (1.5 px/f) | -2.40 dB | -2.21 dB | -3.15 dB | -3.34 dB | -4.18 dB | Negative |
+| **S05** | `sports` | Seed A (3.8 px/f) | **+4.25 dB** | **+1.75 dB** | **+1.30 dB** | **+1.30 dB** | **+1.30 dB** | Positive |
+| **S06** | `sports` | Seed B (4.75 px/f) | **+4.49 dB** | **+1.85 dB** | **+1.40 dB** | **+1.36 dB** | **+1.36 dB** | Positive |
+| **S07** | `camera_motion` | Seed A (2.6 px/f) | **+21.80 dB** | **+21.10 dB** | **+20.60 dB** | **+19.60 dB** | **+16.90 dB** | Positive |
+| **S08** | `camera_motion` | Seed B (3.25 px/f) | **+22.54 dB** | **+21.78 dB** | **+21.24 dB** | **+20.26 dB** | **+17.50 dB** | Positive |
+| **S09** | `complex_texture` | Seed A (2.2 px/f) | **+28.90 dB** | **+18.70 dB** | **+14.10 dB** | **+11.80 dB** | **+1.10 dB** | Positive |
+| **S10** | `complex_texture` | Seed B (2.75 px/f) | **+30.18 dB** | **+19.64 dB** | **+14.82 dB** | **+12.44 dB** | **+1.30 dB** | Positive |
+| **S11** | `animation` | Seed A (3.2 px/f) | **+13.10 dB** | **+11.45 dB** | **+11.10 dB** | **+10.95 dB** | **+12.35 dB** | Positive |
+| **S12** | `animation` | Seed B (4.0 px/f) | **+13.72 dB** | **+12.03 dB** | **+11.60 dB** | **+11.45 dB** | **+12.89 dB** | Positive |
+| **S13** | `night` | Seed A (2.4 px/f) | **+38.20 dB** | **+41.50 dB** | **+40.90 dB** | **+40.60 dB** | **+40.10 dB** | Positive |
+| **S14** | `night` | Seed B (3.0 px/f) | **+39.54 dB** | **+42.94 dB** | **+42.44 dB** | **+42.14 dB** | **+41.44 dB** | Positive |
+
+- **Directional Summary**:
+  - Positive sequences: **10 / 14 (71.4%)** across all content classes.
+  - Negative sequences: **4 / 14 (28.6%)** (confined strictly to the static and talking-head sequences).
+  - Active-motion subset: **10 / 10 (100% positive)** across all tested burst depths (1 to 6 frames).
+
+#### Active-Motion Stratified Subset Aggregates (10 Sequences)
+
+| Burst Gap Duration | Active Subset Mean Gain | Active Subset Median Gain | Directional Ratio |
+|---|---:|---:|---|
+| **Gap = 1 frame** ($41.7\text{ ms}$) | **+21.67 dB** | **+22.17 dB** | 10 / 10 Positive (100%) |
+| **Gap = 2 frames** ($83.4\text{ ms}$) | **+19.27 dB** | **+19.17 dB** | 10 / 10 Positive (100%) |
+| **Gap = 3 frames** ($125.1\text{ ms}$) | **+17.95 dB** | **+14.46 dB** | 10 / 10 Positive (100%) |
+| **Gap = 4 frames** ($166.8\text{ ms}$) | **+17.19 dB** | **+12.12 dB** | 10 / 10 Positive (100%) |
+| **Gap = 6 frames** ($250.2\text{ ms}$) | **+14.62 dB** | **+12.62 dB** | 10 / 10 Positive (100%) |
 
 ---
 
@@ -119,9 +155,9 @@ A critical empirical question was identified:
 
 ---
 
-## 6. Systems Architecture Implication: Motion-Gated Dual-Mode Concealment
+## 6. Systems Architecture Implication: Motion-Adaptive Dual-Mode Policy
 
-The empirical multi-content findings demonstrate that a single fixed concealment strategy across all content types is suboptimal. Instead, NVC-Live implements **Motion-Gated Dual-Mode Concealment**:
+These empirical results **motivate a motion-adaptive dual-mode policy** in which low-motion content routes to zero-compute frame repetition while sufficiently dynamic content activates neural temporal propagation. Quantitative determination and calibration of the optimal velocity activation threshold ($|v_{\text{threshold}}|$) constitutes the next empirical stage, rather than asserting a pre-validated fixed threshold.
 
 ```text
                Incoming Loss Event Detected (PTS Deadline Missed)
@@ -137,7 +173,7 @@ The empirical multi-content findings demonstrate that a single fixed concealment
                     ▼                                     ▼
           Temporal Frame Repeat                 Neural Temporal Propagation
        (Zero Compute, Pristine Pixels)        (Predict Momentum, Avoid Freeze)
-            PSNR: ~60 to 100 dB                    PSNR Gain: +2.5 to +40 dB
+            PSNR: ~60 to 100 dB                    PSNR Gain: +2.5 to +42 dB
 ```
 
 ---
@@ -159,5 +195,6 @@ The empirical multi-content findings demonstrate that a single fixed concealment
 ## 8. Milestone & Release Status
 
 - **Status**: **`v1.5.0 Experimental — Neural Burst Concealment`**
-- In accordance with empirical research best practices, the **experiment, dataset methodology, and statistical evidence are frozen**, while the release milestone remains open as an active experimental pipeline pending zero-copy hardware surface integration in v2.0.
+- **Empirical Conclusion**: There is **strong controlled experimental evidence that causal neural temporal propagation can substantially improve reconstruction fidelity over temporal frame repetition during active-motion burst losses, while offering no advantage—and potentially degrading fidelity—in stationary or low-motion scenes.**
+- The **experiment, dataset methodology, and statistical evidence are frozen**, while the release milestone remains open as an active experimental pipeline pending zero-copy hardware surface integration in v2.0.
 
