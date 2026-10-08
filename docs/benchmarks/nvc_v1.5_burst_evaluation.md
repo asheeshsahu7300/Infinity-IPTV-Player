@@ -87,22 +87,35 @@ To eliminate reliance on a single synthetic trajectory, the evaluation was repli
 A critical empirical question was identified:
 > *Why did temporal frame repeat achieve **$59.64\text{ dB}$** in the v1.4 ablation report, but only **$31.19\text{ dB}$** in the v1.5 burst report for a single-frame loss?*
 
-### Mathematical Investigation & Scene Dynamics
+### 5.1 Mathematical Investigation & Scene Dynamics
 
 1. **v1.4 Controlled Ablation (`testDrops = [8, 14, 15, 20, 28, 29, 36]`)**:
    - The test sequence generated a circle moving across a $128 \times 128$ viewport with $\text{centerX} = 32.0 + f \times 4.5$ and $\text{radius} = 18.0$.
    - By frame $f = 26$, the object reached $x = 149.0 > 128$, **exiting the frame entirely**.
    - As a result, drop indices **28, 29, and 36** occurred on **100% static background gradient**.
-   - For static frames, $I_t - I_{t-1} = 0 \implies \text{MSE} = 0 \implies \text{PSNR} = \mathbf{100.00\text{ dB}}$ (the numerical ceiling).
+   - For static frames, $I_t - I_{t-1} = 0 \implies \text{MSE} = 0 \implies \text{PSNR} = \mathbf{100.00\text{ dB}}$ (the numerical software ceiling, mathematically $\infty$).
    - The arithmetic mean of the test drop points:
-     $$\frac{26.06 + 30.21 + 27.82 + 33.40 + 100.00 + 100.00 + 100.00}{7} = \mathbf{59.64\text{ dB}}.$$
+     $$\frac{26.06 + 30.21 + 27.82 + 33.40 + \mathbf{100.00} + \mathbf{100.00} + \mathbf{100.00}}{7} = \mathbf{59.64\text{ dB}}.$$
+   - Treating the $100\text{ dB}$ numerical ceiling as ordinary continuous PSNR inflated the aggregate baseline.
 2. **v1.5 Burst Evaluation (`anchor = 18`)**:
    - The burst evaluation anchored at $t_0 = 18$ ($\text{centerX} = 113.0, \text{centerY} = 76.0$), where the object is actively translating at $4.5\text{ px/frame}$ within the viewport.
-   - Under continuous active translation, 1-frame temporal repeat achieves **$31.19\text{ dB}$** (matching the individual active frames from v1.4) and falls monotonically to **$25.91\text{ dB}$** over a 6-frame burst ($250.2\text{ ms}$).
+   - Under continuous active translation, 1-frame temporal repeat achieves **$31.19\text{ dB}$** (consistent with the individual active frames $8, 14, 15, 20$ from v1.4) and falls monotonically to **$25.91\text{ dB}$** over a 6-frame burst ($250.2\text{ ms}$).
 
-### Core Scientific Takeaway
-- **Static Content**: Temporal frame repeat is optimal ($\approx 100\text{ dB}$ or sensor noise floor). Passing static frames through neural warping introduces sub-pixel bilinear interpolation blur, causing negative gains (-14 dB to -22 dB).
-- **Dynamic Content**: As objects or cameras move, temporal frame repeat degrades severely ($31.19\text{ dB} \to 25.91\text{ dB}$), while neural temporal propagation maintains motion momentum forward ($+1.3\text{ dB}$ to $+42\text{ dB}$ gain).
+### 5.2 Motion-Stratified Temporal Repeat Interpretation
+
+| Regime | Measured Temporal Repeat PSNR | Temporal Repeat Interpretation | Neural Propagation Behavior | Optimal Action |
+|---|---:|---|---|---|
+| **Static / Zero-Motion** | **100.00 dB (numerical ceiling / $\infty$)** | Essentially perfect; zero displacement error | Resampling adds sub-pixel smoothing (-14 to -22 dB) | **Frame Repeat (Zero Compute)** |
+| **Active 1-Frame Loss** | **~31.19 dB** | Modest displacement error ($4.5\text{ px}$) | Tracks momentum: **36.91 dB (+5.72 dB gain)** | **Neural Propagation** |
+| **Active 2-Frame Burst** | **~28.59 dB** | Noticeable freeze jerkiness ($9.0\text{ px}$) | Recursive warp: **32.33 dB (+3.74 dB gain)** | **Neural Propagation** |
+| **Active 3-Frame Burst** | **~27.72 dB** | Growing spatial lag ($13.5\text{ px}$) | Recursive warp: **30.46 dB (+2.74 dB gain)** | **Neural Propagation** |
+| **Active 4-Frame Burst** | **~26.97 dB** | Severe freeze artifact ($18.0\text{ px}$) | Recursive warp: **29.58 dB (+2.61 dB gain)** | **Neural Propagation** |
+| **Active 6-Frame Burst** | **~25.91 dB** | Stale scene / severe motion discontinuity | Recursive warp: **28.51 dB (+2.59 dB gain)** | **Neural Propagation** |
+
+### 5.3 Core Scientific Takeaway
+- **The neural propagator is not claimed to beat a trivial predictor everywhere.**
+- It specifically targets the **failure mode where temporal frame repetition becomes progressively stale during active motion**.
+- Therefore, the scientifically sound v1.5 comparison is **temporal propagation vs. temporal repeat under active-motion burst loss**, not against an inflated 59.64 dB aggregate containing static frames.
 
 ---
 
