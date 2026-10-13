@@ -864,9 +864,13 @@ const S = StyleSheet.create({
     letterSpacing: 0.4,
     marginTop: HERO_TOP_GAP,
     marginBottom: HERO_LINE_GAP,
-    textShadowColor: "rgba(0, 0, 0, 0.75)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
+    ...(Platform.OS === "web"
+      ? { textShadow: "0px 2px 8px rgba(0, 0, 0, 0.75)" }
+      : {
+          textShadowColor: "rgba(0, 0, 0, 0.75)",
+          textShadowOffset: { width: 0, height: 2 },
+          textShadowRadius: 8,
+        }),
   },
   heroDesc: {
     fontSize: ps(1.3),

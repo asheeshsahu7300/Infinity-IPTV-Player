@@ -21,6 +21,7 @@
 import axios from "axios";
 import NetInfo from "@react-native-community/netinfo";
 
+import { Platform } from "react-native";
 import { safeStorage } from "./safeStorage";
 import type { Portal } from "../store/portalStore";
 
@@ -30,13 +31,15 @@ export function getLastSpeedTestResult(): SpeedTestResult | null {
   return cachedSpeedTestResult;
 }
 
-safeStorage.getItem("last_speed_test_result").then((val) => {
-  if (val) {
-    try {
-      cachedSpeedTestResult = JSON.parse(val);
-    } catch { }
-  }
-}).catch(() => { });
+if (Platform.OS !== "web" || typeof window !== "undefined") {
+  safeStorage.getItem("last_speed_test_result").then((val) => {
+    if (val) {
+      try {
+        cachedSpeedTestResult = JSON.parse(val);
+      } catch { }
+    }
+  }).catch(() => { });
+}
 
 export type SpeedTestPhase = "idle" | "latency" | "download" | "done" | "failed";
 

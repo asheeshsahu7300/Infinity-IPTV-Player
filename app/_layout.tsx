@@ -336,5 +336,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  logoImage: { width: "100%", height: "100%", resizeMode: "contain" },
+  logoImage: { width: "100%", height: "100%" },
 });
