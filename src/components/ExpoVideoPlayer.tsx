@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useImperativeHandle, forwardRef, useCallback, useMemo } from "react";
-import { StyleSheet, View, ViewStyle, StyleProp, Platform } from "react-native";
+import { StyleSheet, View, ViewStyle, StyleProp, Platform, findNodeHandle } from "react-native";
 import {
   VideoView,
   useVideoPlayer,
@@ -252,6 +252,57 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
     const videoTracksRef = useRef<VideoTrack[]>([]);
     const currentUrlRef = useRef(streamUrl);
     const lastProgressEmitTime = useRef(0);
+    const containerRef = useRef<View>(null);
+
+    // Web & webOS HLS fallback attachment
+    useEffect(() => {
+      if (Platform.OS !== "web" || !streamUrl) return;
+
+      const containerEl = containerRef.current as any;
+      if (!containerEl) return;
+      const domNode: HTMLElement | null =
+        typeof containerEl.querySelector === "function"
+          ? containerEl
+          : containerEl.getDOMNode?.() || (findNodeHandle(containerEl) as any);
+
+      const videoEl = domNode?.querySelector?.("video") as HTMLVideoElement | null;
+      if (!videoEl) return;
+
+      // If native HLS is supported (webOS TV hardware pipeline, Safari), let native player handle it
+      if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
+        return;
+      }
+
+      let hlsInstance: any = null;
+      try {
+        const HlsModule = require("hls.js");
+        const HlsClass = HlsModule.default || HlsModule;
+        if (HlsClass && HlsClass.isSupported && HlsClass.isSupported()) {
+          hlsInstance = new HlsClass({
+            enableWorker: true,
+            lowLatencyMode: isLive,
+          });
+          hlsInstance.loadSource(streamUrl);
+          hlsInstance.attachMedia(videoEl);
+          hlsInstance.on(HlsClass.Events.ERROR, (_: any, data: any) => {
+            if (data.fatal) {
+              console.warn("[webOS HLS] Fatal stream error:", data);
+              onError?.(new Error(`HLS fatal error: ${data.details}`));
+            }
+          });
+        }
+      } catch (err) {
+        console.warn("[webOS HLS] Error attaching HLS.js:", err);
+      }
+
+      return () => {
+        if (hlsInstance) {
+          try {
+            hlsInstance.destroy();
+          } catch {}
+        }
+      };
+    }, [streamUrl, isLive, onError]);
 
     /**
      * The `paused` prop, readable from the event listeners.
@@ -718,7 +769,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
     );
 
     return (
-      <View style={[styles.container, style]}>
+      <View ref={containerRef} style={[styles.container, style]}>
         <VideoView
           style={StyleSheet.absoluteFill}
           player={player}

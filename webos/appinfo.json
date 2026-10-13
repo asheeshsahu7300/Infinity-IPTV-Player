@@ -1,0 +1,19 @@
+{
+  "id": "com.infinity.iptvplayer",
+  "version": "1.0.0",
+  "vendor": "Infinity",
+  "type": "web",
+  "main": "index.html",
+  "title": "Infinity IPTV Player TV",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "bgImage": "bgImage.png",
+  "splashBackground": "splashBackground.png",
+  "resolution": "1920x1080",
+  "disableBackHistoryAPI": true,
+  "handlesRelaunch": true,
+  "requiredPermissions": [
+    "media",
+    "network"
+  ]
+}

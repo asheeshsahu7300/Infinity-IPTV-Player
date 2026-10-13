@@ -3,9 +3,12 @@
 # dependencies
 node_modules/
 
-# Expo
+# Expo & Web
 .expo/
 dist/
+dist-webos/
+release-webos/
+*.ipk
 web-build/
 expo-env.d.ts
 

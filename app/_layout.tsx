@@ -39,6 +39,14 @@ import { PlaybackState } from "../src/services/PlaybackState";
 import { ph, pw } from "../src/theme/tokens";
 import { safeStorage } from "../src/services/safeStorage";
 import { setSafeNavigationRef, safeBack } from "../src/services/safeNavigation";
+import { initWebOS } from "../src/utils/webosUtils";
+import { initBackHandlerPolyfill } from "../src/utils/backHandlerPolyfill";
+
+// Initialize webOS styles and remote BackHandler polyfill
+if (Platform.OS === "web") {
+  initWebOS();
+  initBackHandlerPolyfill();
+}
 
 // Inject CSS for Web to guarantee the font loads exactly as requested
 if (Platform.OS === "web" && typeof document !== "undefined" && !document.getElementById("inter-font")) {
@@ -138,7 +146,7 @@ export default function RootLayout() {
    * itself — landscape while mounted, back to portrait on the way out.
    */
   useEffect(() => {
-    if (Platform.isTV) return;
+    if (Platform.isTV || Platform.OS === "web") return;
     ScreenOrientation.lockAsync(
       isPhone
         ? ScreenOrientation.OrientationLock.PORTRAIT_UP

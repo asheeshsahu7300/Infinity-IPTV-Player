@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import {
+  Platform,
   Pressable,
   StyleProp,
   StyleSheet,
@@ -17,6 +18,7 @@ import {
 import { FocusMemory } from "./FocusMemory";
 import { useIsFocusTrapped, InsideOverlayContext, NextFocusTags } from "./FocusTrapContext";
 import { useDPad, DPAD_PRIORITY } from "./useDPad";
+import { WebSpatialNavigation } from "./webSpatialNavigation";
 import { remoteFocusEnabled } from "../utils/tabletUtils";
 
 export interface FocusableProps {
@@ -174,6 +176,35 @@ export const Focusable = forwardRef<View, FocusableProps>(
       };
     }, [screenKey, focusKey]);
 
+    // Register with WebSpatialNavigation on web/webOS for D-Pad directional navigation
+    React.useEffect(() => {
+      if (Platform.OS !== "web") return;
+      const el = nativeRef.current as any;
+      if (!el) return;
+
+      const domNode =
+        typeof el.focus === "function" && el instanceof HTMLElement
+          ? el
+          : el.getDOMNode?.() || (findNodeHandle(el) as any);
+
+      if (domNode && domNode instanceof HTMLElement) {
+        domNode.setAttribute("data-focusable", "true");
+        return WebSpatialNavigation.register({
+          id: idRef.current,
+          element: domNode,
+          nextFocusUp,
+          nextFocusDown,
+          nextFocusLeft,
+          nextFocusRight,
+          trapFocusUp,
+          trapFocusDown,
+          trapFocusLeft,
+          trapFocusRight,
+          isInert,
+        });
+      }
+    }, [isInert, nextFocusUp, nextFocusDown, nextFocusLeft, nextFocusRight, trapFocusUp, trapFocusDown, trapFocusLeft, trapFocusRight]);
+
     React.useEffect(() => {
       return () => {
         if (lastFocusedRef.current === nativeRef.current) {
@@ -271,6 +302,10 @@ export const Focusable = forwardRef<View, FocusableProps>(
 
       if (!isInsideOverlay && !isFocusTrapped && screenKey && focusKey) {
         FocusMemory.set(screenKey, focusKey);
+      }
+
+      if (Platform.OS === "web") {
+        WebSpatialNavigation.setActive(idRef.current);
       }
 
       onFocus?.();
@@ -417,6 +452,14 @@ export const Focusable = forwardRef<View, FocusableProps>(
         nextFocusRight={effRight}
         onFocus={handleFocus}
         onBlur={handleBlur}
+        onHoverIn={
+          Platform.OS === "web" && !isInert
+            ? () => {
+                nativeRef.current?.focus?.();
+                handleFocus();
+              }
+            : undefined
+        }
         onPress={isInert ? undefined : handlePress}
         onLongPress={onLongPress}
         style={({ pressed }) => [

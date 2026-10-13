@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 import * as ReactNative from "react-native";
 
 import { isKeyPress, resetKeyPressState } from "./keyPress";
+import { WebSpatialNavigation } from "./webSpatialNavigation";
 
 // TVEventHandler is provided on TV-enabled builds; on standard react-native it may be absent.
 const TVEventHandler: any = (ReactNative as any).TVEventHandler;
@@ -180,15 +181,128 @@ function dispatch(evt: any) {
   else if (STOP_TYPES.has(type)) handlerKey = "onStop";
 
   const target = activeSubscriberForEvent(handlerKey || "onAny");
-  if (!target) return;
+  if (!target) {
+    if (Platform.OS === "web") {
+      if (handlerKey === "onUp") WebSpatialNavigation.navigate("up");
+      else if (handlerKey === "onDown") WebSpatialNavigation.navigate("down");
+      else if (handlerKey === "onLeft") WebSpatialNavigation.navigate("left");
+      else if (handlerKey === "onRight") WebSpatialNavigation.navigate("right");
+    }
+    return;
+  }
 
   const h = target.handlers.current;
+  let consumed = false;
 
   if (handlerKey && h[handlerKey]) {
     h[handlerKey]?.();
+    consumed = true;
   }
 
   h.onAny?.(type as DPadEventType);
+
+  if (!consumed && Platform.OS === "web") {
+    if (handlerKey === "onUp") WebSpatialNavigation.navigate("up");
+    else if (handlerKey === "onDown") WebSpatialNavigation.navigate("down");
+    else if (handlerKey === "onLeft") WebSpatialNavigation.navigate("left");
+    else if (handlerKey === "onRight") WebSpatialNavigation.navigate("right");
+  }
+}
+
+let webKeyDownListener: ((e: KeyboardEvent) => void) | null = null;
+
+function attachWeb() {
+  if (Platform.OS !== "web" || typeof window === "undefined" || webKeyDownListener) return;
+
+  webKeyDownListener = (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement | null;
+    const isInput = Boolean(
+      target &&
+      (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+    );
+
+    if (isInput && e.key !== "Enter" && e.keyCode !== 13) {
+      return;
+    }
+
+    let mappedType: string | null = null;
+    const code = e.keyCode || e.which;
+
+    switch (code) {
+      case 38: // ArrowUp
+        mappedType = "up";
+        break;
+      case 40: // ArrowDown
+        mappedType = "down";
+        break;
+      case 37: // ArrowLeft
+        mappedType = "left";
+        break;
+      case 39: // ArrowRight
+        mappedType = "right";
+        break;
+      case 13: // Enter / OK
+        mappedType = "select";
+        break;
+      case 415: // webOS Play
+        mappedType = "play";
+        break;
+      case 19: // webOS Pause
+        mappedType = "pause";
+        break;
+      case 402: // webOS PlayPause
+        mappedType = "playPause";
+        break;
+      case 413: // webOS Stop
+        mappedType = "stop";
+        break;
+      case 417: // webOS FastForward
+        mappedType = "fastForward";
+        break;
+      case 412: // webOS Rewind
+        mappedType = "rewind";
+        break;
+      case 33: // PageUp / ChannelUp
+        mappedType = "pageUp";
+        break;
+      case 34: // PageDown / ChannelDown
+        mappedType = "pageDown";
+        break;
+      case 457: // webOS Info
+        mappedType = "info";
+        break;
+      case 461: // webOS Back
+        mappedType = "menu";
+        break;
+      case 403: // Red key
+        mappedType = "menu";
+        break;
+      default:
+        if (e.key === "ArrowUp") mappedType = "up";
+        else if (e.key === "ArrowDown") mappedType = "down";
+        else if (e.key === "ArrowLeft") mappedType = "left";
+        else if (e.key === "ArrowRight") mappedType = "right";
+        else if (e.key === "Enter") mappedType = "select";
+        break;
+    }
+
+    if (mappedType) {
+      if (["up", "down", "left", "right", "select"].includes(mappedType)) {
+        e.preventDefault();
+      }
+      dispatch({ eventType: mappedType });
+    }
+  };
+
+  window.addEventListener("keydown", webKeyDownListener, { capture: true });
+}
+
+function attachListeners() {
+  if (Platform.OS === "web") {
+    attachWeb();
+    return;
+  }
+  attachNative();
 }
 
 function attachNative() {
@@ -211,9 +325,13 @@ function attachNative() {
   }
 }
 
-function detachNativeIfIdle() {
+function detachListenersIfIdle() {
   if (subscribers.length === 0) {
     resetKeyPressState("dpad");
+    if (webKeyDownListener && typeof window !== "undefined") {
+      window.removeEventListener("keydown", webKeyDownListener, { capture: true });
+      webKeyDownListener = null;
+    }
     if (tvEventHandlerInstance && typeof tvEventHandlerInstance.disable === "function") {
       try {
         tvEventHandlerInstance.disable();
@@ -248,13 +366,13 @@ export function useDPad(handlers: DPadHandlers, options: boolean | DPadOptions =
     };
     subRef.current = sub;
     subscribers.push(sub);
-    attachNative();
+    attachListeners();
 
     return () => {
       const i = subscribers.indexOf(sub);
       if (i >= 0) subscribers.splice(i, 1);
       subRef.current = null;
-      detachNativeIfIdle();
+      detachListenersIfIdle();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

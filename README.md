@@ -18,6 +18,7 @@
   <img src="https://img.shields.io/badge/Release-v1.0.0-blue.svg?style=for-the-badge" alt="Release v1.0.0" />
   <img src="https://img.shields.io/badge/Google%20Play-Soon%20Live-brightgreen.svg?style=for-the-badge&logo=google-play&logoColor=white" alt="Google Play Soon Live" />
   <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV-00C853.svg?style=for-the-badge&logo=android&logoColor=white" alt="Android & Android TV" />
+  <img src="https://img.shields.io/badge/webOS-LG%20Smart%20TV-E50914.svg?style=for-the-badge&logo=lg&logoColor=white" alt="LG webOS TV" />
 </p>
 
 <p align="center">
@@ -57,7 +58,7 @@ The application is designed around a premium dark UI, fast content browsing, lar
 
 - **Version**: `Release 1.0.0`
 - **Google Play Store**: 🟢 **Soon Live on Google Play Store!** The production release has been compiled, packaged, and submitted for review. Direct install links will be added immediately upon store publication.
-- **Supported Formats**: Android Mobile (APK), Tablets, Android TV, and Google TV.
+- **Supported Formats**: Android Mobile (APK), Tablets, Android TV, Google TV, and LG webOS Smart TVs (`.ipk`).
 
 ---
 
@@ -625,6 +626,13 @@ Always ensure that your IPTV provider and content are legally authorized in your
 ---
 
 # Changelog
+
+### webOS Experimental (LG Smart TV Compatibility)
+- **LG webOS TV Package Pipeline**: Automated packaging generating official `com.infinity.iptvplayer_1.0.0_all.ipk` via `npm run build:webos`.
+- **Magic Remote Air-Pointer & D-Pad Integration**: Full spatial 2D navigation engine (`webSpatialNavigation.ts`) with Magic Remote hover highlight support.
+- **webOS Back Button & Media Control**: Polyfilled React Native `BackHandler` on Web catching webOS remote Back (key code `461`), Play/Pause, Fast-Forward, Rewind, Channel Up/Down, and color keys.
+- **Hardware-Accelerated Video Pipeline**: Native webOS HLS streaming with dual-mode `HLS.js` fallback for standard browsers.
+- **Developer Guide**: Comprehensive LG webOS deployment and testing documentation in [WEBOS_GUIDE.md](docs/WEBOS_GUIDE.md).
 
 ### Release 1.0.0 (Production App Release — Soon Live on Google Play Store)
 - **Official Google Play Store Release**: Production build compiled and packaged for Google Play Store review across Android Mobile, Tablet, and Android TV devices.
