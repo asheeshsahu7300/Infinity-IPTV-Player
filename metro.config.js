@@ -19,6 +19,34 @@ config.cacheStores = [
 // // Alternative: use a more aggressive exclusion pattern
 // config.resolver.blacklistRE = /node_modules\/.*\/(android|ios|windows|macos|__tests__|\.git|.*\.android\.js|.*\.ios\.js)$/;
 
+// Configure web resolver for browser-safe builds (prevent Node agent-base / https-proxy-agent crashes)
+const originalResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+    if (platform === 'web') {
+        if (moduleName === 'axios') {
+            return {
+                filePath: path.resolve(__dirname, 'node_modules/axios/dist/browser/axios.cjs'),
+                type: 'sourceFile',
+            };
+        }
+        if (
+            moduleName === 'https-proxy-agent' ||
+            moduleName === 'agent-base' ||
+            moduleName === 'http' ||
+            moduleName === 'https'
+        ) {
+            return {
+                type: 'empty',
+            };
+        }
+    }
+
+    if (originalResolveRequest) {
+        return originalResolveRequest(context, moduleName, platform);
+    }
+    return context.resolveRequest(context, moduleName, platform);
+};
+
 // Reduce the number of workers to decrease resource usage
 config.maxWorkers = 2;
 
