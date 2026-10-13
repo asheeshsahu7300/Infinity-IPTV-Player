@@ -27,5 +27,7 @@ data class NvcTelemetry(
     val isPixelLatentExtracted: Boolean = false,
     val isTwoStagePipelineActive: Boolean = false,
     val isNeuralEncoderActive: Boolean = false,
-    val latentAgeMs: Long = 0L
+    val latentAgeMs: Long = 0L,
+    val motionMad: Float = 0.0f,
+    val concealmentMode: String = "FRAME_REPEAT"
 )

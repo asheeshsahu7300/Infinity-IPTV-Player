@@ -382,7 +382,9 @@ class InfinityMediaPlayerView(
                 "bufferHealthSec" to telemetry.bufferHealthSec,
                 "packetLossPercent" to telemetry.packetLossPercent,
                 "rebufferCount" to telemetry.rebufferCount,
-                "latentAgeMs" to telemetry.latentAgeMs
+                "latentAgeMs" to telemetry.latentAgeMs,
+                "motionMad" to telemetry.motionMad,
+                "concealmentMode" to telemetry.concealmentMode
             )
         )
     }

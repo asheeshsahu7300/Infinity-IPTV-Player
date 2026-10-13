@@ -24,8 +24,10 @@ class NvcNeuralConcealer(private val context: Context) {
     companion object {
         private const val TAG = "NvcNeuralConcealer"
         private const val ENCODER_MODEL_NAME = "nvc_encoder.onnx"
+        private const val PROPAGATOR_MODEL_NAME = "nvc_temporal_propagator.onnx"
         private const val RECONSTRUCTOR_MODEL_NAME = "nvc_reconstructor_e2e.onnx"
         private const val CONCEALER_MODEL_NAME = "nvc_latent_concealer.onnx"
+        const val MOTION_THRESHOLD_MAD = 0.0025f // Empirically calibrated threshold separating low/static motion from dynamic motion
         private const val BASE_CHANNELS = 48
         private const val LATENT_H = 32
         private const val LATENT_W = 32
@@ -35,10 +37,18 @@ class NvcNeuralConcealer(private val context: Context) {
 
     private var env: OrtEnvironment? = null
     private var encoderSession: OrtSession? = null
+    private var propagatorSession: OrtSession? = null
     private var reconstructorSession: OrtSession? = null
     private var concealerSession: OrtSession? = null
     private var isNnapiActive: Boolean = false
     private var isNeuralEncoderActive: Boolean = false
+    private var isNeuralPropagatorActive: Boolean = false
+
+    // Motion-adaptive dual-mode state
+    private var lastFramePixels: IntArray? = null
+    private var lastRenderedBitmap: Bitmap? = null
+    private var currentMotionMad: Float = 0.0f
+    private var lastConcealmentMode: String = "FRAME_REPEAT"
 
     // Analysis Feature Extractor (v1.4.0 fallback)
     private val featureExtractor = NvcFeatureExtractor(BASE_CHANNELS, LATENT_H, LATENT_W)
@@ -127,6 +137,18 @@ class NvcNeuralConcealer(private val context: Context) {
                 Log.w(TAG, "Optional NVC Learned Encoder not loaded: ${ee.message}")
             }
 
+            // 4. Causal Neural Temporal Propagator Session (v1.5-Burst)
+            try {
+                val propModelFile = getOrCopyModelFile(PROPAGATOR_MODEL_NAME)
+                val propOptions = createSessionOptions()
+                propagatorSession = env?.createSession(propModelFile.absolutePath, propOptions)
+                isNeuralPropagatorActive = (propagatorSession != null)
+                Log.i(TAG, "NVC-Live v1.5: Neural Temporal Propagator loaded ($PROPAGATOR_MODEL_NAME)")
+            } catch (pe: Exception) {
+                isNeuralPropagatorActive = false
+                Log.w(TAG, "Optional NVC Temporal Propagator not loaded: ${pe.message}")
+            }
+
             val provider = if (isNnapiActive) "NNAPI" else "ARM-CPU"
             Log.i(TAG, "==================================================")
             Log.i(TAG, "NVC-Live v1.5 Pipeline Initialized")
@@ -134,6 +156,8 @@ class NvcNeuralConcealer(private val context: Context) {
             Log.i(TAG, "Reconstructor: ${reconstructorSession != null}")
             Log.i(TAG, "Two-Stage Latent Predictor: ${concealerSession != null}")
             Log.i(TAG, "Learned Neural Encoder: $isNeuralEncoderActive")
+            Log.i(TAG, "Neural Temporal Propagator: $isNeuralPropagatorActive")
+            Log.i(TAG, "Motion Threshold: $MOTION_THRESHOLD_MAD")
             Log.i(TAG, "==================================================")
 
             runDeterministicVerification(reconstructorSession)
@@ -223,6 +247,9 @@ class NvcNeuralConcealer(private val context: Context) {
     fun recordTimelineDiscontinuity() {
         timelineDiscontinuityCounter.incrementAndGet()
         featureExtractor.resetTemporalState()
+        lastFramePixels = null
+        lastRenderedBitmap = null
+        currentMotionMad = 0.0f
     }
 
     fun recordFrameComposed() {
@@ -317,6 +344,28 @@ class NvcNeuralConcealer(private val context: Context) {
      * to deterministic spatio-temporal feature construction.
      */
     fun updateBaseLatentFromPixels(pixels: IntArray, width: Int, height: Int) {
+        val prevPx = lastFramePixels
+        if (prevPx != null && prevPx.size == pixels.size) {
+            var diffSum = 0L
+            val step = max(1, pixels.size / 4096)
+            var sampled = 0
+            for (i in 0 until pixels.size step step) {
+                val c1 = pixels[i]
+                val c2 = prevPx[i]
+                val dr = kotlin.math.abs(((c1 ushr 16) and 0xFF) - ((c2 ushr 16) and 0xFF))
+                val dg = kotlin.math.abs(((c1 ushr 8) and 0xFF) - ((c2 ushr 8) and 0xFF))
+                val db = kotlin.math.abs((c1 and 0xFF) - (c2 and 0xFF))
+                diffSum += (dr + dg + db)
+                sampled += 3
+            }
+            currentMotionMad = if (sampled > 0) diffSum.toFloat() / (sampled * 255.0f) else 0.0f
+        }
+        if (lastFramePixels == null || lastFramePixels!!.size != pixels.size) {
+            lastFramePixels = pixels.clone()
+        } else {
+            System.arraycopy(pixels, 0, lastFramePixels!!, 0, pixels.size)
+        }
+
         val success = if (isNeuralEncoderActive) runNeuralEncoder(pixels, width, height) else false
         if (!success) {
             featureExtractor.extractLatentFromRgbPixels(pixels, width, height, currentBaseLatent)
@@ -333,6 +382,11 @@ class NvcNeuralConcealer(private val context: Context) {
         val h = bitmap.height
         val px = IntArray(w * h)
         bitmap.getPixels(px, 0, w, 0, 0, w, h)
+        try {
+            lastRenderedBitmap = bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, false)
+        } catch (t: Throwable) {
+            // Ignore copy failure
+        }
         updateBaseLatentFromPixels(px, w, h)
     }
 
@@ -438,6 +492,18 @@ class NvcNeuralConcealer(private val context: Context) {
         targetWidth: Int = LATENT_W,
         targetHeight: Int = LATENT_H
     ): Bitmap? {
+        // Motion-Adaptive Dual-Mode Policy (v1.5):
+        // If inter-frame motion is below empirical threshold (low/static motion), route to zero-compute Frame Repeat
+        if (customLatent == null && currentMotionMad < MOTION_THRESHOLD_MAD && lastRenderedBitmap != null) {
+            lastConcealmentMode = "FRAME_REPEAT"
+            lastInferenceLatencyMs = 0.0f
+            concealedFrameCounter.incrementAndGet()
+            Log.i(TAG, "[NVC-Adaptive] Low motion detected (MAD=${String.format("%.5f", currentMotionMad)} < $MOTION_THRESHOLD_MAD) -> Selected FRAME_REPEAT (0ms latency)")
+            return lastRenderedBitmap
+        }
+
+        lastConcealmentMode = "NEURAL_PROPAGATION"
+
         val sess = reconstructorSession ?: return null
         val ortEnv = env ?: return null
         val startTime = SystemClock.elapsedRealtimeNanos()
@@ -497,7 +563,9 @@ class NvcNeuralConcealer(private val context: Context) {
                     val modeStr = if (concealerSession != null) "Two-Stage" else "Single-Stage"
                     Log.i(TAG, "[NVC] Reconstruction complete: Pipeline=$modeStr, Provider=$provider, Inference=${String.format("%.2f", elapsedMs)}ms, Output=${outW}x${outH}")
 
-                    Bitmap.createBitmap(rgbPixels, outW, outH, Bitmap.Config.ARGB_8888)
+                    val resultBitmap = Bitmap.createBitmap(rgbPixels, outW, outH, Bitmap.Config.ARGB_8888)
+                    lastRenderedBitmap = resultBitmap
+                    resultBitmap
                 }
             }
         } catch (e: Exception) {
@@ -581,7 +649,9 @@ class NvcNeuralConcealer(private val context: Context) {
             isPixelLatentExtracted = isPixelLatentExtracted,
             isTwoStagePipelineActive = concealerSession != null,
             isNeuralEncoderActive = isNeuralEncoderActive,
-            latentAgeMs = latentAge
+            latentAgeMs = latentAge,
+            motionMad = currentMotionMad,
+            concealmentMode = lastConcealmentMode
         )
     }
 
@@ -589,6 +659,8 @@ class NvcNeuralConcealer(private val context: Context) {
         try {
             encoderSession?.close()
             encoderSession = null
+            propagatorSession?.close()
+            propagatorSession = null
             reconstructorSession?.close()
             reconstructorSession = null
             concealerSession?.close()

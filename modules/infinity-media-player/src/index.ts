@@ -79,6 +79,8 @@ export interface NvcTelemetry {
   packetLossPercent?: number;
   rebufferCount?: number;
   latentAgeMs?: number;
+  motionMad?: number;
+  concealmentMode?: string;
 }
 
 export interface InfinityMediaPlayerNativeProps extends ViewProps {
