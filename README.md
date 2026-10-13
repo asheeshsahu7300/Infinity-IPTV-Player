@@ -15,6 +15,16 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/Release-v1.0.0-blue.svg?style=for-the-badge" alt="Release v1.0.0" />
+  <img src="https://img.shields.io/badge/Google%20Play-Soon%20Live-brightgreen.svg?style=for-the-badge&logo=google-play&logoColor=white" alt="Google Play Soon Live" />
+  <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV-00C853.svg?style=for-the-badge&logo=android&logoColor=white" alt="Android & Android TV" />
+</p>
+
+<p align="center">
+  🚀 <strong>Release 1.0.0 is officially ready — Soon live on the Google Play Store!</strong>
+</p>
+
+<p align="center">
   Built with Expo, React Native, and TypeScript.
 </p>
 
@@ -42,6 +52,12 @@ It supports multiple IPTV playlist and portal formats while providing a consiste
 - D-Pad / remote-controlled devices
 
 The application is designed around a premium dark UI, fast content browsing, large media libraries, and a TV-friendly 10-foot interface.
+
+### Release & Availability
+
+- **Version**: `Release 1.0.0`
+- **Google Play Store**: 🟢 **Soon Live on Google Play Store!** The production release has been compiled, packaged, and submitted for review. Direct install links will be added immediately upon store publication.
+- **Supported Formats**: Android Mobile (APK), Tablets, Android TV, and Google TV.
 
 ---
 
@@ -605,6 +621,16 @@ The application does not:
 Users are responsible for the content and services they connect to the application.
 
 Always ensure that your IPTV provider and content are legally authorized in your jurisdiction.
+
+---
+
+# Changelog
+
+### Release 1.0.0 (Production App Release — Soon Live on Google Play Store)
+- **Official Google Play Store Release**: Production build compiled and packaged for Google Play Store review across Android Mobile, Tablet, and Android TV devices.
+- **Universal Multi-Portal Engine**: Native integration for M3U / M3U8 playlists, Xtream Codes API, and MAG / Stalker Portal APIs with unified category and EPG navigation.
+- **Cinematic Dark UI & 10-Foot TV Experience**: Responsive layouts with D-Pad focus engine, glow highlights, and remote-control navigation tailored for Android TV and Google TV.
+- **Resilient Media Playback**: High-performance streaming pipeline with hardware video decoding (AVC, HEVC, VP9) and robust audio safety guards for Qualcomm ACDB and MediaTek chipsets.
 
 ---
 
