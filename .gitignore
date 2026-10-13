@@ -17,6 +17,10 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+.gradle/
+**/.gradle/
+build/
+**/build/
 
 # Metro
 .metro-health-check*
