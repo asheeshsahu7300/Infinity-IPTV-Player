@@ -1,23 +1,93 @@
-import React, { forwardRef } from 'react';
-import { TextInput as RNTextInput, TextInputProps as RNTextInputProps, StyleSheet } from 'react-native';
+import React, { forwardRef, useEffect, useId, useImperativeHandle, useRef } from 'react';
+import {
+  TextInput as RNTextInput,
+  TextInputProps as RNTextInputProps,
+  StyleSheet,
+  Platform,
+} from 'react-native';
+import { WebSpatialNavigation } from '../tv/webSpatialNavigation';
+import { useIsFocusTrapped, InsideOverlayContext } from '../tv/FocusTrapContext';
 
-export const TextInput = forwardRef<RNTextInput, RNTextInputProps>((props, ref) => {
-  const { style, ...rest } = props;
+export interface TextInputCustomProps extends RNTextInputProps {
+  /** Optional next focus overrides for TV spatial navigation */
+  nextFocusUp?: number | string;
+  nextFocusDown?: number | string;
+  nextFocusLeft?: number | string;
+  nextFocusRight?: number | string;
+}
+
+export const TextInput = forwardRef<RNTextInput, TextInputCustomProps>((props, ref) => {
+  const {
+    style,
+    onFocus,
+    onBlur,
+    nextFocusUp,
+    nextFocusDown,
+    nextFocusLeft,
+    nextFocusRight,
+    ...rest
+  } = props;
   const flatStyle = StyleSheet.flatten(style || {});
-  
+  const localRef = useRef<any>(null);
+  const reactId = useId();
+  const inputId = useRef(`textinput-${reactId}`);
+
+  // Forward imperative ref
+  useImperativeHandle(ref, () => localRef.current);
+
+  const isFocusTrapped = useIsFocusTrapped();
+  const overlayController = React.useContext(InsideOverlayContext);
+  const isInert = isFocusTrapped && !overlayController;
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const el = localRef.current;
+    if (!el) return;
+
+    const domNode =
+      el instanceof HTMLElement
+        ? el
+        : el.getDOMNode?.() || (typeof el.focus === 'function' ? el : null);
+
+    if (domNode && domNode instanceof HTMLElement) {
+      domNode.setAttribute('data-focusable', 'true');
+      return WebSpatialNavigation.register({
+        id: inputId.current,
+        element: domNode,
+        nextFocusUp,
+        nextFocusDown,
+        nextFocusLeft,
+        nextFocusRight,
+        isInert,
+      });
+    }
+  }, [isInert, nextFocusUp, nextFocusDown, nextFocusLeft, nextFocusRight]);
+
   let fontFamily = 'Inter_400Regular';
-  
-  if (flatStyle.fontWeight) {
-    // Intentionally ignoring fontWeight to prevent bold text across the app
-  }
 
   if (flatStyle.fontFamily && flatStyle.fontFamily !== 'Inter') {
-      fontFamily = flatStyle.fontFamily;
+    fontFamily = flatStyle.fontFamily;
   }
 
-  const customStyle = { fontFamily, fontWeight: undefined };
+  const customStyle: any = { fontFamily, fontWeight: undefined };
+  if (Platform.OS === 'web') {
+    customStyle.outlineStyle = 'none';
+  }
 
-  return <RNTextInput ref={ref} {...rest} style={[style, customStyle as any]} />;
+  return (
+    <RNTextInput
+      ref={localRef}
+      {...rest}
+      onFocus={(e) => {
+        if (Platform.OS === 'web') {
+          WebSpatialNavigation.setActive(inputId.current);
+        }
+        onFocus?.(e);
+      }}
+      onBlur={onBlur}
+      style={[style, customStyle]}
+    />
+  );
 });
 
 TextInput.displayName = 'TextInput';

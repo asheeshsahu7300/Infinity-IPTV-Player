@@ -40,18 +40,31 @@ export const WebSpatialNavigation = {
   },
 
   getActive(): FocusableNode | null {
-    if (activeFocusedId && focusableNodes.has(activeFocusedId)) {
-      return focusableNodes.get(activeFocusedId)!;
-    }
-    // Fallback: check document.activeElement
-    if (typeof document !== "undefined" && document.activeElement) {
+    if (
+      typeof document !== "undefined" &&
+      document.activeElement &&
+      document.activeElement instanceof HTMLElement &&
+      document.activeElement !== document.body
+    ) {
       for (const node of focusableNodes.values()) {
-        if (node.element === document.activeElement) {
+        if (node.element === document.activeElement || node.element.contains(document.activeElement)) {
           activeFocusedId = node.id;
           return node;
         }
       }
+      return {
+        id: "__active_element__",
+        element: document.activeElement,
+      };
     }
+
+    if (activeFocusedId && focusableNodes.has(activeFocusedId)) {
+      const node = focusableNodes.get(activeFocusedId)!;
+      if (typeof document !== "undefined" && document.contains(node.element)) {
+        return node;
+      }
+    }
+
     return null;
   },
 
@@ -140,6 +153,9 @@ export const WebSpatialNavigation = {
     if (bestCandidate) {
       bestCandidate.element.focus();
       activeFocusedId = bestCandidate.id;
+      try {
+        bestCandidate.element.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      } catch {}
       return true;
     }
 

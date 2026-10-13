@@ -453,11 +453,13 @@ const ShimmerBar = React.memo(() => {
 });
 ShimmerBar.displayName = "ShimmerBar";
 
+const useSafeKeepAwake = Platform.OS === "web" ? () => {} : useKeepAwake;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Player Screen
 // ─────────────────────────────────────────────────────────────────────────────
 export default function PlayerScreen() {
-  useKeepAwake();
+  useSafeKeepAwake();
 
   /**
    * The player is landscape on a phone, and hands portrait back on the way out.

@@ -1,0 +1,55 @@
+diff --git a/node_modules/expo-keep-awake/src/ExpoKeepAwake.web.ts b/node_modules/expo-keep-awake/src/ExpoKeepAwake.web.ts
+index 9b48e90..4b4d388 100644
+--- a/node_modules/expo-keep-awake/src/ExpoKeepAwake.web.ts
++++ b/node_modules/expo-keep-awake/src/ExpoKeepAwake.web.ts
+@@ -3,6 +3,7 @@ import { CodedError, Platform, type EventSubscription } from 'expo-modules-core'
+ import { KeepAwakeEventState, KeepAwakeListener } from './KeepAwake.types';
+ 
+ const wakeLockMap: Record<string, WakeLockSentinel> = {};
++const pendingLocks: Record<string, boolean> = {};
+ 
+ type WakeLockSentinel = {
+   onrelease: null | ((event: any) => void);
+@@ -29,24 +30,33 @@ export default {
+     return false;
+   },
+   async activate(tag: string) {
+-    if (!Platform.isDOMAvailable) {
++    if (!Platform.isDOMAvailable || typeof navigator === 'undefined' || !navigator.wakeLock) {
+       return;
+     }
+-    const wakeLock = await navigator.wakeLock.request('screen');
+-    wakeLockMap[tag] = wakeLock;
++    pendingLocks[tag] = true;
++    try {
++      const wakeLock = await navigator.wakeLock.request('screen');
++      if (pendingLocks[tag]) {
++        wakeLockMap[tag] = wakeLock;
++      } else {
++        wakeLock.release?.();
++      }
++    } catch {
++      // Gracefully ignore wake lock errors
++    } finally {
++      delete pendingLocks[tag];
++    }
+   },
+   async deactivate(tag: string) {
+     if (!Platform.isDOMAvailable) {
+       return;
+     }
++    delete pendingLocks[tag];
+     if (wakeLockMap[tag]) {
+-      wakeLockMap[tag].release?.();
++      try {
++        wakeLockMap[tag].release?.();
++      } catch {}
+       delete wakeLockMap[tag];
+-    } else {
+-      throw new CodedError(
+-        'ERR_KEEP_AWAKE_TAG_INVALID',
+-        `The wake lock with tag ${tag} has not activated yet`
+-      );
+     }
+   },
+   addListenerForTag(tag: string, listener: KeepAwakeListener): EventSubscription {

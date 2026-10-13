@@ -221,7 +221,55 @@ function attachWeb() {
       (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
     );
 
-    if (isInput && e.key !== "Enter" && e.keyCode !== 13) {
+    if (isInput) {
+      const code = e.keyCode || e.which;
+      const isUp = code === 38 || e.key === "ArrowUp";
+      const isDown = code === 40 || e.key === "ArrowDown";
+      const isEnter = code === 13 || e.key === "Enter";
+      const isBack = code === 461 || code === 27 || e.key === "Escape";
+
+      if (isUp) {
+        e.preventDefault();
+        e.stopPropagation();
+        WebSpatialNavigation.navigate("up");
+        return;
+      }
+
+      if (isDown) {
+        e.preventDefault();
+        e.stopPropagation();
+        WebSpatialNavigation.navigate("down");
+        return;
+      }
+
+      if (isBack) {
+        target?.blur?.();
+        return;
+      }
+
+      if (isEnter) {
+        e.preventDefault();
+        e.stopPropagation();
+        const moved = WebSpatialNavigation.navigate("down");
+        if (!moved) {
+          target?.blur?.();
+          dispatch({ eventType: "select" });
+        }
+        return;
+      }
+
+      // For normal typing (letters, digits, backspace, left/right cursor), do not intercept
+      return;
+    }
+
+    if (e.key === "Tab" || e.keyCode === 9) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.shiftKey) {
+        WebSpatialNavigation.navigate("up");
+      } else {
+        WebSpatialNavigation.navigate("down");
+      }
       return;
     }
 
