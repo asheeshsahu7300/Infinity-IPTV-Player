@@ -268,6 +268,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
     const [selfTag, setSelfTag] = useState<number | undefined>(undefined);
 
     const updateSelfTag = useCallback(() => {
+      if (Platform.OS === "web") return;
       if (nativeRef.current) {
         const tag = findNodeHandle(nativeRef.current);
         if (tag && tag !== selfTag) {
@@ -414,7 +415,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
         ? children(showFocus)
         : children;
 
-    const resolvedSelfTag = selfTag ?? (nativeRef.current ? (findNodeHandle(nativeRef.current) ?? undefined) : undefined);
+    const resolvedSelfTag = selfTag ?? (nativeRef.current && Platform.OS !== "web" ? (findNodeHandle(nativeRef.current) ?? undefined) : undefined);
 
     // Effective next focus props: explicit props take precedence over overlay auto-tags and directional traps
     const effUp = nextFocusUp ?? (trapFocusUp ? resolvedSelfTag : overlayNextFocus.nextFocusUp);

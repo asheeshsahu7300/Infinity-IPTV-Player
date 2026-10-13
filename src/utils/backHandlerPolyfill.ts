@@ -18,6 +18,18 @@ export function initBackHandlerPolyfill(): void {
   }
   isPolyfillInitialized = true;
 
+  // Polyfill findNodeHandle on web so any call returns safely without throwing
+  try {
+    const RN = require("react-native");
+    if (RN) {
+      RN.findNodeHandle = (component: any) => {
+        if (!component) return undefined;
+        if (typeof component === "number") return component;
+        return component;
+      };
+    }
+  } catch {}
+
   // Polyfill BackHandler methods on web
   const originalAddEventListener = BackHandler.addEventListener;
   const originalExitApp = BackHandler.exitApp;

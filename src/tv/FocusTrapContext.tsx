@@ -1,5 +1,5 @@
 import React from "react";
-import { findNodeHandle, View } from "react-native";
+import { findNodeHandle, View, Platform } from "react-native";
 
 export interface NextFocusTags {
   nextFocusUp?: number;
@@ -111,7 +111,7 @@ export function useOverlayFocusController(axis: OverlayAxis = "vertical"): Overl
 
       getNextFocus(id: string): NextFocusTags {
         const list = itemsRef.current;
-        if (list.length === 0 || axis === "none") return {};
+        if (Platform.OS === "web" || list.length === 0 || axis === "none") return {};
 
         const index = list.findIndex((it) => it.id === id);
         if (index === -1) return {};
