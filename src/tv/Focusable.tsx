@@ -185,7 +185,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
       const domNode =
         typeof el.focus === "function" && el instanceof HTMLElement
           ? el
-          : el.getDOMNode?.() || (findNodeHandle(el) as any);
+          : el.getDOMNode?.() || (Platform.OS !== "web" ? (findNodeHandle(el) as any) : null);
 
       if (domNode && domNode instanceof HTMLElement) {
         domNode.setAttribute("data-focusable", "true");

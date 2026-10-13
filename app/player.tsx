@@ -1367,7 +1367,7 @@ export default function PlayerScreen() {
   // ── TV focus node attachment ──────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
-    if (showControls) {
+    if (showControls && Platform.OS !== "web") {
       const attachNodes = () => {
         if (!mounted) return;
         const play = playBtnRef.current ? findNodeHandle(playBtnRef.current) : null;

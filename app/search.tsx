@@ -514,6 +514,7 @@ export default function SearchScreen() {
   const [firstCardNode, setFirstCardNode] = useState<number | undefined>(undefined);
 
   useEffect(() => {
+    if (Platform.OS === "web") return;
     const attachNodes = () => {
       const input = inputRef.current ? findNodeHandle(inputRef.current) : null;
       const firstFilter = firstFilterRef.current ? findNodeHandle(firstFilterRef.current) : null;

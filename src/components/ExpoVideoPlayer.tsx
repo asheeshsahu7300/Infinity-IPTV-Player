@@ -263,7 +263,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
       const domNode: HTMLElement | null =
         typeof containerEl.querySelector === "function"
           ? containerEl
-          : containerEl.getDOMNode?.() || (findNodeHandle(containerEl) as any);
+          : containerEl.getDOMNode?.() || (Platform.OS !== "web" ? (findNodeHandle(containerEl) as any) : null);
 
       const videoEl = domNode?.querySelector?.("video") as HTMLVideoElement | null;
       if (!videoEl) return;
