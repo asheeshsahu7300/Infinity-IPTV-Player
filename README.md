@@ -15,6 +15,16 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/Release-v1.0.0-blue.svg?style=for-the-badge" alt="Release v1.0.0" />
+  <img src="https://img.shields.io/badge/Google%20Play-Soon%20Live-brightgreen.svg?style=for-the-badge&logo=google-play&logoColor=white" alt="Google Play Soon Live" />
+  <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV-00C853.svg?style=for-the-badge&logo=android&logoColor=white" alt="Android & Android TV" />
+</p>
+
+<p align="center">
+  🚀 <strong>Release 1.0.0 is officially ready — Soon live on the Google Play Store!</strong>
+</p>
+
+<p align="center">
   Built with Expo, React Native, and TypeScript.
 </p>
 
@@ -42,6 +52,12 @@ It supports multiple IPTV playlist and portal formats while providing a consiste
 - D-Pad / remote-controlled devices
 
 The application is designed around a premium dark UI, fast content browsing, large media libraries, and a TV-friendly 10-foot interface.
+
+### Release & Availability
+
+- **Version**: `Release 1.0.0`
+- **Google Play Store**: 🟢 **Soon Live on Google Play Store!** The production release has been compiled, packaged, and submitted for review. Direct install links will be added immediately upon store publication.
+- **Supported Formats**: Android Mobile (APK), Tablets, Android TV, and Google TV.
 
 ---
 
@@ -619,18 +635,24 @@ Contributions, bug reports, and feature requests are welcome! For complete devel
 
 # Changelog
 
-### v1.5.0 (Experimental — Neural Burst Concealment)
+### Release 1.0.0 (Production App Release — Soon Live on Google Play Store)
+- **Official Google Play Store Release**: Production build prepared and submitted for Google Play Store review for Android mobile, tablet, and Android TV devices.
+- **Universal Multi-Portal Engine**: Native support for M3U / M3U8 playlists, Xtream Codes API, and MAG / Stalker Portal APIs with unified category and EPG browsing.
+- **Cinematic Dark UI & 10-Foot TV Experience**: Responsive layouts with D-Pad focus animations, glow effects, and remote-control navigation tailored for Android TV and Google TV.
+- **Integrated Resilient Media Engine**: Powered by `infinity-media-player` with hardware video decoding (AVC, HEVC, VP9), ACDB audio safety guards, and NVC neural video concealment.
+
+### Engine v1.5.0 (Experimental — Neural Burst Concealment)
 - **Multi-Frame Burst Neural Propagation**: Integrated `nvc_temporal_propagator.onnx` causal motion field predictor into `infinity-media-player`, achieving $+1.3\text{ dB}$ to $+42.2\text{ dB}$ reconstruction improvements across dynamic video content with 0.0 ms added playback delay.
 - **Learned Analysis Encoder Support**: Integrated `nvc_encoder.onnx` and updated dual-stage pipeline.
 - **Statistical Replication Dataset**: Evaluated and documented across 7 content classes (14 sequences) with 95% confidence intervals ([Report](docs/benchmarks/nvc_v1.5_burst_evaluation.md)).
-- **Telemetry Exposure**: Mapped `isNeuralEncoderActive` across Android Kotlin views, Expo module event dispatcher, and TypeScript interfaces.
+- **Telemetry Exposure**: Mapped `isNeuralEncoderActive`, `motionMad`, and `concealmentMode` across Android Kotlin views, Expo module event dispatcher, and TypeScript interfaces.
 
-### v1.4.0
+### Engine v1.4.0
 - **Pixel-Derived Spatio-Temporal Feature Extractor**: Integrated 48-channel feature extraction (`NvcFeatureExtractor.kt`) tapped directly from decoded video frames via `PixelCopy` / `TextureView`.
 - **Controlled 24-FPS Benchmark**: Validated four-way trade-off between causality, fidelity, latent freshness, and compute.
 - **Latent Staleness Tracking**: Added `latentAgeMs` monitoring to detect feature aging during live playback.
 
-### v1.3.0
+### Engine v1.3.0
 - **Physical Hardware Validation**: Validated end-to-end NVC neural frame reconstruction running ONNX Runtime on Snapdragon 750G / Android 13 with hardware GPU overlay composition.
 - **Qualcomm & MediaTek Audio Safety**: Protected against Hexagon ADSP ACDB crashes (`0x10012d00`) and MTK BesLoudness audio distortions.
 - **Broadcast Telemetry HUD**: Introduced `showNvcDemoHud` with live performance metrics and latency percentile counters.
