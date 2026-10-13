@@ -41,11 +41,13 @@ import { safeStorage } from "../src/services/safeStorage";
 import { setSafeNavigationRef, safeBack } from "../src/services/safeNavigation";
 import { initWebOS } from "../src/utils/webosUtils";
 import { initBackHandlerPolyfill } from "../src/utils/backHandlerPolyfill";
+import { initDevCorsProxy } from "../src/utils/devCorsProxy";
 
-// Initialize webOS styles and remote BackHandler polyfill
+// Initialize webOS styles, remote BackHandler polyfill, and dev CORS proxy
 if (Platform.OS === "web") {
   initWebOS();
   initBackHandlerPolyfill();
+  initDevCorsProxy();
 }
 
 // Inject CSS for Web to guarantee the font loads exactly as requested
