@@ -1108,7 +1108,7 @@ export default function PortalsScreen() {
                     },
                   ],
                   {
-                    useNativeDriver: true,
+                    useNativeDriver: Platform.OS !== "web",
                   }
                 )
             }
@@ -1505,31 +1505,31 @@ const S = StyleSheet.create({
   },
 
   introLogo: {
-    width: isPhone ? 180 : pw(20),
-    height: (isPhone ? 180 : pw(20)) / 1.5,
-    marginBottom: ph(3),
+    width: isPhone ? 180 : Math.max(200, pw(20)),
+    height: (isPhone ? 180 : Math.max(200, pw(20))) / 1.5,
+    marginBottom: Math.max(16, ph(3)),
   },
 
   introTitle: {
-    fontSize: ps(3),
+    fontSize: Math.max(24, ps(3)),
     color: "#F5F5F7",
     fontWeight: "600",
     letterSpacing: 0.5,
   },
 
   introBody: {
-    fontSize: ps(1.4),
-    lineHeight: ps(2.2),
+    fontSize: Math.max(14, ps(1.4)),
+    lineHeight: Math.max(20, ps(2.2)),
     color: "#9A9DA5",
-    marginTop: ph(2),
-    maxWidth: pw(38),
+    marginTop: Math.max(12, ph(2)),
+    maxWidth: Math.max(340, pw(38)),
   },
 
   getStartedWrapper: {
     borderRadius: 18,
     overflow: "visible",
     alignSelf: "flex-start",
-    marginTop: ph(5),
+    marginTop: Math.max(24, ph(5)),
   },
 
   introArt: {
@@ -1562,8 +1562,10 @@ const S = StyleSheet.create({
   },
 
   addButtonLarge: {
-    paddingHorizontal: pw(2.5),
-    paddingVertical: ph(1.5),
+    minWidth: 180,
+    minHeight: 52,
+    paddingHorizontal: Math.max(28, pw(2.5)),
+    paddingVertical: Math.max(14, ph(1.5)),
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 18,
@@ -1602,7 +1604,7 @@ const S = StyleSheet.create({
 
   addButtonText: {
     color: "#F5F5F7",
-    fontSize: ps(1.4),
+    fontSize: Math.max(15, ps(1.4)),
     fontWeight: "700",
     letterSpacing: 1.5,
   },

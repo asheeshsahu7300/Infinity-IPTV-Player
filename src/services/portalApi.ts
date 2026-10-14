@@ -442,12 +442,22 @@ const extract = (res: any): any[] => {
   return [];
 };
 
+export const isValidImageUrl = (url?: string | null): boolean => {
+  if (!url || typeof url !== "string") return false;
+  const s = url.trim();
+  if (!s || s === "null" || s === "undefined" || s === "N/A" || s === "none") return false;
+  if (/^\/+$/.test(s)) return false;
+  return /^(https?:\/\/|data:image\/|blob:)/i.test(s);
+};
+
 export const buildImageUrl = (base: string, raw?: any): string => {
   if (!raw || typeof raw !== "string") return "";
   const s = raw.trim();
   if (!s || s === "null" || s === "undefined" || s === "N/A" || s === "none") return "";
+  if (/^\/+$/.test(s)) return "";
 
-  const serverRoot = base
+  const serverRoot = (base || "")
+    .trim()
     .replace(/\/$/, "")
     .replace(/\/portal\.php$/i, "")
     .replace(/\/c$/i, "");
@@ -455,6 +465,7 @@ export const buildImageUrl = (base: string, raw?: any): string => {
   // Stale or internal domains hardcoded in provider databases (e.g. corelink.blog, webhop.live, starshare.live, localhost)
   // that must be rewritten to the user's active portal base URL.
   const rewriteStaleOrigin = (urlStr: string): string => {
+    if (!serverRoot || !/^https?:\/\//i.test(serverRoot)) return urlStr;
     const STALE_HOSTS = /(?:webhop\.live|starshare\.live|corelink\.|corelink\.blog|stalker\.|mag\.local|iptv\.local|localhost|127\.0\.0\.1)/i;
     const urlMatch = urlStr.match(/^(https?:\/\/[^\/]+)(\/.*)?$/i);
     if (urlMatch) {
@@ -527,11 +538,13 @@ export const buildImageUrl = (base: string, raw?: any): string => {
     }
   }
 
-  // 5. Server-relative path
-  if (s.startsWith("/")) {
-    return `${serverRoot}${s}`;
+  // 5. Server-relative path: ONLY valid if serverRoot is a valid HTTP/HTTPS URL!
+  if (!serverRoot || !/^https?:\/\//i.test(serverRoot)) {
+    return "";
   }
-  return `${serverRoot}/${s}`;
+  const cleanPath = s.replace(/^\/+/, "");
+  if (!cleanPath) return "";
+  return `${serverRoot}/${cleanPath}`;
 };
 
 const pickRating = (v: any) => {

@@ -1912,7 +1912,7 @@ export default function LiveTVScreen() {
 
       {/* ─── Transient feedback notice ─── */}
       {notice ? (
-        <View style={S.notice} pointerEvents="none">
+        <View style={[S.notice, { pointerEvents: "none" }]}>
           <Info size={ps(1.1)} color="#fff" />
           <Text style={S.noticeText} numberOfLines={1}>{notice}</Text>
         </View>

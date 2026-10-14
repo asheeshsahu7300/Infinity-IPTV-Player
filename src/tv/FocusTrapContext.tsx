@@ -98,7 +98,9 @@ export function useOverlayFocusController(axis: OverlayAxis = "vertical"): Overl
         return () => {
           clearTimeout(timer);
           itemsRef.current = itemsRef.current.filter((it) => it.id !== id);
-          notifyListeners();
+          setTimeout(() => {
+            notifyListeners();
+          }, 0);
         };
       },
 

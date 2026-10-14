@@ -96,6 +96,25 @@ class StreamManagerClass {
 
         if (portal.type !== "mag") {
             const latestPortal = usePortalStore.getState().activePortal ?? portal;
+            if (portal.type === "xtream" && latestPortal.config?.username && latestPortal.config?.password) {
+                try {
+                    const { XtreamApi } = await import("./xtreamApi");
+                    const api = new XtreamApi({
+                        url: latestPortal.config.url,
+                        username: latestPortal.config.username,
+                        password: latestPortal.config.password,
+                    });
+                    const rawId = String(content.id || "").trim() || content.streamUrl?.split("/").pop()?.split(".")[0] || "";
+                    if (rawId) {
+                        const freshUrl = type === "itv"
+                            ? api.builditvUrl(rawId)
+                            : type === "vod"
+                                ? api.buildMovieUrl(rawId)
+                                : api.buildSeriesUrl(rawId);
+                        return { url: freshUrl, success: !!freshUrl };
+                    }
+                } catch {}
+            }
             const proxied = applySameHostStreamProxy(content.streamUrl || "", latestPortal, content.streamUrl);
             return { url: proxied, success: !!proxied };
         }

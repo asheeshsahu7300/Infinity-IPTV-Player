@@ -1,10 +1,4 @@
 // src/utils/devCorsProxy.ts
-// Transparent local development CORS proxy for desktop browsers.
-// When testing the app in Chrome/Edge on localhost:8081, third-party IPTV servers
-// reject browser cross-origin requests.
-// This intercepts requests on localhost and routes them through Metro's local proxy.
-// On physical LG webOS TVs (.ipk) or native Android, requests are sent directly.
-
 import axios from "axios";
 import { Platform } from "react-native";
 
@@ -16,29 +10,33 @@ export function initDevCorsProxy(): void {
   }
   isDevProxyInitialized = true;
 
-  const hostname = window.location.hostname;
-  const isLocalhost =
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname.endsWith(".local");
+  // Set default User-Agent across all axios requests
+  try {
+    axios.defaults.headers.common["User-Agent"] = "okhttp/3.12.1";
+  } catch {}
 
-  // Packaged webOS apps run under file:// or webOS origin, never localhost
-  if (!isLocalhost) {
-    return;
+  // Safely handle benign HTML5 play() promise interruptions (AbortError)
+  // Occurs during rapid channel zapping when play() is followed by pause() or new stream load
+  if (typeof HTMLMediaElement !== "undefined" && !(HTMLMediaElement.prototype.play as any)?.__isSafePlay) {
+    const originalPlay = HTMLMediaElement.prototype.play;
+    const safePlay = function (this: HTMLMediaElement, ...args: any[]) {
+      const p = (originalPlay as any).apply(this, args);
+      if (p && typeof p.catch === "function") {
+        return p.catch((err: any) => {
+          if (err?.name === "AbortError") {
+            // Expected browser interruption when video playback is interrupted by pause() or source load
+            return;
+          }
+          throw err;
+        });
+      }
+      return p;
+    };
+    (safePlay as any).__isSafePlay = true;
+    HTMLMediaElement.prototype.play = safePlay;
   }
+}
 
-  console.log("[DevCorsProxy] Local browser detected. Bypassing browser CORS via Metro dev proxy.");
-
-  axios.interceptors.request.use((config) => {
-    if (
-      config.url &&
-      config.url.startsWith("http") &&
-      !config.url.includes("/__dev_proxy?url=")
-    ) {
-      const originalUrl = config.url;
-      const proxyBase = `${window.location.protocol}//${window.location.host}`;
-      config.url = `${proxyBase}/__dev_proxy?url=${encodeURIComponent(originalUrl)}`;
-    }
-    return config;
-  });
+export function toDevProxyUrl(url: string | null | undefined): string {
+  return url || "";
 }

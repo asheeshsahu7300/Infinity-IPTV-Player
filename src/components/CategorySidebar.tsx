@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback, useMemo } from "react";
-import { View, StyleSheet, FlatList, Dimensions, Animated } from 'react-native';
+import { View, StyleSheet, FlatList, Dimensions, Animated, Platform } from 'react-native';
 import { pw, ps, THEME } from "../theme/tokens";
 import { Focusable } from "../tv";
 import { remoteFocusEnabled, SIDEBAR_WIDTH } from "../utils/tabletUtils";
@@ -21,8 +21,14 @@ interface CategorySidebarProps {
   autoFocusFirst?: boolean;
 }
 
-const { height: SCREEN_H } = Dimensions.get("window");
-const DEFAULT_SIDEBAR_H = SCREEN_H - 64;
+const winH = Dimensions.get("window").height;
+const SCREEN_H =
+  winH > 0
+    ? winH
+    : typeof window !== "undefined" && window.innerHeight > 0
+    ? window.innerHeight
+    : 1080;
+const DEFAULT_SIDEBAR_H = Math.max(200, SCREEN_H - 64);
 
 // ─────────────────────────────────────────────
 // Styles Defined at Top to Prevent Hoisting Issues
@@ -59,6 +65,80 @@ const S = StyleSheet.create({
   },
 });
 
+function SidebarPill({
+  focused,
+  item,
+  isActive,
+  pillHeight,
+}: {
+  focused: boolean;
+  item: Category;
+  isActive: boolean;
+  pillHeight: number;
+}) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.spring(scaleAnim, {
+      toValue: focused ? 1.05 : 1,
+      friction: 7,
+      tension: 100,
+      useNativeDriver: Platform.OS !== "web",
+    }).start();
+  }, [focused, scaleAnim]);
+
+  return (
+    <Animated.View
+      style={[
+        {
+          height: pillHeight,
+          // The 90/100 split is a focus affordance: the focused pill
+          // grows out to meet the edge while its neighbours sit
+          // inset. With no remote there is no focus to signal, so
+          // the split degrades into a ragged column with the active
+          // pill merely wider than the rest -- every pill takes the
+          // full width there. The active one is still distinguished,
+          // by its background, not its size.
+          width: !remoteFocusEnabled || focused || isActive ? "100%" : "90%",
+          alignSelf: "center",
+          borderRadius: 18,
+          justifyContent: "center",
+          alignItems: "center",
+          paddingHorizontal: pw(1.2),
+          overflow: "hidden",
+          borderWidth: 0,
+          borderColor: "transparent",
+          backgroundColor: "#17181c",
+          transform: [{ scale: scaleAnim }],
+        },
+        isActive && !focused && {
+          backgroundColor: "#F5F5F5",
+          borderColor: "transparent",
+        },
+        focused && {
+          borderColor: "transparent",
+          backgroundColor: "#F5F5F5",
+          elevation: 8,
+        },
+      ]}
+    >
+      <View style={S.itemInner}>
+        <Text
+          style={[
+            S.itemText,
+            focused || isActive
+              ? { color: THEME.colors.selectedText, fontWeight: "900", fontSize: ps(1.15) }
+              : { color: THEME.colors.text },
+          ]}
+          numberOfLines={1}
+        >
+          {item.name && !/^\d+$/.test(String(item.name).trim()) ? item.name : `Category ${item.name || item.id}`}
+        </Text>
+      </View>
+    </Animated.View>
+  );
+}
+
 const CategoryItem = React.memo(
   function CategoryItem({
     item,
@@ -83,8 +163,6 @@ const CategoryItem = React.memo(
     trapFocusUp?: boolean;
     trapFocusDown?: boolean;
   }) {
-    const scaleAnim = useRef(new Animated.Value(1)).current;
-
     const handleSelect = useCallback(() => {
       onSelect(item.id);
     }, [onSelect, item.id]);
@@ -106,66 +184,14 @@ const CategoryItem = React.memo(
           ringOnFocus={false}
           style={{ overflow: "visible" }}
         >
-          {(focused) => {
-            Animated.spring(scaleAnim, {
-              toValue: focused ? 1.05 : 1,
-              friction: 7,
-              tension: 100,
-              useNativeDriver: true,
-            }).start();
-
-            return (
-              <Animated.View
-                style={[
-                  {
-                    height: pillHeight,
-                    // The 90/100 split is a focus affordance: the focused pill
-                    // grows out to meet the edge while its neighbours sit
-                    // inset. With no remote there is no focus to signal, so
-                    // the split degrades into a ragged column with the active
-                    // pill merely wider than the rest -- every pill takes the
-                    // full width there. The active one is still distinguished,
-                    // by its background, not its size.
-                    width:
-                      !remoteFocusEnabled || focused || isActive ? "100%" : "90%",
-                    alignSelf: "center",
-                    borderRadius: 18,
-                    justifyContent: "center",
-                    alignItems: "center",
-                    paddingHorizontal: pw(1.2),
-                    overflow: "hidden",
-                    borderWidth: 0,
-                    borderColor: "transparent",
-                    backgroundColor: "#17181c",
-                    transform: [{ scale: scaleAnim }],
-                  },
-                  isActive && !focused && {
-                    backgroundColor: "#F5F5F5",
-                    borderColor: "transparent",
-                  },
-                  focused && {
-                    borderColor: "transparent",
-                    backgroundColor: "#F5F5F5",
-                    elevation: 8,
-                  },
-                ]}
-              >
-                <View style={S.itemInner}>
-                  <Text
-                    style={[
-                      S.itemText,
-                      (focused || isActive)
-                        ? { color: THEME.colors.selectedText, fontWeight: "900", fontSize: ps(1.15) }
-                        : { color: THEME.colors.text },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {item.name && !/^\d+$/.test(String(item.name).trim()) ? item.name : `Category ${item.name || item.id}`}
-                  </Text>
-                </View>
-              </Animated.View>
-            );
-          }}
+          {(focused) => (
+            <SidebarPill
+              focused={focused}
+              item={item}
+              isActive={isActive}
+              pillHeight={pillHeight}
+            />
+          )}
         </Focusable>
       </View>
     );

@@ -4,7 +4,7 @@
   "vendor": "Infinity",
   "type": "web",
   "main": "index.html",
-  "title": "Infinity IPTV Player TV",
+  "title": "Infinity IPTV Player",
   "icon": "icon.png",
   "largeIcon": "largeIcon.png",
   "bgImage": "bgImage.png",
@@ -15,5 +15,6 @@
   "requiredPermissions": [
     "media",
     "network"
-  ]
+  ],
+  "requiredACG": []
 }

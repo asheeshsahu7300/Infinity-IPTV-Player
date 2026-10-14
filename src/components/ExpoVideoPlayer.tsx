@@ -9,7 +9,38 @@ import {
   VideoTrack,
   VideoContentFit,
 } from "expo-video";
-import { BufferTuning } from "../services/stbEnvironment";
+import { BufferTuning, isPlayableStreamUrl } from "../services/stbEnvironment";
+
+function checkNativeHlsSupport(): boolean {
+  if (Platform.OS !== "web" || typeof document === "undefined" || typeof navigator === "undefined") {
+    return false;
+  }
+  try {
+    // Only Apple Safari natively supports HLS at the OS level without extensions or MSE.
+    // Chromium/Edge/Firefox on Windows/Linux do not support IPTV HLS/TS streams natively.
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    if (!isSafari) {
+      return false;
+    }
+    const video = document.createElement("video");
+    return video.canPlayType("application/vnd.apple.mpegurl") !== "";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Normalizes stream URLs for web playback.
+ * On Web, browsers cannot decode raw MPEG-TS (.ts) streams natively.
+ * Xtream Codes servers provide the same stream as .m3u8, so we convert .ts to .m3u8 on web.
+ */
+function normalizeStreamUrlForWeb(url: string | null | undefined): string {
+  if (!url || Platform.OS !== "web") return url || "";
+  if (/\/live\/[^/]+\/[^/]+\/\d+\.ts(\?.*)?$/i.test(url)) {
+    return url.replace(/\.ts(\?.*)?$/i, (match, query) => `.m3u8${query || ""}`);
+  }
+  return url;
+}
 
 export interface NormalizedTrackOption {
   id: string | number;
@@ -20,6 +51,8 @@ export interface NormalizedTrackOption {
   width?: number;
   height?: number;
   bitrate?: number;
+  subtitle?: string;
+  isSupported?: boolean;
   raw?: any;
 }
 
@@ -35,6 +68,8 @@ export interface ExpoVideoPlayerRef {
   getPlayer: () => any;
   isPlaying?: () => boolean;
   getAudioTracks?: () => NormalizedTrackOption[];
+  getSubtitleTracks?: () => NormalizedTrackOption[];
+  getVideoTracks?: () => NormalizedTrackOption[];
 }
 
 export interface ExpoVideoPlayerProps {
@@ -159,6 +194,111 @@ function normalizeVideoTracks(tracks: VideoTrack[]): NormalizedTrackOption[] {
 }
 
 /**
+ * Normalizes AudioTrack from hls.js into NormalizedTrackOption
+ */
+function normalizeHlsAudioTracks(tracks: any[]): NormalizedTrackOption[] {
+  return (tracks || []).map((t, idx) => {
+    const lang = t.lang || t.language || "";
+    const label = t.name || (lang ? lang.toUpperCase() : `Audio ${idx + 1}`);
+    return {
+      id: t.id ?? idx,
+      index: idx,
+      title: label,
+      name: label,
+      language: lang,
+      isSupported: true,
+      raw: t,
+    };
+  });
+}
+
+/**
+ * Normalizes SubtitleTrack from hls.js into NormalizedTrackOption
+ */
+function normalizeHlsSubtitleTracks(tracks: any[]): NormalizedTrackOption[] {
+  const result: NormalizedTrackOption[] = [
+    {
+      id: -1,
+      index: -1,
+      title: "Disable Subtitles",
+      name: "Disable Subtitles",
+      language: "",
+    },
+  ];
+
+  (tracks || []).forEach((t, idx) => {
+    const lang = t.lang || t.language || "";
+    const label = t.name || (lang ? lang.toUpperCase() : `Subtitle ${idx + 1}`);
+    result.push({
+      id: t.id ?? idx,
+      index: idx,
+      title: label,
+      name: label,
+      language: lang,
+      raw: t,
+    });
+  });
+
+  return result;
+}
+
+/**
+ * Normalizes video levels from hls.js into NormalizedTrackOption
+ */
+function normalizeHlsLevels(levels: any[]): NormalizedTrackOption[] {
+  return (levels || []).map((lvl, idx) => {
+    const h = lvl.height;
+    const w = lvl.width;
+    let label = lvl.name || "Auto";
+    if (h && w) {
+      if (h >= 2160 || w >= 3840) label = "4K UHD";
+      else if (h >= 1440) label = "2K QHD";
+      else if (h >= 1080) label = "1080p FHD";
+      else if (h >= 720) label = "720p HD";
+      else if (h >= 480) label = "480p SD";
+      else label = `${h}p`;
+    } else if (h) {
+      label = `${h}p`;
+    }
+
+    return {
+      id: idx,
+      index: idx,
+      title: label,
+      name: label,
+      width: w,
+      height: h,
+      bitrate: lvl.bitrate,
+      raw: lvl,
+    };
+  });
+}
+
+/**
+ * Normalizes native DOM HTMLMediaElement audio tracks (Safari / webOS)
+ */
+function normalizeDomAudioTracks(audioTrackList: any): NormalizedTrackOption[] {
+  if (!audioTrackList) return [];
+  const tracks: NormalizedTrackOption[] = [];
+  try {
+    for (let i = 0; i < audioTrackList.length; i++) {
+      const t = audioTrackList[i];
+      const label = t.label || (t.language ? t.language.toUpperCase() : `Audio ${i + 1}`);
+      tracks.push({
+        id: t.id || i,
+        index: i,
+        title: label,
+        name: label,
+        language: t.language || "",
+        isSupported: true,
+        raw: t,
+      });
+    }
+  } catch {}
+  return tracks;
+}
+
+/**
  * Derives native ExoPlayer / AVPlayer buffer parameters from user buffer profiles
  * and adaptive network measurements, with proper milliseconds -> seconds conversion.
  */
@@ -253,10 +393,28 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
     const currentUrlRef = useRef(streamUrl);
     const lastProgressEmitTime = useRef(0);
     const containerRef = useRef<View>(null);
+    const hlsRef = useRef<any>(null);
+    const videoElRef = useRef<HTMLVideoElement | null>(null);
 
-    // Web & webOS HLS fallback attachment
+    const isNativeHlsSupported = useMemo(() => checkNativeHlsSupport(), []);
+    const isHls = Boolean(
+      streamUrl && (
+        streamUrl.includes(".m3u8") ||
+        streamUrl.includes("m3u8") ||
+        isLive
+      )
+    );
+
+    const effectiveHeaders = useMemo(() => {
+      return {
+        "User-Agent": "okhttp/3.12.1",
+        ...(headers || {}),
+      };
+    }, [headers]);
+
+    // Web & webOS HLS fallback attachment (only for HLS streams)
     useEffect(() => {
-      if (Platform.OS !== "web" || !streamUrl) return;
+      if (Platform.OS !== "web" || !streamUrl || !isPlayableStreamUrl(streamUrl) || !isHls || isNativeHlsSupported) return;
 
       const containerEl = containerRef.current as any;
       if (!containerEl) return;
@@ -267,11 +425,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
 
       const videoEl = domNode?.querySelector?.("video") as HTMLVideoElement | null;
       if (!videoEl) return;
-
-      // If native HLS is supported (webOS TV hardware pipeline, Safari), let native player handle it
-      if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
-        return;
-      }
+      videoElRef.current = videoEl;
 
       let hlsInstance: any = null;
       try {
@@ -281,13 +435,107 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           hlsInstance = new HlsClass({
             enableWorker: true,
             lowLatencyMode: isLive,
+            backBufferLength: isLive ? 10 : 30,
+            xhrSetup: (xhr: XMLHttpRequest) => {
+              if (effectiveHeaders) {
+                for (const [k, v] of Object.entries(effectiveHeaders)) {
+                  try {
+                    xhr.setRequestHeader(k, v);
+                  } catch (e) {
+                    // Browser might throw error for restricted headers like User-Agent
+                  }
+                }
+              }
+            },
           });
-          hlsInstance.loadSource(streamUrl);
+          hlsRef.current = hlsInstance;
+          const normalized = normalizeStreamUrlForWeb(streamUrl);
+          hlsInstance.loadSource(normalized);
           hlsInstance.attachMedia(videoEl);
+
+          const emitHlsTracks = (isInitial: boolean) => {
+            let aTracks = normalizeHlsAudioTracks(hlsInstance.audioTracks || []);
+            if (aTracks.length === 0 && (videoEl as any)?.audioTracks?.length) {
+              aTracks = normalizeDomAudioTracks((videoEl as any).audioTracks);
+            }
+            const sTracks = normalizeHlsSubtitleTracks(hlsInstance.subtitleTracks || []);
+            const vTracks = normalizeHlsLevels(hlsInstance.levels || []);
+
+            const activeIdx = hlsInstance.audioTrack;
+            const currentAudio = (activeIdx >= 0 && aTracks[activeIdx]) ? aTracks[activeIdx] : aTracks[0];
+
+            if (isInitial) {
+              const durationMs = Math.round((videoEl.duration || 0) * 1000);
+              onLoad?.({
+                duration: durationMs,
+                audioTracks: aTracks,
+                textTracks: sTracks,
+                videoTracks: vTracks,
+                naturalSize: vTracks[0]?.width && vTracks[0]?.height ? { width: vTracks[0].width, height: vTracks[0].height } : undefined,
+                currentAudioTrack: currentAudio,
+              });
+            } else {
+              onTracksChange?.({
+                audioTracks: aTracks,
+                textTracks: sTracks,
+                videoTracks: vTracks,
+                currentAudioTrack: currentAudio,
+              });
+            }
+          };
+
+          hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, () => {
+            if (isFirstLoadRef.current) {
+              isFirstLoadRef.current = false;
+              emitHlsTracks(true);
+            } else {
+              emitHlsTracks(false);
+            }
+            if (!paused && autoPlay) {
+              videoEl.play().catch(() => {});
+            }
+          });
+
+          hlsInstance.on(HlsClass.Events.AUDIO_TRACKS_UPDATED, () => {
+            emitHlsTracks(false);
+          });
+
+          hlsInstance.on(HlsClass.Events.AUDIO_TRACK_SWITCHED, () => {
+            emitHlsTracks(false);
+          });
+
+          hlsInstance.on(HlsClass.Events.SUBTITLE_TRACKS_UPDATED, () => {
+            emitHlsTracks(false);
+          });
+
+          const onLoadedMetadata = () => {
+            if ((videoEl as any)?.audioTracks?.length) {
+              emitHlsTracks(false);
+            }
+          };
+          videoEl.addEventListener("loadedmetadata", onLoadedMetadata);
+
           hlsInstance.on(HlsClass.Events.ERROR, (_: any, data: any) => {
             if (data.fatal) {
-              console.warn("[webOS HLS] Fatal stream error:", data);
-              onError?.(new Error(`HLS fatal error: ${data.details}`));
+              switch (data.type) {
+                case HlsClass.ErrorTypes.NETWORK_ERROR:
+                  if (data.response?.code === 401 || data.response?.code === 403) {
+                    console.warn(`[webOS HLS] Stream rejected with HTTP ${data.response?.code}`);
+                    onError?.(new Error(`Stream authorization error (HTTP ${data.response?.code})`));
+                    break;
+                  }
+                  console.warn("[webOS HLS] Network error, recovering...", data.details);
+                  hlsInstance.startLoad();
+                  break;
+                case HlsClass.ErrorTypes.MEDIA_ERROR:
+                  console.warn("[webOS HLS] Media error, recovering...", data.details);
+                  hlsInstance.recoverMediaError();
+                  break;
+                default:
+                  console.warn("[webOS HLS] Fatal stream error:", data);
+                  onError?.(new Error(`HLS fatal error: ${data.details}`));
+                  break;
+              }
             }
           });
         }
@@ -300,18 +548,15 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           try {
             hlsInstance.destroy();
           } catch {}
+          if (hlsRef.current === hlsInstance) {
+            hlsRef.current = null;
+          }
         }
       };
-    }, [streamUrl, isLive, onError]);
+    }, [streamUrl, isLive, onLoad, onTracksChange, onError, paused, autoPlay, isNativeHlsSupported, effectiveHeaders]);
 
     /**
      * The `paused` prop, readable from the event listeners.
-     *
-     * `playingChange` cannot distinguish a pause from a stall on its own — see
-     * the listener below — and the listener effect deliberately does not depend
-     * on `paused`, because re-subscribing every time playback is toggled would
-     * drop events during the gap. A ref is how the listener reads the current
-     * intent without being torn down to get it.
      */
     const pausedRef = useRef(paused);
 
@@ -319,16 +564,32 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
     const endedRef = useRef(false);
 
     // Build referentially stable VideoSource object
-    const source = useMemo<VideoSource>(
-      () => ({
-        uri: streamUrl,
-        headers: headers,
-      }),
-      [streamUrl, headers]
-    );
+    const source = useMemo<VideoSource | null>(() => {
+      if (!streamUrl || !isPlayableStreamUrl(streamUrl)) {
+        return null;
+      }
+
+      // In desktop browsers without native HLS support (Chrome/Edge/Firefox), passing
+      // an HLS stream URL to <video src="..."> causes MEDIA_ELEMENT_ERROR: Format error.
+      // We pass null to VideoView only for HLS so native browser doesn't try to decode it,
+      // and Hls.js attaches MediaSource cleanly instead. Direct VOD files (MP4, MKV) are passed directly.
+      if (Platform.OS === "web" && isHls && !isNativeHlsSupported) {
+        return null;
+      }
+
+      const normalized = normalizeStreamUrlForWeb(streamUrl);
+      if (!normalized || !isPlayableStreamUrl(normalized)) {
+        return null;
+      }
+
+      return {
+        uri: Platform.OS === "web" ? normalized : streamUrl,
+        headers: effectiveHeaders,
+      };
+    }, [streamUrl, effectiveHeaders, isHls, isNativeHlsSupported]);
 
     // Initialize the native player with tuned buffer options
-    const player = useVideoPlayer(source, (p) => {
+    const player = useVideoPlayer(source as any, (p) => {
       p.loop = false;
       p.timeUpdateEventInterval = 0.25; // 250ms for smooth progress bar updates
       p.playbackRate = rate;
@@ -353,7 +614,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         console.warn("[ExpoVideoPlayer] Error setting bufferOptions:", e);
       }
 
-      if (autoPlay && !paused) {
+      if (autoPlay && !paused && (!Platform.OS || Platform.OS !== "web" || isNativeHlsSupported)) {
         try {
           p.play();
         } catch {}
@@ -383,6 +644,14 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
     // Synchronize play / pause state
     useEffect(() => {
       pausedRef.current = paused;
+      if (Platform.OS === "web" && !isNativeHlsSupported && videoElRef.current) {
+        if (paused) {
+          videoElRef.current.pause();
+        } else {
+          videoElRef.current.play().catch(() => {});
+        }
+        return;
+      }
       if (!player) return;
       try {
         if (paused) {
@@ -393,34 +662,46 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
       } catch (err) {
         console.warn("[ExpoVideoPlayer] Error updating playback state:", err);
       }
-    }, [player, paused]);
+    }, [player, paused, isNativeHlsSupported]);
 
     // Synchronize playback speed
     useEffect(() => {
+      if (Platform.OS === "web" && !isNativeHlsSupported && videoElRef.current) {
+        videoElRef.current.playbackRate = rate;
+      }
       if (!player) return;
       try {
         player.playbackRate = rate;
       } catch {}
-    }, [player, rate]);
+    }, [player, rate, isNativeHlsSupported]);
 
     // Synchronize volume
     useEffect(() => {
+      const normVol = volume > 1 ? volume / 100 : volume;
+      if (Platform.OS === "web" && !isNativeHlsSupported && videoElRef.current) {
+        videoElRef.current.volume = normVol;
+      }
       if (!player) return;
       try {
-        player.volume = volume > 1 ? volume / 100 : volume;
+        player.volume = normVol;
       } catch {}
-    }, [player, volume]);
+    }, [player, volume, isNativeHlsSupported]);
 
     // When streamUrl or headers change, replace the media source asynchronously
     useEffect(() => {
-      if (!player) return;
       if (currentUrlRef.current !== streamUrl && streamUrl) {
         currentUrlRef.current = streamUrl;
         isFirstLoadRef.current = true;
+        if (Platform.OS === "web" && isHls && !isNativeHlsSupported) {
+          // Handled by HLS attachment effect
+          return;
+        }
+        if (!player) return;
         try {
+          const normalized = normalizeStreamUrlForWeb(streamUrl);
           player.replaceAsync({
-            uri: streamUrl,
-            headers: headers,
+            uri: Platform.OS === "web" ? normalized : streamUrl,
+            headers: effectiveHeaders,
           });
           if (!paused && autoPlay) {
             player.play();
@@ -429,12 +710,45 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           console.warn("[ExpoVideoPlayer] replaceAsync error:", e);
         }
       }
-    }, [player, streamUrl, headers, paused, autoPlay]);
+    }, [player, streamUrl, effectiveHeaders, paused, autoPlay, isNativeHlsSupported, isHls]);
 
     // Track selection helper methods
     const applyAudioTrack = useCallback(
       (trackIdOrIndex: string | number | undefined) => {
-        if (!player || trackIdOrIndex === undefined) return;
+        if (trackIdOrIndex === undefined) return;
+
+        // Web & webOS HLS.js
+        if (Platform.OS === "web" && !isNativeHlsSupported && hlsRef.current) {
+          const hls = hlsRef.current;
+          if (trackIdOrIndex === -1 || trackIdOrIndex === "-1" || trackIdOrIndex === null) {
+            hls.audioTrack = -1;
+            return;
+          }
+          if (hls.audioTracks && hls.audioTracks.length > 0) {
+            const numIdx = Number(trackIdOrIndex);
+            if (!isNaN(numIdx) && numIdx >= 0 && numIdx < hls.audioTracks.length) {
+              hls.audioTrack = numIdx;
+              return;
+            }
+            const matchIdx = hls.audioTracks.findIndex(
+              (t: any) => String(t.id) === String(trackIdOrIndex)
+            );
+            if (matchIdx >= 0) {
+              hls.audioTrack = matchIdx;
+              return;
+            }
+          }
+        }
+
+        // Web DOM HTMLMediaElement audio tracks (Safari / webOS native video)
+        if (Platform.OS === "web" && videoElRef.current && (videoElRef.current as any).audioTracks) {
+          const domTracks = (videoElRef.current as any).audioTracks;
+          for (let i = 0; i < domTracks.length; i++) {
+            domTracks[i].enabled = (i === Number(trackIdOrIndex) || String(domTracks[i].id) === String(trackIdOrIndex));
+          }
+        }
+
+        if (!player) return;
         if (trackIdOrIndex === -1 || trackIdOrIndex === "-1" || trackIdOrIndex === null) {
           try {
             player.audioTrack = null;
@@ -457,11 +771,34 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           }
         }
       },
-      [player]
+      [player, isNativeHlsSupported]
     );
 
     const applySubtitleTrack = useCallback(
       (trackIdOrIndex: string | number | undefined) => {
+        // Web & webOS HLS.js
+        if (Platform.OS === "web" && !isNativeHlsSupported && hlsRef.current) {
+          const hls = hlsRef.current;
+          if (trackIdOrIndex === undefined || trackIdOrIndex === -1 || trackIdOrIndex === "-1" || trackIdOrIndex === null) {
+            hls.subtitleTrack = -1;
+            return;
+          }
+          if (hls.subtitleTracks && hls.subtitleTracks.length > 0) {
+            const numIdx = Number(trackIdOrIndex);
+            if (!isNaN(numIdx) && numIdx >= 0 && numIdx < hls.subtitleTracks.length) {
+              hls.subtitleTrack = numIdx;
+              return;
+            }
+            const matchIdx = hls.subtitleTracks.findIndex(
+              (t: any) => String(t.id) === String(trackIdOrIndex)
+            );
+            if (matchIdx >= 0) {
+              hls.subtitleTrack = matchIdx;
+              return;
+            }
+          }
+        }
+
         if (!player) return;
         if (trackIdOrIndex === undefined || trackIdOrIndex === -1 || trackIdOrIndex === "-1") {
           try {
@@ -486,11 +823,25 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           } catch {}
         }
       },
-      [player]
+      [player, isNativeHlsSupported]
     );
 
     const applyVideoTrack = useCallback(
       (trackIdOrIndex: string | number | undefined) => {
+        // Web & webOS HLS.js
+        if (Platform.OS === "web" && !isNativeHlsSupported && hlsRef.current) {
+          const hls = hlsRef.current;
+          if (trackIdOrIndex === undefined || trackIdOrIndex === -1 || trackIdOrIndex === "-1") {
+            hls.currentLevel = -1; // Auto bitrate
+            return;
+          }
+          const numIdx = Number(trackIdOrIndex);
+          if (!isNaN(numIdx) && numIdx >= 0 && hls.levels && numIdx < hls.levels.length) {
+            hls.currentLevel = numIdx;
+            return;
+          }
+        }
+
         if (!player) return;
         const available = player.availableVideoTracks || [];
         videoTracksRef.current = available;
@@ -514,7 +865,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           }
         }
       },
-      [player, streamUrl, headers]
+      [player, streamUrl, headers, isNativeHlsSupported]
     );
 
     // Sync selected tracks when props change
@@ -561,6 +912,13 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
             });
           }
         } else if (status === "error") {
+          // If running on web, suppress native expo-video error since Hls.js manages playback
+          if (Platform.OS === "web") {
+            const msg = String(error?.message || "");
+            if ((isHls && !isNativeHlsSupported) || msg.includes("MEDIA_ELEMENT_ERROR") || msg.includes("Format error")) {
+              return;
+            }
+          }
           onBuffering?.(false);
           const aTracks = normalizeAudioTracks(player.availableAudioTracks || []);
           onError?.(error || new Error("Playback error"), aTracks);
@@ -709,27 +1067,47 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
       ref,
       () => ({
         play: () => {
-          try {
-            player.play();
-          } catch {}
+          if (Platform.OS === "web" && !isNativeHlsSupported && videoElRef.current) {
+            videoElRef.current.play().catch(() => {});
+          } else {
+            try {
+              player.play();
+            } catch {}
+          }
         },
         pause: () => {
-          try {
-            player.pause();
-          } catch {}
+          if (Platform.OS === "web" && !isNativeHlsSupported && videoElRef.current) {
+            videoElRef.current.pause();
+          } else {
+            try {
+              player.pause();
+            } catch {}
+          }
         },
         seekTo: (positionMs: number) => {
-          try {
-            player.currentTime = Math.max(0, positionMs / 1000);
-            if (!pausedRef.current && !player.playing) {
-              player.play();
+          const seconds = Math.max(0, positionMs / 1000);
+          if (Platform.OS === "web" && !isNativeHlsSupported && videoElRef.current) {
+            videoElRef.current.currentTime = seconds;
+            if (!pausedRef.current && videoElRef.current.paused) {
+              videoElRef.current.play().catch(() => {});
             }
-          } catch {}
+          } else {
+            try {
+              player.currentTime = seconds;
+              if (!pausedRef.current && !player.playing) {
+                player.play();
+              }
+            } catch {}
+          }
         },
         seekBy: (deltaSeconds: number) => {
-          try {
-            player.seekBy(deltaSeconds);
-          } catch {}
+          if (Platform.OS === "web" && !isNativeHlsSupported && videoElRef.current) {
+            videoElRef.current.currentTime += deltaSeconds;
+          } else {
+            try {
+              player.seekBy(deltaSeconds);
+            } catch {}
+          }
         },
         selectAudioTrack: (trackIdOrIndex) => {
           applyAudioTrack(trackIdOrIndex);
@@ -741,12 +1119,20 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           applyVideoTrack(trackIdOrIndex);
         },
         reloadSource: async () => {
-          if (!player) return;
           isFirstLoadRef.current = true;
+          const normalized = normalizeStreamUrlForWeb(streamUrl);
+          if (Platform.OS === "web" && isHls && !isNativeHlsSupported) {
+            if (hlsRef.current) {
+              hlsRef.current.loadSource(normalized);
+              hlsRef.current.startLoad();
+            }
+            return;
+          }
+          if (!player) return;
           try {
             await player.replaceAsync({
-              uri: streamUrl,
-              headers: headers,
+              uri: Platform.OS === "web" ? normalized : streamUrl,
+              headers: effectiveHeaders,
             });
             if (!paused && autoPlay) {
               player.play();
@@ -757,15 +1143,45 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         },
         getPlayer: () => player,
         isPlaying: () => {
+          if (Platform.OS === "web" && !isNativeHlsSupported && videoElRef.current) {
+            return !videoElRef.current.paused;
+          }
           try {
             return !!player?.playing;
           } catch {
             return false;
           }
         },
-        getAudioTracks: () => normalizeAudioTracks(player.availableAudioTracks || []),
+        getAudioTracks: () => {
+          if (Platform.OS === "web" && !isNativeHlsSupported) {
+            if (hlsRef.current?.audioTracks?.length) {
+              return normalizeHlsAudioTracks(hlsRef.current.audioTracks);
+            }
+            const domTracks = (videoElRef.current as any)?.audioTracks;
+            if (domTracks?.length) {
+              return normalizeDomAudioTracks(domTracks);
+            }
+          }
+          return normalizeAudioTracks(player.availableAudioTracks || []);
+        },
+        getSubtitleTracks: () => {
+          if (Platform.OS === "web" && !isNativeHlsSupported) {
+            if (hlsRef.current?.subtitleTracks?.length) {
+              return normalizeHlsSubtitleTracks(hlsRef.current.subtitleTracks);
+            }
+          }
+          return normalizeSubtitleTracks(player.availableSubtitleTracks || []);
+        },
+        getVideoTracks: () => {
+          if (Platform.OS === "web" && !isNativeHlsSupported) {
+            if (hlsRef.current?.levels?.length) {
+              return normalizeHlsLevels(hlsRef.current.levels);
+            }
+          }
+          return normalizeVideoTracks(player.availableVideoTracks || []);
+        },
       }),
-      [player, streamUrl, headers, paused, autoPlay, applyAudioTrack, applySubtitleTrack, applyVideoTrack]
+      [player, streamUrl, headers, paused, autoPlay, applyAudioTrack, applySubtitleTrack, applyVideoTrack, isNativeHlsSupported]
     );
 
     return (

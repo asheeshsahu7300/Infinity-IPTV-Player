@@ -1,5 +1,6 @@
 // api/xtreamApi.ts
 import axios from "axios";
+import { Platform } from "react-native";
 import { cacheManager, CACHE_TTL } from "./cacheManager";
 import type { MediaMeta, Season } from "../store/portalStore";
 import { cleanMetaText as cleanText, splitMetaList as splitList } from "./metaText";
@@ -530,9 +531,11 @@ export class XtreamApi {
   // ============================================================
   // STREAM URL HELPERS
   // ============================================================
-  builditvUrl(streamId: string | number, ext: string = "ts") {
+  builditvUrl(streamId: string | number, ext?: string) {
     const base = this.config.url.replace(/\/+$/, "");
-    return `${base}/live/${this.config.username}/${this.config.password}/${streamId}.${ext || "ts"}`;
+    const defaultExt = Platform.OS === "web" ? "m3u8" : "ts";
+    const extension = ext || defaultExt;
+    return `${base}/live/${this.config.username}/${this.config.password}/${streamId}.${extension}`;
   }
 
   buildMovieUrl(streamId: string | number, ext: string = "mp4") {

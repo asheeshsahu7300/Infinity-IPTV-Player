@@ -1015,8 +1015,7 @@ export default function SearchScreen() {
         <LinearGradient
           colors={["rgba(8, 8, 10, 0.62)", "rgba(8, 8, 10, 0.88)", "#08080a"]}
           locations={[0, 0.4, 0.95]}
-          style={StyleSheet.absoluteFillObject}
-          pointerEvents="none"
+          style={[StyleSheet.absoluteFillObject, { pointerEvents: "none" }]}
         />
 
         {/* ─── Clean Header Bar ─── */}

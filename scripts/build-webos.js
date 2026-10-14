@@ -55,15 +55,29 @@ try {
     }
   }
 
-  // Step 4: Inject webOS TV tags into index.html
-  console.log("🛠️  Step 4: Optimizing index.html for LG webOS TV 1080p canvas...");
-  const indexPath = path.join(WEBOS_OUTPUT_DIR, "index.html");
-  if (fs.existsSync(indexPath)) {
-    let indexHtml = fs.readFileSync(indexPath, "utf8");
+  // Step 4: Optimize HTML and JavaScript bundles for local file:// execution on webOS TV
+  console.log("🛠️  Step 4: Optimizing assets and index.html for LG webOS TV (file:// protocol & 1080p)...");
 
-    // Replace or ensure 1920x1080 viewport and TV styling
-    const webosHeadInjection = `
-    <!-- LG webOS TV Metadata & Viewport -->
+  // 4a. Process all HTML files in WEBOS_OUTPUT_DIR
+  const htmlFiles = fs.readdirSync(WEBOS_OUTPUT_DIR).filter(f => f.endsWith(".html"));
+  for (const htmlFile of htmlFiles) {
+    const filePath = path.join(WEBOS_OUTPUT_DIR, htmlFile);
+    let content = fs.readFileSync(filePath, "utf8");
+
+    // Replace root-relative paths with relative paths
+    content = content.replace(/src="\/_expo\//g, 'src="./_expo/');
+    content = content.replace(/href="\/favicon\.ico"/g, 'href="./favicon.ico"');
+    content = content.replace(/href="\/_expo\//g, 'href="./_expo/');
+    content = content.replace(/src="\/assets\//g, 'src="./assets/');
+    content = content.replace(/href="\/assets\//g, 'href="./assets/');
+
+    // Remove type="module" on inline hydration script for standard file:// execution
+    content = content.replace(/<script type="module">/g, '<script>');
+
+    if (htmlFile === "index.html") {
+      const webosHeadInjection = `
+    <!-- LG webOS TV Metadata, Base & Viewport -->
+    <base href="./" />
     <meta name="viewport" content="width=1920, height=1080, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="format-detection" content="telephone=no" />
     <style>
@@ -78,11 +92,83 @@ try {
         user-select: none !important;
       }
     </style>
-    `;
+    <script>
+      window.__WEBOS__ = true;
+      // Polyfill and normalize History API on file:// for webOS TV SPA
+      if (typeof window !== "undefined" && window.location.protocol === "file:") {
+        var _origPush = history.pushState;
+        var _origReplace = history.replaceState;
+        var _normalizeFileUrl = function(url) {
+          if (!url || typeof url !== "string") return window.location.pathname;
+          if (url.startsWith("#")) return window.location.pathname + url;
+          if (url.startsWith("/") && !url.includes(".html")) {
+            return window.location.pathname + "#" + url;
+          }
+          return url;
+        };
+        history.pushState = function(state, title, url) {
+          try {
+            return _origPush.call(this, state, title, _normalizeFileUrl(url));
+          } catch (e) {}
+        };
+        history.replaceState = function(state, title, url) {
+          try {
+            return _origReplace.call(this, state, title, _normalizeFileUrl(url));
+          } catch (e) {}
+        };
+      }
+    </script>
+      `;
+      content = content.replace("<head>", `<head>\n${webosHeadInjection}`);
+    }
 
-    indexHtml = indexHtml.replace("<head>", `<head>\n${webosHeadInjection}`);
-    fs.writeFileSync(indexPath, indexHtml, "utf8");
-    console.log("  ✓ Injected 1920x1080 viewport and TV overrides into index.html");
+    fs.writeFileSync(filePath, content, "utf8");
+    console.log(`  ✓ Patched relative paths in ${htmlFile}`);
+  }
+
+  // 4b. Patch JS bundles to support file:// protocol on webOS
+  const jsDir = path.join(WEBOS_OUTPUT_DIR, "_expo", "static", "js", "web");
+  if (fs.existsSync(jsDir)) {
+    const jsFiles = fs.readdirSync(jsDir).filter(f => f.endsWith(".js"));
+    for (const jsFile of jsFiles) {
+      const jsPath = path.join(jsDir, jsFile);
+      let jsContent = fs.readFileSync(jsPath, "utf8");
+
+      // Replace root-relative asset URLs with relative paths for icons & fonts
+      jsContent = jsContent.replace(/"\/assets\//g, '"./assets/');
+
+      // Ensure Expo Router boots with hash or root route ("/") instead of full filesystem path under file://
+      jsContent = jsContent.replace(
+        /new URL\(window\.location\.href\)/g,
+        "new URL(window.location.protocol==='file:'?('http://localhost'+(window.location.hash.startsWith('#/')?window.location.hash.slice(1):'/')):window.location.href)"
+      );
+
+      jsContent = jsContent.replace(
+        /window\.location\?\.href/g,
+        "(window.location.protocol==='file:'?('http://localhost'+(window.location.hash.startsWith('#/')?window.location.hash.slice(1):'/')):window.location?.href)"
+      );
+
+      // In Expo Router's getInitialURL, replace `return window.location.href;`
+      jsContent = jsContent.replace(
+        /return window\.location\.href;/g,
+        "return (window.location.protocol==='file:'?('http://localhost'+(window.location.hash.startsWith('#/')?window.location.hash.slice(1):'/')):window.location.href);"
+      );
+
+      // In Expo Router's useLinking (initial state resolver), normalize pathname to hash route or '/'
+      jsContent = jsContent.replace(
+        /r=t\?t\.pathname\+t\.search:void 0/g,
+        "r=t?(window.location.protocol==='file:'?(window.location.hash.startsWith('#/')?window.location.hash.slice(1):'/'):t.pathname+t.search):void 0"
+      );
+
+      // In Expo Router's state listener, normalize pathname to hash route or '/' on file://
+      jsContent = jsContent.replace(
+        /n\.pathname\+n\.search/g,
+        "(window.location.protocol==='file:'?(window.location.hash.startsWith('#/')?window.location.hash.slice(1):'/'):n.pathname+n.search)"
+      );
+
+      fs.writeFileSync(jsPath, jsContent, "utf8");
+      console.log(`  ✓ Patched web bundle for file:// execution: ${jsFile}`);
+    }
   }
 
   // Step 5: Check for webOS CLI (ares-package)

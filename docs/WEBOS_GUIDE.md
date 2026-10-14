@@ -119,6 +119,7 @@ ares-launch --device my-tv com.infinity.iptvplayer
   "requiredPermissions": [
     "media",
     "network"
-  ]
+  ],
+  "requiredACG": []
 }
 ```

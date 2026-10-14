@@ -38,7 +38,7 @@ export const ChannelTunerReadout = React.memo(function ChannelTunerReadout({
   const pad = Math.max(0, width - entry.length);
 
   return (
-    <View style={S.readout} pointerEvents="none">
+    <View style={[S.readout, { pointerEvents: "none" }]}>
       <View style={S.readoutBox}>
         <Text style={S.readoutDigits}>
           {entry}

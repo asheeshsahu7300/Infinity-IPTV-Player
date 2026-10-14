@@ -8,12 +8,12 @@ import {
 import { WebSpatialNavigation } from '../tv/webSpatialNavigation';
 import { useIsFocusTrapped, InsideOverlayContext } from '../tv/FocusTrapContext';
 
-export interface TextInputCustomProps extends RNTextInputProps {
+export interface TextInputCustomProps extends Omit<RNTextInputProps, 'nextFocusUp' | 'nextFocusDown' | 'nextFocusLeft' | 'nextFocusRight'> {
   /** Optional next focus overrides for TV spatial navigation */
-  nextFocusUp?: number | string;
-  nextFocusDown?: number | string;
-  nextFocusLeft?: number | string;
-  nextFocusRight?: number | string;
+  nextFocusUp?: number | string | null;
+  nextFocusDown?: number | string | null;
+  nextFocusLeft?: number | string | null;
+  nextFocusRight?: number | string | null;
 }
 
 export const TextInput = forwardRef<RNTextInput, TextInputCustomProps>((props, ref) => {
@@ -54,10 +54,10 @@ export const TextInput = forwardRef<RNTextInput, TextInputCustomProps>((props, r
       return WebSpatialNavigation.register({
         id: inputId.current,
         element: domNode,
-        nextFocusUp,
-        nextFocusDown,
-        nextFocusLeft,
-        nextFocusRight,
+        nextFocusUp: nextFocusUp ?? undefined,
+        nextFocusDown: nextFocusDown ?? undefined,
+        nextFocusLeft: nextFocusLeft ?? undefined,
+        nextFocusRight: nextFocusRight ?? undefined,
         isInert,
       });
     }

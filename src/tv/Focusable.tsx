@@ -281,7 +281,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
       if (hasDirectionalTraps) {
         updateSelfTag();
       }
-    });
+    }, [hasDirectionalTraps, updateSelfTag]);
 
     const isInsideOverlay = Boolean(overlayController);
     const lastPressTimeRef = useRef(0);
@@ -456,8 +456,9 @@ export const Focusable = forwardRef<View, FocusableProps>(
         onHoverIn={
           Platform.OS === "web" && !isInert
             ? () => {
-                nativeRef.current?.focus?.();
-                handleFocus();
+                requestAnimationFrame(() => {
+                  nativeRef.current?.focus?.();
+                });
               }
             : undefined
         }

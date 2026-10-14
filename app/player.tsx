@@ -24,7 +24,7 @@ import { THEME, ps, pw, ph } from "../src/theme/tokens";
 import { Focusable, FocusGroup, Overlay, useDPad, DPAD_PRIORITY, useStbKeys, STB_PRIORITY } from "../src/tv";
 import NetInfo from "@react-native-community/netinfo";
 import { epgService } from "../src/services/epgService";
-import { buildImageUrl, portalApi, streamHeaders, getLastMeasuredEdgeRtt } from "../src/services/portalApi";
+import { buildImageUrl, isValidImageUrl, portalApi, streamHeaders, getLastMeasuredEdgeRtt } from "../src/services/portalApi";
 import { getLastSpeedTestResult } from "../src/services/speedTest";
 import { parentalControl } from "../src/services/parentalControl";
 import { stbEnvironment, BufferTuning, applySameHostStreamProxy, isPlayableStreamUrl } from "../src/services/stbEnvironment";
@@ -413,15 +413,14 @@ const AnimatedScrubber = React.memo(
     useEffect(() => {
       Animated.spring(scale, {
         toValue: focused ? 1.35 : 1,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
         friction: 7,
         tension: 60,
       }).start();
     }, [focused, scale]);
     return (
       <Animated.View
-        pointerEvents="none"
-        style={[S.scrubber, { left: `${progressPercent}%`, transform: [{ scale }] }]}
+        style={[S.scrubber, { left: `${progressPercent}%`, transform: [{ scale }], pointerEvents: "none" }]}
       />
     );
   }
@@ -434,8 +433,8 @@ const ShimmerBar = React.memo(() => {
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(anim, { toValue: 1, duration: 1100, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0, duration: 0, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1, duration: 1100, useNativeDriver: Platform.OS !== "web" }),
+        Animated.timing(anim, { toValue: 0, duration: 0, useNativeDriver: Platform.OS !== "web" }),
       ])
     );
     loop.start();
@@ -446,7 +445,7 @@ const ShimmerBar = React.memo(() => {
     outputRange: [-SCREEN_WIDTH, SCREEN_WIDTH],
   });
   return (
-    <View style={S.shimmerContainer} pointerEvents="none">
+    <View style={[S.shimmerContainer, { pointerEvents: "none" }]}>
       <Animated.View style={[S.shimmerBar, { transform: [{ translateX }] }]} />
     </View>
   );
@@ -668,7 +667,7 @@ export default function PlayerScreen() {
         id: params.contentId || "live_stream",
         name: params.title || "Live Channel",
         streamUrl: params.url || "",
-        logo: params.logo || undefined,
+        logo: isValidImageUrl(params.logo) ? params.logo : undefined,
       } as Channel;
     }
     return null;
@@ -700,6 +699,47 @@ export default function PlayerScreen() {
     matches4KKeywords(params.cmd) ||
     matches4KKeywords(params.url) ||
     matches4KKeywords(streamUrl);
+
+  // Language detected from stream/item title or queue metadata (e.g. "(English)(4K)" -> "English")
+  const contextAudioLanguage = useMemo(() => {
+    const rawTitle = params.title || (liveChannel ? liveChannel.name : "") || (queueItem ? queueItem.title : "") || "";
+    const match = rawTitle.match(/\b(English|Hindi|Spanish|French|German|Italian|Russian|Portuguese|Tamil|Telugu|Korean|Japanese|Chinese|Arabic|Turkish|Polish|Dutch)\b/i);
+    if (match) {
+      return match[1];
+    }
+    const qLang = queueItem?.audioLanguage || playbackQueue.item?.audioLanguage;
+    if (qLang && qLang.toLowerCase() !== "und") {
+      return qLang;
+    }
+    return undefined;
+  }, [params.title, liveChannel, queueItem]);
+
+  const effectiveAudioTracks = useMemo(() => {
+    if (audioTracks && audioTracks.length > 0) {
+      return audioTracks;
+    }
+    const label = contextAudioLanguage ? `${contextAudioLanguage} (Default)` : "Default Audio";
+    return [
+      {
+        id: "default",
+        index: 0,
+        title: label,
+        name: label,
+        subtitle: "Active audio track",
+        language: contextAudioLanguage ? contextAudioLanguage.slice(0, 2).toUpperCase() : undefined,
+        isSupported: true,
+      },
+    ];
+  }, [audioTracks, contextAudioLanguage]);
+
+  useEffect(() => {
+    if (showAudioModal) {
+      const current = playerRef.current?.getAudioTracks?.();
+      if (current && current.length > 0) {
+        setAudioTracks(current);
+      }
+    }
+  }, [showAudioModal]);
 
   const [networkQuality, setNetworkQuality] = useState<NetworkQuality>("unknown");
   const networkQualityRef = useRef<NetworkQuality>("unknown");
@@ -753,7 +793,8 @@ export default function PlayerScreen() {
   const vodPoster = useMemo(() => {
     if (!rawPoster) return "";
     const base = (activePortal?.config?.url || "").replace(/\/$/, "");
-    return buildImageUrl(base, rawPoster);
+    const built = buildImageUrl(base, rawPoster);
+    return isValidImageUrl(built) ? built : "";
   }, [rawPoster, activePortal]);
   const vodTitle = queueItem?.title || params.title || "Playing";
   const vodSubtitle = queueItem?.subtitle || (!isLive ? (queueItem?.kind === "episode" ? "Episode" : "Movie") : undefined);
@@ -1674,13 +1715,13 @@ export default function PlayerScreen() {
         Animated.spring(doubleTapAnimScale, {
           toValue: 1,
           friction: 6,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(doubleTapAnimOpacity, {
           toValue: 0,
           delay: 450,
           duration: 350,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ]).start(() => {
         setDoubleTapFeedback(null);
@@ -3019,7 +3060,11 @@ export default function PlayerScreen() {
               errStr.includes("SocketTimeoutException") ||
               errStr.includes("HttpDataSource") ||
               errStr.includes("IOException") ||
-              errStr.includes("BehindLiveWindowException");
+              errStr.includes("BehindLiveWindowException") ||
+              errStr.includes("401") ||
+              errStr.includes("403") ||
+              errStr.includes("authorization") ||
+              errStr.includes("Unauthorized");
 
             const now = Date.now();
             if (now - lastErrorTimeRef.current < 1000) return;
@@ -3049,8 +3094,7 @@ export default function PlayerScreen() {
       {/* Gesture / Tap handler layer (Single-tap toggles controls, Double-tap left/right skips ±10s) */}
       {!showQueueList && !showZapList && !upNext && !pinTarget && !showVideoModal && !showAudioModal && !showSubtitleModal && (
         <View
-          style={StyleSheet.absoluteFill}
-          pointerEvents="box-none"
+          style={[StyleSheet.absoluteFill, { pointerEvents: "box-none" }]}
         >
           <View
             style={StyleSheet.absoluteFill}
@@ -3062,7 +3106,7 @@ export default function PlayerScreen() {
 
       {/* ── Network lost overlay ─────────────────────────────────────────── */}
       {isNetworkLost && (
-        <View style={S.loadingOverlay} pointerEvents="none">
+        <View style={[S.loadingOverlay, { pointerEvents: "none" }]}>
           <Wifi size={52} color="rgba(255,255,255,0.45)" />
           <Text style={S.loadingText}>No network connection</Text>
           <Text style={[S.loadingText, { fontSize: ps(0.85), opacity: 0.5, marginTop: 2 }]}>
@@ -3095,8 +3139,8 @@ export default function PlayerScreen() {
 
       {/* ── Initial loading state for VOD & Series ────────────────────────── */}
       {isVodLoading && (
-        <View style={S.vodLoadingOverlay} pointerEvents="none">
-          {vodPoster ? (
+        <View style={[S.vodLoadingOverlay, { pointerEvents: "none" }]}>
+          {isValidImageUrl(vodPoster) ? (
             <Image
               source={{ uri: vodPoster }}
               style={StyleSheet.absoluteFillObject}
@@ -3107,7 +3151,7 @@ export default function PlayerScreen() {
           <View style={S.vodLoadingBackdropDim} />
 
           <View style={S.vodLoadingCard}>
-            {vodPoster ? (
+            {isValidImageUrl(vodPoster) ? (
               <View style={S.vodPosterWrapper}>
                 <Image
                   source={{ uri: vodPoster }}
@@ -3170,7 +3214,7 @@ export default function PlayerScreen() {
 
       {/* ── Mid-stream buffering indicator (compact center pill) ─────────── */}
       {!isLive && hasStartedPlaying && (isBuffering || isRetrying) && !isShowingHardFailure && !isNetworkLost && (
-        <View style={S.midstreamBufferingOverlay} pointerEvents="none">
+        <View style={[S.midstreamBufferingOverlay, { pointerEvents: "none" }]}>
           <View style={S.midstreamBufferingPill}>
             <ActivityIndicator size="small" color="#FFFFFF" />
             <Text style={S.midstreamBufferingText}>
@@ -3186,8 +3230,8 @@ export default function PlayerScreen() {
           style={[
             S.seekIndicatorOverlay,
             showControls && { top: "24%" },
+            { pointerEvents: "none" },
           ]}
-          pointerEvents="none"
         >
           <View style={S.seekIndicatorBox}>
             <View style={S.seekIconBadge}>
@@ -3216,8 +3260,8 @@ export default function PlayerScreen() {
           style={[
             S.doubleTapOverlay,
             doubleTapFeedback.side === "left" ? S.doubleTapLeft : S.doubleTapRight,
+            { pointerEvents: "none" },
           ]}
-          pointerEvents="none"
         >
           <Animated.View
             style={[
@@ -3248,8 +3292,7 @@ export default function PlayerScreen() {
       {/* ── Controls overlay ─────────────────────────────────────────────── */}
       {showControls && !upNext && (
         <FocusGroup
-          style={S.controlsOverlay}
-          pointerEvents="box-none"
+          style={[S.controlsOverlay, { pointerEvents: "box-none" }]}
           autoFocus={true}
           destinations={playBtnNode ? [playBtnNode] : undefined}
         >
@@ -3299,7 +3342,7 @@ export default function PlayerScreen() {
             </View>
           )}
 
-          <LinearGradient colors={["transparent", "rgba(0,0,0,0.88)"]} style={S.bottomGradient} pointerEvents="none" />
+          <LinearGradient colors={["transparent", "rgba(0,0,0,0.88)"]} style={[S.bottomGradient, { pointerEvents: "none" }]} />
 
           {/* Bottom controls */}
           {/* `box-none`: the panel itself must not take touches, or it steals
@@ -3308,15 +3351,14 @@ export default function PlayerScreen() {
               not only handsets — a tablet was swallowing those taps for the
               same reason a phone did. */}
           <View
-            style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2) }]}
-            pointerEvents={isTouch ? "box-none" : "auto"}
+            style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2), pointerEvents: isTouch ? "box-none" : "auto" }]}
           >
             {/* The banner is the top half of this panel rather than a separate
                 island floating above it. It used to be pinned at a fixed
                 distance from the bottom of the screen, which left a band of
                 empty video between the two and made them read as unrelated. */}
             {bannerNode ? (
-              <View pointerEvents="none">{inlineBannerNode}</View>
+              <View style={{ pointerEvents: "none" }}>{inlineBannerNode}</View>
             ) : null}
 
             <View style={S.glassControls}>
@@ -3381,7 +3423,7 @@ export default function PlayerScreen() {
                             onLayout={(e) => { railWidthRef.current = e.nativeEvent.layout.width; }}
                             {...scrubResponder}
                           >
-                            <View pointerEvents="none" style={[S.progressRail, effFocused && S.progressRailFocused]}>
+                            <View style={[S.progressRail, effFocused && S.progressRailFocused, { pointerEvents: "none" }]}>
                               {isBuffering && <ShimmerBar />}
                               <View style={[S.progressFill, { width: `${progressPercent}%` }]} />
                             </View>
@@ -3502,7 +3544,14 @@ export default function PlayerScreen() {
                       )}
                     </Focusable>
                   )}
-                  <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowAudioModal(true); }} {...actionsRowFocusHandlers}>
+                  <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => {
+                    if (isLockedRef.current) return;
+                    const current = playerRef.current?.getAudioTracks?.();
+                    if (current && current.length > 0) {
+                      setAudioTracks(current);
+                    }
+                    setShowAudioModal(true);
+                  }} {...actionsRowFocusHandlers}>
                     {(focused: boolean) => (
                       <Music size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                     )}
@@ -3532,10 +3581,12 @@ export default function PlayerScreen() {
       />
       <TrackSelectionModal
         visible={showAudioModal} title="Audio Track" icon="musical-notes"
-        options={audioTracks} selected={selectedAudioTrack}
+        options={effectiveAudioTracks} selected={selectedAudioTrack ?? "default"}
         onSelect={(id: any) => {
           setSelectedAudioTrack(id);
-          playerRef.current?.selectAudioTrack(id);
+          if (id !== "default") {
+            playerRef.current?.selectAudioTrack(id);
+          }
           setShowAudioModal(false);
         }}
         onClose={() => setShowAudioModal(false)}
@@ -3556,7 +3607,7 @@ export default function PlayerScreen() {
           the top half of one panel — see bannerNode. This host only covers the
           other case: a banner on its own after a zap or an INFO press. */}
       {!showControls && bannerNode ? (
-        <View style={[S.bannerHost, { bottom: insets.bottom }]} pointerEvents="none">
+        <View style={[S.bannerHost, { bottom: insets.bottom, pointerEvents: "none" }]}>
           {bannerNode}
         </View>
       ) : null}
@@ -3682,7 +3733,9 @@ function TrackSelectionModal({
 
   const hasSelectedTrack = mediaTracks.some((track: any, idx: number) => {
     const id = typeof track === "object" ? (track.id ?? track.index ?? idx) : idx;
-    return selected !== undefined && (selected === id || String(selected) === String(id));
+    return selected !== undefined
+      ? (selected === id || String(selected) === String(id) || (id === "default" && selected === undefined))
+      : (idx === 0 && !isVideo && !isSubtitle);
   });
 
   const totalAvailable = mediaTracks.length + (isVideo ? 1 : 0);
@@ -3706,6 +3759,13 @@ function TrackSelectionModal({
           subtitle: w && h ? `${w} × ${h}` : rawTitle,
         };
       }
+    }
+
+    if (isObj && track.subtitle) {
+      return {
+        title: rawTitle || `Track ${index + 1}`,
+        subtitle: track.subtitle,
+      };
     }
 
     if (isObj && track.language) {
@@ -3786,7 +3846,9 @@ function TrackSelectionModal({
         ) : (
           mediaTracks.map((track: any, index: number) => {
             const id = typeof track === "object" ? (track.id ?? track.index ?? index) : index;
-            const isSelected = selected !== undefined && (selected === id || String(selected) === String(id));
+            const isSelected = selected !== undefined
+              ? (selected === id || String(selected) === String(id) || (id === "default" && selected === undefined))
+              : (index === 0 && !isVideo && !isSubtitle);
             const display = getTrackDisplay(track, index);
             const preferThisFocus = isVideo
               ? isSelected

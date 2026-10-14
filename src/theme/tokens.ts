@@ -3,16 +3,41 @@ import { Dimensions, Platform } from 'react-native';
 import { isPhone } from "../utils/phoneUtils";
 import { isTablet } from "../utils/tabletUtils";
 
+// Ensure webOS TV is recognized as TV
+if (typeof window !== "undefined") {
+  const isWebTV =
+    Boolean((window as any).PalmSystem) ||
+    Boolean((window as any).webOS) ||
+    Boolean((window as any).__WEBOS__) ||
+    (typeof navigator !== "undefined" && /Web0S|webOS/i.test(navigator.userAgent));
+  if (isWebTV) {
+    (Platform as any).isTV = true;
+  }
+}
+
 const winDims = Dimensions.get("window");
+
+// Robust fallback: On web/SSR/TV, Dimensions.get("window") can return { width: 0, height: 0 }.
+// Default to standard 1080p TV reference canvas (1920x1080) so design tokens are never 0.
+const rawW =
+  winDims.width > 0
+    ? winDims.width
+    : typeof window !== "undefined" && window.innerWidth > 0
+    ? window.innerWidth
+    : 1920;
+
+const rawH =
+  winDims.height > 0
+    ? winDims.height
+    : typeof window !== "undefined" && window.innerHeight > 0
+    ? window.innerHeight
+    : 1080;
 
 // Baseline reference dimensions:
 // Design system tokens (pw, ph, ps) are calibrated for a landscape reference canvas (TV / tablet).
-// When the app is launched in portrait on a tablet or phone, winDims.width is the short edge and
-// winDims.height is the long edge.
-// Normalizing W to the long edge and H to the short edge ensures that launching in portrait produces
-// the exact same design-token metrics as launching in landscape, preventing layout distortion.
-const W = Math.max(winDims.width, winDims.height);
-const H = Math.min(winDims.width, winDims.height);
+// Normalizing W to the long edge and H to the short edge ensures consistent metrics.
+const W = Math.max(rawW, rawH);
+const H = Math.min(rawW, rawH);
 
 const IS_TV =
   Platform.isTV ||
@@ -115,14 +140,14 @@ export const FONT_FAMILY = "Inter";
 export const pw = (pct: number) => (W * pct) / 100;
 export const ph = (pct: number) => (H * pct) / 100;
 export const ps = (pct: number) =>
-  ((pw(pct) + ph(pct)) / 2) * TV_SCALE * PHONE_PS_NORM * TABLET_PS_NORM;
+  Math.max(1, ((pw(pct) + ph(pct)) / 2) * TV_SCALE * PHONE_PS_NORM * TABLET_PS_NORM);
 /**
  * `ps` without the TV bump. Screens that predate the TV_SCALE tier are sized
  * against this — import it rather than redeclaring a local `ps`, otherwise the
  * same call renders at two different sizes depending on the file.
  */
 export const psRaw = (pct: number) =>
-  ((pw(pct) + ph(pct)) / 2) * PHONE_PSRAW_NORM * TABLET_PS_NORM;
+  Math.max(1, ((pw(pct) + ph(pct)) / 2) * PHONE_PSRAW_NORM * TABLET_PS_NORM);
 
 /**
  * The shared artwork-card frame: radius, hairline and wash.

@@ -208,7 +208,7 @@ export function Overlay({
       Animated.timing(opacity, {
         toValue: 1,
         duration,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
       }).start();
       return;
     }
@@ -221,7 +221,7 @@ export function Overlay({
     Animated.timing(opacity, {
       toValue: 0,
       duration,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }).start(() => {
       setRender(false);
       previousFocusedRef.current = null;
@@ -243,7 +243,7 @@ export function Overlay({
           }
         : null)}
     >
-      <Animated.View style={[styles.backdrop, style, { opacity }]} pointerEvents={visible ? "auto" : "none"}>
+      <Animated.View style={[styles.backdrop, style, { opacity, pointerEvents: visible ? "auto" : "none" }]}>
         <Pressable
           style={StyleSheet.absoluteFillObject}
           focusable={false}

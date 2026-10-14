@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, StyleSheet, Animated } from 'react-native';
+import { View, StyleSheet, Animated, Platform } from 'react-native';
 import { LinearGradient } from "expo-linear-gradient";
 import { Focusable, Overlay } from "../tv";
 import { THEME, pw, ph, ps } from "../theme/tokens";
@@ -44,7 +44,7 @@ function ModalButton({
       toValue: 1.06,
       friction: 6,
       tension: 50,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }).start();
   };
 
@@ -54,7 +54,7 @@ function ModalButton({
       toValue: 1,
       friction: 6,
       tension: 50,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }).start();
   };
 
