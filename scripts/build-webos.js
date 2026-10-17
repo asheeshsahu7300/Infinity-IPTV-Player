@@ -34,8 +34,8 @@ try {
   // Copy dist files into WEBOS_OUTPUT_DIR
   fs.cpSync(DIST_DIR, WEBOS_OUTPUT_DIR, { recursive: true });
 
-  // Step 3: Copy webOS manifest and assets
-  console.log("📋 Step 3: Copying appinfo.json and webOS icons...");
+  // Step 3: Copy webOS manifest, assets, and official webOSTV libraries
+  console.log("📋 Step 3: Copying appinfo.json, webOS icons, and webOSTV.js libraries...");
   const webosAssets = [
     "appinfo.json",
     "icon.png",
@@ -52,6 +52,18 @@ try {
       console.log(`  ✓ Copied ${asset}`);
     } else {
       console.warn(`  ⚠️ Asset ${asset} not found in ${WEBOS_SRC_DIR}`);
+    }
+  }
+
+  // Copy official webOSTV.js libraries from node_modules
+  const webosLibDir = path.resolve(ROOT_DIR, "node_modules", "webostvjs");
+  const webosLibFiles = ["webOSTV.js", "webOSTV-dev.js"];
+  for (const libFile of webosLibFiles) {
+    const src = path.join(webosLibDir, libFile);
+    const dest = path.join(WEBOS_OUTPUT_DIR, libFile);
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, dest);
+      console.log(`  ✓ Bundled official webOS library: ${libFile}`);
     }
   }
 
@@ -74,16 +86,17 @@ try {
     // Remove type="module" on inline hydration script for standard file:// execution
     content = content.replace(/<script type="module">/g, '<script>');
 
-    if (htmlFile === "index.html") {
-      const webosHeadInjection = `
-    <!-- LG webOS TV Metadata, Base & Viewport -->
-    <base href="./" />
+    const webosHeadInjection = `
+    <!-- Official LG webOS TV Libraries -->
+    <script type="text/javascript" src="./webOSTV.js"></script>
+    <script type="text/javascript" src="./webOSTV-dev.js"></script>
+    <!-- LG webOS TV Metadata & Viewport -->
     <meta name="viewport" content="width=1920, height=1080, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="format-detection" content="telephone=no" />
     <style>
       html, body, #root {
-        width: 1920px !important;
-        height: 1080px !important;
+        width: 100% !important;
+        height: 100% !important;
         margin: 0 !important;
         padding: 0 !important;
         overflow: hidden !important;
@@ -96,34 +109,129 @@ try {
       window.__WEBOS__ = true;
       // Polyfill and normalize History API on file:// for webOS TV SPA
       if (typeof window !== "undefined" && window.location.protocol === "file:") {
-        var _origPush = history.pushState;
-        var _origReplace = history.replaceState;
-        var _normalizeFileUrl = function(url) {
-          if (!url || typeof url !== "string") return window.location.pathname;
-          if (url.startsWith("#")) return window.location.pathname + url;
-          if (url.startsWith("/") && !url.includes(".html")) {
-            return window.location.pathname + "#" + url;
+        var _origPush = history.pushState ? history.pushState.bind(history) : null;
+        var _origReplace = history.replaceState ? history.replaceState.bind(history) : null;
+
+        var _toHashUrl = function(url) {
+          if (!url || typeof url !== "string") return window.location.hash || "#/";
+          if (url.startsWith("#")) return url;
+          // Strip filesystem path or .html references
+          if (url.includes(".html#")) {
+            return "#" + url.split(".html#")[1];
           }
-          return url;
+          if (url.includes(".html")) {
+            var afterHtml = url.split(".html")[1];
+            return afterHtml ? "#" + afterHtml : "#/";
+          }
+          if (url.startsWith("/")) {
+            return "#" + url;
+          }
+          return "#/" + url;
         };
+
         history.pushState = function(state, title, url) {
-          try {
-            return _origPush.call(this, state, title, _normalizeFileUrl(url));
-          } catch (e) {}
+          var targetHash = _toHashUrl(url);
+          var pushed = false;
+          if (_origPush) {
+            try {
+              _origPush(state, title, targetHash);
+              pushed = true;
+            } catch (e) {}
+          }
+          if (!pushed) {
+            try {
+              if (window.location.hash !== targetHash) {
+                window.location.hash = targetHash;
+              }
+            } catch (err) {}
+          }
         };
+
         history.replaceState = function(state, title, url) {
-          try {
-            return _origReplace.call(this, state, title, _normalizeFileUrl(url));
-          } catch (e) {}
+          var targetHash = _toHashUrl(url);
+          var replaced = false;
+          if (_origReplace) {
+            try {
+              _origReplace(state, title, targetHash);
+              replaced = true;
+            } catch (e) {}
+          }
+          if (!replaced) {
+            try {
+              if (window.location.hash !== targetHash) {
+                window.location.replace(targetHash);
+              }
+            } catch (err) {}
+          }
         };
+
+        // Intercept any root filesystem network calls (e.g. file:///D:/ or /) to prevent red errors in webOS
+        var _origFetch = window.fetch;
+        if (_origFetch) {
+          window.fetch = function(input, init) {
+            var urlStr = typeof input === "string" ? input : (input && input.url ? input.url : "");
+            if (urlStr === "/" || urlStr === "" || urlStr === "file:///D:/" || urlStr.startsWith("/D:/") || (urlStr.startsWith("file://") && !urlStr.includes("dist-webos"))) {
+              console.warn("[webOS Network Guard] Prevented local drive fetch:", urlStr);
+              return Promise.resolve(new Response("", { status: 200, statusText: "OK" }));
+            }
+            return _origFetch.apply(this, arguments);
+          };
+        }
+        var _origOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url) {
+          var urlStr = typeof url === "string" ? url : "";
+          if (urlStr === "/" || urlStr === "" || urlStr === "file:///D:/" || urlStr.startsWith("/D:/") || (urlStr.startsWith("file://") && !urlStr.includes("dist-webos"))) {
+            console.warn("[webOS Network Guard] Prevented local drive XHR:", urlStr);
+            return;
+          }
+          return _origOpen.apply(this, arguments);
+        };
+
+        var _origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
+        var _unsafeHeaders = {
+          "user-agent": 1,
+          "accept-encoding": 1,
+          "cookie": 1,
+          "cookie2": 1,
+          "connection": 1,
+          "content-length": 1,
+          "date": 1,
+          "expect": 1,
+          "host": 1,
+          "origin": 1,
+          "referer": 1,
+          "te": 1,
+          "upgrade": 1,
+          "via": 1
+        };
+        XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
+          if (header && _unsafeHeaders[String(header).toLowerCase()]) {
+            return;
+          }
+          return _origSetHeader.apply(this, arguments);
+        };
+
+        // Guard against any anchor click attempting to navigate to root filesystem (file://D:/...)
+        document.addEventListener("click", function(e) {
+          var el = e.target;
+          while (el && el.tagName !== "A") {
+            el = el.parentElement;
+          }
+          if (el && el.tagName === "A") {
+            var href = el.getAttribute("href");
+            if (href && (href.startsWith("/") || href.startsWith("./")) && !href.startsWith("#") && !href.includes(".html")) {
+              e.preventDefault();
+              window.location.hash = _toHashUrl(href);
+            }
+          }
+        }, true);
       }
     </script>
       `;
-      content = content.replace("<head>", `<head>\n${webosHeadInjection}`);
-    }
+    content = content.replace("<head>", `<head>\n${webosHeadInjection}`);
 
     fs.writeFileSync(filePath, content, "utf8");
-    console.log(`  ✓ Patched relative paths in ${htmlFile}`);
+    console.log(`  ✓ Patched relative paths and injected webOS runtime in ${htmlFile}`);
   }
 
   // 4b. Patch JS bundles to support file:// protocol on webOS
@@ -154,17 +262,40 @@ try {
         "return (window.location.protocol==='file:'?('http://localhost'+(window.location.hash.startsWith('#/')?window.location.hash.slice(1):'/')):window.location.href);"
       );
 
+      // In Expo Router's getInitialURLWithTimeout, replace bare window.location.href
+      jsContent = jsContent.replace(
+        /return'undefined'==typeof window\?'':window\.location\.href/g,
+        "return'undefined'==typeof window?'':(window.location.protocol==='file:'?('http://localhost'+(window.location.hash.startsWith('#/')?window.location.hash.slice(1):'/')):window.location.href)"
+      );
+
       // In Expo Router's useLinking (initial state resolver), normalize pathname to hash route or '/'
       jsContent = jsContent.replace(
         /r=t\?t\.pathname\+t\.search:void 0/g,
         "r=t?(window.location.protocol==='file:'?(window.location.hash.startsWith('#/')?window.location.hash.slice(1):'/'):t.pathname+t.search):void 0"
       );
 
-      // In Expo Router's state listener, normalize pathname to hash route or '/' on file://
+      // In Expo Router's state listener, replace the entire path construction (including n.hash) on file://
+      jsContent = jsContent.replace(
+        /n\.pathname\+n\.search\+n\.hash/g,
+        "(window.location.protocol==='file:'?(window.location.hash.startsWith('#/')?window.location.hash.slice(1):'/'):(n.pathname+n.search+n.hash))"
+      );
+
       jsContent = jsContent.replace(
         /n\.pathname\+n\.search/g,
         "(window.location.protocol==='file:'?(window.location.hash.startsWith('#/')?window.location.hash.slice(1):'/'):n.pathname+n.search)"
       );
+
+      // In Expo Router's createMemoryHistory, ensure push and replace pass hash on file://
+      jsContent = jsContent.replace(
+        /window\.history\.pushState\(\{id:([a-zA-Z0-9_]+)\},'',([a-zA-Z0-9_]+)\)/g,
+        "window.history.pushState({id:$1},'',(window.location.protocol==='file:'?('#'+($2.startsWith('/')?$2:'/'+$2)):$2))"
+      );
+
+      jsContent = jsContent.replace(
+        /window\.history\.replaceState\(\{id:([a-zA-Z0-9_]+)\},'',([a-zA-Z0-9_]+)\)/g,
+        "window.history.replaceState({id:$1},'',(window.location.protocol==='file:'?('#'+($2.startsWith('/')?$2:'/'+$2)):$2))"
+      );
+
 
       fs.writeFileSync(jsPath, jsContent, "utf8");
       console.log(`  ✓ Patched web bundle for file:// execution: ${jsFile}`);

@@ -275,15 +275,33 @@ class StbEnvironmentImpl {
     const { width, height, scale } = Dimensions.get("screen");
     const expo = Constants.expoConfig;
 
+    const isWebOSTV = Platform.OS === "web" && (() => {
+      try {
+        const { isWebOS } = require("../utils/webosUtils");
+        return isWebOS();
+      } catch {
+        return false;
+      }
+    })();
+
+    let platformLabel = `${Platform.OS}${Platform.Version ? ` ${Platform.Version}` : ""}`;
+    if (isWebOSTV) {
+      try {
+        const { getWebOSDeviceInfo } = require("../utils/webosUtils");
+        const info = getWebOSDeviceInfo();
+        platformLabel = info.version ? `LG webOS ${info.version}` : "LG webOS TV";
+      } catch {}
+    }
+
     return {
       model: describeModel(),
-      platform: `${Platform.OS}${Platform.Version ? ` ${Platform.Version}` : ""}`,
+      platform: platformLabel,
       appName: expo?.name ?? "IPTV Hub",
       appVersion: expo?.version ?? "1.0.0",
       // The native build number is what distinguishes two installs carrying the
       // same JS version, which is the thing that matters when diagnosing.
       buildNumber: String(
-        (expo as any)?.android?.versionCode ?? (expo as any)?.ios?.buildNumber ?? "—"
+        (expo as any)?.android?.versionCode ?? (expo as any)?.ios?.buildNumber ?? "1.0.0"
       ),
       resolution: `${Math.round(width * scale)} × ${Math.round(height * scale)}`,
       layoutSize: `${Math.round(width)} × ${Math.round(height)} dp`,
@@ -318,6 +336,15 @@ export interface SystemInfo {
 }
 
 function describeModel(): string {
+  if (Platform.OS === "web") {
+    try {
+      const { isWebOS, getWebOSDeviceInfo } = require("../utils/webosUtils");
+      if (isWebOS()) {
+        const info = getWebOSDeviceInfo();
+        return info.modelName ? `LG webOS TV (${info.modelName})` : "LG webOS Smart TV";
+      }
+    } catch {}
+  }
   const device = (Constants as any)?.deviceName;
   if (device) return String(device);
   if (Platform.isTV) return "Android TV";
@@ -360,6 +387,7 @@ export function isPlayableStreamUrl(url: string | null | undefined): boolean {
   const trimmed = url.trim();
   if (!/^(https?|rtsp|mms):\/\//i.test(trimmed)) return false;
   if (
+    trimmed.startsWith("file:") ||
     trimmed.includes("localhost") ||
     trimmed.includes("127.0.0.1") ||
     /^ffmpeg\s+/i.test(trimmed) ||

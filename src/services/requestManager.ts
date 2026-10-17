@@ -196,12 +196,11 @@ class RequestManager {
   }
 
   clearByKey(keyPrefix: string): void {
-    // Clear dedupe cache for a portal
-    for (const key of this.pendingRequests.keys()) {
+    this.pendingRequests.forEach((_, key) => {
       if (key.includes(keyPrefix)) {
         this.pendingRequests.delete(key);
       }
-    }
+    });
   }
 
   getStats() {

@@ -122,30 +122,20 @@ class StreamManagerClass {
         try {
             // 1. Ensure we have network
             if (!NetworkResilience.connected) {
-                await new Promise((resolve) => setTimeout(resolve, 2000));
-
+                await new Promise((resolve) => setTimeout(resolve, 1500));
                 if (!NetworkResilience.connected) {
-                    return this.retryStream(content, portal, type, retryCount + 1, episodeNum);
+                    return { url: "", success: false, error: "Network disconnected" };
                 }
             }
 
-            // 2. Use latest portal from store (portalApi handles token refresh on retry)
+            // 2. Use latest portal from store
             const freshPortal = usePortalStore.getState().activePortal ?? portal;
 
-            // 3. Generate completely NEW stream URL
+            // 3. Generate completely fresh stream URL
             const result = await this.getStreamUrl(content, freshPortal, type, episodeNum);
-
-            if (result.success) {
-                return result;
-            }
-
-            // 4. Recursive retry with incremented count
-            await new Promise((resolve) => setTimeout(resolve, 1000 * (retryCount + 1)));
-            return this.retryStream(content, freshPortal, type, retryCount + 1, episodeNum);
+            return result;
         } catch (error: any) {
-            // Recursive retry
-            await new Promise((resolve) => setTimeout(resolve, 1000 * (retryCount + 1)));
-            return this.retryStream(content, portal, type, retryCount + 1, episodeNum);
+            return { url: "", success: false, error: error?.message || "Stream retry failed" };
         }
     }
 

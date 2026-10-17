@@ -40,28 +40,29 @@ const S = StyleSheet.create({
     overflow: "hidden",
   },
   listContent: {
-    paddingHorizontal: pw(1.2),
-    paddingTop: 2,
-    paddingBottom: 2,
+    paddingHorizontal: 12,
+    paddingTop: 4,
+    paddingBottom: 4,
   },
   itemInner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     width: "100%",
+    paddingHorizontal: 8,
   },
   itemText: {
     color: "#FFFFFF",
-    fontSize: ps(1.1),
+    fontSize: ps(1.08),
     fontWeight: "800",
     letterSpacing: 0.2,
     textAlign: "center",
   },
   itemTextActive: {
     color: "#111111",
-    fontSize: ps(1.15),
+    fontSize: ps(1.12),
     fontWeight: "900",
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
 });
 
@@ -76,47 +77,28 @@ function SidebarPill({
   isActive: boolean;
   pillHeight: number;
 }) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    Animated.spring(scaleAnim, {
-      toValue: focused ? 1.05 : 1,
-      friction: 7,
-      tension: 100,
-      useNativeDriver: Platform.OS !== "web",
-    }).start();
-  }, [focused, scaleAnim]);
-
   return (
-    <Animated.View
+    <View
       style={[
         {
           height: pillHeight,
-          // The 90/100 split is a focus affordance: the focused pill
-          // grows out to meet the edge while its neighbours sit
-          // inset. With no remote there is no focus to signal, so
-          // the split degrades into a ragged column with the active
-          // pill merely wider than the rest -- every pill takes the
-          // full width there. The active one is still distinguished,
-          // by its background, not its size.
-          width: !remoteFocusEnabled || focused || isActive ? "100%" : "90%",
+          width: "100%",
           alignSelf: "center",
-          borderRadius: 18,
+          borderRadius: 16,
           justifyContent: "center",
           alignItems: "center",
-          paddingHorizontal: pw(1.2),
+          paddingHorizontal: 8,
           overflow: "hidden",
-          borderWidth: 0,
+          borderWidth: 1.5,
           borderColor: "transparent",
           backgroundColor: "#17181c",
-          transform: [{ scale: scaleAnim }],
         },
         isActive && !focused && {
-          backgroundColor: "#F5F5F5",
-          borderColor: "transparent",
+          backgroundColor: "#262832",
+          borderColor: "rgba(255, 255, 255, 0.25)",
         },
         focused && {
-          borderColor: "transparent",
+          borderColor: "#FFFFFF",
           backgroundColor: "#F5F5F5",
           elevation: 8,
         },
@@ -126,8 +108,10 @@ function SidebarPill({
         <Text
           style={[
             S.itemText,
-            focused || isActive
-              ? { color: THEME.colors.selectedText, fontWeight: "900", fontSize: ps(1.15) }
+            focused
+              ? { color: THEME.colors.selectedText, fontWeight: "900", fontSize: ps(1.12) }
+              : isActive
+              ? { color: "#FFFFFF", fontWeight: "800", fontSize: ps(1.08) }
               : { color: THEME.colors.text },
           ]}
           numberOfLines={1}
@@ -135,7 +119,7 @@ function SidebarPill({
           {item.name && !/^\d+$/.test(String(item.name).trim()) ? item.name : `Category ${item.name || item.id}`}
         </Text>
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -256,13 +240,8 @@ export default function CategorySidebar({
    * 853dp tablet (56) fall inside the range untouched; only panels tall enough
    * to inflate the row are affected.
    */
-  const MIN_ITEM_HEIGHT = 56;
-  const MAX_ITEM_HEIGHT = 88;
-  const itemTotalHeight = Math.min(
-    MAX_ITEM_HEIGHT,
-    Math.max(MIN_ITEM_HEIGHT, Math.floor(totalHeight / 8.3))
-  );
-  const itemGap = Math.max(14, Math.floor(itemTotalHeight * 0.12));
+  const itemTotalHeight = Math.floor(totalHeight / 10);
+  const itemGap = Math.max(6, Math.floor(itemTotalHeight * 0.1));
   const pillHeight = itemTotalHeight - itemGap;
 
   const countRef = useRef(categories.length);

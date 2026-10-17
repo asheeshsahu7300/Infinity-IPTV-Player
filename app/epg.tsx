@@ -35,6 +35,7 @@ import { usePortalStore, Channel, EPGProgram, Category } from "../src/store/port
 import CategoryPills from "../src/components/CategoryPills";
 import { bareCategoryId, filterByCategory } from "../src/hooks/useCategoryContent";
 import { epgService, type EpgLoadPhase } from "../src/services/epgService";
+import { isValidImageUrl } from "../src/services/portalApi";
 import { parentalControl } from "../src/services/parentalControl";
 import { hiddenCategories } from "../src/services/hiddenCategories";
 import { stbEnvironment } from "../src/services/stbEnvironment";
@@ -211,7 +212,7 @@ const ChannelRow = React.memo(
               {locked ? (
                 <Lock size={isTouch ? metrics.icon : ps(1.4)}
                   color={focused ? "#000000" : isSelected ? ACTIVE_ROW_INK : "rgba(255,255,255,0.6)"} />
-              ) : channel.logo ? (
+              ) : isValidImageUrl(channel.logo) ? (
                 <Image source={{ uri: channel.logo }} style={S.channelLogoImage} contentFit="contain" cachePolicy="memory-disk" />
               ) : (
                 <Tv size={isTouch ? metrics.icon : ps(1.4)}

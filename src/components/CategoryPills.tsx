@@ -5,6 +5,7 @@ import { Category } from '../store/portalStore';
 import { THEME } from '../theme/tokens';
 import { isPhone } from '../utils/phoneUtils';
 import { Text } from './Text';
+import { isValidImageUrl } from '../services/portalApi';
 
 
 interface CategoryPillsProps {
@@ -70,7 +71,7 @@ const PillItem = React.memo(({ item, isActive, isFocused, onSelect, onFocus, onB
         onFocus={handleFocus}
         onBlur={onBlur}
       >
-        {item.logo ? (
+        {isValidImageUrl(item.logo) ? (
           <Image
             source={{ uri: item.logo }}
             style={styles.pillLogo}

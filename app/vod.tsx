@@ -8,7 +8,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 
 import { usePortalStore, VODItem, Category, MediaMeta } from "../src/store/portalStore";
-import { portalApi, buildImageUrl } from "../src/services/portalApi";
+import { portalApi, buildImageUrl, isValidImageUrl } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { cacheManager } from "../src/services/cacheManager";
@@ -51,8 +51,8 @@ const S = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: pw(3),
-    height: 56,
+    paddingHorizontal: 0,
+    height: 64,
   },
   headerCenterTitleWrapper: {
     position: "absolute",
@@ -73,13 +73,13 @@ const S = StyleSheet.create({
     alignItems: "center",
   },
   searchBtnWrapper: {
-    borderRadius: 24,
+    borderRadius: 26,
     overflow: "hidden",
   },
   searchCircleBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#17181c",
@@ -88,73 +88,91 @@ const S = StyleSheet.create({
     overflow: "hidden",
   },
   searchCircleBtnFocused: {
-    borderRadius: 22,
+    borderRadius: 26,
     backgroundColor: "#F5F5F5",
     borderColor: "transparent",
     borderWidth: 0,
-    transform: [{ scale: 1.12 }],
+    transform: [{ scale: 1.08 }],
     overflow: "hidden",
   },
   searchOpenBar: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#17181c",
-    borderRadius: 22,
-    paddingHorizontal: pw(1.4),
-    height: 44,
-    width: isPhone ? PHONE_SEARCH_BAR_WIDTH : pw(36),
-    borderWidth: 0,
-    borderColor: "transparent",
+    borderRadius: 27,
+    paddingLeft: 16,
+    paddingRight: 10,
+    height: 54,
+    width: isPhone ? PHONE_SEARCH_BAR_WIDTH : 380,
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    overflow: "hidden",
   },
   searchInput: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     color: "#FFFFFF",
-    fontSize: ps(1.15),
+    fontSize: ps(1.2),
     fontWeight: "600",
     paddingVertical: 0,
+    paddingHorizontal: 8,
+    height: "100%",
     textAlignVertical: "center",
   },
-  body: { flex: 1, flexDirection: "row", marginTop: 10 },
+  closeBtnWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  closeBtnCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+  },
+  closeBtnCircleFocused: {
+    backgroundColor: "#F5F5F5",
+    transform: [{ scale: 1.05 }],
+  },
+  body: { flex: 1, flexDirection: "row", marginTop: 4 },
   portraitPillsWrapper: {
     paddingVertical: 4,
     marginBottom: 6,
   },
   /** Pills above the grid instead of a sidebar beside it. */
   gridArea: { flex: 1, overflow: "hidden" },
-  list: { paddingHorizontal: pw(1.2), paddingTop: 8, paddingBottom: 8 },
+  list: { paddingHorizontal: 10, paddingTop: 4, paddingBottom: 24 },
   movieRow: { flexDirection: "row", overflow: "visible" },
   movieItemWrapper: {
-    paddingHorizontal: 5,
-    paddingTop: 4,
-    paddingBottom: 4,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 8,
     overflow: "visible",
   },
   movieCardContainer: {
-    // The tile, capped and centred on a tablet.
-    //
-    // The cap sits here rather than on `posterFrame` because the title is a
-    // sibling of the poster, not a child: capping only the poster left the
-    // title spanning the full 201dp slot and overhanging it either side.
-    // Capping the container moves poster and title together, and the slack
-    // becomes even gap instead of piling up at the end of the row.
     width: isTablet ? TABLET_TILE_MAX_WIDTH : "100%",
     alignSelf: "center",
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: "visible",
   },
   movieCardContainerFocused: {},
   posterFrame: {
     width: "100%",
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: "hidden",
     backgroundColor: "#17181c",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "transparent",
   },
   posterFrameFocused: {
     borderColor: "#ffffff",
-    borderWidth: 1,
-    transform: [{ scale: 1.03 }],
+    borderWidth: 2,
+    transform: [{ scale: 1.025 }],
     elevation: 12,
   },
   posterImage: { width: "100%", height: "100%" },
@@ -518,7 +536,7 @@ const MovieItem = React.memo(function MovieItem({
                 focused && S.posterFrameFocused,
               ]}
             >
-              {item.logo ? (
+              {isValidImageUrl(item.logo) ? (
                 <Image
                   source={{ uri: item.logo }}
                   recyclingKey={item.logo}
@@ -831,68 +849,40 @@ export default function VODScreen() {
     ? (isPhone ? PHONE_GRID_COLUMNS : 4)
     : isTablet
       ? Math.max(
-          5,
+          4,
           Math.ceil(
-            (SCREEN_WIDTH_VAL - SIDEBAR_WIDTH - pw(1.2) * 2) / (TABLET_TILE_MAX_WIDTH + 10)
+            (SCREEN_WIDTH_VAL - SIDEBAR_WIDTH - 24) / (TABLET_TILE_MAX_WIDTH + 10)
           )
         )
-      : 5;
+      : 6;
 
+  const OUTSIDE_H_PAD = isPortrait ? 0 : 36;
+  const OUTSIDE_TOP_PAD = isPortrait ? Math.max(insets.top, 24) + 8 : Math.max(insets.top, 28);
   const SIDEBAR_WIDTH_VAL = isPortrait ? 0 : SIDEBAR_WIDTH;
-  const GRID_H_PADDING = isPortrait ? 16 : pw(1.2) * 2;
+  const GRID_H_PADDING = isPortrait ? 16 : 24;
   const itemWidth = Math.floor(
-    (SCREEN_WIDTH_VAL - SIDEBAR_WIDTH_VAL - GRID_H_PADDING) / numColumns
+    (SCREEN_WIDTH_VAL - (OUTSIDE_H_PAD * 2) - SIDEBAR_WIDTH_VAL - GRID_H_PADDING) / numColumns
   );
 
-  const tileWidth = Math.min(itemWidth - 10, TILE_MAX_WIDTH);
+  const tileWidth = Math.min(itemWidth - 20, TILE_MAX_WIDTH);
 
-  // Exactly 2 rows visible in viewport in landscape
-  const HEADER_HEIGHT_VAL = 56;
-  const BODY_MARGIN_TOP = 10;
-  const GRID_V_PADDING = 16;
-  /*
-   * `insets.bottom` is deliberately NOT subtracted here.
-   *
-   * The grid's own `contentContainerStyle` already carries
-   * `paddingBottom: insets.bottom + 24`, so the safe area is reserved inside
-   * the scrollable content where it belongs. Taking it off the viewport as
-   * well reserved it twice: the body ends up `screen - insets.bottom` tall and
-   * the remainder is bare container underneath — a black band across the foot
-   * of the screen with the rows squeezed to make room for it. Work the
-   * arithmetic through and the leftover is exactly `insets.bottom`.
-   *
-   * `insets.top` is still subtracted, because the container pads by it rather
-   * than any child doing so.
-   */
+  // Layout metrics
+  const HEADER_HEIGHT_VAL = 64;
+  const BODY_MARGIN_TOP = 6;
+  const GRID_V_PADDING = 12;
   const AVAILABLE_VIEWPORT_HEIGHT =
-    SCREEN_HEIGHT_VAL - insets.top - HEADER_HEIGHT_VAL - BODY_MARGIN_TOP - GRID_V_PADDING;
-  const TITLE_SPACE = 28;
+    SCREEN_HEIGHT_VAL - OUTSIDE_TOP_PAD - HEADER_HEIGHT_VAL - BODY_MARGIN_TOP - GRID_V_PADDING;
+  const TITLE_SPACE = 30;
 
-  // In landscape, 2 rows fill the viewport cleanly.
-  // In portrait, compute posterHeight from tileWidth (2:3 poster aspect ratio) and allow natural scrolling.
+  // 2 full rows visible with titles in landscape without any clipping
   const targetVisibleRows = 2;
-  /*
-   * The poster keeps its 2:3 shape on every panel.
-   *
-   * Landscape used to take the height straight from `AVAILABLE / rows`, while
-   * the width was capped at `TABLET_TILE_MAX_WIDTH`. Capping one axis and
-   * letting the other grow with the viewport is what stretched the artwork:
-   * a 1506x941 tablet produced a 168x393 poster — aspect 2.34 against the 1.50
-   * a 2:3 poster wants — and the taller the tablet the worse it got.
-   *
-   * Taking the smaller of the two keeps the row's limit as a ceiling while the
-   * aspect decides the actual height. On the box the two are already equal
-   * (193 against 194), so this is a no-op there.
-   */
+  const maxRowSlot = Math.floor(AVAILABLE_VIEWPORT_HEIGHT / targetVisibleRows);
   const posterHeight = isPortrait
     ? Math.floor(tileWidth * 1.5)
-    : Math.min(
-        Math.floor(Math.floor(AVAILABLE_VIEWPORT_HEIGHT / targetVisibleRows) - TITLE_SPACE - 8),
-        Math.round(tileWidth * 1.5)
-      );
+    : Math.min(maxRowSlot - TITLE_SPACE - 16, Math.round(tileWidth * 1.45));
   const ROW_HEIGHT = isPortrait
     ? posterHeight + TITLE_SPACE + 14
-    : posterHeight + TITLE_SPACE + 8;
+    : posterHeight + TITLE_SPACE + 16;
   /*
    * The body still fills the viewport even when the rows no longer divide it
    * exactly — otherwise shortening the row would reopen the black band at the
@@ -1565,7 +1555,15 @@ export default function VODScreen() {
   );
 
   return (
-    <View style={[S.container, { paddingTop: isPortrait ? Math.max(insets.top, 24) + 8 : insets.top }]}>
+    <View
+      style={[
+        S.container,
+        {
+          paddingTop: OUTSIDE_TOP_PAD,
+          paddingHorizontal: OUTSIDE_H_PAD,
+        },
+      ]}
+    >
       <CinematicBackground />
 
       <View
@@ -1586,7 +1584,7 @@ export default function VODScreen() {
             {isSearchOpen ? (
               <View style={S.searchOpenBar}>
                 <Pressable onPress={() => commitSearch()} style={{ padding: 2 }}>
-                  <Search size={ps(1.8)} color="rgba(255,255,255,0.75)" style={{ marginRight: pw(0.8) }} />
+                  <Search size={20} color="rgba(255,255,255,0.75)" style={{ marginRight: 6 }} />
                 </Pressable>
                 <TextInput
                   ref={searchInputRef}
@@ -1619,13 +1617,13 @@ export default function VODScreen() {
                     setIsSearchOpen(false);
                   }}
                   ringOnFocus={false}
-                  style={{ padding: 2, borderRadius: 18, justifyContent: "center", alignItems: "center" }}
+                  style={S.closeBtnWrapper}
                 >
                   {(focused) => (
-                    <View style={focused ? { transform: [{ scale: 1.15 }] } : undefined}>
+                    <View style={[S.closeBtnCircle, focused && S.closeBtnCircleFocused]}>
                       <X
-                        size={ps(2.1)}
-                        color={focused ? "#ffffff" : "rgba(255,255,255,0.75)"}
+                        size={18}
+                        color={focused ? "#111111" : "#ffffff"}
                       />
                     </View>
                   )}
@@ -1751,9 +1749,9 @@ export default function VODScreen() {
         contentStyle={{ width: '100%', maxWidth: '100%', margin: 0, padding: 0 }}
       >
         <BlurView intensity={120} tint="dark" style={S.modalSurface}>
-          {selectedVod?.logo && (
+          {isValidImageUrl(selectedVod?.logo) && (
             <Image
-              source={{ uri: selectedVod.logo }}
+              source={{ uri: selectedVod?.logo }}
               style={[StyleSheet.absoluteFillObject, { opacity: 0.22 }]}
               blurRadius={50}
               contentFit="cover"
@@ -1768,9 +1766,9 @@ export default function VODScreen() {
           <View style={[S.modalBody, isPhone && { paddingBottom: 10 + insets.bottom }]}>
             {/* Poster thumbnail */}
             <View style={S.modalPosterWrapper}>
-              {selectedVod?.logo ? (
+              {isValidImageUrl(selectedVod?.logo) ? (
                 <Image
-                  source={{ uri: selectedVod.logo }}
+                  source={{ uri: selectedVod?.logo }}
                   style={S.modalPosterImg}
                   contentFit="cover"
                   cachePolicy="memory-disk"

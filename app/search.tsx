@@ -8,7 +8,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 
 import { usePortalStore } from "../src/store/portalStore";
-import { portalApi, buildImageUrl } from "../src/services/portalApi";
+import { portalApi, buildImageUrl, isValidImageUrl } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { StreamManager } from "../src/services/StreamManager";
@@ -32,7 +32,8 @@ import { TextInput } from '../src/components/TextInput';
 
 
 
-const RAIL_H_PAD = pw(4.2);
+const SAFE_TV_H_PAD = 48;
+const RAIL_H_PAD = SAFE_TV_H_PAD;
 const HEADER_ELEM_HEIGHT = pw(3.8);
 
 // ─────────────────────────────────────────────
@@ -144,7 +145,7 @@ const CardInner = React.memo(function CardInner({
           focused && S.posterFrameFocused,
         ]}
       >
-        {item.logo && !imgError ? (
+        {isValidImageUrl(item.logo) && !imgError ? (
           <Image
             source={{ uri: item.logo }}
             recyclingKey={item.logo}
@@ -905,11 +906,12 @@ export default function SearchScreen() {
   // Three columns is what live-tv, vod and series already use below 600dp.
   // 28 was a fine gutter on a 1280 panel and a thin one on a 1506; the floor
   // keeps the smaller tablets exactly where they were.
+  const OUTSIDE_TOP_PAD = isPortrait ? Math.max(insets.top, 24) + 8 : Math.max(insets.top, 28);
   const railHPad = isPhone
     ? PHONE_H_PAD
     : isTablet
       ? (isPortrait ? 20 : Math.round(Math.max(28, windowWidth * 0.025)))
-      : RAIL_H_PAD;
+      : SAFE_TV_H_PAD;
   const RESULT_COLUMNS = isPhone ? PHONE_GRID_COLUMNS : isTablet ? (isPortrait ? 5 : (windowWidth > 1100 ? 8 : 7)) : 7;
   const CARD_WIDTH = (windowWidth - railHPad * 2) / RESULT_COLUMNS;
   // Sleek, compact card sizing for tablets (~112dp portrait, ~126dp landscape)
@@ -1003,7 +1005,7 @@ export default function SearchScreen() {
   );
 
   return (
-    <View style={[S.container, { paddingTop: insets.top }]}>
+    <View style={[S.container, { paddingTop: OUTSIDE_TOP_PAD }]}>
       <View
         style={{ flex: 1 }}
         accessibilityElementsHidden={playModalVisible}
@@ -1030,7 +1032,7 @@ export default function SearchScreen() {
         </View>
 
         {/* ─── Search Input Bar + Content Type Filter Tabs ─── */}
-        <View style={[S.searchControlsRow, isTouch && { paddingHorizontal: railHPad }, isPortrait && { flexWrap: "wrap", gap: 10 }]}>
+        <View style={[S.searchControlsRow, { paddingHorizontal: railHPad }, isPortrait && { flexWrap: "wrap", gap: 10 }]}>
           {/*
             * Full width on a phone, which `flexWrap` alone does not achieve.
             *
@@ -1047,9 +1049,9 @@ export default function SearchScreen() {
           ]}>
             <Pressable onPress={() => commitSearch()} style={{ padding: 4 }}>
               <Search
-                size={ps(1.5)}
+                size={20}
                 color={searchFocused || clearFocused ? "#ffffff" : "rgba(255,255,255,0.4)"}
-                style={{ marginRight: pw(0.8) }}
+                style={{ marginRight: 6 }}
               />
             </Pressable>
             <TextInput
@@ -1101,8 +1103,8 @@ export default function SearchScreen() {
                 {(focused) => (
                   <View style={[S.clearBtnCircle, focused && S.clearBtnCircleFocused]}>
                     <X
-                      size={ps(1.8)}
-                      color={"#ffffff"}
+                      size={18}
+                      color={focused ? "#111111" : "#ffffff"}
                     />
                   </View>
                 )}
@@ -1248,7 +1250,7 @@ export default function SearchScreen() {
         contentStyle={{ width: "100%", maxWidth: "100%", margin: 0, padding: 0 }}
       >
         <BlurView intensity={120} tint="dark" style={S.modalBlurContainer}>
-          {selectedItem?.logo ? (
+          {isValidImageUrl(selectedItem?.logo) ? (
             <Image
               source={{ uri: selectedItem.logo }}
               style={[StyleSheet.absoluteFillObject, { opacity: 0.25 }]}
@@ -1263,7 +1265,7 @@ export default function SearchScreen() {
           <View style={[S.modalTVContent, S.modalBody, isPhone && { paddingBottom: 10 + insets.bottom }]}>
             {/* Left: Poster Image */}
             <View style={S.modalPosterWrapper}>
-              {selectedItem?.logo ? (
+              {isValidImageUrl(selectedItem?.logo) ? (
                 <Image
                   source={{ uri: selectedItem.logo }}
                   style={S.modalPosterImg}
@@ -1377,8 +1379,8 @@ const S = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: RAIL_H_PAD,
-    height: 56,
+    paddingHorizontal: SAFE_TV_H_PAD,
+    height: 60,
   },
   headerCenterTitleWrapper: {
     position: "absolute",
@@ -1424,20 +1426,22 @@ const S = StyleSheet.create({
   searchControlsRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: RAIL_H_PAD,
-    gap: pw(1.2),
-    marginBottom: ph(1.6),
+    paddingHorizontal: SAFE_TV_H_PAD,
+    gap: 14,
+    marginBottom: 20,
   },
   searchBarContainer: {
     flex: 1,
-    height: 46,
-    borderRadius: 18,
+    height: 56,
+    borderRadius: 22,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: pw(1.2),
+    paddingLeft: 18,
+    paddingRight: 10,
     backgroundColor: "#17181c",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "transparent",
+    overflow: "hidden",
   },
   searchBarContainerFocused: {
     borderColor: "#ffffff",
@@ -1445,28 +1449,34 @@ const S = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     color: "#fff",
-    fontSize: ps(1.15),
+    fontSize: ps(1.2),
     marginLeft: 8,
     paddingVertical: 0,
     fontWeight: "500",
+    height: "100%",
   },
   clearBtnWrapper: {
-    borderRadius: 16,
-    overflow: "hidden",
-    marginLeft: 6,
-  },
-  clearBtnCircle: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "transparent",
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 6,
+  },
+  clearBtnCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
     justifyContent: "center",
     alignItems: "center",
   },
   clearBtnCircleFocused: {
-    backgroundColor: "transparent",
-    transform: [{ scale: 1.25 }],
+    backgroundColor: "#F5F5F5",
+    transform: [{ scale: 1.05 }],
     elevation: 8,
   },
 
@@ -1474,18 +1484,18 @@ const S = StyleSheet.create({
   filterBar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: ps(0.8),
+    gap: 10,
   },
   filterChipWrapper: {
-    borderRadius: 18,
+    borderRadius: 22,
   },
   filterChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: ps(0.6),
-    paddingHorizontal: ps(1.5),
-    height: 44,
-    borderRadius: 18,
+    paddingHorizontal: ps(1.6),
+    height: 56,
+    borderRadius: 22,
     backgroundColor: "#17181c",
     borderWidth: 0,
     borderColor: "transparent",
@@ -1499,7 +1509,7 @@ const S = StyleSheet.create({
     backgroundColor: "#F5F5F5",
     borderColor: "transparent",
     borderWidth: 0,
-    transform: [{ scale: 1.06 }],
+    transform: [{ scale: 1.05 }],
   },
   filterChipText: {
     color: "rgba(255, 255, 255, 0.75)",

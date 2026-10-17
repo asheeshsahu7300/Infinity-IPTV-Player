@@ -544,14 +544,19 @@ export default function PlayerScreen() {
   }, [params.url, params.cmd, activePortal]);
 
   // If a MAG stream command (e.g. ffmpeg http://localhost/ch/...) was passed without create_link resolution,
-  // resolve it immediately through StreamManager instead of stalling on localhost/ch/...
+  // resolve it once through StreamManager instead of stalling on localhost/ch/...
+  const isResolvingMagRef = useRef(false);
+
   useEffect(() => {
     const raw = params.url || params.cmd || "";
     const needsResolution =
       activePortal?.type === "mag" &&
-      (!streamUrl || !isPlayableStreamUrl(streamUrl) || !isPlayableStreamUrl(raw));
+      (!streamUrl || !isPlayableStreamUrl(streamUrl)) &&
+      Boolean(raw) &&
+      !isResolvingMagRef.current;
 
     if (needsResolution) {
+      isResolvingMagRef.current = true;
       let isCancelled = false;
       setIsLoading(true);
       StreamManager.getStreamUrl(
@@ -563,10 +568,12 @@ export default function PlayerScreen() {
         activePortal,
         params.type === "live" ? "itv" : "vod"
       ).then((res) => {
+        isResolvingMagRef.current = false;
         if (!isCancelled && res.success && res.url && isPlayableStreamUrl(res.url)) {
           const resolved = applySameHostStreamProxy(res.url, activePortal, raw);
           setStreamUrl(resolved);
         } else if (!isCancelled) {
+          isResolvingMagRef.current = true;
           StreamManager.retryStream(
             {
               id: params.contentId || "",
@@ -576,21 +583,32 @@ export default function PlayerScreen() {
             activePortal,
             params.type === "live" ? "itv" : "vod"
           ).then((retryRes) => {
+            isResolvingMagRef.current = false;
             if (!isCancelled && retryRes.success && retryRes.url && isPlayableStreamUrl(retryRes.url)) {
               const resolved = applySameHostStreamProxy(retryRes.url, activePortal, raw);
               setStreamUrl(resolved);
             } else if (!isCancelled) {
-              schedulePlayerRecovery("unresolvedStream", false);
+              setIsLoading(false);
+              setPlaybackFailed(true);
             }
           }).catch(() => {
-            if (!isCancelled) schedulePlayerRecovery("unresolvedStream", false);
+            isResolvingMagRef.current = false;
+            if (!isCancelled) {
+              setIsLoading(false);
+              setPlaybackFailed(true);
+            }
           });
         }
       }).catch(() => {
-        if (!isCancelled) schedulePlayerRecovery("unresolvedStream", false);
+        isResolvingMagRef.current = false;
+        if (!isCancelled) {
+          setIsLoading(false);
+          setPlaybackFailed(true);
+        }
       });
       return () => {
         isCancelled = true;
+        isResolvingMagRef.current = false;
       };
     }
   }, [params.url, params.cmd, params.contentId, params.title, params.type, activePortal, streamUrl]);
@@ -910,6 +928,7 @@ export default function PlayerScreen() {
 
   // Ref mirrors (stable captures for timers/effects without stale closures)
   const isPlayingRef = useRef(isPlaying);
+  const userExplicitlyPausedRef = useRef(false);
   const isLoadingRef = useRef(isLoading);
   const showControlsRef = useRef(showControls);
   const isLockedRef = useRef(isLocked);
@@ -1156,11 +1175,14 @@ export default function PlayerScreen() {
       applyPendingResumeRef.current();
 
       const now = Date.now();
-      const updateInterval = showControlsRef.current ? 250 : 1000;
-      if (now - lastProgressStateUpdateTime.current >= updateInterval) {
-        setPosition(positionMs);
-        if (durationMs > 0) setDuration(durationMs);
-        lastProgressStateUpdateTime.current = now;
+      // On Live TV there is no seekbar; skip React re-renders. On VOD only update state when controls are visible (250ms) or periodically in background (5000ms).
+      if (!isLive) {
+        const updateInterval = showControlsRef.current ? 250 : 5000;
+        if (now - lastProgressStateUpdateTime.current >= updateInterval) {
+          setPosition(positionMs);
+          if (durationMs > 0 && durationRef.current !== durationMs) setDuration(durationMs);
+          lastProgressStateUpdateTime.current = now;
+        }
       }
 
       // Offer the next episode while the current one is still playing.
@@ -1541,7 +1563,11 @@ export default function PlayerScreen() {
 
   const togglePlay = useCallback(() => {
     if (isLockedRef.current) return;
-    setIsPlaying((p) => !p);
+    setIsPlaying((p) => {
+      const next = !p;
+      userExplicitlyPausedRef.current = !next;
+      return next;
+    });
     resetControlsTimeout();
   }, [resetControlsTimeout]);
 
@@ -2401,6 +2427,12 @@ export default function PlayerScreen() {
     // after it — the same confusion the progress gate exists for.
     if (queueSwitchPendingRef.current) return;
 
+    if (isLive) {
+      console.warn("[Player] Live TV stream reported input EOS. Scheduling recovery without setting isPlaying to false.");
+      schedulePlayerRecovery("liveStreamEOS", false);
+      return;
+    }
+
     /*
      * End of *stream* is not end of *title*, and on IPTV they part company
      * often.
@@ -2583,7 +2615,7 @@ export default function PlayerScreen() {
       : 0;
 
   const qualityLabel = getQualityLabel(networkQuality, is4K);
-  const isShowingHardFailure = playbackFailed && !isLive;
+  const isShowingHardFailure = playbackFailed;
   /**
    * The VOD/series loading card: up until the film is actually running.
    *
@@ -2670,7 +2702,12 @@ export default function PlayerScreen() {
         if (timeSinceTune > initialTimeout) {
           console.warn(`[Player] ${isLive ? "Live" : "VOD"} stream failed to render initial frames after ${timeSinceTune}ms. Triggering reconnect.`);
           lastProgressTimeRef.current = now;
-          schedulePlayerRecovery("initialLoadTimeout", true);
+          if (retryCount.current >= maxRetries) {
+            setIsLoading(false);
+            setPlaybackFailed(true);
+          } else {
+            schedulePlayerRecovery("initialLoadTimeout", false);
+          }
         }
         return;
       }
@@ -2889,6 +2926,7 @@ export default function PlayerScreen() {
               clearTimeout(recoveryTimeoutRef.current);
               recoveryTimeoutRef.current = null;
             }
+            userExplicitlyPausedRef.current = false;
             if (!hasStartedPlayingRef.current) {
               hasStartedPlayingRef.current = true;
               setHasStartedPlaying(true);
@@ -2914,12 +2952,6 @@ export default function PlayerScreen() {
             retryResetTimerRef.current = setTimeout(() => {
               if (mountedRef.current && isPlayingRef.current) {
                 retryCount.current = 0;
-                // Twenty seconds of real playback means the last end-of-stream
-                // was a one-off cut, not a file that ends short of its stated
-                // duration. The budget in `handleReachedEnd` only needs to bound
-                // an immediate loop, so it is spent per stall, not per title —
-                // otherwise a long film on a flaky line ran out of reconnects
-                // and got filed as watched halfway through.
                 truncatedEndsRef.current = 0;
               }
               retryResetTimerRef.current = null;
@@ -2975,8 +3007,10 @@ export default function PlayerScreen() {
             handleBufferingChange(buffering);
           }}
           onPaused={() => {
-            if (isSeeking.current) return;
-            if (isPlayingRef.current) {
+            // Never freeze Live TV into paused state from engine events
+            if (isLive || isSeeking.current || isLoadingRef.current || isBufferingRef.current) return;
+            // Only toggle isPlaying to false if the user explicitly clicked/requested pause
+            if (userExplicitlyPausedRef.current && isPlayingRef.current) {
               setIsPlaying(false);
             }
           }}
@@ -3055,6 +3089,19 @@ export default function PlayerScreen() {
               return;
             }
 
+            const isOfflineError =
+              errStr.includes("404") ||
+              errStr.includes("offline") ||
+              errStr.includes("Stream offline");
+
+            if (isOfflineError) {
+              console.warn("[Player] Stream offline (HTTP 404 from edge server).");
+              setIsLoading(false);
+              setIsBuffering(false);
+              setPlaybackFailed(true);
+              return;
+            }
+
             const isSourceError =
               errStr.includes("Source error") ||
               errStr.includes("SocketTimeoutException") ||
@@ -3115,24 +3162,36 @@ export default function PlayerScreen() {
         </View>
       )}
 
-      {/* ── VOD hard failure ─────────────────────────────────────────────── */}
+      {/* ── Hard failure overlay (Live TV & VOD) ─────────────────────────── */}
       {isShowingHardFailure && !isNetworkLost && (
         <View style={S.loadingOverlay}>
-          <TriangleAlert size={44} color="rgba(255,255,255,0.7)" />
-          <Text style={S.loadingText}>Stream unavailable</Text>
+          <TriangleAlert size={ps(3.5)} color="#F59E0B" />
+          <Text style={S.loadingText}>
+            {isLive ? "Channel Temporarily Offline" : "Stream Unavailable"}
+          </Text>
+          <Text style={[S.loadingText, { fontSize: ps(1.0), opacity: 0.7, marginTop: 6, maxWidth: "75%", textAlign: "center" }]}>
+            {isLive
+              ? "The provider feed for this channel is currently offline (HTTP 404). Press ▲ / ▼ on your remote to change channel, or retry."
+              : "Could not load video stream from provider. Please check connection and try again."}
+          </Text>
           <Focusable
             ringOnFocus={false}
             hasTVPreferredFocus
             style={S.retryBtn}
+            focusStyle={S.retryBtnFocused}
             onPress={() => {
               retryCount.current = 0;
               isRetryingRef.current = false;
               setPlaybackFailed(false);
               setIsLoading(true);
-              handleSilentRetry();
+              setTimeout(() => {
+                handleSilentRetry();
+              }, 1000);
             }}
           >
-            <Text style={S.retryBtnText}>RETRY</Text>
+            {(focused: boolean) => (
+              <Text style={[S.retryBtnText, focused && { color: "#000000" }]}>RETRY STREAM</Text>
+            )}
           </Focusable>
         </View>
       )}
@@ -3530,20 +3589,32 @@ export default function PlayerScreen() {
                       )}
                     </Focusable>
                   )}
-                  {!isLive && videoTracks.length > 1 && (
-                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowVideoModal(true); }} {...actionsRowFocusHandlers}>
+                  {videoTracks.length > 1 && (
+                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => {
+                      if (isLockedRef.current) return;
+                      const current = playerRef.current?.getVideoTracks?.();
+                      if (current && current.length > 0) {
+                        setVideoTracks(current);
+                      }
+                      setShowVideoModal(true);
+                    }} {...actionsRowFocusHandlers}>
                       {(focused: boolean) => (
                         <Settings size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                       )}
                     </Focusable>
                   )}
-                  {!isLive && (
-                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowSubtitleModal(true); }} {...actionsRowFocusHandlers}>
-                      {(focused: boolean) => (
-                        <Subtitles size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
-                      )}
-                    </Focusable>
-                  )}
+                  <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => {
+                    if (isLockedRef.current) return;
+                    const current = playerRef.current?.getSubtitleTracks?.();
+                    if (current && current.length > 0) {
+                      setTextTracks(current);
+                    }
+                    setShowSubtitleModal(true);
+                  }} {...actionsRowFocusHandlers}>
+                    {(focused: boolean) => (
+                      <Subtitles size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                    )}
+                  </Focusable>
                   <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => {
                     if (isLockedRef.current) return;
                     const current = playerRef.current?.getAudioTracks?.();
@@ -3584,9 +3655,7 @@ export default function PlayerScreen() {
         options={effectiveAudioTracks} selected={selectedAudioTrack ?? "default"}
         onSelect={(id: any) => {
           setSelectedAudioTrack(id);
-          if (id !== "default") {
-            playerRef.current?.selectAudioTrack(id);
-          }
+          playerRef.current?.selectAudioTrack(id);
           setShowAudioModal(false);
         }}
         onClose={() => setShowAudioModal(false)}
@@ -4152,6 +4221,11 @@ const S = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.3)",
+  },
+  retryBtnFocused: {
+    backgroundColor: "#ffffff",
+    borderColor: "#ffffff",
+    transform: [{ scale: 1.05 }],
   },
   retryBtnText: {
     color: "#fff",

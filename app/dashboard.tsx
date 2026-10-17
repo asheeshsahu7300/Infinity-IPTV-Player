@@ -420,14 +420,12 @@ export default function DashboardScreen() {
         S.heroSection,
         { paddingHorizontal: hPad },
         isPortrait ? {
-          flex: 0,
-          flexGrow: 0,
+          flexShrink: 0,
           maxWidth: "100%",
           marginTop: isPhone ? 0 : 10,
           marginBottom: isPhone ? 10 : (isTablet ? 14 : 12),
         } : (!Platform.isTV && {
-          flex: 0,
-          flexGrow: 0,
+          flexShrink: 0,
           maxWidth: "100%",
           marginTop: isTablet ? vGap(2, 6) : 6,
           marginBottom: isTablet ? vGap(6, 12) : 10,
@@ -506,15 +504,10 @@ export default function DashboardScreen() {
           flex: 0,
           flexGrow: 0,
           marginBottom: isPhone ? 0 : 16,
-        } : (!Platform.isTV && {
+        } : {
           flex: 1,
-          // No `insets.bottom` here: the body this sits inside already pads by
-          // it (see the landscape branch below). Adding it again reserved the
-          // safe area twice and left a black band across the foot of the
-          // screen with the browse cards squeezed to make room — the same
-          // double-count the grid screens had.
-          marginBottom: isTablet ? vGap(0, 15) : 12,
-        })
+          marginBottom: !Platform.isTV ? (isTablet ? vGap(16, 24) : 24) : ph(3.2),
+        }
       ]}>
         <View style={[
           S.browseContainer,
@@ -548,10 +541,6 @@ export default function DashboardScreen() {
                   paddingHorizontal: 0,
                   paddingVertical: 0,
                 },
-                !isPortrait && !Platform.isTV && {
-                  paddingHorizontal: 0,
-                  paddingVertical: 0,
-                }
               ]}
             >
               {(focused) => (
@@ -560,7 +549,7 @@ export default function DashboardScreen() {
                     S.cardBorder,
                     !Platform.isTV && { borderRadius: 16 },
                     focused && S.cardBorderFocused,
-                    focused && { transform: [{ scale: 1.03 }] }
+                    focused && { transform: [{ scale: 1.025 }] }
                   ]}
                 >
                   <View style={[
@@ -649,7 +638,7 @@ export default function DashboardScreen() {
               S.body,
               {
                 paddingTop: insets.top + (!Platform.isTV ? (isTablet ? vGap(8, 12) : 8) : ph(2)),
-                paddingBottom: insets.bottom + (!Platform.isTV ? (isTablet ? vGap(8, 12) : 8) : 10),
+                paddingBottom: insets.bottom + (!Platform.isTV ? (isTablet ? vGap(16, 24) : 20) : ph(3.0)),
               }
             ]}
           >
@@ -847,10 +836,9 @@ const S = StyleSheet.create({
     // paddingHorizontal is applied dynamically in render (hPad)
     maxWidth: pw(72),
     position: "relative",
-    flex: 0,
-    flexGrow: 0,
+    flexShrink: 0,
     justifyContent: "flex-start",
-    marginBottom: ph(3.2),
+    marginBottom: ph(2.5),
   },
   heroGradientOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -935,14 +923,14 @@ const S = StyleSheet.create({
   },
   browseCard: {
     flex: 1,
-    paddingHorizontal: pw(0.3),
-    paddingVertical: pw(0.8),
+    paddingHorizontal: pw(0.5),
+    paddingVertical: ph(1.2),
     overflow: "visible",
   },
   cardBorder: {
     flex: 1,
     borderRadius: CARD_FRAME.borderRadius,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: "transparent",
     overflow: "hidden",
   },

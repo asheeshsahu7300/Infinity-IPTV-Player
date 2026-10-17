@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
 
 import { usePortalStore, Channel, Category } from "../src/store/portalStore";
-import { portalApi } from "../src/services/portalApi";
+import { portalApi, isValidImageUrl } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { StreamManager } from "../src/services/StreamManager";
@@ -59,8 +59,8 @@ const S = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: pw(3),
-    height: 56,
+    paddingHorizontal: 0,
+    height: 64,
   },
   headerCenterTitleWrapper: {
     position: "absolute",
@@ -81,13 +81,13 @@ const S = StyleSheet.create({
     alignItems: "center",
   },
   searchBtnWrapper: {
-    borderRadius: 24,
+    borderRadius: 26,
     overflow: "hidden",
   },
   searchCircleBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#17181c",
@@ -96,31 +96,56 @@ const S = StyleSheet.create({
     overflow: "hidden",
   },
   searchCircleBtnFocused: {
-    borderRadius: 22,
+    borderRadius: 26,
     backgroundColor: "#F5F5F5",
     borderColor: "transparent",
     borderWidth: 0,
-    transform: [{ scale: 1.12 }],
+    transform: [{ scale: 1.08 }],
     overflow: "hidden",
   },
   searchOpenBar: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#17181c",
-    borderRadius: 22,
-    paddingHorizontal: pw(1.4),
-    height: 44,
-    width: isPhone ? PHONE_SEARCH_BAR_WIDTH : pw(36),
-    borderWidth: 0,
-    borderColor: "transparent",
+    borderRadius: 27,
+    paddingLeft: 16,
+    paddingRight: 10,
+    height: 54,
+    width: isPhone ? PHONE_SEARCH_BAR_WIDTH : 380,
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    overflow: "hidden",
   },
   searchInput: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     color: "#FFFFFF",
-    fontSize: ps(1.15),
+    fontSize: ps(1.2),
     fontWeight: "600",
     paddingVertical: 0,
+    paddingHorizontal: 8,
+    height: "100%",
     textAlignVertical: "center",
+  },
+  closeBtnWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  closeBtnCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+  },
+  closeBtnCircleFocused: {
+    backgroundColor: "#F5F5F5",
+    transform: [{ scale: 1.05 }],
   },
 
   // ── Body ──
@@ -414,7 +439,7 @@ const ChannelCard = React.memo(function ChannelCard({
             ) : null}
 
             <View style={S.cardLogoWrapper}>
-              {item.logo && !imgError ? (
+              {isValidImageUrl(item.logo) && !imgError ? (
                 <Image
                   source={{ uri: item.logo }}
                   recyclingKey={item.logo}
@@ -717,33 +742,21 @@ export default function LiveTVScreen() {
         )
       : 5;
 
+  const OUTSIDE_H_PAD = isPortrait ? 0 : 36;
+  const OUTSIDE_TOP_PAD = isPortrait ? Math.max(insets.top, 24) + 8 : Math.max(insets.top, 28);
   const SIDEBAR_WIDTH_VAL = isPortrait ? 0 : SIDEBAR_WIDTH;
   const GRID_H_PADDING = isPortrait ? 16 : pw(1.2) * 2;
   const itemWidth = Math.floor(
-    (SCREEN_WIDTH_VAL - SIDEBAR_WIDTH_VAL - GRID_H_PADDING) / numColumns
+    (SCREEN_WIDTH_VAL - (OUTSIDE_H_PAD * 2) - SIDEBAR_WIDTH_VAL - GRID_H_PADDING) / numColumns
   );
 
   const tileWidth = Math.min(itemWidth - 10, TILE_MAX_WIDTH);
 
-  const HEADER_HEIGHT_VAL = 56;
+  const HEADER_HEIGHT_VAL = 64;
   const BODY_MARGIN_TOP = 10;
   const GRID_V_PADDING = 16;
-  /*
-   * `insets.bottom` is deliberately NOT subtracted here.
-   *
-   * The grid's own `contentContainerStyle` already carries
-   * `paddingBottom: insets.bottom + 24`, so the safe area is reserved inside
-   * the scrollable content where it belongs. Taking it off the viewport as
-   * well reserved it twice: the body ends up `screen - insets.bottom` tall and
-   * the remainder is bare container underneath — a black band across the foot
-   * of the screen with the rows squeezed to make room for it. Work the
-   * arithmetic through and the leftover is exactly `insets.bottom`.
-   *
-   * `insets.top` is still subtracted, because the container pads by it rather
-   * than any child doing so.
-   */
   const AVAILABLE_VIEWPORT_HEIGHT =
-    SCREEN_HEIGHT_VAL - insets.top - HEADER_HEIGHT_VAL - BODY_MARGIN_TOP - GRID_V_PADDING;
+    SCREEN_HEIGHT_VAL - OUTSIDE_TOP_PAD - HEADER_HEIGHT_VAL - BODY_MARGIN_TOP - GRID_V_PADDING;
 
   // On TV, VISIBLE_ROWS (3) rows fill the viewport.
   // In landscape, 3 rows fit cleanly. In portrait, allow channel cards to scroll naturally.
@@ -1360,10 +1373,13 @@ export default function LiveTVScreen() {
   const hasNumberPrefix = useCallback(
     (prefix: number) => {
       const asText = String(prefix);
-      for (const num of numberToChannel.keys()) {
-        if (String(num).startsWith(asText)) return true;
-      }
-      return false;
+      let found = false;
+      numberToChannel.forEach((_, num) => {
+        if (!found && String(num).startsWith(asText)) {
+          found = true;
+        }
+      });
+      return found;
     },
     [numberToChannel]
   );
@@ -1710,7 +1726,15 @@ export default function LiveTVScreen() {
   }, []);
 
   return (
-    <View style={[S.container, { paddingTop: isPortrait ? Math.max(insets.top, 24) + 8 : insets.top }]}>
+    <View
+      style={[
+        S.container,
+        {
+          paddingTop: OUTSIDE_TOP_PAD,
+          paddingHorizontal: OUTSIDE_H_PAD,
+        },
+      ]}
+    >
       {/* ─── Header ─── */}
       <View style={S.header}>
         <View style={{ width: 38 }} />
@@ -1724,9 +1748,9 @@ export default function LiveTVScreen() {
             <View style={S.searchOpenBar}>
               <Pressable onPress={() => commitSearch()} style={{ padding: 2 }}>
                 <Search
-                  size={ps(1.8)}
+                  size={20}
                   color="rgba(255,255,255,0.75)"
-                  style={{ marginRight: pw(0.8) }}
+                  style={{ marginRight: 6 }}
                 />
               </Pressable>
               <TextInput
@@ -1760,13 +1784,13 @@ export default function LiveTVScreen() {
                   setIsSearchOpen(false);
                 }}
                 ringOnFocus={false}
-                style={{ padding: 2, borderRadius: 18, justifyContent: "center", alignItems: "center" }}
+                style={S.closeBtnWrapper}
               >
                 {(focused) => (
-                  <View style={focused ? { transform: [{ scale: 1.15 }] } : undefined}>
+                  <View style={[S.closeBtnCircle, focused && S.closeBtnCircleFocused]}>
                     <X
-                      size={ps(2.1)}
-                      color={focused ? "#ffffff" : "rgba(255,255,255,0.75)"}
+                      size={18}
+                      color={focused ? "#111111" : "#ffffff"}
                     />
                   </View>
                 )}

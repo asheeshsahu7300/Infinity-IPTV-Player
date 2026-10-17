@@ -454,10 +454,8 @@ export const buildImageUrl = (base: string, raw?: any): string => {
   if (!raw || typeof raw !== "string") return "";
   const s = raw.trim();
   if (!s || s === "null" || s === "undefined" || s === "N/A" || s === "none") return "";
-  if (/^\/+$/.test(s)) return "";
 
-  const serverRoot = (base || "")
-    .trim()
+  const serverRoot = base
     .replace(/\/$/, "")
     .replace(/\/portal\.php$/i, "")
     .replace(/\/c$/i, "");
@@ -465,7 +463,6 @@ export const buildImageUrl = (base: string, raw?: any): string => {
   // Stale or internal domains hardcoded in provider databases (e.g. corelink.blog, webhop.live, starshare.live, localhost)
   // that must be rewritten to the user's active portal base URL.
   const rewriteStaleOrigin = (urlStr: string): string => {
-    if (!serverRoot || !/^https?:\/\//i.test(serverRoot)) return urlStr;
     const STALE_HOSTS = /(?:webhop\.live|starshare\.live|corelink\.|corelink\.blog|stalker\.|mag\.local|iptv\.local|localhost|127\.0\.0\.1)/i;
     const urlMatch = urlStr.match(/^(https?:\/\/[^\/]+)(\/.*)?$/i);
     if (urlMatch) {
@@ -538,13 +535,11 @@ export const buildImageUrl = (base: string, raw?: any): string => {
     }
   }
 
-  // 5. Server-relative path: ONLY valid if serverRoot is a valid HTTP/HTTPS URL!
-  if (!serverRoot || !/^https?:\/\//i.test(serverRoot)) {
-    return "";
+  // 5. Server-relative path
+  if (s.startsWith("/")) {
+    return `${serverRoot}${s}`;
   }
-  const cleanPath = s.replace(/^\/+/, "");
-  if (!cleanPath) return "";
-  return `${serverRoot}/${cleanPath}`;
+  return `${serverRoot}/${s}`;
 };
 
 const pickRating = (v: any) => {
