@@ -15,12 +15,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/asheeshsahu7300/iptv-hub/releases/latest">
+  <a href="https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest">
     <img src="https://img.shields.io/badge/Release-v1.0.0-blue.svg?style=for-the-badge" alt="Release v1.0.0" />
   </a>
   <img src="https://img.shields.io/badge/Google%20Play-Soon%20Live-brightgreen.svg?style=for-the-badge&logo=google-play&logoColor=white" alt="Google Play Soon Live" />
   <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV-00C853.svg?style=for-the-badge&logo=android&logoColor=white" alt="Android & Android TV" />
-  <a href="https://github.com/asheeshsahu7300/iptv-hub/releases/latest">
+  <a href="https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest">
     <img src="https://img.shields.io/badge/webOS-LG%20Smart%20TV%20(.ipk)-E50914.svg?style=for-the-badge&logo=lg&logoColor=white" alt="LG webOS TV IPK" />
   </a>
 </p>
@@ -60,9 +60,9 @@ The application is designed around a premium dark UI, fast content browsing, lar
 
 ### Release & Downloads
 
-- **Latest Release**: [**v1.0.0 on GitHub Releases**](https://github.com/asheeshsahu7300/iptv-hub/releases/latest)
-- **LG webOS Smart TV**: Download the installable [**`com.infinity.iptvplayer_1.0.0_all.ipk`**](https://github.com/asheeshsahu7300/iptv-hub/releases/latest)
-- **Android / Android TV**: [**Download APK**](https://github.com/asheeshsahu7300/iptv-hub/releases/latest) | 🟢 **Soon Live on Google Play Store!** (Submitted for review)
+- **Latest Release**: [**v1.0.0 on GitHub Releases**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest)
+- **LG webOS Smart TV**: Download the installable [**`com.infinity.iptvplayer_1.0.0_all.ipk`**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest)
+- **Android / Android TV**: [**Download APK**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest) | 🟢 **Soon Live on Google Play Store!** (Submitted for review)
 
 ---
 
