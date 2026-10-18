@@ -15,14 +15,18 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v1.0.0-blue.svg?style=for-the-badge" alt="Release v1.0.0" />
+  <a href="https://github.com/asheeshsahu7300/iptv-hub/releases/latest">
+    <img src="https://img.shields.io/badge/Release-v1.0.0-blue.svg?style=for-the-badge" alt="Release v1.0.0" />
+  </a>
   <img src="https://img.shields.io/badge/Google%20Play-Soon%20Live-brightgreen.svg?style=for-the-badge&logo=google-play&logoColor=white" alt="Google Play Soon Live" />
   <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV-00C853.svg?style=for-the-badge&logo=android&logoColor=white" alt="Android & Android TV" />
-  <img src="https://img.shields.io/badge/webOS-LG%20Smart%20TV-E50914.svg?style=for-the-badge&logo=lg&logoColor=white" alt="LG webOS TV" />
+  <a href="https://github.com/asheeshsahu7300/iptv-hub/releases/latest">
+    <img src="https://img.shields.io/badge/webOS-LG%20Smart%20TV%20(.ipk)-E50914.svg?style=for-the-badge&logo=lg&logoColor=white" alt="LG webOS TV IPK" />
+  </a>
 </p>
 
 <p align="center">
-  🚀 <strong>Release 1.0.0 is officially ready — Soon live on the Google Play Store!</strong>
+  🚀 <strong>Release 1.0.0 is officially ready! Available for Android, Android TV, and LG webOS Smart TVs.</strong>
 </p>
 
 <p align="center">
@@ -47,18 +51,18 @@
 
 It supports multiple IPTV playlist and portal formats while providing a consistent experience across:
 
-- Android phones
-- Tablets
-- Android TV
-- D-Pad / remote-controlled devices
+- Android phones & Tablets
+- Android TV / Google TV
+- LG webOS Smart TVs (webOS 3.5 through webOS 24)
+- D-Pad, Magic Remote, and remote-controlled devices
 
 The application is designed around a premium dark UI, fast content browsing, large media libraries, and a TV-friendly 10-foot interface.
 
-### Release & Availability
+### Release & Downloads
 
-- **Version**: `Release 1.0.0`
-- **Google Play Store**: 🟢 **Soon Live on Google Play Store!** The production release has been compiled, packaged, and submitted for review. Direct install links will be added immediately upon store publication.
-- **Supported Formats**: Android Mobile (APK), Tablets, Android TV, Google TV, and LG webOS Smart TVs (`.ipk`).
+- **Latest Release**: [**v1.0.0 on GitHub Releases**](https://github.com/asheeshsahu7300/iptv-hub/releases/latest)
+- **LG webOS Smart TV**: Download the installable [**`com.infinity.iptvplayer_1.0.0_all.ipk`**](https://github.com/asheeshsahu7300/iptv-hub/releases/latest)
+- **Android / Android TV**: [**Download APK**](https://github.com/asheeshsahu7300/iptv-hub/releases/latest) | 🟢 **Soon Live on Google Play Store!** (Submitted for review)
 
 ---
 
@@ -369,6 +373,68 @@ Build a production Android application:
 ```bash
 npx eas build --platform android --profile production
 ```
+
+---
+
+## LG webOS Smart TV (`.ipk`)
+
+### 1. Build & Package IPK Locally
+
+Make sure the official LG webOS TV CLI is installed:
+
+```bash
+npm install -g @webosose/ares-cli
+```
+
+Generate the optimized webOS build and `.ipk` package:
+
+```bash
+npm run build:webos
+```
+
+*(Or with Yarn: `yarn build:webos`)*
+
+The generated `.ipk` package will be available in:
+
+```text
+release-webos/com.infinity.iptvplayer_1.0.0_all.ipk
+```
+
+---
+
+### 2. Sideload / Install IPK on LG Smart TV
+
+There are three easy ways to install the `.ipk` on your LG webOS TV:
+
+#### Method A: webOS Dev Manager (Recommended — GUI for Windows / Mac / Linux)
+
+1. Download and install [**webOS Dev Manager**](https://github.com/webosbrew/dev-manager/releases).
+2. On your LG TV, install and launch the **Developer Mode** app from the LG Content Store.
+3. Turn **Dev Mode ON** and **Key Server ON**.
+4. In webOS Dev Manager on your computer, click **Add Device**, enter the TV IP address and the 6-character passphrase shown on your TV screen.
+5. Click **Install IPK**, select `com.infinity.iptvplayer_1.0.0_all.ipk`, and the app will install on your TV!
+
+#### Method B: LG webOS CLI (`ares-cli`)
+
+1. Register your TV with the CLI:
+   ```bash
+   ares-setup-device
+   ```
+2. Fetch the authentication key (enter the 6-character passphrase from the TV screen):
+   ```bash
+   ares-novacom --device <device-name> --getkey
+   ```
+3. Install and launch the application:
+   ```bash
+   ares-install --device <device-name> release-webos/com.infinity.iptvplayer_1.0.0_all.ipk
+   ares-launch --device <device-name> com.infinity.iptvplayer
+   ```
+
+#### Method C: Homebrew Channel (webOS Brew for Rooted TVs)
+
+If your LG TV is rooted with the [Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel):
+1. Open the Homebrew Channel app on your TV.
+2. Transfer or upload `com.infinity.iptvplayer_1.0.0_all.ipk` via web browser or Dev Manager without needing Developer Mode timers.
 
 ---
 
