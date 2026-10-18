@@ -2254,7 +2254,7 @@ index 1c7a55c..0be7ae0 100644
 +      try {
 +        if (FfmpegLibrary.isAvailable()) {
 +          val ffmpegRenderer = FfmpegAudioRenderer(eventHandler, eventListener, audioSink)
-+          out.add(ffmpegRenderer)
++          out.add(0, ffmpegRenderer)
 +          android.util.Log.i("ExpoVideo", "Successfully registered FfmpegAudioRenderer as fallback (FFmpeg v${FfmpegLibrary.getVersion()})")
 +        } else {
 +          android.util.Log.w("ExpoVideo", "FfmpegLibrary is NOT available")
@@ -2266,7 +2266,7 @@ index 1c7a55c..0be7ae0 100644
 +  }
 +    .forceDisableMediaCodecAsynchronousQueueing()
      .setEnableDecoderFallback(true)
-+    .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
++    .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
    private var listeners: MutableList<WeakReference<VideoPlayerListener>> = mutableListOf()
    private var currentPlayerView = MutableWeakReference<PlayerView?>(null)
    val loadControl: VideoPlayerLoadControl = VideoPlayerLoadControl()

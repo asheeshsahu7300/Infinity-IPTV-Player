@@ -114,49 +114,6 @@ export function getLastMeasuredEdgeRtt(): number | null {
   return lastMeasuredEdgeRttMs;
 }
 
-// ─── Redirect resolution ──────────────────────────────────────────────────────
-// Some Stalker/Xtream/M3U backends return a URL that itself 301/302-redirects
-// to the real CDN edge node. Letting the player follow that at play-time adds
-// a full extra DNS+TCP+TLS+HTTP round trip before the first byte arrives.
-// Resolve the chain once here and hand the player the final direct URL.
-async function resolveDirectStreamUrl(startUrl: string): Promise<string> {
-  // Direct passthrough — bypass pre-probing and let the native player connect to streamUrl directly
-  return startUrl;
-
-  // if (!/^https?:\/\//i.test(startUrl)) {
-  //   return startUrl;
-  // }
-  //
-  // const controller = new AbortController();
-  // const timeoutId = setTimeout(() => controller.abort(), 2500);
-  // const startTime = Date.now();
-  //
-  // try {
-  //   const res = await fetch(startUrl, {
-  //     method: "GET",
-  //     signal: controller.signal,
-  //     headers: {
-  //       "User-Agent": "okhttp/3.12.1",
-  //       Accept: "*/*",
-  //       Range: "bytes=0-512",
-  //     },
-  //   });
-  //
-  //   lastMeasuredEdgeRttMs = Date.now() - startTime;
-  //   const finalUrl = res.url;
-  //   controller.abort();
-  //
-  //   if (finalUrl && /^https?:\/\//i.test(finalUrl)) {
-  //     return finalUrl;
-  //   }
-  //   return startUrl;
-  // } catch {
-  //   lastMeasuredEdgeRttMs = Date.now() - startTime;
-  //   return startUrl;
-  // } finally {
-  //   clearTimeout(timeoutId);
-  // }
-}
 
 const rmAcceptHeader = {
   transformRequest: [
@@ -231,9 +188,30 @@ export function streamHeaders(
   streamUrl: string,
   portal: Portal | null | undefined
 ): Record<string, string> {
-  return {
+  const headers: Record<string, string> = {
     "User-Agent": "okhttp/3.12.1",
+    "Accept": "*/*",
+    "Range": "bytes=0-",
+    "Connection": "keep-alive",
+    "Icy-MetaData": "1",
   };
+
+  // If streamUrl carries pipe-delimited headers (e.g. url|User-Agent=...&Referer=...)
+  if (streamUrl && streamUrl.includes("|")) {
+    const parts = streamUrl.split("|");
+    if (parts.length > 1) {
+      const headerQuery = parts[1];
+      const pairs = headerQuery.split("&");
+      for (const pair of pairs) {
+        const [k, v] = pair.split("=");
+        if (k && v) {
+          headers[decodeURIComponent(k.trim())] = decodeURIComponent(v.trim());
+        }
+      }
+    }
+  }
+
+  return headers;
 }
 
 /**
@@ -269,6 +247,11 @@ const PORTAL_TIMEZONE: string = (() => {
   }
   return "Europe/London";
 })();
+
+let globalLastWatchdogPing = 0;
+let globalWatchdog503Until = 0;
+const streamUrlDedupeCache = new Map<string, { url: string; timestamp: number }>();
+const inFlightStreamUrlRequests = new Map<string, Promise<string>>();
 
 const headers = (mac: string, token?: string, url?: string) => {
   const formattedMac = formatMac(mac);
@@ -405,8 +388,12 @@ async function portalGet(
     } catch (err: any) {
       lastError = err;
       console.warn(`⚠️ [MAG Portal] Request error on attempt ${attempt}:`, err?.message || err);
+      if (err?.response?.status === 503) {
+        console.warn(`⚠️ [MAG Portal] Server returned 503 Service Unavailable on attempt ${attempt}. Halting retries to respect provider rate limits.`);
+        throw err;
+      }
       if (attempt === retries) throw err;
-      const delay = 300 * (attempt + 1);
+      const delay = 500 * (attempt + 1);
       await new Promise((r) => setTimeout(r, delay));
     }
   }
@@ -801,8 +788,17 @@ export const portalApi = {
    * Never throws. A missed ping is not worth disturbing playback over, and
    * the next one is seconds away.
    */
+  /**
+   * Watchdog ping for MAG/Stalker portals to keep the server-side stream session alive.
+   * Enforces a 30s minimum interval to avoid edge proxy / Cloudflare rate-limits (HTTP 503).
+   * Swallows errors without disturbing playback.
+   */
   async watchdog(portal: Portal): Promise<void> {
     if (!portal || portal.type !== "mag") return;
+    const now = Date.now();
+    if (now < globalWatchdog503Until) return;
+    if (now - globalLastWatchdogPing < 25000) return;
+    globalLastWatchdogPing = now;
     try {
       const refreshed = await refreshToken(portal);
       const base = safe(refreshed.config.url).replace(/\/$/, "");
@@ -810,27 +806,23 @@ export const portalApi = {
         base +
         "/portal.php?type=watchdog&action=get_events" +
         "&init=0&cur_play_type=1&event_active_id=0&JsHttpRequest=1-xml";
-      const res = await axios.get(url, {
+      await axios.get(url, {
         ...rmAcceptHeader,
         headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
         timeout: 15000,
       });
-      if (!res.data || res.data === "") {
-        await axios.get(`${base}/portal.php?type=stb&action=get_profile&JsHttpRequest=1-xml`, {
-          ...rmAcceptHeader,
-          headers: headers(refreshed.config.mac ?? "", refreshed.config.token ?? "", base),
-          timeout: 15000,
-        }).catch(() => { });
+    } catch (err: any) {
+      if (err?.response?.status === 503) {
+        console.warn("[portalApi] Watchdog encountered 503; backing off for 60s");
+        globalWatchdog503Until = Date.now() + 60000;
       }
-    } catch {
-      // Swallowed on purpose
     }
   },
 
   watchdogPeriodMs(portal: Portal | null | undefined): number {
     const raw = Number((portal?.config as any)?.serverInfo?.watchdog_timeout);
     const seconds = Number.isFinite(raw) && raw > 0 ? raw : 90;
-    return Math.max(30, Math.round(seconds * 0.75)) * 1000;
+    return Math.max(35, Math.round(seconds * 0.75)) * 1000;
   },
 
   async authenticate(portal: Portal) {
@@ -1572,6 +1564,10 @@ export const portalApi = {
     });
   },
 
+  clearStreamUrlCache(_cmd?: string): void {
+    // No-op: stream URLs are not cached, fresh links are requested directly
+  },
+
   async getStreamUrl(
     portal: Portal,
     cmd: string,
@@ -1601,18 +1597,37 @@ export const portalApi = {
     if (ep != null) url += `&series=${ep}`;
 
     const extractLink = (resData: any): string => {
-      const js = resData?.js;
+      let parsed = resData;
+      if (typeof resData === "string") {
+        const trimmed = resData.trim();
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+          try {
+            parsed = JSON.parse(trimmed);
+          } catch {}
+        }
+      }
+      const js = parsed?.js;
       const target = Array.isArray(js) ? js[0] : js;
-      if (typeof target === "string") return target;
+      if (typeof target === "string" && !target.trim().startsWith("{")) return target;
       if (target && typeof target === "object") {
         const found = target.cmd ?? target.url ?? target.link ?? target.playlist ?? target.stream ?? target.stream_url ?? target.uri ?? target.file ?? target.path ?? "";
         if (found) return String(found).trim();
       }
-      const dataTarget = Array.isArray(resData) ? resData[0] : resData;
-      if (typeof dataTarget === "string") return dataTarget;
+      const dataTarget = Array.isArray(parsed) ? parsed[0] : parsed;
+      if (typeof dataTarget === "string" && !dataTarget.trim().startsWith("{")) return dataTarget;
       if (dataTarget && typeof dataTarget === "object") {
         const found = dataTarget.cmd ?? dataTarget.url ?? dataTarget.link ?? dataTarget.stream ?? dataTarget.stream_url ?? dataTarget.uri ?? "";
         if (found) return String(found).trim();
+      }
+      if (typeof resData === "string") {
+        const trimmed = resData.trim();
+        if (/^(https?|rtmp|rtsp):\/\//i.test(trimmed) || (trimmed.startsWith("/") && !trimmed.startsWith("{"))) {
+          return trimmed;
+        }
+        const match = trimmed.match(/"(?:cmd|url|link|stream|stream_url|uri)":\s*"([^"]+)"/i);
+        if (match && match[1]) {
+          return match[1].replace(/\\/g, "").trim();
+        }
       }
       return "";
     };
@@ -1643,7 +1658,7 @@ export const portalApi = {
             timeout: 15000,
           });
           rawOut = extractLink(resClean?.data);
-        } catch { }
+        } catch {}
       }
 
       // Attempt 1c: For series episodes, some Stalker middleware requires type=series instead of type=vod
@@ -1656,7 +1671,7 @@ export const portalApi = {
             timeout: 15000,
           });
           rawOut = extractLink(resSeries?.data);
-        } catch { }
+        } catch {}
       }
 
       // Attempt 1d: For channel commands containing /ch/123_, try calling create_link with just /ch/... path
@@ -1670,7 +1685,7 @@ export const portalApi = {
             timeout: 15000,
           });
           rawOut = extractLink(resCh?.data);
-        } catch { }
+        } catch {}
       }
 
       if (rawOut && /%mac%/i.test(rawOut)) {
@@ -1703,7 +1718,6 @@ export const portalApi = {
           const serverRootObj = new URL(serverRoot);
           const finalUrlObj = new URL(finalUrl);
           finalUrlObj.hostname = serverRootObj.hostname;
-          // Never force port 8080 (Apache PHP admin port) onto streaming URLs
           finalUrl = finalUrlObj.toString();
         } catch {
           finalUrl = finalUrl.replace(/https?:\/\/[^\/]+/i, serverRoot);
@@ -1742,12 +1756,15 @@ export const portalApi = {
       }
 
       let out2 = finalUrl || out || "";
+      if (isPlayableStreamUrl(out2)) {
+        return out2;
+      }
 
       return applySameHostStreamProxy(out2, latestPortal, cleanCmd || cmd);
     } catch (e: any) {
       console.warn("getStreamUrl failed:", e?.message || e);
       const { isPlayableStreamUrl, applySameHostStreamProxy } = await import("./stbEnvironment");
-      if (isPlayableStreamUrl(cleanCmd)) return applySameHostStreamProxy(cleanCmd, latestPortal, cleanCmd);
+      if (isPlayableStreamUrl(cleanCmd)) return cleanCmd;
 
       // On 503 or server error, construct the direct stream URL on the same host if possible
       const fallbackUrl = applySameHostStreamProxy("", latestPortal, cleanCmd || cmd);

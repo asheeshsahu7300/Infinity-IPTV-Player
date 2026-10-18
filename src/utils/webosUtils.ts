@@ -339,22 +339,83 @@ export function getWebOSMediaMimeType(url: string, isLive?: boolean): string {
 }
 
 /**
- * Builds the official LG webOS mediaOption query string payload for HTML5 video elements.
- * Allows passing resume start positions and hardware transmission parameters to com.webos.media.
+ * Converts standard SubRip (.srt) subtitle text into W3C WebVTT (.vtt) format.
  */
-export function createWebOSMediaOption(options?: { startTimeMs?: number; html5Type?: string }): string {
+export function convertSrtToVtt(srtText: string): string {
+  if (!srtText) return "WEBVTT\n\n";
+  const normalized = srtText.replace(/\r\n|\r/g, "\n").trim();
+  const vttCues = normalized.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2");
+  return `WEBVTT\n\n${vttCues}`;
+}
+
+/**
+ * Ensures at least one audio track is enabled on webOS TV HTMLMediaElement.
+ * Per LG webOS TV Developer FAQ, hardware audio decoding does not engage
+ * unless an AudioTrack has enabled = true explicitly set.
+ */
+export function activateWebOSAudioTracks(videoEl: HTMLVideoElement): void {
+  try {
+    const domTracks = (videoEl as any)?.audioTracks;
+    if (domTracks && domTracks.length > 0) {
+      let hasEnabled = false;
+      for (let i = 0; i < domTracks.length; i++) {
+        if (domTracks[i].enabled) {
+          hasEnabled = true;
+          break;
+        }
+      }
+      if (!hasEnabled) {
+        // If multiple audio tracks exist, prefer universal (AAC/MP3) to avoid AC3/EAC3 hardware limit stalls
+        let targetIdx = 0;
+        for (let i = 0; i < domTracks.length; i++) {
+          const lbl = String(domTracks[i].label || domTracks[i].language || "").toLowerCase();
+          if (lbl.includes("aac") || lbl.includes("mp3") || lbl.includes("stereo") || lbl.includes("pcm")) {
+            targetIdx = i;
+            break;
+          }
+        }
+        domTracks[targetIdx].enabled = true;
+      }
+    }
+  } catch {}
+}
+
+/**
+ * Builds the official LG webOS mediaOption query string payload for HTML5 video elements.
+ * Uses encodeURI (per LG webOS TV specification) and binds mediaTransportType (HLS / URI).
+ */
+export function createWebOSMediaOption(options?: {
+  startTimeMs?: number;
+  mimeType?: string;
+  isLive?: boolean;
+  headers?: Record<string, string>;
+}): string {
+  const isHls = options?.mimeType === "application/vnd.apple.mpegURL";
+  const defaultHeaders: Record<string, string> = {
+    "User-Agent": "okhttp/3.12.1",
+    "Accept": "*/*",
+    "Range": "bytes=0-",
+    "Connection": "keep-alive",
+    "Icy-MetaData": "1",
+  };
   const payload: any = {
-    mediaTransportType: "URI",
+    mediaTransportType: isHls ? "HLS" : "URI",
     option: {
-      transmission: {},
+      transmission: {
+        httpHeader: { ...defaultHeaders, ...(options?.headers || {}) },
+      },
+    },
+    adaptiveStreaming: {
+      maxWidth: 3840,
+      maxHeight: 2160,
     },
   };
-  if (options?.startTimeMs && options.startTimeMs > 0) {
+  if (options?.startTimeMs && options.startTimeMs > 0 && !options.isLive) {
     payload.option.transmission.playTime = {
       start: Math.round(options.startTimeMs),
     };
   }
-  return encodeURIComponent(JSON.stringify(payload));
+  return encodeURI(JSON.stringify(payload));
 }
 
 /**
@@ -364,7 +425,8 @@ export function setupWebOSVideoSource(
   videoEl: HTMLVideoElement,
   streamUrl: string,
   isLive?: boolean,
-  startTimeMs?: number
+  startTimeMs?: number,
+  headers?: Record<string, string>
 ): void {
   if (!videoEl || !streamUrl) return;
   // Ensure streamUrl is absolute HTTP/HTTPS to prevent resolving against local file:///D:/
@@ -385,7 +447,7 @@ export function setupWebOSVideoSource(
   }
 
   const mimeType = getWebOSMediaMimeType(streamUrl, isLive);
-  const mediaOpt = createWebOSMediaOption({ startTimeMs });
+  const mediaOpt = createWebOSMediaOption({ startTimeMs, mimeType, isLive, headers });
 
   const source = document.createElement("source");
   source.src = streamUrl;
@@ -393,6 +455,13 @@ export function setupWebOSVideoSource(
 
   videoEl.appendChild(source);
   videoEl.load();
+
+  // WebOS TV audio track auto-activation
+  const onMetadataLoaded = () => {
+    activateWebOSAudioTracks(videoEl);
+  };
+  videoEl.addEventListener("loadedmetadata", onMetadataLoaded, { once: true });
+  videoEl.addEventListener("canplay", onMetadataLoaded, { once: true });
 }
 
 /**

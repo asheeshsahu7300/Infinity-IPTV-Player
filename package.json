@@ -80,6 +80,7 @@
     "@types/hls.js": "^1.0.0",
     "@types/pako": "^2.0.4",
     "@types/react": "~19.1.10",
+    "@types/react-native": "^0.73.0",
     "@types/webostvjs": "^1.2.6",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",

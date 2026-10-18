@@ -149,12 +149,6 @@ function detectNetworkQuality(
   return "medium";
 }
 
-/**
- * Global flag tracking whether hardware/system AC3 decoding has failed on this device.
- * Once MediaCodec throws [-49999], we remember that this specific Android device
- * lacks AC3 support and skip AC3/E-AC3 for all subsequent channel changes.
- */
-let hasAc3DecoderFailedOnDevice = false;
 
 /**
  * Checks whether an audio track uses AC3 / E-AC3 (Dolby Digital / Digital Plus).
@@ -185,7 +179,7 @@ export const isAc3Audio = (track: any): boolean => {
 };
 
 /**
- * Checks whether an audio track uses a universally supported Android audio codec:
+ * Checks whether an audio track uses a universally supported audio codec:
  *   AAC       → audio/mp4a-latm
  *   MP3       → audio/mpeg
  *   Opus      → audio/opus
@@ -197,6 +191,8 @@ export const isUniversalAudio = (track: any): boolean => {
     track?.mimeType ||
     track?.raw?.sampleMimeType ||
     track?.raw?.mimeType ||
+    track?.title ||
+    track?.name ||
     ""
   ).toLowerCase();
 
@@ -209,26 +205,23 @@ export const isUniversalAudio = (track: any): boolean => {
     codec.includes("aac") ||
     codec.includes("mpeg") ||
     codec.includes("opus") ||
-    codec.includes("vorbis")
+    codec.includes("vorbis") ||
+    codec.includes("mp3") ||
+    codec.includes("stereo")
   );
 };
 
 /**
  * Checks decoder capability for an audio track:
  * - Universal codecs (AAC, MP3, Opus, Vorbis) are always supported.
- * - AC3 / E-AC3 is allowed if the device/ExoPlayer reports `isSupported === true`
- *   AND has not experienced a decoder failure on this device.
+ * - AC-3 / E-AC-3 / DTS tracks are supported via software decoder (Jellyfin FFmpeg)
+ *   or native hardware decoder on webOS TV.
  */
 export const isAudioTrackSupported = (track: any): boolean => {
   if (!track) return false;
 
   // If native ExoPlayer explicitly flagged track as unsupported
   if (track.isSupported === false || track.raw?.isSupported === false) {
-    return false;
-  }
-
-  // If this device previously failed to decode AC3, treat all AC3/EAC3 as unsupported
-  if (hasAc3DecoderFailedOnDevice && isAc3Audio(track)) {
     return false;
   }
 
@@ -1969,7 +1962,7 @@ export default function PlayerScreen() {
         bufferingTimeoutRef.current = null;
       }
 
-      // Live streams: enter a 15 s silent reconnect loop instead of hard failure
+      // Live streams: enter a 30 s silent reconnect loop instead of hard failure
       if (isLive && activePortal && activeCmdRef.current && !liveReconnectIntervalRef.current) {
         setLiveReconnectMode(true);
         liveReconnectIntervalRef.current = setInterval(() => {
@@ -1977,7 +1970,7 @@ export default function PlayerScreen() {
           retryCount.current = 0;
           isRetryingRef.current = false;
           handleSilentRetryRef.current();
-        }, 15000);
+        }, 30000);
       } else if (!isLive) {
         setPlaybackFailed(true);
       }
@@ -2028,6 +2021,14 @@ export default function PlayerScreen() {
         playbackQueue.item?.episodeNum
       );
       if (!mountedRef.current) return;
+
+      if (result.error?.includes("503") || (result as any)?.status === 503) {
+        console.warn("[Player] Server returned 503 (temporarily unavailable / rate-limited). Pausing reconnect.");
+        setIsRetrying(false);
+        isRetryingRef.current = false;
+        setIsLoading(false);
+        return;
+      }
 
       if (result.success && result.url) {
         // Full state reset — clean slate for the new URL
@@ -2596,7 +2597,7 @@ export default function PlayerScreen() {
   // causing the player to stall and rebuffer every 1 minute.
   useEffect(() => {
     if (!isLive || activePortal?.type !== "mag") return;
-    const periodMs = 20000;
+    const periodMs = portalApi.watchdogPeriodMs(activePortal);
     // Initial ping on channel tune
     portalApi.watchdog(activePortal).catch(() => {});
     const interval = setInterval(() => {
@@ -2891,6 +2892,15 @@ export default function PlayerScreen() {
             if (sTracks && sTracks.length > 0) {
               setTextTracks(sTracks);
             }
+            // Web / webOS safety watchdog: ensure loading spinner is dismissed once media metadata is ready
+            if (Platform.OS === "web") {
+              setTimeout(() => {
+                if (mountedRef.current && isLoadingRef.current) {
+                  isLoadingRef.current = false;
+                  setIsLoading(false);
+                }
+              }, 1200);
+            }
           }}
           onTracksChange={({ audioTracks: aTracks, textTracks: sTracks, videoTracks: vTracks, currentAudioTrack }) => {
             if (vTracks && vTracks.length > 0) {
@@ -3054,10 +3064,8 @@ export default function PlayerScreen() {
               const failedId = String(selectedAudioTrack ?? "");
               const failedTrack = allTracks.find((t: any) => String(t.id) === failedId);
 
-              // If the failed track was AC3/E-AC3, flag device AC3 decoder as unsupported
               if (failedTrack && isAc3Audio(failedTrack)) {
-                hasAc3DecoderFailedOnDevice = true;
-                console.warn("[Player] Device lacks AC3/E-AC3 hardware decoder. Auto-skipping AC3 for this session.");
+                console.warn("[Player] Audio decoder issue on AC3/E-AC3 track. Attempting compatible track recovery...");
               }
 
               if (allTracks.length > 1) {
@@ -3076,6 +3084,12 @@ export default function PlayerScreen() {
                   );
                   setSelectedAudioTrack(nextTrack.id);
                   playerRef.current?.selectAudioTrack(nextTrack.id);
+                  setIsLoading(false);
+                  isLoadingRef.current = false;
+                  setIsBuffering(false);
+                  isBufferingRef.current = false;
+                  setPlaybackFailed(false);
+                  playerRef.current?.play();
                   return;
                 }
               }
@@ -3086,6 +3100,21 @@ export default function PlayerScreen() {
               );
               setSelectedAudioTrack(-1);
               playerRef.current?.selectAudioTrack(-1);
+              setIsLoading(false);
+              isLoadingRef.current = false;
+              setIsBuffering(false);
+              isBufferingRef.current = false;
+              setPlaybackFailed(false);
+              playerRef.current?.play();
+              return;
+            }
+
+            const is503Error = errStr.includes("503") || (e as any)?.status === 503;
+            if (is503Error) {
+              console.warn("[Player] Stream server returned HTTP 503 Service Unavailable / Rate-limited.");
+              setIsLoading(false);
+              setIsBuffering(false);
+              setPlaybackFailed(true);
               return;
             }
 
@@ -3095,7 +3124,14 @@ export default function PlayerScreen() {
               errStr.includes("Stream offline");
 
             if (isOfflineError) {
-              console.warn("[Player] Stream offline (HTTP 404 from edge server).");
+              const rawCmd = activeCmdRef.current || params.cmd || "";
+              portalApi.clearStreamUrlCache(rawCmd);
+              if (retryCount.current < 2) {
+                console.warn(`[Player] Stream 404 from edge server. Triggering recovery retry ${retryCount.current + 1}/2...`);
+                schedulePlayerRecovery("edgeServer404", true);
+                return;
+              }
+              console.warn("[Player] Stream offline (HTTP 404 persisted after retries).");
               setIsLoading(false);
               setIsBuffering(false);
               setPlaybackFailed(true);
@@ -3180,13 +3216,15 @@ export default function PlayerScreen() {
             style={S.retryBtn}
             focusStyle={S.retryBtnFocused}
             onPress={() => {
+              const rawCmd = activeCmdRef.current || params.cmd || "";
+              portalApi.clearStreamUrlCache(rawCmd);
               retryCount.current = 0;
               isRetryingRef.current = false;
               setPlaybackFailed(false);
               setIsLoading(true);
               setTimeout(() => {
                 handleSilentRetry();
-              }, 1000);
+              }, 500);
             }}
           >
             {(focused: boolean) => (

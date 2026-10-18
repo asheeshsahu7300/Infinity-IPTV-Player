@@ -34,7 +34,8 @@ class StreamManagerClass {
         content: StreamableContent,
         portal: Portal,
         type: "itv" | "vod" = "itv",
-        episodeNum?: number
+        episodeNum?: number,
+        retryCount: number = 0
     ): Promise<StreamResult> {
         try {
             const cmd = content.streamUrl || (content as Episode).cmd || "";
@@ -46,34 +47,30 @@ class StreamManagerClass {
 
             // Direct stream for Xtream or M3U portals
             if (portal.type !== "mag") {
-                const proxied = applySameHostStreamProxy(cmd, latestPortal, cmd);
-                const isPlayable = isPlayableStreamUrl(proxied);
-                return { url: isPlayable ? proxied : cmd, success: !!proxied };
+                const isPlayable = isPlayableStreamUrl(cmd);
+                return { url: isPlayable ? cmd : "", success: isPlayable };
             }
 
             // Import portalApi dynamically to avoid circular deps
             const { portalApi } = await import("./portalApi");
 
-            const url = await portalApi.getStreamUrl(latestPortal, cmd, type, episodeNum);
+            const url = await portalApi.getStreamUrl(latestPortal, cmd, type, episodeNum, retryCount);
 
             if (!url || !isPlayableStreamUrl(url)) {
                 const cleanCmd = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
                 if (isPlayableStreamUrl(cleanCmd)) {
-                    return { url: applySameHostStreamProxy(cleanCmd, latestPortal, cmd), success: true };
+                    return { url: cleanCmd, success: true };
                 }
                 return { url: "", success: false, error: "Failed to generate playable stream URL" };
             }
 
-            const proxiedUrl = applySameHostStreamProxy(url, latestPortal, cmd);
-            const isPlayable = isPlayableStreamUrl(proxiedUrl);
-            return { url: isPlayable ? proxiedUrl : "", success: isPlayable };
+            return { url, success: true };
         } catch (error: any) {
             console.warn("⚠️ StreamManager.getStreamUrl error:", error?.message || error);
             const cmd = content.streamUrl || (content as Episode).cmd || "";
-            const latestPortal = usePortalStore.getState().activePortal ?? portal;
             const cleanCmd = cmd.replace(/^(ffmpeg|ffrt\d*|auto|-i|vlc)\s+/i, "").trim();
             if (isPlayableStreamUrl(cleanCmd)) {
-                return { url: applySameHostStreamProxy(cleanCmd, latestPortal, cmd), success: true };
+                return { url: cleanCmd, success: true };
             }
             return { url: "", success: false, error: error.message || "Stream URL generation failed" };
         }
@@ -115,8 +112,7 @@ class StreamManagerClass {
                     }
                 } catch {}
             }
-            const proxied = applySameHostStreamProxy(content.streamUrl || "", latestPortal, content.streamUrl);
-            return { url: proxied, success: !!proxied };
+            return { url: content.streamUrl || "", success: !!content.streamUrl };
         }
 
         try {
@@ -130,9 +126,14 @@ class StreamManagerClass {
 
             // 2. Use latest portal from store
             const freshPortal = usePortalStore.getState().activePortal ?? portal;
+            const cmd = content.streamUrl || (content as Episode).cmd || "";
+            if (cmd) {
+                const { portalApi } = await import("./portalApi");
+                portalApi.clearStreamUrlCache(cmd);
+            }
 
-            // 3. Generate completely fresh stream URL
-            const result = await this.getStreamUrl(content, freshPortal, type, episodeNum);
+            // 3. Generate completely fresh stream URL bypassing dedupe cache
+            const result = await this.getStreamUrl(content, freshPortal, type, episodeNum, retryCount + 1);
             return result;
         } catch (error: any) {
             return { url: "", success: false, error: error?.message || "Stream retry failed" };

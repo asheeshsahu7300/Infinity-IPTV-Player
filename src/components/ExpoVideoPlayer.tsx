@@ -10,7 +10,7 @@ import {
   VideoContentFit,
 } from "expo-video";
 import { BufferTuning, isPlayableStreamUrl } from "../services/stbEnvironment";
-import { setupWebOSVideoSource } from "../utils/webosUtils";
+import { setupWebOSVideoSource, isWebOS, activateWebOSAudioTracks, convertSrtToVtt } from "../utils/webosUtils";
 
 /**
  * Checks for native browser HLS support without MSE (only Apple Safari / iOS WebKit).
@@ -456,12 +456,29 @@ function normalizeDomAudioTracks(audioTrackList: any): NormalizedTrackOption[] {
     for (let i = 0; i < audioTrackList.length; i++) {
       const t = audioTrackList[i];
       const label = t.label || (t.language ? t.language.toUpperCase() : `Audio ${i + 1}`);
+      const lower = label.toLowerCase();
+      let mime = "audio/mp4a-latm";
+      if (lower.includes("eac3") || lower.includes("ec-3") || lower.includes("dolby digital plus")) {
+        mime = "audio/eac3";
+      } else if (lower.includes("ac3") || lower.includes("ac-3") || lower.includes("dolby")) {
+        mime = "audio/ac3";
+      } else if (lower.includes("dts")) {
+        mime = "audio/vnd.dts";
+      } else if (lower.includes("mp3") || lower.includes("mpeg")) {
+        mime = "audio/mpeg";
+      } else if (lower.includes("opus")) {
+        mime = "audio/opus";
+      }
       tracks.push({
-        id: t.id || i,
+        id: t.id ?? i,
         index: i,
         title: label,
         name: label,
         language: t.language || "",
+        mimeType: mime,
+        format: {
+          sampleMimeType: mime,
+        },
         isSupported: true,
         raw: t,
       });
@@ -603,6 +620,10 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
     const effectiveHeaders = useMemo(() => {
       return {
         "User-Agent": "okhttp/3.12.1",
+        "Accept": "*/*",
+        "Range": "bytes=0-",
+        "Connection": "keep-alive",
+        "Icy-MetaData": "1",
         ...(headers || {}),
       };
     }, [headers]);
@@ -777,10 +798,33 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         }
 
         // Web DOM HTMLMediaElement audio tracks (Safari / webOS native video)
-        if (Platform.OS === "web" && videoElRef.current && (videoElRef.current as any).audioTracks) {
-          const domTracks = (videoElRef.current as any).audioTracks;
-          for (let i = 0; i < domTracks.length; i++) {
-            domTracks[i].enabled = (i === Number(trackIdOrIndex) || String(domTracks[i].id) === String(trackIdOrIndex));
+        if (Platform.OS === "web" && videoElRef.current) {
+          const isDisable = trackIdOrIndex === -1 || trackIdOrIndex === "-1" || trackIdOrIndex === null;
+          if ((videoElRef.current as any).audioTracks) {
+            const domTracks = (videoElRef.current as any).audioTracks;
+            for (let i = 0; i < domTracks.length; i++) {
+              const shouldEnable = !isDisable && (
+                i === Number(trackIdOrIndex) ||
+                String(domTracks[i].id) === String(trackIdOrIndex) ||
+                domTracks[i].language === String(trackIdOrIndex) ||
+                (trackIdOrIndex === "default" && i === 0)
+              );
+              domTracks[i].enabled = shouldEnable;
+            }
+          }
+          if (isDisable) {
+            videoElRef.current.muted = true;
+          } else if (videoElRef.current.muted && !pausedRef.current) {
+            videoElRef.current.muted = false;
+          }
+        }
+
+        // Web mpegts.js mute toggle on disable
+        if (Platform.OS === "web" && activeEngineRef.current === "mpegts" && videoElRef.current) {
+          if (trackIdOrIndex === -1 || trackIdOrIndex === "-1") {
+            videoElRef.current.muted = true;
+          } else if (videoElRef.current.muted && !pausedRef.current) {
+            videoElRef.current.muted = false;
           }
         }
 
@@ -812,6 +856,19 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
 
     const applySubtitleTrack = useCallback(
       (trackIdOrIndex: string | number | undefined) => {
+        // Web DOM text tracks
+        if (Platform.OS === "web" && videoElRef.current?.textTracks) {
+          const tracks = videoElRef.current.textTracks;
+          const isDisable = trackIdOrIndex === undefined || trackIdOrIndex === -1 || trackIdOrIndex === "-1" || trackIdOrIndex === null;
+          for (let i = 0; i < tracks.length; i++) {
+            const shouldShow = !isDisable && (
+              i === Number(trackIdOrIndex) ||
+              String((tracks[i] as any).id) === String(trackIdOrIndex) ||
+              tracks[i].language === String(trackIdOrIndex)
+            );
+            tracks[i].mode = shouldShow ? "showing" : "disabled";
+          }
+        }
         // Web HLS.js
         if (Platform.OS === "web" && activeEngineRef.current === "hls" && hlsRef.current) {
           const hls = hlsRef.current;
@@ -1033,6 +1090,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
 
       const onCanPlayHandler = () => {
         onBufferingRef.current?.(false);
+        onPlayingRef.current?.();
         if (!pausedRef.current && autoPlayRef.current && boundVideoEl?.paused) {
           boundVideoEl.play().catch(() => {});
         }
@@ -1040,6 +1098,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
 
       const onLoadedDataHandler = () => {
         onBufferingRef.current?.(false);
+        onPlayingRef.current?.();
         if (!pausedRef.current && autoPlayRef.current && boundVideoEl?.paused) {
           boundVideoEl.play().catch(() => {});
         }
@@ -1069,6 +1128,12 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         const err = boundVideoEl.error;
         if (err) {
           console.warn("[Web Video] Element error code:", err.code, err.message);
+          // If native pipeline failed on MPEG-TS and mpegts hasn't been tried, attempt mpegts fallback
+          if (activeEngineRef.current === "native" && isTsStream && !mpegtsInstance) {
+            console.log("[Web Video] Native pipeline encountered error on TS; attempting mpegts fallback...");
+            const ok = initMpegtsEngine(boundVideoEl, normalized);
+            if (ok) return;
+          }
           onErrorRef.current?.(new Error(err.message || `Media playback error (code ${err.code})`));
         }
       };
@@ -1077,15 +1142,18 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         if (!boundVideoEl || isCancelled) return;
         activeEngineRef.current = "native";
         console.log("[webOS Video] Using native webOS media pipeline for:", normalized);
-        setupWebOSVideoSource(boundVideoEl, normalized, isLive);
+        setupWebOSVideoSource(boundVideoEl, normalized, isLive, undefined, effectiveHeaders);
 
         const onNativeLoaded = () => {
+          if (boundVideoEl) {
+            activateWebOSAudioTracks(boundVideoEl);
+          }
           if (isFirstLoadRef.current) {
             isFirstLoadRef.current = false;
             const durationMs = Math.round((boundVideoEl?.duration || 0) * 1000);
             const domAudio = (boundVideoEl as any)?.audioTracks ? normalizeDomAudioTracks((boundVideoEl as any).audioTracks) : [];
             const domText = boundVideoEl?.textTracks ? normalizeDomTextTracks(boundVideoEl.textTracks) : [];
-            onLoad?.({
+            onLoadRef.current?.({
               duration: durationMs,
               audioTracks: domAudio,
               textTracks: domText,
@@ -1093,14 +1161,27 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
               naturalSize: boundVideoEl?.videoWidth && boundVideoEl?.videoHeight
                 ? { width: boundVideoEl.videoWidth, height: boundVideoEl.videoHeight }
                 : undefined,
+              currentAudioTrack: domAudio[0],
             });
           }
-          if (!pausedRef.current && autoPlay) {
+          if (!pausedRef.current && autoPlayRef.current) {
             boundVideoEl?.play().catch(() => {});
           }
+          onPlayingRef.current?.();
         };
 
         boundVideoEl.addEventListener("loadedmetadata", onNativeLoaded, { once: true });
+        boundVideoEl.addEventListener("canplay", onNativeLoaded, { once: true });
+
+        const firstSource = boundVideoEl.querySelector("source");
+        if (firstSource) {
+          firstSource.addEventListener("error", () => {
+            console.warn("[webOS Video] Native source element failed to load; attempting mpegts fallback...");
+            if (isTsStream && !mpegtsInstance && boundVideoEl) {
+              initMpegtsEngine(boundVideoEl, normalized);
+            }
+          }, { once: true });
+        }
       };
 
       const initHlsEngine = (videoEl: HTMLVideoElement, url: string): boolean => {
@@ -1467,8 +1548,25 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           }
         }, 2500);
 
-        // Engine Path 1: mpegts.js for MPEG-TS streams (.ts or live stream URLs without m3u8)
+        const isWebOSTV = isWebOS();
+
+        // Engine Path 1: MPEG-TS streams (.ts or live stream URLs)
+        // If native hardware video/mp2t is genuinely supported (physical webOS TV):
+        // use native webOS hardware pipeline.
+        // In webOS Simulator, desktop browsers, or when native mp2t is not supported by Blink:
+        // use mpegts.js (MSE).
         if (isTsStream) {
+          const nativeMp2tSupported = typeof videoEl.canPlayType === "function" && (
+            videoEl.canPlayType("video/mp2t") !== "" ||
+            videoEl.canPlayType("video/mp2t; codecs=\"avc1.42E01E\"") !== ""
+          );
+
+          if (isWebOSTV && nativeMp2tSupported) {
+            console.log("[webOS Video] Utilizing native webOS hardware pipeline for MPEG-TS stream:", normalized);
+            fallbackToNativeSource();
+            return;
+          }
+
           const mpegtsOk = initMpegtsEngine(videoEl, normalized);
           if (mpegtsOk) return;
         }
@@ -1479,9 +1577,11 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           if (hlsOk) return;
         }
 
-        // Engine Path 3: Shaka Player for DASH, progressive MP4/WebM, or VOD
-        const shakaOk = await initShakaEngine(videoEl);
-        if (shakaOk) return;
+        // Engine Path 3: Shaka Player for DASH (.mpd), progressive MP4/WebM, or VOD
+        if (isDashStream || (!isTsStream && !isHlsStream)) {
+          const shakaOk = await initShakaEngine(videoEl);
+          if (shakaOk) return;
+        }
 
         // Engine Path 4: Fallback native webOS video source
         fallbackToNativeSource();
