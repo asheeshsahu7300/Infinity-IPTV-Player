@@ -1,4 +1,3 @@
-
 # Infinity IPTV Player TV
 
 <p align="center">
@@ -108,6 +107,19 @@ Designed specifically for the Android TV 10-foot experience.
 
 ---
 
+### LG webOS Smart TV Optimized
+
+Built with native support for LG Smart TVs (webOS 3.5 through webOS 24).
+
+- **LG Magic Remote Air-Mouse**: Native hover pointer support with smooth card highlight states
+- **2D Spatial Navigation**: Vector-based directional focus transitions across grids and sidebars
+- **Remote Key Mapping**: Comprehensive support for webOS Back button (key code `461`), Play/Pause, Fast-Forward, Rewind, and Channel keys
+- **Hardware-Accelerated Playback**: Direct webOS hardware video pipeline (`video/mp2t`, H.264, HEVC) with `mpegts.js` and `HLS.js` fallbacks
+- **Universal Audio Decoding**: Automatic webOS audio track activation for AAC, MP3, and multi-track streams
+- **Single-File IPK Distribution**: Automated packaging into standalone `.ipk` for sideloading or webOS Dev Manager installation
+
+---
+
 ### Performance
 
 Built to handle large IPTV libraries efficiently.
@@ -209,17 +221,19 @@ The interface is designed around a premium streaming experience.
 
 | Category | Technology |
 |---|---|
-| Framework | Expo |
+| Framework | Expo / React Native for Web |
 | UI | React Native |
 | Language | TypeScript |
-| Navigation | Expo Router |
+| Navigation | Expo Router (File-based & Hash Routing on webOS) |
 | State Management | Zustand |
 | Networking | Axios |
-| IPTV APIs | M3U, Xtream Codes, MAG/Stalker |
-| Lists | FlashList / FlatList |
-| Video | Expo Video |
-| TV Navigation | Custom D-Pad Focus Engine |
-| Platform | Android / Android TV |
+| IPTV APIs | M3U, Xtream Codes, MAG / Stalker |
+| Virtualized Lists | FlashList / FlatList |
+| Video Engines | Expo Video (Android) / HTML5 Video, `mpegts.js`, `HLS.js`, Shaka Player (webOS) |
+| TV Navigation | Custom D-Pad Focus Engine (Android TV) & 2D Spatial Navigation (webOS) |
+| TV Packaging | Gradle (Android APK) & `@webosose/ares-cli` (webOS IPK) |
+| webOS TV SDK | Official `webOSTV.js` & `webOSTV-dev.js` |
+| Platforms | Android Phone, Tablet, Android TV, Google TV, LG webOS Smart TV |
 
 ---
 
@@ -240,25 +254,36 @@ The interface is designed around a premium streaming experience.
 │   └── settings.tsx              # Application settings
 │
 ├── src/
-│   ├── components/              # Reusable UI components
-│   ├── services/                # IPTV API clients
-│   │   ├── m3u/
-│   │   ├── xtream/
-│   │   └── stalker/
-│   ├── store/                   # Zustand stores
-│   ├── theme/                   # Design system & tokens
-│   ├── tv/                      # Android TV focus engine
-│   │   ├── Focusable/
-│   │   └── FocusGroup/
-│   └── utils/                   # Device & utility helpers
+│   ├── components/              # Reusable UI components & video players
+│   ├── services/                # IPTV API clients (M3U, Xtream, MAG) & StreamManager
+│   ├── store/                   # Zustand state stores
+│   ├── theme/                   # Design system & responsive TV tokens
+│   ├── tv/                      # Android TV focus engine & webOS Spatial Navigation
+│   │   ├── Focusable.tsx
+│   │   ├── FocusGroup.tsx
+│   │   └── webSpatialNavigation.ts
+│   └── utils/                   # Device helpers & webOS utilities (webosUtils.ts)
 │
-├── assets/                      # Images, icons & splash assets
-├── android/                     # Native Android configuration
+├── webos/                       # LG webOS TV package definitions & assets
+│   ├── appinfo.json             # webOS app descriptor & permissions
+│   ├── icon.png                 # 80x80 app tile icon
+│   ├── largeIcon.png            # 130x130 large app icon
+│   ├── bgImage.png              # 1920x1080 background image
+│   └── splashBackground.png     # 1920x1080 splash screen
+│
+├── scripts/
+│   └── build-webos.js           # Automated webOS packaging & IPK generator
+│
+├── docs/
+│   └── WEBOS_GUIDE.md           # LG webOS TV developer & sideloading guide
+│
+├── release-webos/               # Generated .ipk releases (com.infinity.iptvplayer_1.0.0_all.ipk)
+├── assets/                      # Shared images, fonts & splash assets
+├── android/                     # Native Android project configuration
 ├── app.json
-├── eas.json
 ├── package.json
 └── README.md
-````
+```
 
 ---
 
@@ -315,22 +340,43 @@ bun install
 
 # Development
 
+### Android & Android TV
+
 Start the Expo development server:
 
 ```bash
 npx expo start
 ```
 
-Run on Android:
+Run on Android (Emulator or physical device):
 
 ```bash
 npx expo start --android
 ```
 
-For a development build:
+For an Android native development build:
 
 ```bash
 npx expo run:android
+```
+
+### LG webOS TV & Web
+
+Run the application locally in the browser with spatial navigation & webOS polyfills:
+
+```bash
+npm run web
+```
+
+Build the webOS package and run in the LG webOS TV Simulator:
+
+```bash
+# 1. Package the .ipk
+npm run build:webos
+
+# 2. Launch in webOS Simulator or on TV
+ares-install --device <device-name> release-webos/com.infinity.iptvplayer_1.0.0_all.ipk
+ares-launch --device <device-name> com.infinity.iptvplayer
 ```
 
 ---
@@ -543,6 +589,29 @@ This makes the interface easy to use from a distance with a standard TV remote.
 
 ---
 
+# LG webOS TV Experience
+
+Infinity IPTV Player provides first-class support for LG Smart TVs running webOS 3.5 through webOS 24.
+
+## Magic Remote & Spatial Navigation
+
+```text
+       Magic Remote                 D-Pad & Media Keys
+    ┌────────────────┐              ┌────────────────┐
+    │  Air Pointer   │              │  Arrow Keys    │
+    │  Wheel Click   │              │  Enter / OK    │
+    │  Back (461)    │              │  Play / Pause  │
+    └────────────────┘              └────────────────┘
+```
+
+- **Magic Remote Air-Mouse**: Point-and-click navigation with automatic hover card expansions and focus rings.
+- **2D Spatial Navigation**: D-Pad navigation moves between cards and menus based on Euclidean vector geometry without requiring Tab orders.
+- **Back Button**: Dedicated mapping for key code `461` gracefully dismisses modals, exits full-screen playback, or returns to previous dashboards.
+- **Media Keys**: Native response to physical Play (`415`), Pause (`19`), Fast-Forward (`417`), Rewind (`412`), and Channel Up/Down (`33`/`34`).
+- **Complete Developer Guide**: For detailed webOS remote architecture, video pipeline, and debugging, see [**docs/WEBOS_GUIDE.md**](docs/WEBOS_GUIDE.md).
+
+---
+
 # Architecture
 
 The application separates the IPTV providers from the UI layer.
@@ -568,11 +637,12 @@ The application separates the IPTV providers from the UI layer.
                             │
                      React Native UI
                             │
-             ┌──────────────┴──────────────┐
-             │                             │
-          Mobile                      Android TV
-             │                             │
-        Touch UI                      D-Pad UI
+             ┌──────────────┼──────────────┐
+             │              │              │
+          Mobile        Android TV      LG webOS
+             │              │              │
+         Touch UI        D-Pad UI     Magic Remote &
+                                       Spatial Nav
 ```
 
 ---
