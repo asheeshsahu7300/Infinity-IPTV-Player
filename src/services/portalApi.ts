@@ -20,6 +20,7 @@ import {
 } from "../store/portalStore";
 // 🔑 Import store to persist refreshed token
 import { usePortalStore } from "../store/portalStore";
+import { isDemoPortal, getDemoPortal, getDemoPortalData } from "./demoData";
 
 const safe = (v: any) => (typeof v === "string" ? v : "");
 
@@ -169,6 +170,10 @@ const rmAcceptHeader = {
 
 export const formatMac = (mac: string) => {
   if (!mac) return "";
+  const upper = mac.toUpperCase();
+  if (upper.includes("DEMO") || upper.includes("DE:MO")) {
+    return "00:1A:79:00:00:01";
+  }
   let clean = mac.replace(/[^A-Fa-f0-9]/g, "").toUpperCase();
   if (clean.length === 0) return mac;
   if (clean.length % 2 !== 0) {
@@ -826,6 +831,15 @@ export const portalApi = {
   },
 
   async authenticate(portal: Portal) {
+    if (isDemoPortal(portal)) {
+      const demoP = getDemoPortal("mag");
+      return {
+        token: demoP.config.token || "demo_token_review_2026",
+        expiry: Date.now() + 365 * 24 * 3600 * 1000,
+        serverInfo: demoP.config.serverInfo || { name: "Infinity Demo STB Middleware", version: "5.6.0" },
+      };
+    }
+
     const base = safe(portal.config.url).replace(/\/$/, "");
     const mac = formatMac(portal.config.mac ?? "");
 
@@ -911,6 +925,10 @@ export const portalApi = {
   },
 
   async getLiveCategories(portal: Portal): Promise<Category[]> {
+    if (isDemoPortal(portal)) {
+      return getDemoPortalData(portal.type as any || "mag").categories.filter((c) => c.type === "live");
+    }
+
     const key = portal.id;
     const cacheKey = `portal:${key}:live:categories`;
 
@@ -956,6 +974,13 @@ export const portalApi = {
     categoryId?: string,
     page = 1
   ): Promise<Channel[]> {
+    if (isDemoPortal(portal)) {
+      const demo = getDemoPortalData(portal.type as any || "mag");
+      if (!categoryId || categoryId === "all" || categoryId === "*") return demo.channels;
+      const target = categoryId.includes(":") ? categoryId.split(":")[1] : categoryId;
+      return demo.channels.filter((c) => (c.categoryId?.includes(":") ? c.categoryId.split(":")[1] : c.categoryId) === target);
+    }
+
     const key = portal.id;
     const cacheKey = `portal:${key}:live:channels:${categoryId ?? "all"
       }:${page}`;
@@ -1023,6 +1048,10 @@ export const portalApi = {
   },
 
   async getVodCategories(portal: Portal): Promise<Category[]> {
+    if (isDemoPortal(portal)) {
+      return getDemoPortalData(portal.type as any || "mag").categories.filter((c) => c.type === "vod");
+    }
+
     const key = portal.id;
     const cacheKey = `portal:${key}:vod:categories`;
 
@@ -1066,6 +1095,13 @@ export const portalApi = {
     categoryId?: string,
     page = 1
   ): Promise<VODItem[]> {
+    if (isDemoPortal(portal)) {
+      const demo = getDemoPortalData(portal.type as any || "mag");
+      if (!categoryId || categoryId === "all" || categoryId === "*") return demo.vodItems;
+      const target = categoryId.includes(":") ? categoryId.split(":")[1] : categoryId;
+      return demo.vodItems.filter((v) => (v.categoryId?.includes(":") ? v.categoryId.split(":")[1] : v.categoryId) === target);
+    }
+
     const key = portal.id;
     const cacheKey = `portal:${key}:vod:items:${categoryId ?? "all"}:${page}`;
 
@@ -1191,6 +1227,10 @@ export const portalApi = {
   },
 
   async getSeriesCategories(portal: Portal): Promise<Category[]> {
+    if (isDemoPortal(portal)) {
+      return getDemoPortalData(portal.type as any || "mag").categories.filter((c) => c.type === "series");
+    }
+
     const key = portal.id;
     const cacheKey = `portal:${key}:series:categories`;
 
@@ -1233,6 +1273,13 @@ export const portalApi = {
     categoryId?: string,
     page = 1
   ): Promise<Series[]> {
+    if (isDemoPortal(portal)) {
+      const demo = getDemoPortalData(portal.type as any || "mag");
+      if (!categoryId || categoryId === "all" || categoryId === "*") return demo.series;
+      const target = categoryId.includes(":") ? categoryId.split(":")[1] : categoryId;
+      return demo.series.filter((s) => (s.categoryId?.includes(":") ? s.categoryId.split(":")[1] : s.categoryId) === target);
+    }
+
     const key = portal.id;
     const cacheKey = `portal:${key}:series:list:${categoryId ?? "all"}:${page}`;
 
@@ -1356,6 +1403,12 @@ export const portalApi = {
   },
 
   async getSeriesInfo(portal: Portal, seriesId: string): Promise<Season[]> {
+    if (isDemoPortal(portal)) {
+      const demo = getDemoPortalData(portal.type as any || "mag");
+      const found = demo.series.find((s) => String(s.id) === String(seriesId));
+      return found?.seasons || [];
+    }
+
     const key = portal.id;
     const cacheKey = `portal:${key}:series:info:${seriesId}`;
 
@@ -1572,6 +1625,9 @@ export const portalApi = {
     retryCount: number = 0
   ): Promise<string> {
     const latestPortal = usePortalStore.getState().activePortal ?? portal;
+    if (isDemoPortal(latestPortal) || (cmd && /^https?:\/\//i.test(cmd.trim()))) {
+      return cmd.trim();
+    }
     const forceRefresh = retryCount > 0;
     let refreshed = latestPortal;
     try {
@@ -1858,6 +1914,20 @@ export const portalApi = {
 
   async search(portal: Portal, q: string, type: string): Promise<any[]> {
     const latestPortal = usePortalStore.getState().activePortal ?? portal;
+    if (isDemoPortal(latestPortal)) {
+      const demo = getDemoPortalData(latestPortal.type as any || "mag");
+      const lower = q.trim().toLowerCase();
+      if (type === "live" || type === "itv") {
+        return demo.channels.filter((c) => c.name.toLowerCase().includes(lower));
+      }
+      if (type === "vod") {
+        return demo.vodItems.filter((v) => v.name.toLowerCase().includes(lower));
+      }
+      if (type === "series") {
+        return demo.series.filter((s) => s.name.toLowerCase().includes(lower));
+      }
+      return [];
+    }
     const refreshed = await refreshToken(latestPortal);
     const magType = type === "live" ? "itv" : type;
     const base = safe(refreshed.config.url).replace(/\/$/, "");
@@ -1879,6 +1949,9 @@ export const portalApi = {
   },
 
   async getLiveChannelsForSearch(portal: Portal): Promise<Channel[]> {
+    if (isDemoPortal(portal)) {
+      return getDemoPortalData(portal.type as any || "mag").channels;
+    }
     const key = portal.id;
     const cacheKey = `portal:${key}:live:channels:search:all`;
 
@@ -1920,6 +1993,18 @@ export const portalApi = {
     try {
       const key = portal.id;
       const store = usePortalStore.getState();
+
+      if (isDemoPortal(portal)) {
+        const demoData = getDemoPortalData(portal.type);
+        await Promise.all([
+          store.setCategories(demoData.categories, portal.id),
+          store.setChannels(demoData.channels, portal.id),
+          store.setVodItems(demoData.vodItems, portal.id),
+          store.setSeries(demoData.series, portal.id),
+          store.setEpgData(demoData.epgData, portal.id),
+        ]);
+        return;
+      }
 
       if (portal.type === "xtream") {
         const { XtreamApi } = await import("./xtreamApi");

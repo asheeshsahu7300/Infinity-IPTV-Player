@@ -8,6 +8,7 @@ import {
   PortalSlot,
   PORTAL_SLOTS,
 } from "../services/portalPersistence";
+import { isDemoPortal, getDemoPortalData } from "../services/demoData";
 
 // ---------------------------------------
 // PORTAL MODEL
@@ -318,6 +319,11 @@ export const usePortalStore = create<PortalState>((set, get) => ({
   // ---------------------------------------
   validatePortalAuth: async (portal) => {
     try {
+      // Demo portals are always valid
+      if (isDemoPortal(portal)) {
+        return true;
+      }
+
       // Check if portal has required config
       if (portal.type === "mag") {
         // MAG/Stalker: Just check if token exists (no expiry check)
@@ -661,6 +667,17 @@ export const usePortalStore = create<PortalState>((set, get) => ({
       }
       if (cachedCats && cachedCats.length > current.categories.length) {
         next.categories = cachedCats;
+      }
+
+      // If this is a demo portal and no cached data was found, seed from demo data
+      const activeP = get().activePortal;
+      if (isDemoPortal(activeP) && activeP?.type) {
+        const demoData = getDemoPortalData(activeP.type);
+        if (!next.channels && current.channels.length === 0) next.channels = demoData.channels;
+        if (!next.vodItems && current.vodItems.length === 0) next.vodItems = demoData.vodItems;
+        if (!next.series && current.series.length === 0) next.series = demoData.series;
+        if (!next.categories && current.categories.length === 0) next.categories = demoData.categories;
+        if (current.epgData.length === 0) next.epgData = demoData.epgData;
       }
 
       if (Object.keys(next).length > 0) set(next);

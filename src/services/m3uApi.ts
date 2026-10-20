@@ -2,6 +2,7 @@
 import axios from "axios";
 import { cacheManager, CACHE_TTL } from "./cacheManager";
 import { requestManager } from "./requestManager";
+import { getDemoPortalData } from "./demoData";
 
 // --------------------------------------------------
 // TYPES
@@ -59,6 +60,16 @@ export class M3UApi {
 
   constructor(private config: { url: string; portalId?: string }) { }
 
+  private isDemo(): boolean {
+    const url = (this.config.url || "").toLowerCase();
+    return (
+      url.includes("demo") ||
+      url.includes("test") ||
+      url.includes("review") ||
+      url.includes("infinityiptv.com")
+    );
+  }
+
   private getCacheKey(action: string, params?: string): string {
     if (this.config.portalId) {
       return `m3u:portal:${this.config.portalId}:${action}:${params || ""}`;
@@ -81,6 +92,53 @@ export class M3UApi {
       if (cached && cached.length > 0) {
         this.playlist = cached;
         this.loadError = null;
+        return this.playlist;
+      }
+
+      // Check for Demo M3U URL (Play Store review testing)
+      const lowerUrl = (this.config.url || "").toLowerCase();
+      if (
+        lowerUrl.includes("demo") ||
+        lowerUrl.includes("test") ||
+        lowerUrl.includes("review") ||
+        lowerUrl.includes("infinityiptv.com")
+      ) {
+        const demoData = getDemoPortalData("m3u");
+        const entries: M3UEntry[] = [
+          ...demoData.channels.map((ch) => ({
+            id: ch.id,
+            name: ch.name,
+            logo: ch.logo || null,
+            category: ch.category || "General",
+            type: "live" as const,
+            streamUrl: ch.streamUrl || "",
+            num: ch.num,
+          })),
+          ...demoData.vodItems.map((v) => ({
+            id: v.id,
+            name: v.name,
+            logo: v.logo || null,
+            category: v.category || "Cinema",
+            type: "vod" as const,
+            streamUrl: v.streamUrl || "",
+          })),
+          ...demoData.series.flatMap((s) =>
+            (s.seasons || []).flatMap((season) =>
+              season.episodes.map((ep) => ({
+                id: ep.id,
+                name: `${s.name} S01E0${ep.episodeNum} ${ep.name}`,
+                logo: s.logo || null,
+                category: s.category || "Series",
+                type: "series" as const,
+                streamUrl: ep.streamUrl || "",
+              }))
+            )
+          ),
+        ];
+        this.playlist = entries;
+        this.loadError = null;
+        this.lastLoadTime = Date.now();
+        await cacheManager.set(cacheKey, this.playlist, CACHE_TTL.CHANNELS);
         return this.playlist;
       }
 
@@ -332,6 +390,10 @@ export class M3UApi {
   // LIVE TV
   // ==================================================
   async getLiveCategories() {
+    if (this.isDemo()) {
+      return getDemoPortalData("m3u").categories.filter((c) => c.type === "live");
+    }
+
     const cacheKey = this.getCacheKey("live_categories");
 
     return requestManager.request(cacheKey, async () => {
@@ -364,6 +426,13 @@ export class M3UApi {
     page: number = 1,
     pageSize: number = 100
   ) {
+    if (this.isDemo()) {
+      const demo = getDemoPortalData("m3u");
+      if (!categoryId || categoryId === "all" || categoryId === "*") return demo.channels;
+      const target = categoryId.includes(":") ? categoryId.split(":")[1] : categoryId;
+      return demo.channels.filter((c) => (c.categoryId?.includes(":") ? c.categoryId.split(":")[1] : c.categoryId) === target || c.category === categoryId);
+    }
+
     const rows = await this.load();
     let items = rows.filter((c) => c.type === "live");
 
@@ -393,6 +462,10 @@ export class M3UApi {
   // VOD
   // ==================================================
   async getVodCategories() {
+    if (this.isDemo()) {
+      return getDemoPortalData("m3u").categories.filter((c) => c.type === "vod");
+    }
+
     const cacheKey = this.getCacheKey("vod_categories");
 
     return requestManager.request(cacheKey, async () => {
@@ -425,6 +498,13 @@ export class M3UApi {
     page: number = 1,
     pageSize: number = 50
   ) {
+    if (this.isDemo()) {
+      const demo = getDemoPortalData("m3u");
+      if (!categoryId || categoryId === "all" || categoryId === "*") return demo.vodItems;
+      const target = categoryId.includes(":") ? categoryId.split(":")[1] : categoryId;
+      return demo.vodItems.filter((v) => (v.categoryId?.includes(":") ? v.categoryId.split(":")[1] : v.categoryId) === target || v.category === categoryId);
+    }
+
     const rows = await this.load();
     let items = rows.filter((c) => c.type === "vod");
 
@@ -468,6 +548,10 @@ export class M3UApi {
   // SERIES
   // ==================================================
   async getSeriesCategories() {
+    if (this.isDemo()) {
+      return getDemoPortalData("m3u").categories.filter((c) => c.type === "series");
+    }
+
     const cacheKey = this.getCacheKey("series_categories");
 
     return requestManager.request(cacheKey, async () => {
@@ -500,6 +584,13 @@ export class M3UApi {
     page: number = 1,
     pageSize: number = 50
   ) {
+    if (this.isDemo()) {
+      const demo = getDemoPortalData("m3u");
+      if (!categoryId || categoryId === "all" || categoryId === "*") return demo.series;
+      const target = categoryId.includes(":") ? categoryId.split(":")[1] : categoryId;
+      return demo.series.filter((s) => (s.categoryId?.includes(":") ? s.categoryId.split(":")[1] : s.categoryId) === target || s.category === categoryId);
+    }
+
     const rows = await this.load();
     let items = rows.filter((c) => c.type === "series");
 
@@ -532,6 +623,27 @@ export class M3UApi {
   }
 
   async getSeriesEpisodes(seriesId: string) {
+    if (this.isDemo()) {
+      const demo = getDemoPortalData("m3u");
+      const found = demo.series.find((s) => s.id === seriesId);
+      if (found && found.seasons) {
+        return found.seasons.flatMap((season) =>
+          season.episodes.map((ep) => ({
+            id: ep.id,
+            seriesId,
+            name: ep.name,
+            season: ep.seasonNum,
+            episode: ep.episodeNum,
+            streamUrl: ep.streamUrl,
+            cmd: ep.cmd,
+            logo: found.logo,
+            description: ep.description,
+            duration: ep.duration,
+          }))
+        );
+      }
+    }
+
     const cacheKey = this.getCacheKey("series_episodes", seriesId);
 
     return requestManager.request(cacheKey, async () => {

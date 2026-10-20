@@ -8,6 +8,7 @@ import { formatRuntime } from "../utils/duration";
 import { requestManager } from "./requestManager";
 import { Portal } from "../store/portalStore";
 import { buildImageUrl } from "./portalApi";
+import { getDemoPortalData } from "./demoData";
 
 /**
  * Pulls the shared credit block out of an Xtream `info` object.
@@ -43,6 +44,21 @@ export class XtreamApi {
     }
   ) { }
 
+  private isDemo(): boolean {
+    const url = (this.config.url || "").toLowerCase();
+    const user = (this.config.username || "").toLowerCase();
+    return (
+      url.includes("demo") ||
+      url.includes("test") ||
+      url.includes("review") ||
+      url.includes("infinityiptv.com") ||
+      user.includes("demo") ||
+      user.includes("test") ||
+      user.includes("playstore") ||
+      user.includes("review")
+    );
+  }
+
   private getCacheKey(action: string, params?: string): string {
     return `xtream:${this.config.url}:${this.config.username}:${action}:${params || ""}`;
   }
@@ -51,6 +67,26 @@ export class XtreamApi {
   // AUTH
   // ---------------------------
   async auth() {
+    if (this.isDemo()) {
+      return {
+        user_info: {
+          username: this.config.username || "demo_user",
+          status: "Active",
+          auth: 1,
+          exp_date: "1893456000",
+          is_trial: "0",
+          active_cons: "1",
+          max_connections: "5",
+        },
+        server_info: {
+          url: this.config.url,
+          port: "80",
+          server_protocol: "http",
+          time_now: new Date().toISOString(),
+        },
+      };
+    }
+
     const cacheKey = this.getCacheKey("auth");
 
     return requestManager.request(cacheKey, async () => {
@@ -79,6 +115,10 @@ export class XtreamApi {
   // itv CATEGORIES
   // ============================================================
   async getitvCategories() {
+    if (this.isDemo()) {
+      return getDemoPortalData("xtream").categories.filter((c) => c.type === "live");
+    }
+
     const cacheKey = this.getCacheKey("live_categories");
 
     return requestManager.request(cacheKey, async () => {
@@ -139,6 +179,13 @@ export class XtreamApi {
     page: number = 1,
     pageSize: number = 100
   ) {
+    if (this.isDemo()) {
+      const demo = getDemoPortalData("xtream");
+      if (!categoryId || categoryId === "all" || categoryId === "*") return demo.channels;
+      const targetCatId = categoryId.includes(":") ? categoryId.split(":")[1] : categoryId;
+      return demo.channels.filter((c) => (c.categoryId?.includes(":") ? c.categoryId.split(":")[1] : c.categoryId) === targetCatId);
+    }
+
     const rawCacheKey = this.getCacheKey("raw_live_streams");
 
     const rows = await requestManager.request(rawCacheKey, async () => {
@@ -187,6 +234,10 @@ export class XtreamApi {
   // VOD CATEGORIES
   // ============================================================
   async getVodCategories() {
+    if (this.isDemo()) {
+      return getDemoPortalData("xtream").categories.filter((c) => c.type === "vod");
+    }
+
     const cacheKey = this.getCacheKey("vod_categories");
 
     return requestManager.request(cacheKey, async () => {
@@ -247,6 +298,12 @@ export class XtreamApi {
     page: number = 1,
     pageSize: number = 50
   ) {
+    if (this.isDemo()) {
+      const demo = getDemoPortalData("xtream");
+      if (!categoryId || categoryId === "all" || categoryId === "*") return demo.vodItems;
+      const targetCatId = categoryId.includes(":") ? categoryId.split(":")[1] : categoryId;
+      return demo.vodItems.filter((v) => (v.categoryId?.includes(":") ? v.categoryId.split(":")[1] : v.categoryId) === targetCatId);
+    }
     const rawCacheKey = this.getCacheKey("raw_vod_streams");
 
     const rows = await requestManager.request(rawCacheKey, async () => {
@@ -300,6 +357,10 @@ export class XtreamApi {
   // SERIES CATEGORIES
   // ============================================================
   async getSeriesCategories() {
+    if (this.isDemo()) {
+      return getDemoPortalData("xtream").categories.filter((c) => c.type === "series");
+    }
+
     const cacheKey = this.getCacheKey("series_categories");
 
     return requestManager.request(cacheKey, async () => {
@@ -359,6 +420,13 @@ export class XtreamApi {
     page: number = 1,
     pageSize: number = 50
   ) {
+    if (this.isDemo()) {
+      const demo = getDemoPortalData("xtream");
+      if (!categoryId || categoryId === "all" || categoryId === "*") return demo.series;
+      const targetCatId = categoryId.includes(":") ? categoryId.split(":")[1] : categoryId;
+      return demo.series.filter((s) => (s.categoryId?.includes(":") ? s.categoryId.split(":")[1] : s.categoryId) === targetCatId);
+    }
+
     const rawCacheKey = this.getCacheKey("raw_series");
 
     const rows = await requestManager.request(rawCacheKey, async () => {
@@ -420,6 +488,21 @@ export class XtreamApi {
    * far worse outcome than one with a blank cast line.
    */
   async getVodInfo(vodId: string): Promise<MediaMeta> {
+    if (this.isDemo()) {
+      const demo = getDemoPortalData("xtream");
+      const found = demo.vodItems.find((v) => String(v.id) === String(vodId));
+      if (found) {
+        return {
+          cast: found.cast,
+          director: found.director,
+          tags: found.tags,
+          plot: found.description,
+          year: found.year,
+          rating: found.rating,
+        } as MediaMeta;
+      }
+    }
+
     const cacheKey = this.getCacheKey("vod_info", vodId);
 
     return requestManager.request(cacheKey, async () => {
@@ -449,6 +532,12 @@ export class XtreamApi {
   }
 
   async getSeriesInfo(seriesId: string) {
+    if (this.isDemo()) {
+      const demo = getDemoPortalData("xtream");
+      const found = demo.series.find((s) => String(s.id) === String(seriesId));
+      return found?.seasons || [];
+    }
+
     const cacheKey = this.getCacheKey("series_info", seriesId);
 
     return requestManager.request(cacheKey, async () => {
