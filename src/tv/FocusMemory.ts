@@ -81,7 +81,11 @@ export const FocusMemory = {
     const node = focusRefs.get(screen)?.get(key)?.current;
     if (!node || typeof node.focus !== "function") return false;
 
-    node.focus();
+    try {
+      node.focus({ preventScroll: true });
+    } catch {
+      node.focus();
+    }
     return true;
   },
 

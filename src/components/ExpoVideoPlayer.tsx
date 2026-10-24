@@ -1311,7 +1311,12 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           const shaka = require("shaka-player");
           shaka.polyfill.installAll();
           if (shaka.Player && shaka.Player.isBrowserSupported()) {
-            const player = new shaka.Player(videoEl);
+            const player = new shaka.Player();
+            await player.attach(videoEl);
+            if (isCancelled) {
+              try { player.destroy(); } catch {}
+              return false;
+            }
             shakaInstance = player;
             shakaRef.current = player;
             activeEngineRef.current = "shaka";
@@ -1329,13 +1334,25 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
             });
 
             player.addEventListener("error", (event: any) => {
+              if (event.detail?.code === 7000 || event.detail?.category === 7) {
+                // Benign load cancellation / interruption
+                return;
+              }
               console.warn("[Shaka Player Error]", event.detail);
-              if (event.detail?.code === 7000 || event.detail?.code === 7002) {
+              if (event.detail?.code === 7002) {
                 fallbackToNativeSource();
               }
             });
 
-            await player.load(normalized);
+            try {
+              await player.load(normalized);
+            } catch (loadErr: any) {
+              if (loadErr?.code === 7000 || loadErr?.category === 7) {
+                // LOAD_INTERRUPTED is expected when unmounting or switching streams rapidly
+                return false;
+              }
+              throw loadErr;
+            }
             if (isCancelled) return true;
 
             const emitShakaTracks = (isInitial: boolean) => {
@@ -1374,8 +1391,10 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
             }
             return true;
           }
-        } catch (shakaErr) {
-          console.warn("[Shaka Player] Initialization error:", shakaErr);
+        } catch (shakaErr: any) {
+          if (shakaErr?.code !== 7000 && shakaErr?.category !== 7) {
+            console.warn("[Shaka Player] Initialization error:", shakaErr);
+          }
         }
         return false;
       };

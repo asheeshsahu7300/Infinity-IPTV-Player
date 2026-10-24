@@ -76,7 +76,11 @@ export const WebSpatialNavigation = {
       // Nothing currently focused; focus the first visible focusable node
       const first = Array.from(focusableNodes.values()).find((n) => !n.isInert && isVisible(n.element));
       if (first) {
-        first.element.focus();
+        try {
+          first.element.focus({ preventScroll: true });
+        } catch {
+          first.element.focus();
+        }
         activeFocusedId = first.id;
         return true;
       }
@@ -151,11 +155,12 @@ export const WebSpatialNavigation = {
     }
 
     if (bestCandidate) {
-      bestCandidate.element.focus();
-      activeFocusedId = bestCandidate.id;
       try {
-        bestCandidate.element.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-      } catch {}
+        bestCandidate.element.focus({ preventScroll: true });
+      } catch {
+        bestCandidate.element.focus();
+      }
+      activeFocusedId = bestCandidate.id;
       return true;
     }
 

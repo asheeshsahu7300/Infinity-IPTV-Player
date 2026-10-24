@@ -9,19 +9,18 @@
   "largeIcon": "largeIcon.png",
   "bgImage": "bgImage.png",
   "splashBackground": "splashBackground.png",
+  "iconColor": "#000000",
+  "bgColor": "#000000",
+  "splashColor": "#000000",
   "resolution": "1920x1080",
   "uiRevision": 2,
   "useHardwareAcceleration": true,
   "disableBackHistoryAPI": true,
   "handlesRelaunch": true,
-  "requiredPermissions": [
-    "media",
-    "network"
-  ],
+  "requiredPermissions": [],
   "vendorExtensions": {
     "userAgent": "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3"
   },
-  "trustLevel": "trusted",
-  "allowCrossOrigin": true,
-  "requiredACG": []
+  "trustLevel": "default",
+  "allowCrossOrigin": true
 }

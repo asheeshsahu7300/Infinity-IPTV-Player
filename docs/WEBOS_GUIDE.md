@@ -113,13 +113,14 @@ ares-launch --device my-tv com.infinity.iptvplayer
   "largeIcon": "largeIcon.png",
   "bgImage": "bgImage.png",
   "splashBackground": "splashBackground.png",
+  "iconColor": "#000000",
+  "bgColor": "#000000",
+  "splashColor": "#000000",
   "resolution": "1920x1080",
   "disableBackHistoryAPI": true,
   "handlesRelaunch": true,
-  "requiredPermissions": [
-    "media",
-    "network"
-  ],
-  "requiredACG": []
+  "requiredPermissions": [],
+  "trustLevel": "default",
+  "allowCrossOrigin": true
 }
 ```

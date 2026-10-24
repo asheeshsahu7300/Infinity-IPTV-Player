@@ -95,6 +95,11 @@ try {
     <meta name="format-detection" content="telephone=no" />
     <style>
       html, body, #root {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
         width: 100% !important;
         height: 100% !important;
         margin: 0 !important;
@@ -107,6 +112,26 @@ try {
     </style>
     <script>
       window.__WEBOS__ = true;
+      // Permanently lock document/window scroll to (0, 0) for fixed 1080p TV UI
+      var _resetScroll = function() {
+        if (window.scrollX !== 0 || window.scrollY !== 0) {
+          window.scrollTo(0, 0);
+        }
+        if (document.documentElement && (document.documentElement.scrollTop !== 0 || document.documentElement.scrollLeft !== 0)) {
+          document.documentElement.scrollTop = 0;
+          document.documentElement.scrollLeft = 0;
+        }
+        if (document.body && (document.body.scrollTop !== 0 || document.body.scrollLeft !== 0)) {
+          document.body.scrollTop = 0;
+          document.body.scrollLeft = 0;
+        }
+      };
+
+      window.addEventListener("scroll", _resetScroll, { passive: false });
+      window.addEventListener("popstate", _resetScroll);
+      window.addEventListener("hashchange", _resetScroll);
+      window.addEventListener("focus", _resetScroll, true);
+
       // Polyfill and normalize History API on file:// for webOS TV SPA
       if (typeof window !== "undefined" && window.location.protocol === "file:") {
         var _origPush = history.pushState ? history.pushState.bind(history) : null;
@@ -145,6 +170,7 @@ try {
               }
             } catch (err) {}
           }
+          _resetScroll();
         };
 
         history.replaceState = function(state, title, url) {
@@ -163,6 +189,7 @@ try {
               }
             } catch (err) {}
           }
+          _resetScroll();
         };
 
         // Intercept any root filesystem network calls (e.g. file:///D:/ or /) to prevent red errors in webOS

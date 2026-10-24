@@ -231,7 +231,11 @@ export const Focusable = forwardRef<View, FocusableProps>(
       const epochAtRequest = FocusMemory.focusEpoch;
       focusTimeRef.current = Date.now();
       if (!focusedRef.current && FocusMemory.focusEpoch === epochAtRequest) {
-        nativeRef.current?.focus?.();
+        try {
+          (nativeRef.current as any)?.focus?.({ preventScroll: true });
+        } catch {
+          nativeRef.current?.focus?.();
+        }
       }
     }, [hasTVPreferredFocus, isInert]);
 
