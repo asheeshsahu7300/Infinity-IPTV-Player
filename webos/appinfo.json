@@ -5,6 +5,7 @@
   "type": "web",
   "main": "index.html",
   "title": "Infinity IPTV Player",
+  "description": "High-performance modern IPTV player for live TV, movies, and series streaming.",
   "icon": "icon.png",
   "largeIcon": "largeIcon.png",
   "bgImage": "bgImage.png",
