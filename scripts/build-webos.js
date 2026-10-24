@@ -86,25 +86,22 @@ try {
     // Remove type="module" on inline hydration script for standard file:// execution
     content = content.replace(/<script type="module">/g, '<script>');
 
-    // Strip any existing viewport tags to guarantee no conflicting device-width meta tags
-    content = content.replace(/<meta\s+name=["']viewport["'][^>]*>/gi, '');
-
     const webosHeadInjection = `
     <!-- Official LG webOS TV Libraries -->
     <script type="text/javascript" src="./webOSTV.js"></script>
     <script type="text/javascript" src="./webOSTV-dev.js"></script>
     <!-- LG webOS TV Metadata & Viewport -->
-    <meta name="viewport" content="width=1920, height=1080, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=1920, height=1080, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="format-detection" content="telephone=no" />
     <style>
       html, body, #root {
         position: fixed !important;
         top: 0 !important;
         left: 0 !important;
-        width: 1920px !important;
-        height: 1080px !important;
-        max-width: 1920px !important;
-        max-height: 1080px !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
         margin: 0 !important;
         padding: 0 !important;
         overflow: hidden !important;

@@ -3,8 +3,17 @@ import { Dimensions, Platform } from 'react-native';
 import { isPhone } from "../utils/phoneUtils";
 import { isTablet } from "../utils/tabletUtils";
 
-// Note: Platform.isTV is preserved as-is to avoid SSR/hydration mismatches on Web/webOS.
-// webOS TV hardware/runtime is detected via isWebOS() from utils/webosUtils.
+// Ensure webOS TV is recognized as TV
+if (typeof window !== "undefined") {
+  const isWebTV =
+    Boolean((window as any).PalmSystem) ||
+    Boolean((window as any).webOS) ||
+    Boolean((window as any).__WEBOS__) ||
+    (typeof navigator !== "undefined" && /Web0S|webOS/i.test(navigator.userAgent));
+  if (isWebTV) {
+    (Platform as any).isTV = true;
+  }
+}
 
 const winDims = Dimensions.get("window");
 
