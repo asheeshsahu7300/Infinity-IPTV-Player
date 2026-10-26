@@ -1,6 +1,6 @@
 # LG webOS TV Developer Guide — Infinity IPTV Player
 
-This guide documents the architecture, remote control handling, video streaming pipeline, and deployment workflow for running **Infinity IPTV Player TV** on LG webOS Smart TVs (webOS 3.5 through webOS 24).
+This guide documents the architecture, remote control handling, video streaming pipeline, and deployment workflow for running **Infinity IPTV Player** on LG webOS Smart TVs (webOS 3.5 through webOS 24).
 
 ---
 
@@ -9,7 +9,7 @@ This guide documents the architecture, remote control handling, video streaming 
 LG webOS TV applications run as hosted web applications packaged in the `.ipk` format.
 
 ```text
-                  Infinity IPTV Player TV (webOS)
+                  Infinity IPTV Player (webOS)
                                 │
        ┌────────────────────────┼────────────────────────┐
        │                        │                        │
@@ -108,7 +108,7 @@ ares-launch --device my-tv com.infinity.iptvplayer
   "vendor": "Infinity",
   "type": "web",
   "main": "index.html",
-  "title": "Infinity IPTV Player TV",
+  "title": "Infinity IPTV Player",
   "icon": "icon.png",
   "largeIcon": "largeIcon.png",
   "bgImage": "bgImage.png",
