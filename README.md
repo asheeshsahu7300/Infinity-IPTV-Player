@@ -31,6 +31,16 @@
 </p>
 
 <p align="center">
+  <a href="https://play.google.com/store/apps/details?id=com.infinity.iptvplayer">
+    <img
+      src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+      alt="Get it on Google Play"
+      height="80"
+    />
+  </a>
+</p>
+
+<p align="center">
   Built with Expo, React Native, and TypeScript.
 </p>
 
@@ -60,6 +70,16 @@ It supports multiple IPTV playlist and portal formats while providing a consiste
 The application is designed around a premium dark UI, fast content browsing, large media libraries, and a TV-friendly 10-foot interface.
 
 ### Release & Downloads
+
+<p align="center">
+  <a href="https://play.google.com/store/apps/details?id=com.infinity.iptvplayer">
+    <img
+      src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+      alt="Get it on Google Play"
+      height="75"
+    />
+  </a>
+</p>
 
 - **Google Play Store**: [**Get it on Google Play**](https://play.google.com/store/apps/details?id=com.infinity.iptvplayer) (Official Android Mobile, Tablet & Android TV / Google TV)
 - **Latest Release**: [**v1.0.0 on GitHub Releases**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0)
@@ -778,6 +798,17 @@ Always ensure that your IPTV provider and content are legally authorized in your
 - **Developer Guide**: Comprehensive LG webOS deployment and testing documentation in [WEBOS_GUIDE.md](docs/WEBOS_GUIDE.md).
 
 ### [Release 1.0.0 (Production App Release — Live on Google Play Store)](https://play.google.com/store/apps/details?id=com.infinity.iptvplayer)
+
+<p align="left">
+  <a href="https://play.google.com/store/apps/details?id=com.infinity.iptvplayer">
+    <img
+      src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+      alt="Get it on Google Play"
+      height="60"
+    />
+  </a>
+</p>
+
 - **Official Google Play Store Release**: Production build is officially live! Install directly on Android phones, tablets, and Android TV / Google TV devices from the [**Google Play Store**](https://play.google.com/store/apps/details?id=com.infinity.iptvplayer).
 - **GitHub Release & Assets**: Download standalone APKs and IPK packages from [**GitHub Releases v1.0.0**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0).
 - **Universal Multi-Portal Engine**: Native integration for M3U / M3U8 playlists, Xtream Codes API, and MAG / Stalker Portal APIs with unified category and EPG navigation.
