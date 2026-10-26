@@ -17,15 +17,17 @@
   <a href="https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest">
     <img src="https://img.shields.io/badge/Release-v1.0.0-blue.svg?style=for-the-badge" alt="Release v1.0.0" />
   </a>
-  <img src="https://img.shields.io/badge/Google%20Play-Soon%20Live-brightgreen.svg?style=for-the-badge&logo=google-play&logoColor=white" alt="Google Play Soon Live" />
-  <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV-00C853.svg?style=for-the-badge&logo=android&logoColor=white" alt="Android & Android TV" />
+  <a href="https://play.google.com/store/apps/details?id=com.infinity.iptvplayer">
+    <img src="https://img.shields.io/badge/Google%20Play-Live%20Now-brightgreen.svg?style=for-the-badge&logo=google-play&logoColor=white" alt="Google Play Store" />
+  </a>
+  <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV%20%7C%20webOS-00C853.svg?style=for-the-badge&logo=android&logoColor=white" alt="Android & Android TV & webOS" />
   <a href="https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest">
     <img src="https://img.shields.io/badge/webOS-LG%20Smart%20TV%20(.ipk)-E50914.svg?style=for-the-badge&logo=lg&logoColor=white" alt="LG webOS TV IPK" />
   </a>
 </p>
 
 <p align="center">
-  🚀 <strong>Release 1.0.0 is officially ready! Available for Android, Android TV, and LG webOS Smart TVs.</strong>
+  🚀 <strong>Release 1.0.0 is officially live! Available on Google Play Store, Android TV, and LG webOS Smart TVs.</strong>
 </p>
 
 <p align="center">
@@ -59,9 +61,10 @@ The application is designed around a premium dark UI, fast content browsing, lar
 
 ### Release & Downloads
 
-- **Latest Release**: [**v1.0.0 on GitHub Releases**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest)
-- **LG webOS Smart TV**: Download the installable [**`com.infinity.iptvplayer_1.0.0_all.ipk`**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest)
-- **Android / Android TV**: [**Download APK**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest) | 🟢 **Soon Live on Google Play Store!** (Submitted for review)
+- **Google Play Store**: [**Get it on Google Play**](https://play.google.com/store/apps/details?id=com.infinity.iptvplayer) (Official Android Mobile, Tablet & Android TV / Google TV)
+- **Latest Release**: [**v1.0.0 on GitHub Releases**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0)
+- **LG webOS Smart TV**: Download the installable [**`com.infinity.iptvplayer_1.0.0.ipk`**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.0/com.infinity.iptvplayer_1.0.0.ipk)
+- **Android / Android TV APK**: [**Download Universal APK (v1.0.0)**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.0/Infinity-IPTV-Player-v1.0.0-universal.apk) | [**View all release APKs**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0)
 
 ---
 
@@ -443,8 +446,10 @@ npm run build:webos
 The generated `.ipk` package will be available in:
 
 ```text
-release-webos/com.infinity.iptvplayer_1.0.0_all.ipk
+release-webos/com.infinity.iptvplayer_1.0.0.ipk
 ```
+
+> **Note**: You can also download the pre-built [**`com.infinity.iptvplayer_1.0.0.ipk`**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.0/com.infinity.iptvplayer_1.0.0.ipk) directly from [GitHub Releases v1.0.0](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0).
 
 ---
 
@@ -763,15 +768,18 @@ Always ensure that your IPTV provider and content are legally authorized in your
 
 # Changelog
 
-### webOS Experimental (LG Smart TV Compatibility)
-- **LG webOS TV Package Pipeline**: Automated packaging generating official `com.infinity.iptvplayer_1.0.0_all.ipk` via `npm run build:webos`.
+### [webOS Experimental (LG Smart TV Compatibility)](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0)
+- **LG webOS TV Package Pipeline**: Automated packaging generating official `com.infinity.iptvplayer_1.0.0.ipk` via `npm run build:webos`.
+- **Direct IPK Download**: Download [**`com.infinity.iptvplayer_1.0.0.ipk`**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.0/com.infinity.iptvplayer_1.0.0.ipk) directly from GitHub Releases.
+- **Branch & Codebase**: Maintained on the [**webos-experimental branch**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/tree/webos-experimental).
 - **Magic Remote Air-Pointer & D-Pad Integration**: Full spatial 2D navigation engine (`webSpatialNavigation.ts`) with Magic Remote hover highlight support.
 - **webOS Back Button & Media Control**: Polyfilled React Native `BackHandler` on Web catching webOS remote Back (key code `461`), Play/Pause, Fast-Forward, Rewind, Channel Up/Down, and color keys.
 - **Hardware-Accelerated Video Pipeline**: Native webOS HLS streaming with dual-mode `HLS.js` fallback for standard browsers.
 - **Developer Guide**: Comprehensive LG webOS deployment and testing documentation in [WEBOS_GUIDE.md](docs/WEBOS_GUIDE.md).
 
-### Release 1.0.0 (Production App Release — Soon Live on Google Play Store)
-- **Official Google Play Store Release**: Production build compiled and packaged for Google Play Store review across Android Mobile, Tablet, and Android TV devices.
+### [Release 1.0.0 (Production App Release — Live on Google Play Store)](https://play.google.com/store/apps/details?id=com.infinity.iptvplayer)
+- **Official Google Play Store Release**: Production build is officially live! Install directly on Android phones, tablets, and Android TV / Google TV devices from the [**Google Play Store**](https://play.google.com/store/apps/details?id=com.infinity.iptvplayer).
+- **GitHub Release & Assets**: Download standalone APKs and IPK packages from [**GitHub Releases v1.0.0**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0).
 - **Universal Multi-Portal Engine**: Native integration for M3U / M3U8 playlists, Xtream Codes API, and MAG / Stalker Portal APIs with unified category and EPG navigation.
 - **Cinematic Dark UI & 10-Foot TV Experience**: Responsive layouts with D-Pad focus engine, glow highlights, and remote-control navigation tailored for Android TV and Google TV.
 - **Resilient Media Playback**: High-performance streaming pipeline with hardware video decoding (AVC, HEVC, VP9) and robust audio safety guards for Qualcomm ACDB and MediaTek chipsets.

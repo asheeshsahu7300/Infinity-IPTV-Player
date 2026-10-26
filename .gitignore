@@ -50,3 +50,4 @@ app-example
 /credentials/android/keystore.jks
 /android/app/release/
 *.apk
+upload_certificate.pem
