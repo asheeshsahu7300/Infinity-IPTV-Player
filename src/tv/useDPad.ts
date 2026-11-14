@@ -188,6 +188,12 @@ function dispatch(evt: any) {
       else if (handlerKey === "onDown") WebSpatialNavigation.navigate("down");
       else if (handlerKey === "onLeft") WebSpatialNavigation.navigate("left");
       else if (handlerKey === "onRight") WebSpatialNavigation.navigate("right");
+      else if (handlerKey === "onSelect" && typeof document !== "undefined") {
+        const el = document.activeElement as HTMLElement | null;
+        if (el && typeof el.click === "function") {
+          el.click();
+        }
+      }
     }
     return;
   }
@@ -207,6 +213,12 @@ function dispatch(evt: any) {
     else if (handlerKey === "onDown") WebSpatialNavigation.navigate("down");
     else if (handlerKey === "onLeft") WebSpatialNavigation.navigate("left");
     else if (handlerKey === "onRight") WebSpatialNavigation.navigate("right");
+    else if (handlerKey === "onSelect" && typeof document !== "undefined") {
+      const el = document.activeElement as HTMLElement | null;
+      if (el && typeof el.click === "function") {
+        el.click();
+      }
+    }
   }
 }
 
