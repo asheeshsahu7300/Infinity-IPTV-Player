@@ -1452,6 +1452,23 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
               }
             }
 
+            if (isLive && videoEl) {
+              try {
+                const origDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
+                Object.defineProperty(videoEl, "currentTime", {
+                  get() {
+                    return origDesc?.get ? origDesc.get.call(this) : 0;
+                  },
+                  set(v) {
+                    console.log("[ExpoVideoPlayer] Ignoring seek on live TV stream to preserve hardware video pipeline:", v);
+                  },
+                  configurable: true,
+                });
+              } catch (e) {
+                console.warn("[ExpoVideoPlayer] Could not hook currentTime on live videoEl:", e);
+              }
+            }
+
             const mpegtsPlayer = mpegtsClass.createPlayer(
               {
                 type: "mpegts",
@@ -1463,9 +1480,9 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
                 enableWorker: !isSmartTV,
                 enableStashBuffer: false,
                 stashInitialSize: 128 * 1024,
-                liveBufferLatencyChasing: true,
-                liveBufferLatencyMaxLatency: 3.0,
-                liveBufferLatencyMinRemain: 1.0,
+                liveBufferLatencyChasing: false,
+                liveBufferLatencyMaxLatency: 20,
+                liveBufferLatencyMinRemain: 2,
                 autoCleanupSourceBuffer: true,
                 autoCleanupMaxBackwardDuration: 12,
                 autoCleanupMinBackwardDuration: 6,
@@ -1679,6 +1696,9 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           clearTimeout(stallTimer);
         }
         if (boundVideoEl) {
+          try {
+            delete (boundVideoEl as any).currentTime;
+          } catch {}
           boundVideoEl.removeEventListener("timeupdate", onTimeUpdate);
           boundVideoEl.removeEventListener("playing", onPlayingHandler);
           boundVideoEl.removeEventListener("canplay", onCanPlayHandler);
