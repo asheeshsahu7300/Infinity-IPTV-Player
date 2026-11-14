@@ -132,3 +132,25 @@ tizen run -p com.infinity.iptvplayer -t <DEVICE_NAME>
 </widget>
 ```
 
+---
+
+## 5. Samsung Apps TV Seller Lounge Certification & QA Checklist
+
+When submitting **Infinity IPTV Player** to the [Samsung Apps TV Seller Lounge](https://seller.samsungapps.com/tv), ensure the following certification criteria are met:
+
+### 1. Store Assets & Metadata
+- **App Icon**: `512x512` PNG (provided in `tizen/store-assets/icon-512x512.png`).
+- **Store Screenshots**: At least 4 screenshots at `1920x1080` (provided in `tizen/store-assets/` for Dashboard, Live TV, EPG, VOD, and Series).
+- **Category**: Video / Entertainment.
+- **Rating**: 12+ (Media player).
+
+### 2. Functional & QA Requirements
+- **App Launch Time**: Cold-boot within 5 seconds without showing a blank white/black screen.
+- **10-Foot D-Pad Usability**: All interactive cards, menus, and input fields must be navigable via directional arrow keys and Enter/Select.
+- **Return Key Navigation**: The remote's Return button (`10009`) must navigate back sequentially through modals, overlays, and previous routes before closing the app.
+- **Physical Exit Key**: The `Exit` button (`10182`) must exit the application immediately via `tizen.application.getCurrentApplication().exit()`.
+- **Media Keys Compliance**: Physical `Play`, `Pause`, `FastForward`, and `Rewind` keys must control playback state on both Live TV and VOD.
+- **Multi-Track Audio**: Automatic audio track engagement prevents muted playback on multi-language IPTV streams.
+- **Memory Consumption**: Peak memory must remain below 1GB during continuous 30-minute streaming on standard Samsung Smart TVs.
+
+
