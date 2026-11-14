@@ -22,6 +22,7 @@
     <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
     <tizen:privilege name="http://developer.samsung.com/privilege/avplay"/>
     <tizen:privilege name="http://developer.samsung.com/privilege/drm.playready"/>
+    <tizen:content-security-policy>default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file:; script-src * 'self' 'unsafe-inline' 'unsafe-eval' file: blob:; style-src * 'self' 'unsafe-inline' file: blob:; img-src * 'self' data: blob: file: http: https:; media-src * 'self' data: blob: file: http: https:; connect-src * 'self' data: blob: file: http: https: ws: wss:; font-src * 'self' data: blob: file: http: https:;</tizen:content-security-policy>
     <access origin="*" subdomains="true"/>
     <tizen:allow-navigation>*</tizen:allow-navigation>
 </widget>

@@ -1,66 +1,57 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { View, StyleSheet } from "react-native";
-import { Redirect } from "expo-router";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePortalStore } from "../src/store/portalStore";
 import { DeepLink } from "../src/services/DeepLink";
 import LoadingOverlay from "../src/components/LoadingOverlay";
-
 import { AppBootManager } from "../src/services/AppBootManager";
 
 export default function IndexScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
-  React.useEffect(() => {
+  const activePortal = usePortalStore((s) => s.activePortal);
+  const isHydrated = usePortalStore((s) => s.isHydrated);
+  const redirectedRef = useRef(false);
+
+  useEffect(() => {
     AppBootManager.initialize();
   }, []);
 
-  // Use hydrated store state directly
-  const activePortal = usePortalStore((s) => s.activePortal);
-  const isHydrated = usePortalStore((s) => s.isHydrated);
+  useEffect(() => {
+    if (!isHydrated || redirectedRef.current) return;
+    redirectedRef.current = true;
 
-  const hasRedirectedRef = React.useRef(false);
-
-  // Show loading while AppBootManager is hydrating the store
-  if (!isHydrated) {
-    return (
-      <View
-        style={[
-          styles.container,
-          {
-            paddingTop: insets.top,
-            justifyContent: "center",
-            alignItems: "center",
-          },
-        ]}
-      >
-        <LoadingOverlay message="Loading..." />
-      </View>
-    );
-  }
-
-  // Only perform redirect once when booting. Subsequent store updates while
-  // another screen is active in the foreground must never re-trigger Redirect.
-  if (hasRedirectedRef.current) {
-    return null;
-  }
-  hasRedirectedRef.current = true;
-
-  // A link the app was launched with wins over the default landing screen —
-  // but only once we have a portal, otherwise there is nothing to resolve it
-  // against. Held links survive onboarding and replay on the next pass.
-  if (activePortal && DeepLink.hasPending) {
-    const target = DeepLink.consume();
-    if (target) {
-      return <Redirect href={{ pathname: target.pathname as any, params: target.params }} />;
+    if (activePortal && DeepLink.hasPending) {
+      const target = DeepLink.consume();
+      if (target) {
+        router.replace({ pathname: target.pathname as any, params: target.params });
+        return;
+      }
     }
-  }
 
-  if (activePortal) {
-    return <Redirect href="/dashboard" />;
-  }
+    if (activePortal) {
+      router.replace("/dashboard");
+    } else {
+      router.replace("/portals");
+    }
+  }, [isHydrated, activePortal, router]);
 
-  return <Redirect href="/portals" />;
+  return (
+    <View
+      style={[
+        styles.container,
+        {
+          paddingTop: insets.top,
+          justifyContent: "center",
+          alignItems: "center",
+        },
+      ]}
+    >
+      <LoadingOverlay message="Loading..." />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

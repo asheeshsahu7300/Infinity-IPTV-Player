@@ -167,7 +167,7 @@ export default function RootLayout() {
   }, []);
 
   // Load premium Google TV fonts
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Inter: Inter_400Regular,
     Inter_400Regular,
     Inter_500Medium,
@@ -198,6 +198,17 @@ export default function RootLayout() {
 
   // Boot the app via AppBootManager. Splash audio plays concurrently with a max 1s hold
   useEffect(() => {
+    let mounted = true;
+
+    // Failsafe timer: Ensure splash screen never hangs permanently on any device or TV platform
+    const safetyTimer = setTimeout(() => {
+      if (mounted) {
+        console.warn("[RootLayout] Safety boot timeout reached — forcing ready state");
+        usePortalStore.setState({ isHydrated: true });
+        setIsReady(true);
+      }
+    }, 2000);
+
     const soundDelay = new Promise<void>((resolve) => {
       setTimeout(resolve, 800);
     });
@@ -214,12 +225,20 @@ export default function RootLayout() {
 
     Promise.all([bootProcess, soundDelay])
       .then(() => {
-        setIsReady(true);
+        if (mounted) setIsReady(true);
       })
       .catch((e) => {
         console.error("Boot failed:", e);
-        setIsReady(true);
+        if (mounted) setIsReady(true);
+      })
+      .finally(() => {
+        clearTimeout(safetyTimer);
       });
+
+    return () => {
+      mounted = false;
+      clearTimeout(safetyTimer);
+    };
   }, []);
 
   // Ensure status bar is hidden (immersive full-screen is handled natively by MainActivity)
@@ -266,7 +285,9 @@ export default function RootLayout() {
     return () => subscription.remove();
   }, [isHydrated]);
 
-  if (!isReady || !isHydrated || !fontsLoaded) {
+  const isFontsReady = fontsLoaded || Boolean(fontError) || Platform.OS === "web";
+
+  if (!isReady || !isHydrated || !isFontsReady) {
     return (
       <ErrorBoundary>
         <ThemeProvider>

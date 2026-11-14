@@ -192,13 +192,13 @@ try {
           _resetScroll();
         };
 
-        // Intercept any root filesystem network calls (e.g. file:///D:/ or /) to prevent red errors in webOS
+        // Intercept invalid drive paths while allowing all legitimate local file:// and network requests
         var _origFetch = window.fetch;
         if (_origFetch) {
           window.fetch = function(input, init) {
             var urlStr = typeof input === "string" ? input : (input && input.url ? input.url : "");
-            if (urlStr === "/" || urlStr === "" || urlStr === "file:///D:/" || urlStr.startsWith("/D:/") || (urlStr.startsWith("file://") && !urlStr.includes("dist-webos"))) {
-              console.warn("[webOS Network Guard] Prevented local drive fetch:", urlStr);
+            if (urlStr === "/" || urlStr === "" || urlStr === "file:///" || urlStr === "file:///D:/" || urlStr.startsWith("/D:/")) {
+              console.warn("[webOS Network Guard] Prevented invalid local drive fetch:", urlStr);
               return Promise.resolve(new Response("", { status: 200, statusText: "OK" }));
             }
             return _origFetch.apply(this, arguments);
@@ -207,8 +207,8 @@ try {
         var _origOpen = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function(method, url) {
           var urlStr = typeof url === "string" ? url : "";
-          if (urlStr === "/" || urlStr === "" || urlStr === "file:///D:/" || urlStr.startsWith("/D:/") || (urlStr.startsWith("file://") && !urlStr.includes("dist-webos"))) {
-            console.warn("[webOS Network Guard] Prevented local drive XHR:", urlStr);
+          if (urlStr === "/" || urlStr === "" || urlStr === "file:///" || urlStr === "file:///D:/" || urlStr.startsWith("/D:/")) {
+            console.warn("[webOS Network Guard] Prevented invalid local drive XHR:", urlStr);
             return;
           }
           return _origOpen.apply(this, arguments);
