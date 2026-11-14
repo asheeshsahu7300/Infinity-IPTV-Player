@@ -135,6 +135,7 @@ export function registerTizenKeys(): void {
     "ChannelUp",
     "ChannelDown",
     "Info",
+    "Exit",
     "0",
     "1",
     "2",
@@ -179,4 +180,164 @@ export function tizenExit(): void {
     window.close();
   } catch {}
 }
+
+/**
+ * Checks whether the Samsung TV virtual keyboard (IME) is currently visible.
+ */
+export function isTizenVirtualKeyboardShowing(): boolean {
+  if (!isTizen() || typeof document === "undefined") return false;
+  const active = document.activeElement;
+  if (!active) return false;
+  const tag = active.tagName.toLowerCase();
+  return tag === "input" || tag === "textarea" || (active as HTMLElement).isContentEditable;
+}
+
+/**
+ * Initializes Samsung Tizen document styles and meta properties:
+ * - Locks hardware 1080p canvas
+ * - Disables text selection and touch callouts
+ * - Hides scrollbars
+ * - Pre-registers TV remote keys
+ */
+export function initTizen(): void {
+  if (Platform.OS !== "web" || typeof document === "undefined") return;
+
+  const styleId = "tizen-tv-global-styles";
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      html, body, #root {
+        width: 100% !important;
+        height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        background-color: #08080a !important;
+        -webkit-user-select: none !important;
+        user-select: none !important;
+        -webkit-touch-callout: none !important;
+        overscroll-behavior: none !important;
+        cursor: default;
+      }
+      *::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+      }
+      *:focus {
+        outline: none !important;
+      }
+      [data-focusable="true"] {
+        outline: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  if (isTizen()) {
+    registerTizenKeys();
+  }
+}
+
+/**
+ * Returns the appropriate MIME type for Samsung Smart TV video streams.
+ */
+export function getTizenMediaMimeType(url: string, isLive?: boolean): string {
+  if (!url) return "video/mp4";
+  const clean = url.split("?")[0].toLowerCase();
+  if (clean.endsWith(".ts") || clean.includes(".ts?") || clean.includes("/ch/")) {
+    return "video/mp2t";
+  }
+  if (clean.endsWith(".m3u8") || clean.includes("m3u8")) {
+    return "application/vnd.apple.mpegurl";
+  }
+  if (clean.endsWith(".mpd") || clean.includes("mpd")) {
+    return "application/dash+xml";
+  }
+  if (clean.endsWith(".mp4")) return "video/mp4";
+  if (clean.endsWith(".mkv")) return "video/x-matroska";
+  if (clean.endsWith(".webm")) return "video/webm";
+  if (isLive) return "application/vnd.apple.mpegurl";
+  return "video/mp4";
+}
+
+/**
+ * Ensures at least one valid audio track is enabled on Samsung Smart TV HTMLMediaElement.
+ * On Samsung Tizen TV, multi-track IPTV streams often require explicit track enablement
+ * to prevent silent playback or hardware decoder stalls.
+ */
+export function activateTizenAudioTracks(videoEl: HTMLVideoElement): void {
+  try {
+    const domTracks = (videoEl as any)?.audioTracks;
+    if (domTracks && domTracks.length > 0) {
+      let hasEnabled = false;
+      for (let i = 0; i < domTracks.length; i++) {
+        if (domTracks[i].enabled) {
+          hasEnabled = true;
+          break;
+        }
+      }
+      if (!hasEnabled) {
+        // Prefer universal codecs (AAC/MP3/Stereo) to avoid multi-channel stalls
+        let targetIdx = 0;
+        for (let i = 0; i < domTracks.length; i++) {
+          const lbl = String(domTracks[i].label || domTracks[i].language || "").toLowerCase();
+          if (lbl.includes("aac") || lbl.includes("mp3") || lbl.includes("stereo") || lbl.includes("pcm")) {
+            targetIdx = i;
+            break;
+          }
+        }
+        domTracks[targetIdx].enabled = true;
+        console.log(`[Tizen Audio] Activated audio track ${targetIdx} on Samsung TV.`);
+      }
+    }
+  } catch (err) {
+    console.warn("[Tizen Audio] Track activation notice:", err);
+  }
+}
+
+/**
+ * Configures an HTMLVideoElement for Samsung Smart TV native playback.
+ */
+export function setupTizenVideoSource(
+  videoEl: HTMLVideoElement,
+  streamUrl: string,
+  isLive?: boolean,
+  headers?: Record<string, string>
+): void {
+  if (!videoEl || !streamUrl) return;
+  if (!/^(https?|blob):/i.test(streamUrl.trim())) {
+    console.warn("[Tizen Video] Refusing to set non-network stream URL:", streamUrl);
+    return;
+  }
+
+  // Revoke any previous MSE blob URL and remove direct src
+  if (videoEl.src && videoEl.src.startsWith("blob:")) {
+    try {
+      URL.revokeObjectURL(videoEl.src);
+    } catch {}
+  }
+  videoEl.removeAttribute("src");
+
+  // Remove existing source elements
+  while (videoEl.firstChild) {
+    videoEl.removeChild(videoEl.firstChild);
+  }
+
+  const mimeType = getTizenMediaMimeType(streamUrl, isLive);
+  const source = document.createElement("source");
+  source.src = streamUrl;
+  source.type = mimeType;
+
+  videoEl.appendChild(source);
+  videoEl.load();
+
+  const onMetadataLoaded = () => {
+    activateTizenAudioTracks(videoEl);
+  };
+  videoEl.addEventListener("loadedmetadata", onMetadataLoaded, { once: true });
+  videoEl.addEventListener("canplay", onMetadataLoaded, { once: true });
+}
+
 

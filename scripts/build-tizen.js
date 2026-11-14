@@ -122,7 +122,7 @@ try {
             var keys = [
               "MediaPlay", "MediaPause", "MediaStop", "MediaFastForward", "MediaRewind", "MediaPlayPause",
               "ColorF0Red", "ColorF1Green", "ColorF2Yellow", "ColorF3Blue",
-              "ChannelUp", "ChannelDown", "Info",
+              "ChannelUp", "ChannelDown", "Info", "Exit",
               "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"
             ];
             keys.forEach(function(k) {

@@ -126,7 +126,7 @@ const PLAY_TYPES = new Set([
 ]);
 const FF_TYPES = new Set(["fastForward", "fast_forward", "media_fast_forward", "media_step_forward", "KEYCODE_MEDIA_FAST_FORWARD"]);
 const REW_TYPES = new Set(["rewind", "media_rewind", "media_step_backward", "KEYCODE_MEDIA_REWIND"]);
-const MENU_TYPES = new Set(["menu", "KEYCODE_MENU"]);
+const MENU_TYPES = new Set(["menu", "colorRed", "KEYCODE_MENU"]);
 const INFO_TYPES = new Set(["info", "KEYCODE_INFO"]);
 const NEXT_TYPES = new Set(["next", "media_next", "KEYCODE_MEDIA_NEXT"]);
 const PREV_TYPES = new Set(["previous", "media_previous", "KEYCODE_MEDIA_PREVIOUS"]);
@@ -229,7 +229,7 @@ function attachWeb() {
       const isUp = code === 38 || e.key === "ArrowUp";
       const isDown = code === 40 || e.key === "ArrowDown";
       const isEnter = code === 13 || e.key === "Enter";
-      const isBack = code === 461 || code === 10009 || code === 27 || e.key === "Escape" || e.key === "Return";
+      const isBack = code === 461 || code === 10009 || code === 10182 || code === 27 || e.key === "Escape" || e.key === "Return" || e.key === "Exit";
 
       if (isUp) {
         e.preventDefault();
@@ -330,10 +330,21 @@ function attachWeb() {
         mappedType = "menu";
         break;
       case 403: // Red key
-        mappedType = "menu";
+        mappedType = "colorRed";
+        break;
+      case 404: // Green key
+        mappedType = "colorGreen";
+        break;
+      case 405: // Yellow key
+        mappedType = "colorYellow";
+        break;
+      case 406: // Blue key
+        mappedType = "colorBlue";
         break;
       default:
-        if (e.key === "ArrowUp") mappedType = "up";
+        if (code >= 48 && code <= 57) {
+          mappedType = `digit_${code - 48}`;
+        } else if (e.key === "ArrowUp") mappedType = "up";
         else if (e.key === "ArrowDown") mappedType = "down";
         else if (e.key === "ArrowLeft") mappedType = "left";
         else if (e.key === "ArrowRight") mappedType = "right";

@@ -11,6 +11,7 @@ import {
 } from "expo-video";
 import { BufferTuning, isPlayableStreamUrl } from "../services/stbEnvironment";
 import { setupWebOSVideoSource, isWebOS, activateWebOSAudioTracks, convertSrtToVtt } from "../utils/webosUtils";
+import { setupTizenVideoSource, isTizen, activateTizenAudioTracks } from "../utils/tizenUtils";
 
 /**
  * Checks for native browser HLS support without MSE (only Apple Safari / iOS WebKit).
@@ -1141,12 +1142,21 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
       const fallbackToNativeSource = () => {
         if (!boundVideoEl || isCancelled) return;
         activeEngineRef.current = "native";
-        console.log("[webOS Video] Using native webOS media pipeline for:", normalized);
-        setupWebOSVideoSource(boundVideoEl, normalized, isLive, undefined, effectiveHeaders);
+        if (isTizen()) {
+          console.log("[Tizen Video] Using Samsung Tizen media pipeline for:", normalized);
+          setupTizenVideoSource(boundVideoEl, normalized, isLive, effectiveHeaders);
+        } else {
+          console.log("[webOS Video] Using native webOS media pipeline for:", normalized);
+          setupWebOSVideoSource(boundVideoEl, normalized, isLive, undefined, effectiveHeaders);
+        }
 
         const onNativeLoaded = () => {
           if (boundVideoEl) {
-            activateWebOSAudioTracks(boundVideoEl);
+            if (isTizen()) {
+              activateTizenAudioTracks(boundVideoEl);
+            } else {
+              activateWebOSAudioTracks(boundVideoEl);
+            }
           }
           if (isFirstLoadRef.current) {
             isFirstLoadRef.current = false;
@@ -1568,11 +1578,12 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         }, 2500);
 
         const isWebOSTV = isWebOS();
+        const isTizenTV = isTizen();
 
         // Engine Path 1: MPEG-TS streams (.ts or live stream URLs)
-        // If native hardware video/mp2t is genuinely supported (physical webOS TV):
-        // use native webOS hardware pipeline.
-        // In webOS Simulator, desktop browsers, or when native mp2t is not supported by Blink:
+        // If native hardware video/mp2t is supported (physical webOS TV or Samsung TV):
+        // use native hardware pipeline.
+        // In simulator, desktop browsers, or when native mp2t is not supported:
         // use mpegts.js (MSE).
         if (isTsStream) {
           const nativeMp2tSupported = typeof videoEl.canPlayType === "function" && (
@@ -1580,8 +1591,8 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
             videoEl.canPlayType("video/mp2t; codecs=\"avc1.42E01E\"") !== ""
           );
 
-          if (isWebOSTV && nativeMp2tSupported) {
-            console.log("[webOS Video] Utilizing native webOS hardware pipeline for MPEG-TS stream:", normalized);
+          if ((isWebOSTV || isTizenTV) && nativeMp2tSupported) {
+            console.log("[TV Video] Utilizing native hardware pipeline for MPEG-TS stream:", normalized);
             fallbackToNativeSource();
             return;
           }
@@ -1873,7 +1884,11 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
                 await shakaRef.current.load(normalized);
               } catch {}
             } else if (videoElRef.current) {
-              setupWebOSVideoSource(videoElRef.current, normalized, isLive);
+              if (isTizen()) {
+                setupTizenVideoSource(videoElRef.current, normalized, isLive);
+              } else {
+                setupWebOSVideoSource(videoElRef.current, normalized, isLive);
+              }
             }
             return;
           }

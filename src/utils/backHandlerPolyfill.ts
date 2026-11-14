@@ -69,11 +69,14 @@ export function initBackHandlerPolyfill(): void {
     (event: KeyboardEvent) => {
       // 461: webOS Remote Back
       // 10009: Samsung Tizen Return
+      // 10182: Samsung Tizen Exit
       // 27: Escape
       // 8: Backspace (only when not typing in an input or textarea)
+      const isExitKey = event.keyCode === 10182 || event.key === "Exit";
       const isBackKey =
         event.keyCode === 461 ||
         event.keyCode === 10009 ||
+        isExitKey ||
         event.key === "Back" ||
         event.key === "Return" ||
         event.keyCode === 27 ||
@@ -89,6 +92,12 @@ export function initBackHandlerPolyfill(): void {
 
       event.preventDefault();
       event.stopPropagation();
+
+      // If user hit the physical Exit button on Samsung TV, exit immediately
+      if (isExitKey) {
+        BackHandler.exitApp();
+        return;
+      }
 
       // Dispatch to registered listeners in LIFO order (most recent first)
       const reversed = [...listeners].reverse();
