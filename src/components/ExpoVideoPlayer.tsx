@@ -1066,6 +1066,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
       let animFrameId: any = null;
       let boundVideoEl: HTMLVideoElement | null = null;
       let stallTimer: any = null;
+      let qualityMonitorTimer: any = null;
       const normalized = normalizeStreamUrlForWeb(streamUrl);
       const isTsStream = /\.ts(\?.*)?$/i.test(normalized) || (isLive && !/\.m3u8(\?.*)?$/i.test(normalized));
       const isHlsStream = /\.m3u8(\?.*)?$/i.test(normalized);
@@ -1478,8 +1479,8 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
               },
               {
                 enableWorker: !isSmartTV,
-                enableStashBuffer: false,
-                stashInitialSize: 128 * 1024,
+                enableStashBuffer: true,
+                stashInitialSize: 384 * 1024,
                 liveBufferLatencyChasing: false,
                 liveBufferLatencyMaxLatency: 20,
                 liveBufferLatencyMinRemain: 2,
@@ -1641,6 +1642,29 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           }
         }, 2500);
 
+        // Real-time Playback Quality & FPS / Dropped Frames monitor
+        let lastReportTime = Date.now();
+        let lastTotalFrames = 0;
+        let lastDroppedFrames = 0;
+        qualityMonitorTimer = setInterval(() => {
+          if (!boundVideoEl || boundVideoEl.paused) return;
+          const q = (boundVideoEl as any).getVideoPlaybackQuality?.();
+          const now = Date.now();
+          const deltaSec = (now - lastReportTime) / 1000;
+          if (q && deltaSec >= 2.0 && q.totalVideoFrames > 0) {
+            const deltaTotal = q.totalVideoFrames - lastTotalFrames;
+            const deltaDropped = q.droppedVideoFrames - lastDroppedFrames;
+            const fps = deltaSec > 0 ? (deltaTotal / deltaSec).toFixed(1) : "0";
+            const dropPct = deltaTotal > 0 ? ((deltaDropped / deltaTotal) * 100).toFixed(1) : "0.0";
+            console.log(
+              `[Playback Quality] Engine: ${activeEngineRef.current} | Mode: ${isLive ? "Live TV" : "VOD/Movie"} | ${fps} FPS | Dropped: ${deltaDropped}/${deltaTotal} (${dropPct}%) | Cumulative Dropped: ${q.droppedVideoFrames}/${q.totalVideoFrames}`
+            );
+            lastReportTime = now;
+            lastTotalFrames = q.totalVideoFrames;
+            lastDroppedFrames = q.droppedVideoFrames;
+          }
+        }, 2000);
+
         const isWebOSTV = isWebOS();
         const isTizenTV = isTizen();
         const isSmartTV = isWebOSTV || isTizenTV;
@@ -1663,16 +1687,14 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
 
         // Engine Path 3: MPEG-TS streams (.ts or live stream URLs)
         if (isTsStream) {
-          // On Smart TVs with hardware TS support (Tizen / webOS), initialize native pipeline first
-          if (isSmartTV) {
-            console.log("[TV Video] Initializing Smart TV native pipeline for MPEG-TS stream:", normalized);
-            fallbackToNativeSource();
-            return;
-          }
-
-          // In desktop browsers / emulators: attempt mpegts.js MSE demuxer
+          // Attempt mpegts.js MSE demuxer first (with stash buffer to eliminate network jitter & buffer underruns)
           const mpegtsOk = initMpegtsEngine(videoEl, normalized);
           if (mpegtsOk) return;
+
+          // If mpegts.js is not supported, fall back to Smart TV native hardware pipeline
+          console.log("[TV Video] Initializing Smart TV native pipeline for MPEG-TS stream:", normalized);
+          fallbackToNativeSource();
+          return;
         }
 
         // Engine Path 4: Shaka Player for DASH (.mpd)
@@ -1694,6 +1716,9 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
         }
         if (stallTimer) {
           clearTimeout(stallTimer);
+        }
+        if (qualityMonitorTimer) {
+          clearInterval(qualityMonitorTimer);
         }
         if (boundVideoEl) {
           try {
@@ -2048,6 +2073,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
               willChange: "transform",
             }}
             playsInline
+            preload="auto"
             autoPlay={autoPlay}
           />
         ) : (
