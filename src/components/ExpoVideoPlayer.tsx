@@ -1877,6 +1877,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           }
         },
         seekTo: (positionMs: number) => {
+          if (isLive) return;
           const seconds = Math.max(0, positionMs / 1000);
           if (Platform.OS === "web") {
             if (activeEngineRef.current === "mpegts" && mpegtsRef.current) {
@@ -1898,6 +1899,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           }
         },
         seekBy: (deltaSeconds: number) => {
+          if (isLive) return;
           if (Platform.OS === "web") {
             if (videoElRef.current) {
               videoElRef.current.currentTime += deltaSeconds;

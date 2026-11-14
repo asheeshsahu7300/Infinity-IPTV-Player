@@ -1266,6 +1266,7 @@ export default function PlayerScreen() {
   // ── Unified seek ──────────────────────────────────────────────────────────
   const performSeek = useCallback(
     (positionMs: number, isResumeSeek = false) => {
+      if (isLive) return;
       if (!durationRef.current || durationRef.current <= 0) return;
       // A seek the viewer asked for settles the question of where the title
       // should start, so it retires any resume that is still being retried.
