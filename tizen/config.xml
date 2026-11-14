@@ -13,7 +13,9 @@
     <name>Infinity IPTV Player</name>
     <description>High-performance modern IPTV player for live TV, movies, and series streaming on Samsung Smart TV.</description>
     <tizen:profile name="tv-samsung"/>
-    <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto"/>
+    <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto" hw-acceleration="enable"/>
+    <feature name="http://tizen.org/feature/multimedia.raw_video"/>
+    <feature name="http://tizen.org/feature/opengles.version.2_0"/>
     <tizen:privilege name="http://tizen.org/privilege/internet"/>
     <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
     <tizen:privilege name="http://tizen.org/privilege/application.launch"/>

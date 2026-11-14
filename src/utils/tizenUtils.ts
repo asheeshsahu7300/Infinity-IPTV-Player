@@ -231,6 +231,14 @@ export function initTizen(): void {
       [data-focusable="true"] {
         outline: none !important;
       }
+      /* Promote video & UI overlays to dedicated GPU compositing planes for smooth 60fps playback */
+      video {
+        transform: translate3d(0, 0, 0) !important;
+        -webkit-transform: translate3d(0, 0, 0) !important;
+        will-change: transform !important;
+        backface-visibility: hidden !important;
+        -webkit-backface-visibility: hidden !important;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -246,11 +254,11 @@ export function initTizen(): void {
 export function getTizenMediaMimeType(url: string, isLive?: boolean): string {
   if (!url) return "video/mp4";
   const clean = url.split("?")[0].toLowerCase();
-  if (clean.endsWith(".ts") || clean.includes(".ts?") || clean.includes("/ch/")) {
-    return "video/mp2t";
-  }
-  if (clean.endsWith(".m3u8") || clean.includes("m3u8")) {
+  if (clean.endsWith(".m3u8") || clean.includes(".m3u8") || url.toLowerCase().includes(".m3u8")) {
     return "application/vnd.apple.mpegurl";
+  }
+  if (clean.endsWith(".ts") || clean.includes(".ts") || clean.includes("/ch/") || (isLive && !clean.includes(".mp4"))) {
+    return "video/mp2t";
   }
   if (clean.endsWith(".mpd") || clean.includes("mpd")) {
     return "application/dash+xml";
@@ -258,7 +266,7 @@ export function getTizenMediaMimeType(url: string, isLive?: boolean): string {
   if (clean.endsWith(".mp4")) return "video/mp4";
   if (clean.endsWith(".mkv")) return "video/x-matroska";
   if (clean.endsWith(".webm")) return "video/webm";
-  if (isLive) return "application/vnd.apple.mpegurl";
+  if (isLive) return "video/mp2t";
   return "video/mp4";
 }
 
@@ -325,12 +333,20 @@ export function setupTizenVideoSource(
     videoEl.removeChild(videoEl.firstChild);
   }
 
+  videoEl.preload = "auto";
+  videoEl.setAttribute("playsinline", "true");
+  videoEl.setAttribute("webkit-playsinline", "true");
+
   const mimeType = getTizenMediaMimeType(streamUrl, isLive);
   const source = document.createElement("source");
   source.src = streamUrl;
   source.type = mimeType;
 
   videoEl.appendChild(source);
+  // For progressive VOD containers (MP4 / WebM / MKV), direct src allows hardware seek pipelines
+  if (!isLive && (mimeType === "video/mp4" || mimeType === "video/webm" || mimeType === "video/x-matroska")) {
+    videoEl.src = streamUrl;
+  }
   videoEl.load();
 
   const onMetadataLoaded = () => {

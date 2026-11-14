@@ -93,6 +93,14 @@ try {
         -webkit-user-select: none !important;
         user-select: none !important;
       }
+      /* Promote video & UI overlays to dedicated GPU compositing planes for smooth 60fps playback */
+      video {
+        transform: translate3d(0, 0, 0) !important;
+        -webkit-transform: translate3d(0, 0, 0) !important;
+        will-change: transform !important;
+        backface-visibility: hidden !important;
+        -webkit-backface-visibility: hidden !important;
+      }
     </style>
     <script>
       window.__TIZEN__ = true;

@@ -1074,9 +1074,13 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
       // Event listener functions for HTMLVideoElement
       const onTimeUpdate = () => {
         if (!boundVideoEl) return;
+        const now = Date.now();
+        // Throttle progress events to max once every 400ms to prevent saturating TV CPU / React reconciler
+        if (now - lastProgressEmitTime.current < 400) return;
+        lastProgressEmitTime.current = now;
+
         const currentMs = Math.round((boundVideoEl.currentTime || 0) * 1000);
         const durationMs = Math.round((boundVideoEl.duration || 0) * 1000);
-        lastProgressEmitTime.current = Date.now();
         onProgressRef.current?.(currentMs, durationMs);
         if (boundVideoEl.currentTime > 0) {
           onBufferingRef.current?.(false);
@@ -1134,6 +1138,16 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
             console.log("[Web Video] Native pipeline encountered error on TS; attempting mpegts fallback...");
             const ok = initMpegtsEngine(boundVideoEl, normalized);
             if (ok) return;
+          }
+          // If native pipeline failed on progressive VOD and shaka hasn't been tried, attempt shaka fallback
+          if (activeEngineRef.current === "native" && !isTsStream && !isHlsStream && !shakaInstance) {
+            console.log("[Web Video] Native pipeline encountered error on VOD; attempting shaka fallback...");
+            initShakaEngine(boundVideoEl).then((ok) => {
+              if (!ok && !isCancelled) {
+                onErrorRef.current?.(new Error(err.message || `Media playback error (code ${err.code})`));
+              }
+            });
+            return;
           }
           onErrorRef.current?.(new Error(err.message || `Media playback error (code ${err.code})`));
         }
@@ -1200,13 +1214,15 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           const HlsClass = HlsModule.default || HlsModule;
           if (HlsClass && HlsClass.isSupported && HlsClass.isSupported()) {
             console.log("[Web Video] Initializing Hls.js for URL:", url);
+            const isSmartTV = isTizen() || isWebOS();
             hlsInstance = new HlsClass({
-              enableWorker: true,
+              enableWorker: !isSmartTV,
               lowLatencyMode: isLive,
-              backBufferLength: isLive ? 15 : 60,
-              maxBufferLength: isLive ? 25 : 60,
-              maxMaxBufferLength: isLive ? 40 : 120,
-              maxBufferSize: 60 * 1000 * 1000,
+              backBufferLength: isLive ? 10 : 15,
+              maxBufferLength: isLive ? 12 : 25,
+              maxMaxBufferLength: isLive ? 20 : 40,
+              maxBufferSize: isSmartTV ? 16 * 1024 * 1024 : 60 * 1000 * 1000,
+              highBufferWatchdogPeriod: 2,
               enableWebVTT: true,
               enableCEA708Captions: true,
               renderTextTracksNatively: true,
@@ -1415,6 +1431,27 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
           const mpegtsClass = mpegts.default || mpegts;
           if (mpegtsClass && mpegtsClass.isSupported && mpegtsClass.isSupported()) {
             console.log("[Web Video] Initializing mpegts.js for MPEG-TS stream:", url);
+            const isSmartTV = isTizen() || isWebOS();
+
+            // Sanitize headers: omit forbidden headers and custom headers that trigger CORS preflight OPTIONS requests
+            const safeMpegtsHeaders: Record<string, string> = {};
+            if (headersRef.current) {
+              for (const [k, v] of Object.entries(headersRef.current)) {
+                const lower = k.toLowerCase();
+                if (
+                  FORBIDDEN_XHR_HEADERS.has(lower) ||
+                  lower === "user-agent" ||
+                  lower === "connection" ||
+                  lower === "icy-metadata" ||
+                  lower === "range" ||
+                  lower === "accept"
+                ) {
+                  continue;
+                }
+                safeMpegtsHeaders[k] = v;
+              }
+            }
+
             const mpegtsPlayer = mpegtsClass.createPlayer(
               {
                 type: "mpegts",
@@ -1423,16 +1460,18 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
                 cors: false,
               },
               {
-                enableWorker: true,
-                enableStashBuffer: true,
-                stashInitialSize: 384 * 1024,
-                liveBufferLatencyChasing: false,
+                enableWorker: !isSmartTV,
+                enableStashBuffer: false,
+                stashInitialSize: 128 * 1024,
+                liveBufferLatencyChasing: true,
+                liveBufferLatencyMaxLatency: 3.0,
+                liveBufferLatencyMinRemain: 1.0,
                 autoCleanupSourceBuffer: true,
-                autoCleanupMaxBackwardDuration: 15,
-                autoCleanupMinBackwardDuration: 8,
+                autoCleanupMaxBackwardDuration: 12,
+                autoCleanupMinBackwardDuration: 6,
                 fixAudioTimestampGap: true,
                 lazyLoad: false,
-                headers: headersRef.current,
+                headers: Object.keys(safeMpegtsHeaders).length > 0 ? safeMpegtsHeaders : undefined,
               }
             );
             mpegtsInstance = mpegtsPlayer;
@@ -1500,8 +1539,16 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
               console.warn("[mpegts.js] Error:", errorType, errorDetail, errorInfo);
               const statusCode = errorInfo?.code || errorInfo?.statusCode;
               if (statusCode === 401 || statusCode === 403 || statusCode === 404) {
-                try { mpegtsPlayer.unload(); } catch {}
-                onErrorRef.current?.(new Error(`Stream HTTP ${statusCode} (Stream offline or unauthorized)`));
+                console.warn(`[mpegts.js] Stream returned HTTP ${statusCode}. Attempting native hardware pipeline fallback...`);
+                try {
+                  mpegtsPlayer.unload();
+                  mpegtsPlayer.detachMediaElement();
+                  mpegtsPlayer.destroy();
+                } catch {}
+                if (mpegtsRef.current === mpegtsPlayer) {
+                  mpegtsRef.current = null;
+                }
+                fallbackToNativeSource();
                 return;
               }
               if (errorType === mpegtsClass.ErrorTypes.NETWORK_ERROR) {
@@ -1520,7 +1567,7 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
                   fallbackToNativeSource();
                 }
               } else {
-                onErrorRef.current?.(new Error(`Playback engine error: ${errorDetail || errorType}`));
+                fallbackToNativeSource();
               }
             });
 
@@ -1579,41 +1626,45 @@ export const ExpoVideoPlayer = forwardRef<ExpoVideoPlayerRef, ExpoVideoPlayerPro
 
         const isWebOSTV = isWebOS();
         const isTizenTV = isTizen();
+        const isSmartTV = isWebOSTV || isTizenTV;
 
-        // Engine Path 1: MPEG-TS streams (.ts or live stream URLs)
-        // If native hardware video/mp2t is supported (physical webOS TV or Samsung TV):
-        // use native hardware pipeline.
-        // In simulator, desktop browsers, or when native mp2t is not supported:
-        // use mpegts.js (MSE).
-        if (isTsStream) {
-          const nativeMp2tSupported = typeof videoEl.canPlayType === "function" && (
-            videoEl.canPlayType("video/mp2t") !== "" ||
-            videoEl.canPlayType("video/mp2t; codecs=\"avc1.42E01E\"") !== ""
-          );
-
-          if ((isWebOSTV || isTizenTV) && nativeMp2tSupported) {
-            console.log("[TV Video] Utilizing native hardware pipeline for MPEG-TS stream:", normalized);
-            fallbackToNativeSource();
-            return;
-          }
-
-          const mpegtsOk = initMpegtsEngine(videoEl, normalized);
-          if (mpegtsOk) return;
-        }
-
-        // Engine Path 2: Hls.js for HLS streams (.m3u8)
+        // Engine Path 1: Hls.js for HLS streams (.m3u8)
         if (isHlsStream) {
           const hlsOk = initHlsEngine(videoEl, normalized);
           if (hlsOk) return;
         }
 
-        // Engine Path 3: Shaka Player for DASH (.mpd), progressive MP4/WebM, or VOD
-        if (isDashStream || (!isTsStream && !isHlsStream)) {
+        // Engine Path 2: Progressive VOD (Movies & Series: MP4, MKV, WebM)
+        // On Smart TV (Tizen / webOS) and standard web, native HTML5 <video> hardware pipeline
+        // delivers 60fps hardware-accelerated playback with zero JS CPU overhead.
+        // Direct hardware decoding completely eliminates the FPS drop caused by JS transmuxers.
+        if (!isTsStream && !isHlsStream && !isDashStream) {
+          console.log("[Web Video] Utilizing native hardware pipeline for progressive VOD:", normalized);
+          fallbackToNativeSource();
+          return;
+        }
+
+        // Engine Path 3: MPEG-TS streams (.ts or live stream URLs)
+        if (isTsStream) {
+          // On Smart TVs with hardware TS support (Tizen / webOS), initialize native pipeline first
+          if (isSmartTV) {
+            console.log("[TV Video] Initializing Smart TV native pipeline for MPEG-TS stream:", normalized);
+            fallbackToNativeSource();
+            return;
+          }
+
+          // In desktop browsers / emulators: attempt mpegts.js MSE demuxer
+          const mpegtsOk = initMpegtsEngine(videoEl, normalized);
+          if (mpegtsOk) return;
+        }
+
+        // Engine Path 4: Shaka Player for DASH (.mpd)
+        if (isDashStream) {
           const shakaOk = await initShakaEngine(videoEl);
           if (shakaOk) return;
         }
 
-        // Engine Path 4: Fallback native webOS video source
+        // Engine Path 5: Fallback native media pipeline
         fallbackToNativeSource();
       };
 
