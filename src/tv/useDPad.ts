@@ -4,6 +4,7 @@ import * as ReactNative from "react-native";
 
 import { isKeyPress, resetKeyPressState } from "./keyPress";
 import { WebSpatialNavigation } from "./webSpatialNavigation";
+import { registerTizenKeys } from "../utils/tizenUtils";
 
 // TVEventHandler is provided on TV-enabled builds; on standard react-native it may be absent.
 const TVEventHandler: any = (ReactNative as any).TVEventHandler;
@@ -214,6 +215,8 @@ let webKeyDownListener: ((e: KeyboardEvent) => void) | null = null;
 function attachWeb() {
   if (Platform.OS !== "web" || typeof window === "undefined" || webKeyDownListener) return;
 
+  registerTizenKeys();
+
   webKeyDownListener = (e: KeyboardEvent) => {
     const target = e.target as HTMLElement | null;
     const isInput = Boolean(
@@ -226,7 +229,7 @@ function attachWeb() {
       const isUp = code === 38 || e.key === "ArrowUp";
       const isDown = code === 40 || e.key === "ArrowDown";
       const isEnter = code === 13 || e.key === "Enter";
-      const isBack = code === 461 || code === 27 || e.key === "Escape";
+      const isBack = code === 461 || code === 10009 || code === 27 || e.key === "Escape" || e.key === "Return";
 
       if (isUp) {
         e.preventDefault();
@@ -292,34 +295,38 @@ function attachWeb() {
       case 13: // Enter / OK
         mappedType = "select";
         break;
-      case 415: // webOS Play
+      case 415: // webOS & Tizen Play
         mappedType = "play";
         break;
-      case 19: // webOS Pause
+      case 19: // webOS & Tizen Pause
         mappedType = "pause";
         break;
       case 402: // webOS PlayPause
+      case 10252: // Tizen MediaPlayPause
         mappedType = "playPause";
         break;
-      case 413: // webOS Stop
+      case 413: // webOS & Tizen Stop
         mappedType = "stop";
         break;
-      case 417: // webOS FastForward
+      case 417: // webOS & Tizen FastForward
         mappedType = "fastForward";
         break;
-      case 412: // webOS Rewind
+      case 412: // webOS & Tizen Rewind
         mappedType = "rewind";
         break;
       case 33: // PageUp / ChannelUp
+      case 427: // Tizen ChannelUp
         mappedType = "pageUp";
         break;
       case 34: // PageDown / ChannelDown
+      case 428: // Tizen ChannelDown
         mappedType = "pageDown";
         break;
-      case 457: // webOS Info
+      case 457: // webOS & Tizen Info
         mappedType = "info";
         break;
       case 461: // webOS Back
+      case 10009: // Tizen Return
         mappedType = "menu";
         break;
       case 403: // Red key

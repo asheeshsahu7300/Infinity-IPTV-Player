@@ -284,12 +284,27 @@ class StbEnvironmentImpl {
       }
     })();
 
+    const isTizenTV = Platform.OS === "web" && (() => {
+      try {
+        const { isTizen } = require("../utils/tizenUtils");
+        return isTizen();
+      } catch {
+        return false;
+      }
+    })();
+
     let platformLabel = `${Platform.OS}${Platform.Version ? ` ${Platform.Version}` : ""}`;
     if (isWebOSTV) {
       try {
         const { getWebOSDeviceInfo } = require("../utils/webosUtils");
         const info = getWebOSDeviceInfo();
         platformLabel = info.version ? `LG webOS ${info.version}` : "LG webOS TV";
+      } catch {}
+    } else if (isTizenTV) {
+      try {
+        const { getTizenDeviceInfo } = require("../utils/tizenUtils");
+        const info = getTizenDeviceInfo();
+        platformLabel = info.tizenVersion ? `Samsung Tizen ${info.tizenVersion}` : "Samsung Tizen TV";
       } catch {}
     }
 
@@ -342,6 +357,13 @@ function describeModel(): string {
       if (isWebOS()) {
         const info = getWebOSDeviceInfo();
         return info.modelName ? `LG webOS TV (${info.modelName})` : "LG webOS Smart TV";
+      }
+    } catch {}
+    try {
+      const { isTizen, getTizenDeviceInfo } = require("../utils/tizenUtils");
+      if (isTizen()) {
+        const info = getTizenDeviceInfo();
+        return info.modelName ? `Samsung Smart TV (${info.modelName})` : "Samsung Smart TV";
       }
     } catch {}
   }

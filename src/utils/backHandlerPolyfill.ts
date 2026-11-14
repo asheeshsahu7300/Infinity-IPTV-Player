@@ -1,11 +1,12 @@
 // src/utils/backHandlerPolyfill.ts
-// Polyfills React Native BackHandler for Web & LG webOS TV.
-// Listens to webOS Remote Back (keyCode 461), Escape (27), and Backspace (8).
-// Dispatches to BackHandler listeners in LIFO order and falls back to safeBack() or webOSExit().
+// Polyfills React Native BackHandler for Web, LG webOS TV & Samsung Tizen TV.
+// Listens to webOS Remote Back (keyCode 461), Samsung Tizen Return (keyCode 10009), Escape (27), and Backspace (8).
+// Dispatches to BackHandler listeners in LIFO order and falls back to safeBack(), webOSExit(), or tizenExit().
 
 import { Platform, BackHandler } from "react-native";
 import { safeBack } from "../services/safeNavigation";
 import { webOSExit, isWebOS } from "./webosUtils";
+import { tizenExit, isTizen } from "./tizenUtils";
 
 type BackListener = () => boolean | null | undefined | void;
 
@@ -55,6 +56,8 @@ export function initBackHandlerPolyfill(): void {
   BackHandler.exitApp = function () {
     if (isWebOS()) {
       webOSExit();
+    } else if (isTizen()) {
+      tizenExit();
     } else if (originalExitApp) {
       originalExitApp();
     }
@@ -65,11 +68,14 @@ export function initBackHandlerPolyfill(): void {
     "keydown",
     (event: KeyboardEvent) => {
       // 461: webOS Remote Back
+      // 10009: Samsung Tizen Return
       // 27: Escape
       // 8: Backspace (only when not typing in an input or textarea)
       const isBackKey =
         event.keyCode === 461 ||
+        event.keyCode === 10009 ||
         event.key === "Back" ||
+        event.key === "Return" ||
         event.keyCode === 27 ||
         event.key === "Escape";
 
@@ -103,8 +109,12 @@ export function initBackHandlerPolyfill(): void {
       // If no listener consumed the back press, invoke default navigation back
       if (!handled) {
         const navigated = safeBack();
-        if (!navigated && isWebOS()) {
-          webOSExit();
+        if (!navigated) {
+          if (isWebOS()) {
+            webOSExit();
+          } else if (isTizen()) {
+            tizenExit();
+          }
         }
       }
     },

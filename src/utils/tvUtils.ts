@@ -7,7 +7,14 @@ export const isWebOS =
    Boolean((window as any).__WEBOS__) ||
    (typeof navigator !== 'undefined' && /Web0S|webOS/i.test(navigator.userAgent)));
 
-if (isWebOS && Platform.OS === 'web') {
+export const isTizen =
+  typeof window !== 'undefined' &&
+  (Boolean((window as any).__TIZEN__) ||
+   Boolean((window as any).tizen) ||
+   Boolean((window as any).webapis) ||
+   (typeof navigator !== 'undefined' && /Tizen/i.test(navigator.userAgent)));
+
+if ((isWebOS || isTizen) && Platform.OS === 'web') {
   (Platform as any).isTV = true;
 }
 
@@ -39,6 +46,7 @@ const maxWinDim = Math.max(winW, winH);
 export const isTV =
   Platform.isTV ||
   isWebOS ||
+  isTizen ||
   (Platform.OS === 'android' && maxDim > 1000) ||
   (Platform.OS === 'web' && maxWinDim > 800);
 

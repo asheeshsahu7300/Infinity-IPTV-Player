@@ -20,14 +20,17 @@
   <a href="https://play.google.com/store/apps/details?id=com.infinity.iptvplayer">
     <img src="https://img.shields.io/badge/Google%20Play-Live%20Now-brightgreen.svg?style=for-the-badge&logo=google-play&logoColor=white" alt="Google Play Store" />
   </a>
-  <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV%20%7C%20webOS-00C853.svg?style=for-the-badge&logo=android&logoColor=white" alt="Android & Android TV & webOS" />
+  <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV%20%7C%20webOS%20%7C%20Tizen-00C853.svg?style=for-the-badge&logo=android&logoColor=white" alt="Android & Android TV & webOS & Tizen" />
   <a href="https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest">
     <img src="https://img.shields.io/badge/webOS-LG%20Smart%20TV%20(.ipk)-E50914.svg?style=for-the-badge&logo=lg&logoColor=white" alt="LG webOS TV IPK" />
+  </a>
+  <a href="docs/TIZEN_GUIDE.md">
+    <img src="https://img.shields.io/badge/Tizen-Samsung%20Smart%20TV%20(.wgt)-0066FF.svg?style=for-the-badge&logo=samsung&logoColor=white" alt="Samsung Tizen TV WGT" />
   </a>
 </p>
 
 <p align="center">
-  🚀 <strong>Release 1.0.0 is officially live! Available on Google Play Store, Android TV, and LG webOS Smart TVs.</strong>
+  🚀 <strong>Release 1.0.0 is officially live! Available on Google Play Store, Android TV, LG webOS & Samsung Tizen Smart TVs.</strong>
 </p>
 
 <p align="center">
@@ -65,7 +68,8 @@ It supports multiple IPTV playlist and portal formats while providing a consiste
 - Android phones & Tablets
 - Android TV / Google TV
 - LG webOS Smart TVs (webOS 3.5 through webOS 24)
-- D-Pad, Magic Remote, and remote-controlled devices
+- Samsung Smart TVs (Tizen OS 3.0 through Tizen 8.0+)
+- D-Pad, Magic Remote, Samsung TV Remote, and remote-controlled devices
 
 The application is designed around a premium dark UI, fast content browsing, large media libraries, and a TV-friendly 10-foot interface.
 
@@ -83,6 +87,7 @@ The application is designed around a premium dark UI, fast content browsing, lar
 
 - **Google Play Store**: [**Get it on Google Play**](https://play.google.com/store/apps/details?id=com.infinity.iptvplayer) (Official Android Mobile, Tablet & Android TV / Google TV)
 - **Latest Release**: [**v1.0.0 on GitHub Releases**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0)
+- **Samsung Tizen Smart TV**: Built package [**`com.infinity.iptvplayer_1.0.0.wgt`**](docs/TIZEN_GUIDE.md) (build locally via `npm run build:tizen`)
 - **LG webOS Smart TV**: Download the installable [**`com.infinity.iptvplayer_1.0.0.ipk`**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.0/com.infinity.iptvplayer_1.0.0.ipk)
 - **Android / Android TV APK**: [**Download Universal APK (v1.0.0)**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.0/Infinity-IPTV-Player-v1.0.0-universal.apk) | [**View all release APKs**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0)
 
@@ -509,6 +514,42 @@ If your LG TV is rooted with the [Homebrew Channel](https://github.com/webosbrew
 
 ---
 
+## Samsung Smart TV (`.wgt` - Tizen OS)
+
+### 1. Build & Package WGT Locally
+
+Generate the optimized Tizen web bundle and `.wgt` package:
+
+```bash
+npm run build:tizen
+```
+
+*(Or with Yarn: `yarn build:tizen`)*
+
+The generated `.wgt` package will be available in:
+
+```text
+release-tizen/com.infinity.iptvplayer_1.0.0.wgt
+```
+
+---
+
+### 2. Sideload / Install on Samsung Smart TV
+
+1. **Enable Developer Mode**: On your Samsung TV, open **Apps**, enter **`1 2 3 4 5`**, toggle **Developer Mode ON**, enter your PC's IP, and restart your TV.
+2. **Connect via SDB**:
+   ```bash
+   sdb connect <YOUR_TV_IP_ADDRESS>:26101
+   ```
+3. **Install & Launch**:
+   ```bash
+   tizen install -n release-tizen/com.infinity.iptvplayer_1.0.0.wgt -t <DEVICE_NAME>
+   tizen run -p com.infinity.iptvplayer -t <DEVICE_NAME>
+   ```
+4. **Developer Guide**: For complete setup instructions and remote key maps, see [**docs/TIZEN_GUIDE.md**](docs/TIZEN_GUIDE.md).
+
+---
+
 # Portal Configuration
 
 Infinity IPTV Player supports three main connection methods.
@@ -662,12 +703,12 @@ The application separates the IPTV providers from the UI layer.
                             │
                      React Native UI
                             │
-             ┌──────────────┼──────────────┐
-             │              │              │
-          Mobile        Android TV      LG webOS
-             │              │              │
-         Touch UI        D-Pad UI     Magic Remote &
-                                       Spatial Nav
+             ┌──────────────┼──────────────┼──────────────┐
+             │              │              │              │
+          Mobile        Android TV      LG webOS     Samsung Tizen
+             │              │              │              │
+         Touch UI        D-Pad UI     Magic Remote &  D-Pad & Media
+                                       Spatial Nav         Keys
 ```
 
 ---
@@ -787,6 +828,13 @@ Always ensure that your IPTV provider and content are legally authorized in your
 ---
 
 # Changelog
+
+### [Tizen Experimental (Samsung Smart TV Compatibility)](docs/TIZEN_GUIDE.md)
+- **Samsung Tizen TV Package Pipeline**: Automated packaging generating official `com.infinity.iptvplayer_1.0.0.wgt` via `npm run build:tizen`.
+- **Samsung Remote Key Registration**: Automated registration of physical TV remote keys (Play, Pause, FastForward, Rewind, Stop, PlayPause, Colors, Channels, Numbers) via `tizen.tvinputdevice.registerKey()`.
+- **Samsung Return Key & App Lifecycle**: Extended React Native `BackHandler` on Web to catch Tizen Return key (key code `10009`), handling layered back navigation and graceful exit via `tizen.application.getCurrentApplication().exit()`.
+- **Spatial 2D Remote Engine**: Reused Euclidean vector spatial navigation (`webSpatialNavigation.ts`) for directional focus jumps across channel grids, VOD cards, and EPG tables.
+- **Developer Guide**: Comprehensive Samsung Smart TV developer setup and sideloading documentation in [TIZEN_GUIDE.md](docs/TIZEN_GUIDE.md).
 
 ### [webOS Experimental (LG Smart TV Compatibility)](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0)
 - **LG webOS TV Package Pipeline**: Automated packaging generating official `com.infinity.iptvplayer_1.0.0.ipk` via `npm run build:webos`.

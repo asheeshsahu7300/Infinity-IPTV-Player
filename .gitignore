@@ -10,7 +10,10 @@ scratch/
 dist/
 dist-webos/
 release-webos/
+dist-tizen/
+release-tizen/
 *.ipk
+*.wgt
 web-build/
 expo-env.d.ts
 
