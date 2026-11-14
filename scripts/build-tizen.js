@@ -337,10 +337,24 @@ try {
   }
 
   let tizenCliFound = false;
+  let tzExePath = null;
+  const homeDir = process.env.USERPROFILE || process.env.HOME || "";
+  const tzCandidates = [
+    path.join(homeDir, ".tizen-extension-platform", "server", "sdktools", "data", "tools", "tizen-core", "tz.exe"),
+    path.join("C:", "tizen-studio", "tools", "ide", "bin", "tizen.bat"),
+  ];
+
   try {
     execSync("tizen version", { stdio: "ignore" });
     tizenCliFound = true;
-  } catch {}
+  } catch {
+    for (const cand of tzCandidates) {
+      if (fs.existsSync(cand)) {
+        tzExePath = `"${cand}"`;
+        break;
+      }
+    }
+  }
 
   const wgtFileName = "com.infinity.iptvplayer_1.0.0.wgt";
   const wgtFilePath = path.join(PACKAGE_OUTPUT_DIR, wgtFileName);
@@ -355,17 +369,44 @@ try {
     });
     console.log(`\n🎉 Success! Tizen package generated via Tizen CLI in: ${PACKAGE_OUTPUT_DIR}`);
   } else {
-    console.log("  ℹ️ Tizen CLI not found in system PATH. Generating standard compliant .wgt package...");
-    // A Tizen .wgt is a standard ZIP archive containing config.xml at the root
+    console.log("  ℹ️ Packaging standard POSIX-compliant .wgt package...");
     try {
-      // Create zip file first
-      execSync(`tar -a -cf "${zipFilePath}" -C "${TIZEN_OUTPUT_DIR}" .`, {
-        cwd: ROOT_DIR,
-        stdio: "inherit",
-      });
-      // Copy to .wgt
-      fs.copyFileSync(zipFilePath, wgtFilePath);
-      console.log(`  ✓ Generated installable Tizen package: ${wgtFilePath}`);
+      const pyScriptPath = path.join(PACKAGE_OUTPUT_DIR, "_pack_temp.py");
+      const pyScript = [
+        "import os",
+        "import zipfile",
+        "import shutil",
+        `dist_dir = r'''${TIZEN_OUTPUT_DIR}'''`,
+        `wgt_path = r'''${wgtFilePath}'''`,
+        `zip_path = r'''${zipFilePath}'''`,
+        "with zipfile.ZipFile(wgt_path, 'w', zipfile.ZIP_DEFLATED) as z:",
+        "    for root, dirs, files in os.walk(dist_dir):",
+        "        for f in files:",
+        "            full_path = os.path.join(root, f)",
+        "            rel_path = os.path.relpath(full_path, dist_dir).replace(chr(92), '/')",
+        "            z.write(full_path, rel_path)",
+        "shutil.copyfile(wgt_path, zip_path)",
+      ].join("\n");
+
+      fs.writeFileSync(pyScriptPath, pyScript, "utf8");
+      execSync(`python "${pyScriptPath}"`, { cwd: ROOT_DIR, stdio: "inherit" });
+      try { fs.unlinkSync(pyScriptPath); } catch {}
+      console.log(`  ✓ Generated POSIX-compliant archive: ${wgtFilePath}`);
+
+      // Auto-sign with tz.exe if available and profile exists
+      const profilesXml = path.join(homeDir, "tizen-studio-data", "profile", "profiles.xml");
+      if (tzExePath && fs.existsSync(profilesXml)) {
+        console.log("  🔏 Signing .wgt package with Tizen signing profile (InfinityProfile)...");
+        try {
+          execSync(`${tzExePath} pack -t wgt -s InfinityProfile -p "${profilesXml}" -b "${wgtFilePath}"`, {
+            cwd: ROOT_DIR,
+            stdio: "inherit",
+          });
+          console.log("  ✓ Package successfully signed for Tizen TV / Emulator installation!");
+        } catch (signErr) {
+          console.warn("  ⚠️ Signing warning (can be signed manually):", signErr.message);
+        }
+      }
       console.log(`  ✓ Generated backup archive: ${zipFilePath}`);
     } catch (zipErr) {
       console.warn("  ⚠️ Warning during archive creation:", zipErr.message);

@@ -11,6 +11,7 @@
     "web": "expo start --web",
     "build:webos": "node ./scripts/build-webos.js",
     "build:tizen": "node ./scripts/build-tizen.js",
+    "run:tizen": "node ./scripts/tizen-run.js",
     "lint": "expo lint",
     "postinstall": "patch-package"
   },

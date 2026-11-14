@@ -54,20 +54,41 @@ The project includes an automated build pipeline that exports the web applicatio
 ```bash
 npm run build:tizen
 ```
-*(Or with Yarn: `yarn build:tizen`)*
+
+### Run & Deploy to Emulator or TV with One Command:
+```bash
+npm run run:tizen
+```
 
 This script performs:
 1. `npx expo export --platform web` — bundles the application with Metro.
 2. Creates `dist-tizen/` with `config.xml`, 1080p viewport meta tags, Samsung WebAPIs, and TV icons.
 3. Patches Expo Router and JavaScript bundles for local `file://` execution.
-4. Generates the installable `.wgt` package in:
+4. Generates and automatically signs the installable `.wgt` package in:
    ```text
    release-tizen/com.infinity.iptvplayer_1.0.0.wgt
    ```
+5. `npm run run:tizen` automatically detects any connected Samsung TV or active Tizen Emulator, installs the package, and launches it immediately.
 
 ---
 
-## 3. Installing on a Samsung Smart TV
+## 3. Installing on Emulator or Samsung Smart TV
+
+### Quick Run (Automated)
+Ensure your emulator or TV is online, then run:
+```bash
+npm run run:tizen
+```
+
+### SDB & CLI Tools Location (VS Code Tizen Extension)
+If running manually and `sdb` is not in your global `PATH`, the tools are located at:
+- **SDB**: `C:\Users\<username>\.tizen-extension-platform\server\sdktools\data\tools\sdb.exe`
+- **Tizen CLI (tz)**: `C:\Users\<username>\.tizen-extension-platform\server\sdktools\data\tools\tizen-core\tz.exe`
+
+To add them to your PowerShell session temporarily:
+```powershell
+$env:PATH += ";$env:USERPROFILE\.tizen-extension-platform\server\sdktools\data\tools;$env:USERPROFILE\.tizen-extension-platform\server\sdktools\data\tools\tizen-core"
+```
 
 ### Step 1: Enable Developer Mode on your Samsung TV
 1. On your Samsung TV remote, press the **Home** or **Smart Hub** button.
@@ -79,24 +100,22 @@ This script performs:
 7. Click **OK**, then restart your Samsung TV (press and hold the remote's Power button for 3 seconds until the Samsung logo appears).
 
 ### Step 2: Connect via SDB (Samsung Device Bridge)
-Make sure the Samsung Tizen Studio CLI / SDB is in your system PATH (or use Tizen Studio's Device Manager):
-
 ```bash
 # Connect to your TV over Wi-Fi / LAN:
 sdb connect <YOUR_TV_IP_ADDRESS>:26101
 
-# Verify the connected TV:
+# Verify the connected TV or Emulator:
 sdb devices
 ```
 
 ### Step 3: Install and Launch the Application
 
 ```bash
-# Install the package on your Samsung TV
-tizen install -n release-tizen/com.infinity.iptvplayer_1.0.0.wgt -t <DEVICE_NAME>
+# Install the package on your Samsung TV or Emulator
+sdb -s <DEVICE_ID> install release-tizen/com.infinity.iptvplayer_1.0.0.wgt
 
 # Launch the application
-tizen run -p com.infinity.iptvplayer -t <DEVICE_NAME>
+sdb -s <DEVICE_ID> shell "app_launcher -s xInfinity1.InfinityIPTV"
 ```
 
 ---

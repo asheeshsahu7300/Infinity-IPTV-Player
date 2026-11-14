@@ -4,8 +4,8 @@
         id="http://infinity.com/iptvplayer" 
         version="1.0.0" 
         viewmodes="maximized">
-    <tizen:application id="com.infinity.iptvplayer" 
-                       package="com.infinity" 
+    <tizen:application id="xInfinity1.InfinityIPTV" 
+                       package="xInfinity1" 
                        required_version="3.0"/>
     <content src="index.html"/>
     <feature name="http://tizen.org/feature/screen.size.all"/>
