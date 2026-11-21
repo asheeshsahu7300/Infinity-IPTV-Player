@@ -40,6 +40,21 @@
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
+    <!-- Android 16 Large Screen / Foldable resizability compatibility -->
+    <property
+      android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
+      android:value="true" />
+    <property
+      android:name="android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_OVERRIDE"
+      android:value="false" />
+
+    <!-- Fix Android 16 large-screen orientation restriction: remove MLKit's hardcoded portrait lock -->
+    <activity
+      android:name="com.google.mlkit.vision.codescanner.internal.GmsBarcodeScanningDelegateActivity"
+      tools:replace="android:screenOrientation"
+      android:screenOrientation="unspecified"
+      tools:node="merge" />
+
     <activity android:name=".MainActivity" android:label="@string/app_name" android:supportsPictureInPicture="true" android:resizeableActivity="true" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="unspecified">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>

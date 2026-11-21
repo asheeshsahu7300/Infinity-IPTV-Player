@@ -1192,7 +1192,7 @@ export default function SearchScreen() {
           <FocusGroup style={S.resultsArea}>
             <View style={[S.sectionLabelArea, isTouch && { paddingHorizontal: railHPad }]}>
               <Text style={S.sectionLabelTitle}>
-                Results for "{submittedQuery}" ({filteredResults.length})
+                {`Results for "${submittedQuery}" (${filteredResults.length})`}
               </Text>
               <Text style={S.sectionLabelSubtitle}>
                 {activeFilter === "all"
@@ -1230,7 +1230,7 @@ export default function SearchScreen() {
                     </View>
                     <Text style={S.emptyTitle}>No Results Found</Text>
                     <Text style={S.emptyText}>
-                      We couldn't find anything matching "{submittedQuery}". Try searching by actor, genre, or title keywords.
+                      {`We couldn't find anything matching "${submittedQuery}". Try searching by actor, genre, or title keywords.`}
                     </Text>
                   </View>
                 ) : null

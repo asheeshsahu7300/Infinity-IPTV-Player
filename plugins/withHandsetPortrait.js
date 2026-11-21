@@ -38,6 +38,7 @@ const { withMainActivity } = require('expo/config-plugins');
 const MARKER = 'pinHandsetToPortrait';
 
 const IMPORTS = [
+  'import android.os.Build',
   'import android.app.UiModeManager',
   'import android.content.Context',
   'import android.content.pm.ActivityInfo',
@@ -48,13 +49,23 @@ const METHOD = `
   /**
    * Strictly upright on a handset. Injected by plugins/withHandsetPortrait.js —
    * edit the plugin, not this file, or the next prebuild will drop the change.
+   *
+   * Android 16 / Large Screen & Foldables Compliance:
+   * Ignores orientation lock if in multi-window mode or on large screen / foldable
+   * displays (swDp >= 600) to adhere to Android 16 resizability standards.
    */
   private fun ${MARKER}() {
     try {
+      // Do not restrict orientation in multi-window / split-screen mode
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInMultiWindowMode) {
+        return
+      }
       val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
       val isTelevision =
         uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
-      val isHandset = resources.configuration.smallestScreenWidthDp < 480
+      val swDp = resources.configuration.smallestScreenWidthDp
+      // Only lock small phone screens (<480dp). Never lock tablets, foldables (swDp >= 600), or TVs.
+      val isHandset = swDp < 480
       if (!isTelevision && isHandset) {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
       }

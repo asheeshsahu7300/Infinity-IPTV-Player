@@ -7,6 +7,10 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.Bundle
+import android.view.WindowManager
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -26,6 +30,7 @@ class MainActivity : ReactActivity() {
     SplashScreenManager.registerOnActivity(this)
     // @generated end expo-splashscreen
     super.onCreate(null)
+    configureCutoutMode()
     hideSystemUI()
   }
 
@@ -41,24 +46,22 @@ class MainActivity : ReactActivity() {
     }
   }
 
+  private fun configureCutoutMode() {
+    try {
+      // Android 15 & API 30+: use LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS instead of deprecated SHORT_EDGES or DEFAULT
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        window.attributes.layoutInDisplayCutoutMode =
+          WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+      }
+    } catch (e: Exception) {}
+  }
+
   private fun hideSystemUI() {
     try {
-      androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
-      val controller = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
-      controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-      controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-    } catch (e: Exception) {}
-
-    try {
-      @Suppress("DEPRECATION")
-      window.decorView.systemUiVisibility = (
-        android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-          or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-          or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-          or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-          or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-          or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
-      )
+      WindowCompat.setDecorFitsSystemWindows(window, false)
+      val controller = WindowCompat.getInsetsController(window, window.decorView)
+      controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+      controller.hide(WindowInsetsCompat.Type.systemBars())
     } catch (e: Exception) {}
   }
 
@@ -120,13 +123,23 @@ class MainActivity : ReactActivity() {
   /**
    * Strictly upright on a handset. Injected by plugins/withHandsetPortrait.js —
    * edit the plugin, not this file, or the next prebuild will drop the change.
+   *
+   * Android 16 / Large Screen & Foldables Compliance:
+   * Ignores orientation lock if in multi-window mode or on large screen / foldable
+   * displays (swDp >= 600) to adhere to Android 16 resizability standards.
    */
   private fun pinHandsetToPortrait() {
     try {
+      // Do not restrict orientation in multi-window / split-screen mode
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInMultiWindowMode) {
+        return
+      }
       val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
       val isTelevision =
         uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
-      val isHandset = resources.configuration.smallestScreenWidthDp < 480
+      val swDp = resources.configuration.smallestScreenWidthDp
+      // Only lock small phone screens (<480dp). Never lock tablets, foldables (swDp >= 600), or TVs.
+      val isHandset = swDp < 480
       if (!isTelevision && isHandset) {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
       }
