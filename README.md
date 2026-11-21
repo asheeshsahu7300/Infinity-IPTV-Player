@@ -789,18 +789,12 @@ Always ensure that your IPTV provider and content are legally authorized in your
 
 # Changelog
 
-### [webOS Experimental (LG Smart TV Compatibility)](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0)
-- **LG webOS TV Package Pipeline**: Automated packaging generating official `com.infinity.iptvplayer_1.0.0.ipk` via `npm run build:webos`.
-- **Direct IPK Download**: Download [**`com.infinity.iptvplayer_1.0.0.ipk`**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.0/com.infinity.iptvplayer_1.0.0.ipk) directly from GitHub Releases.
-- **Branch & Codebase**: Maintained on the [**webos-experimental branch**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/tree/webos-experimental).
-- **Magic Remote Air-Pointer & D-Pad Integration**: Full spatial 2D navigation engine (`webSpatialNavigation.ts`) with Magic Remote hover highlight support.
-- **webOS Back Button & Media Control**: Polyfilled React Native `BackHandler` on Web catching webOS remote Back (key code `461`), Play/Pause, Fast-Forward, Rewind, Channel Up/Down, and color keys.
-- **Hardware-Accelerated Video Pipeline**: Native webOS HLS streaming with dual-mode `HLS.js` fallback for standard browsers.
-- **Developer Guide**: Comprehensive LG webOS deployment and testing documentation in [WEBOS_GUIDE.md](docs/WEBOS_GUIDE.md).
+See the full [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 ### [Release 1.0.1 (Production App Release — Android 15/16 Compliance & Merged webOS Support)](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.1)
 
-- **Official Google Play Store Updates**: Bumped `versionCode` to **`17`** and `versionName` to **`1.0.1`**.
+- **Official Google Play Store Updates**: Bumped `versionCode` to **`18`** and `versionName` to **`1.0.1`**.
+- **Hardware Feature Availability**: Marked `android.hardware.wifi` and telephony as optional, fully supporting Ethernet-only Android TV, ChromeOS, and XR devices.
 - **Merged LG webOS Smart TV Engine**: Unified webOS TV build pipeline, Magic Remote air-pointer, spatial 2D navigation, and direct hardware media pipeline.
 - **Android 15 Edge-to-Edge Compliance**: Migrated status bar / navigation bar controls to modern AndroidX `WindowInsetsControllerCompat`, set transparent window bars, and replaced deprecated cutout modes with `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS`.
 - **R8 DEX Code Optimization & Obfuscation**: Enabled release R8 minification and resource shrinking with comprehensive ProGuard keep rules, exceeding Play Console's 25% obfuscation threshold.
