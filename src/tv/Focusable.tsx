@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import {
+  Platform,
   Pressable,
   StyleProp,
   StyleSheet,
@@ -17,6 +18,7 @@ import {
 import { FocusMemory } from "./FocusMemory";
 import { useIsFocusTrapped, InsideOverlayContext, NextFocusTags } from "./FocusTrapContext";
 import { useDPad, DPAD_PRIORITY } from "./useDPad";
+import { WebSpatialNavigation } from "./webSpatialNavigation";
 import { remoteFocusEnabled } from "../utils/tabletUtils";
 
 export interface FocusableProps {
@@ -174,6 +176,35 @@ export const Focusable = forwardRef<View, FocusableProps>(
       };
     }, [screenKey, focusKey]);
 
+    // Register with WebSpatialNavigation on web/webOS for D-Pad directional navigation
+    React.useEffect(() => {
+      if (Platform.OS !== "web") return;
+      const el = nativeRef.current as any;
+      if (!el) return;
+
+      const domNode =
+        typeof el.focus === "function" && el instanceof HTMLElement
+          ? el
+          : el.getDOMNode?.() || (Platform.OS !== "web" ? (findNodeHandle(el) as any) : null);
+
+      if (domNode && domNode instanceof HTMLElement) {
+        domNode.setAttribute("data-focusable", "true");
+        return WebSpatialNavigation.register({
+          id: idRef.current,
+          element: domNode,
+          nextFocusUp,
+          nextFocusDown,
+          nextFocusLeft,
+          nextFocusRight,
+          trapFocusUp,
+          trapFocusDown,
+          trapFocusLeft,
+          trapFocusRight,
+          isInert,
+        });
+      }
+    }, [isInert, nextFocusUp, nextFocusDown, nextFocusLeft, nextFocusRight, trapFocusUp, trapFocusDown, trapFocusLeft, trapFocusRight]);
+
     React.useEffect(() => {
       return () => {
         if (lastFocusedRef.current === nativeRef.current) {
@@ -200,7 +231,11 @@ export const Focusable = forwardRef<View, FocusableProps>(
       const epochAtRequest = FocusMemory.focusEpoch;
       focusTimeRef.current = Date.now();
       if (!focusedRef.current && FocusMemory.focusEpoch === epochAtRequest) {
-        nativeRef.current?.focus?.();
+        try {
+          (nativeRef.current as any)?.focus?.({ preventScroll: true });
+        } catch {
+          nativeRef.current?.focus?.();
+        }
       }
     }, [hasTVPreferredFocus, isInert]);
 
@@ -237,6 +272,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
     const [selfTag, setSelfTag] = useState<number | undefined>(undefined);
 
     const updateSelfTag = useCallback(() => {
+      if (Platform.OS === "web") return;
       if (nativeRef.current) {
         const tag = findNodeHandle(nativeRef.current);
         if (tag && tag !== selfTag) {
@@ -249,7 +285,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
       if (hasDirectionalTraps) {
         updateSelfTag();
       }
-    });
+    }, [hasDirectionalTraps, updateSelfTag]);
 
     const isInsideOverlay = Boolean(overlayController);
     const lastPressTimeRef = useRef(0);
@@ -271,6 +307,10 @@ export const Focusable = forwardRef<View, FocusableProps>(
 
       if (!isInsideOverlay && !isFocusTrapped && screenKey && focusKey) {
         FocusMemory.set(screenKey, focusKey);
+      }
+
+      if (Platform.OS === "web") {
+        WebSpatialNavigation.setActive(idRef.current);
       }
 
       onFocus?.();
@@ -379,7 +419,7 @@ export const Focusable = forwardRef<View, FocusableProps>(
         ? children(showFocus)
         : children;
 
-    const resolvedSelfTag = selfTag ?? (nativeRef.current ? (findNodeHandle(nativeRef.current) ?? undefined) : undefined);
+    const resolvedSelfTag = selfTag ?? (nativeRef.current && Platform.OS !== "web" ? (findNodeHandle(nativeRef.current) ?? undefined) : undefined);
 
     // Effective next focus props: explicit props take precedence over overlay auto-tags and directional traps
     const effUp = nextFocusUp ?? (trapFocusUp ? resolvedSelfTag : overlayNextFocus.nextFocusUp);
@@ -417,6 +457,15 @@ export const Focusable = forwardRef<View, FocusableProps>(
         nextFocusRight={effRight}
         onFocus={handleFocus}
         onBlur={handleBlur}
+        onHoverIn={
+          Platform.OS === "web" && !isInert
+            ? () => {
+                requestAnimationFrame(() => {
+                  nativeRef.current?.focus?.();
+                });
+              }
+            : undefined
+        }
         onPress={isInert ? undefined : handlePress}
         onLongPress={onLongPress}
         style={({ pressed }) => [

@@ -1,7 +1,19 @@
 // utils/tvScale.ts
 import { Dimensions, PixelRatio } from "react-native";
 
-const { width, height } = Dimensions.get("window");
+const winDims = Dimensions.get("window");
+const width =
+  winDims.width > 0
+    ? winDims.width
+    : typeof window !== "undefined" && window.innerWidth > 0
+    ? window.innerWidth
+    : 1920;
+const height =
+  winDims.height > 0
+    ? winDims.height
+    : typeof window !== "undefined" && window.innerHeight > 0
+    ? window.innerHeight
+    : 1080;
 
 // Baseline: 1080p TV
 const BASE_WIDTH = 1920;

@@ -12,6 +12,7 @@ import { THEME, pw, ph, ps, TILE_FRAME, TILE_FRAME_FOCUSED } from "../theme/toke
 import { Heart } from 'lucide-react-native';
 import { DynamicIcon } from '../components/DynamicIcon';
 import { Text } from './Text';
+import { isValidImageUrl } from '../services/portalApi';
 
 
 export type CardAspectRatio = "16:9" | "2:3" | "1:1";
@@ -77,7 +78,7 @@ export const ContentCard = React.memo(function ContentCard({
             <View style={S.card}>
               {/* ── Image / Thumbnail ── */}
               <View style={[S.imageContainer, { aspectRatio: RATIO_MAP[aspectRatio] }]}>
-                {image ? (
+                {isValidImageUrl(image) ? (
                   <Image
                     source={{ uri: image }}
                     style={S.image}

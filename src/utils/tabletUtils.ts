@@ -186,8 +186,8 @@ export const tabletClamp = (value: number, maxDp: number): number =>
 export const SIDEBAR_WIDTH = isPhone
   ? PHONE_SIDEBAR_WIDTH
   : isTablet
-    ? Math.round(Math.min(360, Math.max(200, longestSide * 0.22)))
-    : 240;
+    ? Math.round(Math.min(380, Math.max(220, longestSide * 0.24)))
+    : 340;
 
 /**
  * Whether the D-pad focus system should be live.

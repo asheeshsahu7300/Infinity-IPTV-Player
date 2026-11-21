@@ -4,6 +4,8 @@
     "strict": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
+    "downlevelIteration": true,
+    "target": "ES2020",
     "jsx": "react-native",
     "lib": [
       "DOM",

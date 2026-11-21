@@ -1,0 +1,22 @@
+diff --git a/node_modules/axios/lib/adapters/adapters.js b/node_modules/axios/lib/adapters/adapters.js
+index 68f675f..bba63ab 100644
+--- a/node_modules/axios/lib/adapters/adapters.js
++++ b/node_modules/axios/lib/adapters/adapters.js
+@@ -1,9 +1,16 @@
+ import utils from '../utils.js';
+-import httpAdapter from './http.js';
++import nullAdapter from '../helpers/null.js';
+ import xhrAdapter from './xhr.js';
+ import * as fetchAdapter from './fetch.js';
+ import AxiosError from '../core/AxiosError.js';
+ 
++let httpAdapter = nullAdapter;
++if (typeof window === 'undefined' && typeof process !== 'undefined' && process.versions && process.versions.node) {
++  try {
++    httpAdapter = require('./http.js').default || require('./http.js');
++  } catch {}
++}
++
+ /**
+  * Known adapters mapping.
+  * Provides environment-specific adapters for Axios:

@@ -2,10 +2,15 @@
 
 # dependencies
 node_modules/
+package-lock.json
+scratch/
 
-# Expo
+# Expo & Web
 .expo/
 dist/
+dist-webos/
+release-webos/
+*.ipk
 web-build/
 expo-env.d.ts
 
@@ -45,3 +50,4 @@ app-example
 /credentials/android/keystore.jks
 /android/app/release/
 *.apk
+upload_certificate.pem

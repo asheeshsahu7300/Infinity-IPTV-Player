@@ -18,6 +18,7 @@ import { StyleSheet, View } from 'react-native';
 import { Image } from "expo-image";
 import { Focusable, FocusGroup } from "../tv";
 import { THEME, ph, ps, pw } from "../theme/tokens";
+import { isValidImageUrl } from "../services/portalApi";
 import type { QueueItem } from "../services/playbackQueue";
 import { Film, Play, X } from 'lucide-react-native';
 import { Text } from './Text';
@@ -87,7 +88,7 @@ export function UpNextCard({
     <View style={S.host}>
       <View style={S.card}>
         <View style={S.thumb}>
-          {item.poster ? (
+          {isValidImageUrl(item.poster) ? (
             <Image
               source={{ uri: item.poster }}
               style={S.thumbImage}

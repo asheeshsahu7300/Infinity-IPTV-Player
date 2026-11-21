@@ -1,6 +1,6 @@
-# Contributing to Infinity IPTV Player TV
+# Contributing to Infinity IPTV Player
 
-Thank you for your interest in contributing to **Infinity IPTV Player TV**! We welcome contributions from developers, designers, and testers of all skill levels. Whether you are fixing a bug, improving Android TV focus management, optimizing list rendering performance, or polishing documentation, your help is appreciated.
+Thank you for your interest in contributing to **Infinity IPTV Player**! We welcome contributions from developers, designers, and testers of all skill levels. Whether you are fixing a bug, improving Android TV focus management, optimizing list rendering performance, or polishing documentation, your help is appreciated.
 
 Please take a moment to review this guide before submitting issues or pull requests.
 
@@ -33,7 +33,7 @@ Please take a moment to review this guide before submitting issues or pull reque
 
 ## Important Legal & Content Policy
 
-> **Infinity IPTV Player TV is strictly a media player application.**
+> **Infinity IPTV Player is strictly a media player application.**
 
 - **Do NOT commit or share IPTV streams, credentials, or copyrighted playlists.** Any pull request, issue, or discussion containing links to pirated content, unauthorized stream URLs, or illegal Xtream/Stalker server credentials will be immediately closed and removed.
 - Use only public domain or open-source test media (such as Big Buck Bunny, Tears of Steel, or public domain HLS/DASH test streams) for demonstrations and test scripts.

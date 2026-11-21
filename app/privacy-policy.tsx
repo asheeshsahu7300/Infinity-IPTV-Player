@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Animated, ScrollView, StyleSheet, TouchableOpacity, View, Platform } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CinematicBackground } from '../src/components/CinematicBackground';
@@ -196,7 +196,7 @@ export default function PrivacyPolicyScreen() {
   const onScroll = useMemo(
     () =>
       Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
         listener: (event: any) => {
           offsetRef.current = event.nativeEvent.contentOffset.y;
         },

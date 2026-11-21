@@ -1,0 +1,64 @@
+diff --git a/node_modules/react-native-web/dist/cjs/exports/findNodeHandle/index.js b/node_modules/react-native-web/dist/cjs/exports/findNodeHandle/index.js
+index 44ba03b..f92c801 100644
+--- a/node_modules/react-native-web/dist/cjs/exports/findNodeHandle/index.js
++++ b/node_modules/react-native-web/dist/cjs/exports/findNodeHandle/index.js
+@@ -13,7 +13,14 @@ exports.default = void 0;
+  */
+ 
+ var findNodeHandle = component => {
+-  throw new Error('findNodeHandle is not supported on web. ' + 'Use the ref property on the component instead.');
++  if (!component) return null;
++  if (typeof HTMLElement !== 'undefined' && component instanceof HTMLElement) {
++    return component;
++  }
++  if (component && typeof component.getDOMNode === 'function') {
++    return component.getDOMNode();
++  }
++  return null;
+ };
+ var _default = exports.default = findNodeHandle;
+ module.exports = exports.default;
+\ No newline at end of file
+diff --git a/node_modules/react-native-web/dist/exports/findNodeHandle/index.js b/node_modules/react-native-web/dist/exports/findNodeHandle/index.js
+index c2aa986..be671e8 100644
+--- a/node_modules/react-native-web/dist/exports/findNodeHandle/index.js
++++ b/node_modules/react-native-web/dist/exports/findNodeHandle/index.js
+@@ -9,6 +9,13 @@
+  */
+ 
+ var findNodeHandle = component => {
+-  throw new Error('findNodeHandle is not supported on web. ' + 'Use the ref property on the component instead.');
++  if (!component) return null;
++  if (typeof HTMLElement !== 'undefined' && component instanceof HTMLElement) {
++    return component;
++  }
++  if (component && typeof component.getDOMNode === 'function') {
++    return component.getDOMNode();
++  }
++  return null;
+ };
+ export default findNodeHandle;
+\ No newline at end of file
+diff --git a/node_modules/react-native-web/src/exports/findNodeHandle/index.js b/node_modules/react-native-web/src/exports/findNodeHandle/index.js
+index df43377..b372bd6 100644
+--- a/node_modules/react-native-web/src/exports/findNodeHandle/index.js
++++ b/node_modules/react-native-web/src/exports/findNodeHandle/index.js
+@@ -9,10 +9,14 @@
+  */
+ 
+ const findNodeHandle = (component) => {
+-  throw new Error(
+-    'findNodeHandle is not supported on web. ' +
+-      'Use the ref property on the component instead.'
+-  );
++  if (!component) return null;
++  if (typeof HTMLElement !== 'undefined' && component instanceof HTMLElement) {
++    return component;
++  }
++  if (component && typeof component.getDOMNode === 'function') {
++    return component.getDOMNode();
++  }
++  return null;
+ };
+ 
+ export default findNodeHandle;

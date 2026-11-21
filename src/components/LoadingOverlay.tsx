@@ -19,7 +19,7 @@ export default function LoadingOverlay({
   style
 }: LoadingOverlayProps) {
   return (
-    <View style={[styles.container, style]} pointerEvents={pointerEvents}>
+    <View style={[styles.container, style, pointerEvents ? { pointerEvents } : undefined]}>
       <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
       <LinearGradient
         colors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)']}

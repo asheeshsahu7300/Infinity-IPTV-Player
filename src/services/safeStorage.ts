@@ -21,7 +21,7 @@
 // binary that can run this bundle at all. An in-memory fallback looks fine for
 // one session and quietly loses every portal and setting on restart, which is
 // a worse failure than the crash it replaces.
-// ─────────────────────────────────────────────────────────────────────────────
+import { Platform } from "react-native";
 import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
 
 /** The subset of MMKV this module uses. Synchronous, as MMKV is. */
@@ -121,6 +121,7 @@ export const storageBackend = backend.name;
 
 export const safeStorage = {
   async setItem(key: string, value: string): Promise<boolean> {
+    if (Platform.OS === "web" && typeof window === "undefined") return false;
     try {
       await backend.set(key, value);
       return true;
@@ -131,6 +132,7 @@ export const safeStorage = {
   },
 
   async getItem(key: string): Promise<string | null> {
+    if (Platform.OS === "web" && typeof window === "undefined") return null;
     try {
       return await backend.get(key);
     } catch (err: any) {
@@ -140,6 +142,7 @@ export const safeStorage = {
   },
 
   async removeItem(key: string): Promise<void> {
+    if (Platform.OS === "web" && typeof window === "undefined") return;
     try {
       await backend.remove(key);
     } catch (err: any) {

@@ -154,11 +154,20 @@ export default function AddPortalScreen() {
   // wherever they had navigated. Re-pulsing on `step` also restores focus to the
   // card when they come back from step 2.
   const [focusFirstCard, setFocusFirstCard] = useState(step === 1);
+  const nameInputRef = useRef<any>(null);
+
   useEffect(() => {
-    if (step !== 1) return;
-    setFocusFirstCard(true);
-    const timer = setTimeout(() => setFocusFirstCard(false), 400);
-    return () => clearTimeout(timer);
+    if (step === 1) {
+      setFocusFirstCard(true);
+      const timer = setTimeout(() => setFocusFirstCard(false), 400);
+      return () => clearTimeout(timer);
+    } else if (step === 2) {
+      const timer = setTimeout(() => {
+        nameInputRef.current?.focus?.();
+        setFocusedField("name");
+      }, 100);
+      return () => clearTimeout(timer);
+    }
   }, [step]);
 
   // `Alert.alert` is unusable here: on an Android TV release build it does not
@@ -371,6 +380,7 @@ export default function AddPortalScreen() {
             {/* Name input */}
             <ThemedInput isFocused={focusedField === "name"}>
               <TextInput
+                ref={nameInputRef}
                 style={S.textInput}
                 placeholder="Enter the name"
                 placeholderTextColor="rgba(255, 255, 255, 0.65)"

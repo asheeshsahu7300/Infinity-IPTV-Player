@@ -1,5 +1,5 @@
 import React, { RefObject } from "react";
-import { findNodeHandle } from "react-native";
+import { findNodeHandle, Platform } from "react-native";
 
 type FocusKey = string;
 
@@ -61,6 +61,7 @@ export const FocusMemory = {
   },
 
   getNativeHandle(screen: string, key: FocusKey): number | undefined {
+    if (Platform.OS === "web") return undefined;
     const ref = this.getRef(screen, key);
     if (!ref?.current) return undefined;
     return (findNodeHandle(ref.current) as number | undefined) ?? undefined;
@@ -80,7 +81,11 @@ export const FocusMemory = {
     const node = focusRefs.get(screen)?.get(key)?.current;
     if (!node || typeof node.focus !== "function") return false;
 
-    node.focus();
+    try {
+      node.focus({ preventScroll: true });
+    } catch {
+      node.focus();
+    }
     return true;
   },
 

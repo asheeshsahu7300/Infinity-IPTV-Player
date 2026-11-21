@@ -18,6 +18,7 @@ import { THEME, ph, ps, pw } from "../theme/tokens";
 import { isTouch } from "../utils/tabletUtils";
 import { epgService } from "../services/epgService";
 import { parentalControl } from "../services/parentalControl";
+import { isValidImageUrl } from "../services/portalApi";
 import type { Channel } from "../store/portalStore";
 import { Lock, Tv, Volume2, CornerDownLeft } from 'lucide-react-native';
 import { Text } from './Text';
@@ -99,7 +100,7 @@ const ZapRow = React.memo(
                   size={isTouch ? 14 : ps(1.1)}
                   color={focused ? "#000" : "rgba(255,255,255,0.5)"}
                 />
-              ) : channel.logo ? (
+              ) : isValidImageUrl(channel.logo) ? (
                 <Image
                   source={{ uri: channel.logo }}
                   style={S.rowLogoImage}

@@ -56,12 +56,13 @@ export const FocusGroup = React.forwardRef<View, FocusGroupProps>(
         trapFocusLeft={trapLeft}
         trapFocusRight={trapRight}
         destinations={destinations}
-        pointerEvents={pointerEvents}
       >
         {children}
       </TVFocusGuideView>
     );
   }
 );
+
+FocusGroup.displayName = "FocusGroup";
 
 export default FocusGroup;

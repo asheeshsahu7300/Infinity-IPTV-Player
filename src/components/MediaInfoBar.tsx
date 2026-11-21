@@ -17,6 +17,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { THEME, ph, ps, pw } from "../theme/tokens";
 import { isPhone } from "../utils/phoneUtils";
+import { isValidImageUrl } from "../services/portalApi";
 import type { QueueItem } from "../services/playbackQueue";
 import { Film } from 'lucide-react-native';
 import { Text } from './Text';
@@ -84,15 +85,14 @@ export const MediaInfoBar = React.memo(function MediaInfoBar({
       {inline ? null : (
         <LinearGradient
           colors={["transparent", "rgba(0,0,0,0.92)"]}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]}
         />
       )}
 
       <View style={S.row}>
         {/* ── Poster ── */}
         <View style={S.posterBox}>
-          {item.poster ? (
+          {isValidImageUrl(item.poster) ? (
             <Image
               source={{ uri: item.poster }}
               style={S.poster}

@@ -39,6 +39,16 @@ import { PlaybackState } from "../src/services/PlaybackState";
 import { ph, pw } from "../src/theme/tokens";
 import { safeStorage } from "../src/services/safeStorage";
 import { setSafeNavigationRef, safeBack } from "../src/services/safeNavigation";
+import { initWebOS } from "../src/utils/webosUtils";
+import { initBackHandlerPolyfill } from "../src/utils/backHandlerPolyfill";
+import { initDevCorsProxy } from "../src/utils/devCorsProxy";
+
+// Initialize webOS styles, remote BackHandler polyfill, and dev CORS proxy
+if (Platform.OS === "web") {
+  initWebOS();
+  initBackHandlerPolyfill();
+  initDevCorsProxy();
+}
 
 // Inject CSS for Web to guarantee the font loads exactly as requested
 if (Platform.OS === "web" && typeof document !== "undefined" && !document.getElementById("inter-font")) {
@@ -58,14 +68,14 @@ function SplashScreen() {
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 1000,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }).start();
 
     // Pulse loop
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.05, duration: 2500, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 2500, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.05, duration: 2500, useNativeDriver: Platform.OS !== "web" }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 2500, useNativeDriver: Platform.OS !== "web" }),
       ])
     ).start();
 
@@ -138,7 +148,7 @@ export default function RootLayout() {
    * itself — landscape while mounted, back to portrait on the way out.
    */
   useEffect(() => {
-    if (Platform.isTV) return;
+    if (Platform.isTV || Platform.OS === "web") return;
     ScreenOrientation.lockAsync(
       isPhone
         ? ScreenOrientation.OrientationLock.PORTRAIT_UP
@@ -326,5 +336,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  logoImage: { width: "100%", height: "100%", resizeMode: "contain" },
+  logoImage: { width: "100%", height: "100%" },
 });

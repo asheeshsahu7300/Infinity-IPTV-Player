@@ -24,7 +24,7 @@ import { THEME, ps, pw, ph } from "../src/theme/tokens";
 import { Focusable, FocusGroup, Overlay, useDPad, DPAD_PRIORITY, useStbKeys, STB_PRIORITY } from "../src/tv";
 import NetInfo from "@react-native-community/netinfo";
 import { epgService } from "../src/services/epgService";
-import { buildImageUrl, portalApi, streamHeaders, getLastMeasuredEdgeRtt } from "../src/services/portalApi";
+import { buildImageUrl, isValidImageUrl, portalApi, streamHeaders, getLastMeasuredEdgeRtt } from "../src/services/portalApi";
 import { getLastSpeedTestResult } from "../src/services/speedTest";
 import { parentalControl } from "../src/services/parentalControl";
 import { stbEnvironment, BufferTuning, applySameHostStreamProxy, isPlayableStreamUrl } from "../src/services/stbEnvironment";
@@ -149,12 +149,6 @@ function detectNetworkQuality(
   return "medium";
 }
 
-/**
- * Global flag tracking whether hardware/system AC3 decoding has failed on this device.
- * Once MediaCodec throws [-49999], we remember that this specific Android device
- * lacks AC3 support and skip AC3/E-AC3 for all subsequent channel changes.
- */
-let hasAc3DecoderFailedOnDevice = false;
 
 /**
  * Checks whether an audio track uses AC3 / E-AC3 (Dolby Digital / Digital Plus).
@@ -185,7 +179,7 @@ export const isAc3Audio = (track: any): boolean => {
 };
 
 /**
- * Checks whether an audio track uses a universally supported Android audio codec:
+ * Checks whether an audio track uses a universally supported audio codec:
  *   AAC       → audio/mp4a-latm
  *   MP3       → audio/mpeg
  *   Opus      → audio/opus
@@ -197,6 +191,8 @@ export const isUniversalAudio = (track: any): boolean => {
     track?.mimeType ||
     track?.raw?.sampleMimeType ||
     track?.raw?.mimeType ||
+    track?.title ||
+    track?.name ||
     ""
   ).toLowerCase();
 
@@ -209,26 +205,23 @@ export const isUniversalAudio = (track: any): boolean => {
     codec.includes("aac") ||
     codec.includes("mpeg") ||
     codec.includes("opus") ||
-    codec.includes("vorbis")
+    codec.includes("vorbis") ||
+    codec.includes("mp3") ||
+    codec.includes("stereo")
   );
 };
 
 /**
  * Checks decoder capability for an audio track:
  * - Universal codecs (AAC, MP3, Opus, Vorbis) are always supported.
- * - AC3 / E-AC3 is allowed if the device/ExoPlayer reports `isSupported === true`
- *   AND has not experienced a decoder failure on this device.
+ * - AC-3 / E-AC-3 / DTS tracks are supported via software decoder (Jellyfin FFmpeg)
+ *   or native hardware decoder on webOS TV.
  */
 export const isAudioTrackSupported = (track: any): boolean => {
   if (!track) return false;
 
   // If native ExoPlayer explicitly flagged track as unsupported
   if (track.isSupported === false || track.raw?.isSupported === false) {
-    return false;
-  }
-
-  // If this device previously failed to decode AC3, treat all AC3/EAC3 as unsupported
-  if (hasAc3DecoderFailedOnDevice && isAc3Audio(track)) {
     return false;
   }
 
@@ -413,15 +406,14 @@ const AnimatedScrubber = React.memo(
     useEffect(() => {
       Animated.spring(scale, {
         toValue: focused ? 1.35 : 1,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
         friction: 7,
         tension: 60,
       }).start();
     }, [focused, scale]);
     return (
       <Animated.View
-        pointerEvents="none"
-        style={[S.scrubber, { left: `${progressPercent}%`, transform: [{ scale }] }]}
+        style={[S.scrubber, { left: `${progressPercent}%`, transform: [{ scale }], pointerEvents: "none" }]}
       />
     );
   }
@@ -434,8 +426,8 @@ const ShimmerBar = React.memo(() => {
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(anim, { toValue: 1, duration: 1100, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0, duration: 0, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1, duration: 1100, useNativeDriver: Platform.OS !== "web" }),
+        Animated.timing(anim, { toValue: 0, duration: 0, useNativeDriver: Platform.OS !== "web" }),
       ])
     );
     loop.start();
@@ -446,18 +438,20 @@ const ShimmerBar = React.memo(() => {
     outputRange: [-SCREEN_WIDTH, SCREEN_WIDTH],
   });
   return (
-    <View style={S.shimmerContainer} pointerEvents="none">
+    <View style={[S.shimmerContainer, { pointerEvents: "none" }]}>
       <Animated.View style={[S.shimmerBar, { transform: [{ translateX }] }]} />
     </View>
   );
 });
 ShimmerBar.displayName = "ShimmerBar";
 
+const useSafeKeepAwake = Platform.OS === "web" ? () => {} : useKeepAwake;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Player Screen
 // ─────────────────────────────────────────────────────────────────────────────
 export default function PlayerScreen() {
-  useKeepAwake();
+  useSafeKeepAwake();
 
   /**
    * The player is landscape on a phone, and hands portrait back on the way out.
@@ -543,14 +537,19 @@ export default function PlayerScreen() {
   }, [params.url, params.cmd, activePortal]);
 
   // If a MAG stream command (e.g. ffmpeg http://localhost/ch/...) was passed without create_link resolution,
-  // resolve it immediately through StreamManager instead of stalling on localhost/ch/...
+  // resolve it once through StreamManager instead of stalling on localhost/ch/...
+  const isResolvingMagRef = useRef(false);
+
   useEffect(() => {
     const raw = params.url || params.cmd || "";
     const needsResolution =
       activePortal?.type === "mag" &&
-      (!streamUrl || !isPlayableStreamUrl(streamUrl) || !isPlayableStreamUrl(raw));
+      (!streamUrl || !isPlayableStreamUrl(streamUrl)) &&
+      Boolean(raw) &&
+      !isResolvingMagRef.current;
 
     if (needsResolution) {
+      isResolvingMagRef.current = true;
       let isCancelled = false;
       setIsLoading(true);
       StreamManager.getStreamUrl(
@@ -562,10 +561,12 @@ export default function PlayerScreen() {
         activePortal,
         params.type === "live" ? "itv" : "vod"
       ).then((res) => {
+        isResolvingMagRef.current = false;
         if (!isCancelled && res.success && res.url && isPlayableStreamUrl(res.url)) {
           const resolved = applySameHostStreamProxy(res.url, activePortal, raw);
           setStreamUrl(resolved);
         } else if (!isCancelled) {
+          isResolvingMagRef.current = true;
           StreamManager.retryStream(
             {
               id: params.contentId || "",
@@ -575,21 +576,32 @@ export default function PlayerScreen() {
             activePortal,
             params.type === "live" ? "itv" : "vod"
           ).then((retryRes) => {
+            isResolvingMagRef.current = false;
             if (!isCancelled && retryRes.success && retryRes.url && isPlayableStreamUrl(retryRes.url)) {
               const resolved = applySameHostStreamProxy(retryRes.url, activePortal, raw);
               setStreamUrl(resolved);
             } else if (!isCancelled) {
-              schedulePlayerRecovery("unresolvedStream", false);
+              setIsLoading(false);
+              setPlaybackFailed(true);
             }
           }).catch(() => {
-            if (!isCancelled) schedulePlayerRecovery("unresolvedStream", false);
+            isResolvingMagRef.current = false;
+            if (!isCancelled) {
+              setIsLoading(false);
+              setPlaybackFailed(true);
+            }
           });
         }
       }).catch(() => {
-        if (!isCancelled) schedulePlayerRecovery("unresolvedStream", false);
+        isResolvingMagRef.current = false;
+        if (!isCancelled) {
+          setIsLoading(false);
+          setPlaybackFailed(true);
+        }
       });
       return () => {
         isCancelled = true;
+        isResolvingMagRef.current = false;
       };
     }
   }, [params.url, params.cmd, params.contentId, params.title, params.type, activePortal, streamUrl]);
@@ -666,7 +678,7 @@ export default function PlayerScreen() {
         id: params.contentId || "live_stream",
         name: params.title || "Live Channel",
         streamUrl: params.url || "",
-        logo: params.logo || undefined,
+        logo: isValidImageUrl(params.logo) ? params.logo : undefined,
       } as Channel;
     }
     return null;
@@ -698,6 +710,47 @@ export default function PlayerScreen() {
     matches4KKeywords(params.cmd) ||
     matches4KKeywords(params.url) ||
     matches4KKeywords(streamUrl);
+
+  // Language detected from stream/item title or queue metadata (e.g. "(English)(4K)" -> "English")
+  const contextAudioLanguage = useMemo(() => {
+    const rawTitle = params.title || (liveChannel ? liveChannel.name : "") || (queueItem ? queueItem.title : "") || "";
+    const match = rawTitle.match(/\b(English|Hindi|Spanish|French|German|Italian|Russian|Portuguese|Tamil|Telugu|Korean|Japanese|Chinese|Arabic|Turkish|Polish|Dutch)\b/i);
+    if (match) {
+      return match[1];
+    }
+    const qLang = queueItem?.audioLanguage || playbackQueue.item?.audioLanguage;
+    if (qLang && qLang.toLowerCase() !== "und") {
+      return qLang;
+    }
+    return undefined;
+  }, [params.title, liveChannel, queueItem]);
+
+  const effectiveAudioTracks = useMemo(() => {
+    if (audioTracks && audioTracks.length > 0) {
+      return audioTracks;
+    }
+    const label = contextAudioLanguage ? `${contextAudioLanguage} (Default)` : "Default Audio";
+    return [
+      {
+        id: "default",
+        index: 0,
+        title: label,
+        name: label,
+        subtitle: "Active audio track",
+        language: contextAudioLanguage ? contextAudioLanguage.slice(0, 2).toUpperCase() : undefined,
+        isSupported: true,
+      },
+    ];
+  }, [audioTracks, contextAudioLanguage]);
+
+  useEffect(() => {
+    if (showAudioModal) {
+      const current = playerRef.current?.getAudioTracks?.();
+      if (current && current.length > 0) {
+        setAudioTracks(current);
+      }
+    }
+  }, [showAudioModal]);
 
   const [networkQuality, setNetworkQuality] = useState<NetworkQuality>("unknown");
   const networkQualityRef = useRef<NetworkQuality>("unknown");
@@ -751,7 +804,8 @@ export default function PlayerScreen() {
   const vodPoster = useMemo(() => {
     if (!rawPoster) return "";
     const base = (activePortal?.config?.url || "").replace(/\/$/, "");
-    return buildImageUrl(base, rawPoster);
+    const built = buildImageUrl(base, rawPoster);
+    return isValidImageUrl(built) ? built : "";
   }, [rawPoster, activePortal]);
   const vodTitle = queueItem?.title || params.title || "Playing";
   const vodSubtitle = queueItem?.subtitle || (!isLive ? (queueItem?.kind === "episode" ? "Episode" : "Movie") : undefined);
@@ -867,6 +921,7 @@ export default function PlayerScreen() {
 
   // Ref mirrors (stable captures for timers/effects without stale closures)
   const isPlayingRef = useRef(isPlaying);
+  const userExplicitlyPausedRef = useRef(false);
   const isLoadingRef = useRef(isLoading);
   const showControlsRef = useRef(showControls);
   const isLockedRef = useRef(isLocked);
@@ -1113,11 +1168,14 @@ export default function PlayerScreen() {
       applyPendingResumeRef.current();
 
       const now = Date.now();
-      const updateInterval = showControlsRef.current ? 250 : 1000;
-      if (now - lastProgressStateUpdateTime.current >= updateInterval) {
-        setPosition(positionMs);
-        if (durationMs > 0) setDuration(durationMs);
-        lastProgressStateUpdateTime.current = now;
+      // On Live TV there is no seekbar; skip React re-renders. On VOD only update state when controls are visible (250ms) or periodically in background (5000ms).
+      if (!isLive) {
+        const updateInterval = showControlsRef.current ? 250 : 5000;
+        if (now - lastProgressStateUpdateTime.current >= updateInterval) {
+          setPosition(positionMs);
+          if (durationMs > 0 && durationRef.current !== durationMs) setDuration(durationMs);
+          lastProgressStateUpdateTime.current = now;
+        }
       }
 
       // Offer the next episode while the current one is still playing.
@@ -1365,7 +1423,7 @@ export default function PlayerScreen() {
   // ── TV focus node attachment ──────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
-    if (showControls) {
+    if (showControls && Platform.OS !== "web") {
       const attachNodes = () => {
         if (!mounted) return;
         const play = playBtnRef.current ? findNodeHandle(playBtnRef.current) : null;
@@ -1498,7 +1556,11 @@ export default function PlayerScreen() {
 
   const togglePlay = useCallback(() => {
     if (isLockedRef.current) return;
-    setIsPlaying((p) => !p);
+    setIsPlaying((p) => {
+      const next = !p;
+      userExplicitlyPausedRef.current = !next;
+      return next;
+    });
     resetControlsTimeout();
   }, [resetControlsTimeout]);
 
@@ -1672,13 +1734,13 @@ export default function PlayerScreen() {
         Animated.spring(doubleTapAnimScale, {
           toValue: 1,
           friction: 6,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(doubleTapAnimOpacity, {
           toValue: 0,
           delay: 450,
           duration: 350,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ]).start(() => {
         setDoubleTapFeedback(null);
@@ -1900,7 +1962,7 @@ export default function PlayerScreen() {
         bufferingTimeoutRef.current = null;
       }
 
-      // Live streams: enter a 15 s silent reconnect loop instead of hard failure
+      // Live streams: enter a 30 s silent reconnect loop instead of hard failure
       if (isLive && activePortal && activeCmdRef.current && !liveReconnectIntervalRef.current) {
         setLiveReconnectMode(true);
         liveReconnectIntervalRef.current = setInterval(() => {
@@ -1908,7 +1970,7 @@ export default function PlayerScreen() {
           retryCount.current = 0;
           isRetryingRef.current = false;
           handleSilentRetryRef.current();
-        }, 15000);
+        }, 30000);
       } else if (!isLive) {
         setPlaybackFailed(true);
       }
@@ -1959,6 +2021,14 @@ export default function PlayerScreen() {
         playbackQueue.item?.episodeNum
       );
       if (!mountedRef.current) return;
+
+      if (result.error?.includes("503") || (result as any)?.status === 503) {
+        console.warn("[Player] Server returned 503 (temporarily unavailable / rate-limited). Pausing reconnect.");
+        setIsRetrying(false);
+        isRetryingRef.current = false;
+        setIsLoading(false);
+        return;
+      }
 
       if (result.success && result.url) {
         // Full state reset — clean slate for the new URL
@@ -2358,6 +2428,12 @@ export default function PlayerScreen() {
     // after it — the same confusion the progress gate exists for.
     if (queueSwitchPendingRef.current) return;
 
+    if (isLive) {
+      console.warn("[Player] Live TV stream reported input EOS. Scheduling recovery without setting isPlaying to false.");
+      schedulePlayerRecovery("liveStreamEOS", false);
+      return;
+    }
+
     /*
      * End of *stream* is not end of *title*, and on IPTV they part company
      * often.
@@ -2521,7 +2597,7 @@ export default function PlayerScreen() {
   // causing the player to stall and rebuffer every 1 minute.
   useEffect(() => {
     if (!isLive || activePortal?.type !== "mag") return;
-    const periodMs = 20000;
+    const periodMs = portalApi.watchdogPeriodMs(activePortal);
     // Initial ping on channel tune
     portalApi.watchdog(activePortal).catch(() => {});
     const interval = setInterval(() => {
@@ -2540,7 +2616,7 @@ export default function PlayerScreen() {
       : 0;
 
   const qualityLabel = getQualityLabel(networkQuality, is4K);
-  const isShowingHardFailure = playbackFailed && !isLive;
+  const isShowingHardFailure = playbackFailed;
   /**
    * The VOD/series loading card: up until the film is actually running.
    *
@@ -2627,7 +2703,12 @@ export default function PlayerScreen() {
         if (timeSinceTune > initialTimeout) {
           console.warn(`[Player] ${isLive ? "Live" : "VOD"} stream failed to render initial frames after ${timeSinceTune}ms. Triggering reconnect.`);
           lastProgressTimeRef.current = now;
-          schedulePlayerRecovery("initialLoadTimeout", true);
+          if (retryCount.current >= maxRetries) {
+            setIsLoading(false);
+            setPlaybackFailed(true);
+          } else {
+            schedulePlayerRecovery("initialLoadTimeout", false);
+          }
         }
         return;
       }
@@ -2811,6 +2892,15 @@ export default function PlayerScreen() {
             if (sTracks && sTracks.length > 0) {
               setTextTracks(sTracks);
             }
+            // Web / webOS safety watchdog: ensure loading spinner is dismissed once media metadata is ready
+            if (Platform.OS === "web") {
+              setTimeout(() => {
+                if (mountedRef.current && isLoadingRef.current) {
+                  isLoadingRef.current = false;
+                  setIsLoading(false);
+                }
+              }, 1200);
+            }
           }}
           onTracksChange={({ audioTracks: aTracks, textTracks: sTracks, videoTracks: vTracks, currentAudioTrack }) => {
             if (vTracks && vTracks.length > 0) {
@@ -2846,6 +2936,7 @@ export default function PlayerScreen() {
               clearTimeout(recoveryTimeoutRef.current);
               recoveryTimeoutRef.current = null;
             }
+            userExplicitlyPausedRef.current = false;
             if (!hasStartedPlayingRef.current) {
               hasStartedPlayingRef.current = true;
               setHasStartedPlaying(true);
@@ -2871,12 +2962,6 @@ export default function PlayerScreen() {
             retryResetTimerRef.current = setTimeout(() => {
               if (mountedRef.current && isPlayingRef.current) {
                 retryCount.current = 0;
-                // Twenty seconds of real playback means the last end-of-stream
-                // was a one-off cut, not a file that ends short of its stated
-                // duration. The budget in `handleReachedEnd` only needs to bound
-                // an immediate loop, so it is spent per stall, not per title —
-                // otherwise a long film on a flaky line ran out of reconnects
-                // and got filed as watched halfway through.
                 truncatedEndsRef.current = 0;
               }
               retryResetTimerRef.current = null;
@@ -2932,8 +3017,10 @@ export default function PlayerScreen() {
             handleBufferingChange(buffering);
           }}
           onPaused={() => {
-            if (isSeeking.current) return;
-            if (isPlayingRef.current) {
+            // Never freeze Live TV into paused state from engine events
+            if (isLive || isSeeking.current || isLoadingRef.current || isBufferingRef.current) return;
+            // Only toggle isPlaying to false if the user explicitly clicked/requested pause
+            if (userExplicitlyPausedRef.current && isPlayingRef.current) {
               setIsPlaying(false);
             }
           }}
@@ -2977,10 +3064,8 @@ export default function PlayerScreen() {
               const failedId = String(selectedAudioTrack ?? "");
               const failedTrack = allTracks.find((t: any) => String(t.id) === failedId);
 
-              // If the failed track was AC3/E-AC3, flag device AC3 decoder as unsupported
               if (failedTrack && isAc3Audio(failedTrack)) {
-                hasAc3DecoderFailedOnDevice = true;
-                console.warn("[Player] Device lacks AC3/E-AC3 hardware decoder. Auto-skipping AC3 for this session.");
+                console.warn("[Player] Audio decoder issue on AC3/E-AC3 track. Attempting compatible track recovery...");
               }
 
               if (allTracks.length > 1) {
@@ -2999,6 +3084,12 @@ export default function PlayerScreen() {
                   );
                   setSelectedAudioTrack(nextTrack.id);
                   playerRef.current?.selectAudioTrack(nextTrack.id);
+                  setIsLoading(false);
+                  isLoadingRef.current = false;
+                  setIsBuffering(false);
+                  isBufferingRef.current = false;
+                  setPlaybackFailed(false);
+                  playerRef.current?.play();
                   return;
                 }
               }
@@ -3009,6 +3100,41 @@ export default function PlayerScreen() {
               );
               setSelectedAudioTrack(-1);
               playerRef.current?.selectAudioTrack(-1);
+              setIsLoading(false);
+              isLoadingRef.current = false;
+              setIsBuffering(false);
+              isBufferingRef.current = false;
+              setPlaybackFailed(false);
+              playerRef.current?.play();
+              return;
+            }
+
+            const is503Error = errStr.includes("503") || (e as any)?.status === 503;
+            if (is503Error) {
+              console.warn("[Player] Stream server returned HTTP 503 Service Unavailable / Rate-limited.");
+              setIsLoading(false);
+              setIsBuffering(false);
+              setPlaybackFailed(true);
+              return;
+            }
+
+            const isOfflineError =
+              errStr.includes("404") ||
+              errStr.includes("offline") ||
+              errStr.includes("Stream offline");
+
+            if (isOfflineError) {
+              const rawCmd = activeCmdRef.current || params.cmd || "";
+              portalApi.clearStreamUrlCache(rawCmd);
+              if (retryCount.current < 2) {
+                console.warn(`[Player] Stream 404 from edge server. Triggering recovery retry ${retryCount.current + 1}/2...`);
+                schedulePlayerRecovery("edgeServer404", true);
+                return;
+              }
+              console.warn("[Player] Stream offline (HTTP 404 persisted after retries).");
+              setIsLoading(false);
+              setIsBuffering(false);
+              setPlaybackFailed(true);
               return;
             }
 
@@ -3017,7 +3143,11 @@ export default function PlayerScreen() {
               errStr.includes("SocketTimeoutException") ||
               errStr.includes("HttpDataSource") ||
               errStr.includes("IOException") ||
-              errStr.includes("BehindLiveWindowException");
+              errStr.includes("BehindLiveWindowException") ||
+              errStr.includes("401") ||
+              errStr.includes("403") ||
+              errStr.includes("authorization") ||
+              errStr.includes("Unauthorized");
 
             const now = Date.now();
             if (now - lastErrorTimeRef.current < 1000) return;
@@ -3047,8 +3177,7 @@ export default function PlayerScreen() {
       {/* Gesture / Tap handler layer (Single-tap toggles controls, Double-tap left/right skips ±10s) */}
       {!showQueueList && !showZapList && !upNext && !pinTarget && !showVideoModal && !showAudioModal && !showSubtitleModal && (
         <View
-          style={StyleSheet.absoluteFill}
-          pointerEvents="box-none"
+          style={[StyleSheet.absoluteFill, { pointerEvents: "box-none" }]}
         >
           <View
             style={StyleSheet.absoluteFill}
@@ -3060,7 +3189,7 @@ export default function PlayerScreen() {
 
       {/* ── Network lost overlay ─────────────────────────────────────────── */}
       {isNetworkLost && (
-        <View style={S.loadingOverlay} pointerEvents="none">
+        <View style={[S.loadingOverlay, { pointerEvents: "none" }]}>
           <Wifi size={52} color="rgba(255,255,255,0.45)" />
           <Text style={S.loadingText}>No network connection</Text>
           <Text style={[S.loadingText, { fontSize: ps(0.85), opacity: 0.5, marginTop: 2 }]}>
@@ -3069,32 +3198,46 @@ export default function PlayerScreen() {
         </View>
       )}
 
-      {/* ── VOD hard failure ─────────────────────────────────────────────── */}
+      {/* ── Hard failure overlay (Live TV & VOD) ─────────────────────────── */}
       {isShowingHardFailure && !isNetworkLost && (
         <View style={S.loadingOverlay}>
-          <TriangleAlert size={44} color="rgba(255,255,255,0.7)" />
-          <Text style={S.loadingText}>Stream unavailable</Text>
+          <TriangleAlert size={ps(3.5)} color="#F59E0B" />
+          <Text style={S.loadingText}>
+            {isLive ? "Channel Temporarily Offline" : "Stream Unavailable"}
+          </Text>
+          <Text style={[S.loadingText, { fontSize: ps(1.0), opacity: 0.7, marginTop: 6, maxWidth: "75%", textAlign: "center" }]}>
+            {isLive
+              ? "The provider feed for this channel is currently offline (HTTP 404). Press ▲ / ▼ on your remote to change channel, or retry."
+              : "Could not load video stream from provider. Please check connection and try again."}
+          </Text>
           <Focusable
             ringOnFocus={false}
             hasTVPreferredFocus
             style={S.retryBtn}
+            focusStyle={S.retryBtnFocused}
             onPress={() => {
+              const rawCmd = activeCmdRef.current || params.cmd || "";
+              portalApi.clearStreamUrlCache(rawCmd);
               retryCount.current = 0;
               isRetryingRef.current = false;
               setPlaybackFailed(false);
               setIsLoading(true);
-              handleSilentRetry();
+              setTimeout(() => {
+                handleSilentRetry();
+              }, 500);
             }}
           >
-            <Text style={S.retryBtnText}>RETRY</Text>
+            {(focused: boolean) => (
+              <Text style={[S.retryBtnText, focused && { color: "#000000" }]}>RETRY STREAM</Text>
+            )}
           </Focusable>
         </View>
       )}
 
       {/* ── Initial loading state for VOD & Series ────────────────────────── */}
       {isVodLoading && (
-        <View style={S.vodLoadingOverlay} pointerEvents="none">
-          {vodPoster ? (
+        <View style={[S.vodLoadingOverlay, { pointerEvents: "none" }]}>
+          {isValidImageUrl(vodPoster) ? (
             <Image
               source={{ uri: vodPoster }}
               style={StyleSheet.absoluteFillObject}
@@ -3105,7 +3248,7 @@ export default function PlayerScreen() {
           <View style={S.vodLoadingBackdropDim} />
 
           <View style={S.vodLoadingCard}>
-            {vodPoster ? (
+            {isValidImageUrl(vodPoster) ? (
               <View style={S.vodPosterWrapper}>
                 <Image
                   source={{ uri: vodPoster }}
@@ -3168,7 +3311,7 @@ export default function PlayerScreen() {
 
       {/* ── Mid-stream buffering indicator (compact center pill) ─────────── */}
       {!isLive && hasStartedPlaying && (isBuffering || isRetrying) && !isShowingHardFailure && !isNetworkLost && (
-        <View style={S.midstreamBufferingOverlay} pointerEvents="none">
+        <View style={[S.midstreamBufferingOverlay, { pointerEvents: "none" }]}>
           <View style={S.midstreamBufferingPill}>
             <ActivityIndicator size="small" color="#FFFFFF" />
             <Text style={S.midstreamBufferingText}>
@@ -3184,8 +3327,8 @@ export default function PlayerScreen() {
           style={[
             S.seekIndicatorOverlay,
             showControls && { top: "24%" },
+            { pointerEvents: "none" },
           ]}
-          pointerEvents="none"
         >
           <View style={S.seekIndicatorBox}>
             <View style={S.seekIconBadge}>
@@ -3214,8 +3357,8 @@ export default function PlayerScreen() {
           style={[
             S.doubleTapOverlay,
             doubleTapFeedback.side === "left" ? S.doubleTapLeft : S.doubleTapRight,
+            { pointerEvents: "none" },
           ]}
-          pointerEvents="none"
         >
           <Animated.View
             style={[
@@ -3246,8 +3389,7 @@ export default function PlayerScreen() {
       {/* ── Controls overlay ─────────────────────────────────────────────── */}
       {showControls && !upNext && (
         <FocusGroup
-          style={S.controlsOverlay}
-          pointerEvents="box-none"
+          style={[S.controlsOverlay, { pointerEvents: "box-none" }]}
           autoFocus={true}
           destinations={playBtnNode ? [playBtnNode] : undefined}
         >
@@ -3297,7 +3439,7 @@ export default function PlayerScreen() {
             </View>
           )}
 
-          <LinearGradient colors={["transparent", "rgba(0,0,0,0.88)"]} style={S.bottomGradient} pointerEvents="none" />
+          <LinearGradient colors={["transparent", "rgba(0,0,0,0.88)"]} style={[S.bottomGradient, { pointerEvents: "none" }]} />
 
           {/* Bottom controls */}
           {/* `box-none`: the panel itself must not take touches, or it steals
@@ -3306,15 +3448,14 @@ export default function PlayerScreen() {
               not only handsets — a tablet was swallowing those taps for the
               same reason a phone did. */}
           <View
-            style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2) }]}
-            pointerEvents={isTouch ? "box-none" : "auto"}
+            style={[S.bottomOverlay, { paddingBottom: insets.bottom + ph(2), pointerEvents: isTouch ? "box-none" : "auto" }]}
           >
             {/* The banner is the top half of this panel rather than a separate
                 island floating above it. It used to be pinned at a fixed
                 distance from the bottom of the screen, which left a band of
                 empty video between the two and made them read as unrelated. */}
             {bannerNode ? (
-              <View pointerEvents="none">{inlineBannerNode}</View>
+              <View style={{ pointerEvents: "none" }}>{inlineBannerNode}</View>
             ) : null}
 
             <View style={S.glassControls}>
@@ -3379,7 +3520,7 @@ export default function PlayerScreen() {
                             onLayout={(e) => { railWidthRef.current = e.nativeEvent.layout.width; }}
                             {...scrubResponder}
                           >
-                            <View pointerEvents="none" style={[S.progressRail, effFocused && S.progressRailFocused]}>
+                            <View style={[S.progressRail, effFocused && S.progressRailFocused, { pointerEvents: "none" }]}>
                               {isBuffering && <ShimmerBar />}
                               <View style={[S.progressFill, { width: `${progressPercent}%` }]} />
                             </View>
@@ -3486,21 +3627,40 @@ export default function PlayerScreen() {
                       )}
                     </Focusable>
                   )}
-                  {!isLive && videoTracks.length > 1 && (
-                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowVideoModal(true); }} {...actionsRowFocusHandlers}>
+                  {videoTracks.length > 1 && (
+                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => {
+                      if (isLockedRef.current) return;
+                      const current = playerRef.current?.getVideoTracks?.();
+                      if (current && current.length > 0) {
+                        setVideoTracks(current);
+                      }
+                      setShowVideoModal(true);
+                    }} {...actionsRowFocusHandlers}>
                       {(focused: boolean) => (
                         <Settings size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                       )}
                     </Focusable>
                   )}
-                  {!isLive && (
-                    <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowSubtitleModal(true); }} {...actionsRowFocusHandlers}>
-                      {(focused: boolean) => (
-                        <Subtitles size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
-                      )}
-                    </Focusable>
-                  )}
-                  <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => { if (isLockedRef.current) return; setShowAudioModal(true); }} {...actionsRowFocusHandlers}>
+                  <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => {
+                    if (isLockedRef.current) return;
+                    const current = playerRef.current?.getSubtitleTracks?.();
+                    if (current && current.length > 0) {
+                      setTextTracks(current);
+                    }
+                    setShowSubtitleModal(true);
+                  }} {...actionsRowFocusHandlers}>
+                    {(focused: boolean) => (
+                      <Subtitles size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
+                    )}
+                  </Focusable>
+                  <Focusable ringOnFocus={false} focusStyle={S.iconChipFocused} style={S.settingBtn} onPress={() => {
+                    if (isLockedRef.current) return;
+                    const current = playerRef.current?.getAudioTracks?.();
+                    if (current && current.length > 0) {
+                      setAudioTracks(current);
+                    }
+                    setShowAudioModal(true);
+                  }} {...actionsRowFocusHandlers}>
                     {(focused: boolean) => (
                       <Music size={ps(2.4)} color={focused ? "#000000" : "#FFFFFF"} />
                     )}
@@ -3530,7 +3690,7 @@ export default function PlayerScreen() {
       />
       <TrackSelectionModal
         visible={showAudioModal} title="Audio Track" icon="musical-notes"
-        options={audioTracks} selected={selectedAudioTrack}
+        options={effectiveAudioTracks} selected={selectedAudioTrack ?? "default"}
         onSelect={(id: any) => {
           setSelectedAudioTrack(id);
           playerRef.current?.selectAudioTrack(id);
@@ -3554,7 +3714,7 @@ export default function PlayerScreen() {
           the top half of one panel — see bannerNode. This host only covers the
           other case: a banner on its own after a zap or an INFO press. */}
       {!showControls && bannerNode ? (
-        <View style={[S.bannerHost, { bottom: insets.bottom }]} pointerEvents="none">
+        <View style={[S.bannerHost, { bottom: insets.bottom, pointerEvents: "none" }]}>
           {bannerNode}
         </View>
       ) : null}
@@ -3680,7 +3840,9 @@ function TrackSelectionModal({
 
   const hasSelectedTrack = mediaTracks.some((track: any, idx: number) => {
     const id = typeof track === "object" ? (track.id ?? track.index ?? idx) : idx;
-    return selected !== undefined && (selected === id || String(selected) === String(id));
+    return selected !== undefined
+      ? (selected === id || String(selected) === String(id) || (id === "default" && selected === undefined))
+      : (idx === 0 && !isVideo && !isSubtitle);
   });
 
   const totalAvailable = mediaTracks.length + (isVideo ? 1 : 0);
@@ -3704,6 +3866,13 @@ function TrackSelectionModal({
           subtitle: w && h ? `${w} × ${h}` : rawTitle,
         };
       }
+    }
+
+    if (isObj && track.subtitle) {
+      return {
+        title: rawTitle || `Track ${index + 1}`,
+        subtitle: track.subtitle,
+      };
     }
 
     if (isObj && track.language) {
@@ -3784,7 +3953,9 @@ function TrackSelectionModal({
         ) : (
           mediaTracks.map((track: any, index: number) => {
             const id = typeof track === "object" ? (track.id ?? track.index ?? index) : index;
-            const isSelected = selected !== undefined && (selected === id || String(selected) === String(id));
+            const isSelected = selected !== undefined
+              ? (selected === id || String(selected) === String(id) || (id === "default" && selected === undefined))
+              : (index === 0 && !isVideo && !isSubtitle);
             const display = getTrackDisplay(track, index);
             const preferThisFocus = isVideo
               ? isSelected
@@ -4088,6 +4259,11 @@ const S = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.3)",
+  },
+  retryBtnFocused: {
+    backgroundColor: "#ffffff",
+    borderColor: "#ffffff",
+    transform: [{ scale: 1.05 }],
   },
   retryBtnText: {
     color: "#fff",

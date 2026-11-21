@@ -23,6 +23,13 @@ export function setSafeNavigationRef(ref: NavigationContainerRefWithCurrent<any>
  * - Debounced to eliminate remote key bounce.
  */
 export function safeBack(): boolean {
+  if (typeof window !== "undefined") {
+    try {
+      window.scrollTo(0, 0);
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    } catch {}
+  }
   const now = Date.now();
   if (now - lastBackTimestamp < 250) {
     return true; // absorb hardware bounce

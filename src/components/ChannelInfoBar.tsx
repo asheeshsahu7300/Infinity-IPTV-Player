@@ -19,6 +19,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { THEME, ph, ps, pw } from "../theme/tokens";
 import { NowNext } from "../services/epgService";
 import { stbEnvironment } from "../services/stbEnvironment";
+import { isValidImageUrl } from "../services/portalApi";
 import type { Channel } from "../store/portalStore";
 import { Lock, Tv } from 'lucide-react-native';
 import { Text } from './Text';
@@ -92,8 +93,7 @@ export const ChannelInfoBar = React.memo(function ChannelInfoBar({
       {isPlayer && !isInline && (
         <LinearGradient
           colors={["transparent", "rgba(0,0,0,0.92)"]}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]}
         />
       )}
 
@@ -106,7 +106,7 @@ export const ChannelInfoBar = React.memo(function ChannelInfoBar({
           <View style={S.logoBox}>
             {locked ? (
               <Lock size={ps(2.4)} color="rgba(255,255,255,0.55)" />
-            ) : channel.logo ? (
+            ) : isValidImageUrl(channel.logo) ? (
               <Image
                 source={{ uri: channel.logo }}
                 style={S.logo}

@@ -8,7 +8,7 @@ import { BlurView } from "expo-blur";
 import * as IntentLauncher from "expo-intent-launcher";
 
 import { usePortalStore, Season, Episode, MediaMeta } from "../src/store/portalStore";
-import { portalApi } from "../src/services/portalApi";
+import { portalApi, isValidImageUrl } from "../src/services/portalApi";
 import { M3UApi } from "../src/services/m3uApi";
 import { XtreamApi } from "../src/services/xtreamApi";
 import { THEME, pw, ph, ps } from "../src/theme/tokens";
@@ -135,7 +135,7 @@ const EpisodeTile = React.memo(function EpisodeTile({
                 focused && S.posterFrameFocused,
               ]}
             >
-              {artwork ? (
+              {isValidImageUrl(artwork) ? (
                 <Image
                   source={{ uri: artwork }}
                   style={S.posterImage}
@@ -199,31 +199,33 @@ const SeasonPill = React.memo(function SeasonPill({
   onPress: () => void;
   isFocusedItem?: boolean;
 }) {
-
-
   return (
     <Focusable
+      screenKey="series-details"
+      focusKey={`season-${season.id}`}
       onPress={onPress}
       hasTVPreferredFocus={isFocusedItem}
       ringOnFocus={false}
       style={S.seasonPillWrapper}
     >
       {(focused) => (
-        <BlurView
-          intensity={isActive && !focused ? 80 : 0}
-          tint={isActive ? "light" : "dark"}
+        <View
           style={[
-            S.seasonPillBorder,
-            focused && S.seasonPillBorderFocused,
-            (focused || isActive) && { backgroundColor: "#fff" }
+            S.seasonPillInner,
+            isActive && S.seasonPillInnerActive,
+            focused && S.seasonPillInnerFocused,
           ]}
         >
-          <View style={[S.seasonPillInner, isActive && S.seasonPillInnerActive, (focused || isActive) && { backgroundColor: "transparent" }]}>
-            <Text style={[S.seasonPillText, (isActive || focused) && S.seasonPillTextActive, (isActive || focused) && { color: "#000" }]}>
-              {season.name || `Season ${season.seasonNumber}`}
-            </Text>
-          </View>
-        </BlurView>
+          <Text
+            style={[
+              S.seasonPillText,
+              isActive && S.seasonPillTextActive,
+              focused && S.seasonPillTextFocused,
+            ]}
+          >
+            {season.name || `Season ${season.seasonNumber}`}
+          </Text>
+        </View>
       )}
     </Focusable>
   );
@@ -584,7 +586,7 @@ export default function SeriesDetailsScreen() {
               image, so moving along the row updated the title, the facts and
               the plot beside it while the artwork stayed put. */}
           <View style={S.posterWrapper}>
-            {heroArtwork ? (
+            {isValidImageUrl(heroArtwork) ? (
               <Image
                 source={{ uri: heroArtwork }}
                 style={S.poster}
@@ -647,6 +649,7 @@ export default function SeriesDetailsScreen() {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            style={{ overflow: "visible" }}
             contentContainerStyle={S.seasonsList}
           >
             {seasons.map((s, i) => (
@@ -719,7 +722,7 @@ export default function SeriesDetailsScreen() {
         contentStyle={{ width: '100%', maxWidth: '100%', margin: 0, padding: 0 }}
       >
         <BlurView intensity={120} tint="dark" style={S.modalSurface}>
-          {(selectedEpisode?.still || params.logo) ? (
+          {isValidImageUrl(selectedEpisode?.still || params.logo) ? (
             <Image
               source={{ uri: selectedEpisode?.still || params.logo }}
               style={[StyleSheet.absoluteFillObject, { opacity: 0.22 }]}
@@ -734,7 +737,7 @@ export default function SeriesDetailsScreen() {
           <View style={[S.modalTVContent, S.modalBody, isPhone && { paddingBottom: 10 + insets.bottom }]}>
             {/* Poster / Episode Still thumbnail */}
             <View style={S.modalPosterWrapper}>
-              {(selectedEpisode?.still || params.logo) ? (
+              {isValidImageUrl(selectedEpisode?.still || params.logo) ? (
                 <Image
                   source={{ uri: selectedEpisode?.still || params.logo }}
                   style={S.modalPosterImg}
@@ -964,45 +967,54 @@ const S = StyleSheet.create({
   episodesSection: { paddingHorizontal: isPhone ? 0 : pw(4) },
   sectionHeader: { marginBottom: ph(2) },
   sectionTitle: { color: "#fff", fontSize: ps(1.5), fontWeight: "900", opacity: 0.9, marginBottom: ph(1.5) },
-  seasonsList: { gap: 12, paddingVertical: 10, paddingBottom: ph(2), paddingRight: pw(10) },
+  seasonsList: {
+    gap: 12,
+    paddingLeft: 8,
+    paddingRight: pw(10),
+    paddingVertical: 10,
+    paddingBottom: ph(2),
+  },
 
-  // ── Season pill: gradient acts as the border ──
+  // ── Season pill: active and focused states ──
   seasonPillWrapper: {
     borderRadius: THEME.radius.full,
     overflow: "visible",
-  },
-  seasonPillBorder: {
-    padding: 1.5,
-    borderRadius: THEME.radius.full,
-    overflow: "hidden",
-  },
-  seasonPillBorderFocused: {
-    padding: 2.5,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#fff",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 0,
-      }
-    })
+    marginHorizontal: 4,
   },
   seasonPillInner: {
-    paddingHorizontal: 28,
+    paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: THEME.radius.full,
-    backgroundColor: "#0d0d12",
+    backgroundColor: "#17181c",
+    borderWidth: 1.5,
+    borderColor: "transparent",
     justifyContent: "center",
     alignItems: "center",
   },
   seasonPillInnerActive: {
-    backgroundColor: "transparent",
+    backgroundColor: "#262832",
+    borderColor: "rgba(255, 255, 255, 0.3)",
   },
-  seasonPillText: { color: "rgba(255,255,255,0.5)", fontSize: ps(1), fontWeight: "900", letterSpacing: 0.5 },
-  seasonPillTextActive: { color: "#fff" },
+  seasonPillInnerFocused: {
+    backgroundColor: "#F5F5F5",
+    borderColor: "#FFFFFF",
+    transform: [{ scale: 1.04 }],
+    elevation: 8,
+  },
+  seasonPillText: {
+    color: "rgba(255, 255, 255, 0.65)",
+    fontSize: ps(1.05),
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  seasonPillTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+  seasonPillTextFocused: {
+    color: "#111111",
+    fontWeight: "900",
+  },
 
   listArea: { flex: 1, minHeight: ph(40), marginTop: ph(2) },
   /*
@@ -1040,16 +1052,16 @@ const S = StyleSheet.create({
   episodeCardContainerFocused: {},
   posterFrame: {
     width: "100%",
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: "hidden",
     backgroundColor: "#17181c",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "transparent",
   },
   posterFrameFocused: {
     borderColor: "#ffffff",
-    borderWidth: 1,
-    transform: [{ scale: 1.03 }],
+    borderWidth: 2,
+    transform: [{ scale: 1.025 }],
     elevation: 12,
   },
   posterImage: { width: "100%", height: "100%" },

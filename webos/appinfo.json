@@ -1,0 +1,27 @@
+{
+  "id": "com.infinity.iptvplayer",
+  "version": "1.0.0",
+  "vendor": "Infinity",
+  "type": "web",
+  "main": "index.html",
+  "title": "Infinity IPTV Player",
+  "description": "High-performance modern IPTV player for live TV, movies, and series streaming.",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "bgImage": "bgImage.png",
+  "splashBackground": "splashBackground.png",
+  "iconColor": "#000000",
+  "bgColor": "#000000",
+  "splashColor": "#000000",
+  "resolution": "1920x1080",
+  "uiRevision": 2,
+  "useHardwareAcceleration": true,
+  "disableBackHistoryAPI": true,
+  "handlesRelaunch": true,
+  "requiredPermissions": [],
+  "vendorExtensions": {
+    "userAgent": "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3"
+  },
+  "trustLevel": "default",
+  "allowCrossOrigin": true
+}

@@ -1,9 +1,15 @@
 import React, { useEffect, useRef } from "react";
-import { View, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, StyleSheet, Animated, Dimensions, Platform } from 'react-native';
 import { Text } from './Text';
 
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const winW = Dimensions.get("window").width;
+const SCREEN_WIDTH =
+  winW > 0
+    ? winW
+    : typeof window !== "undefined" && window.innerWidth > 0
+    ? window.innerWidth
+    : 1920;
 
 // ============================================================================
 // BASE SKELETON
@@ -32,12 +38,12 @@ export const Skeleton: React.FC<SkeletonProps> = ({
         Animated.timing(shimmerAnim, {
           toValue: 1,
           duration: 900,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(shimmerAnim, {
           toValue: 0,
           duration: 900,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ])
     ).start();

@@ -19,6 +19,7 @@ import type { QueueItem } from "../services/playbackQueue";
 import { CornerDownLeft, Film, Play } from 'lucide-react-native';
 import { DynamicIcon } from '../components/DynamicIcon';
 import { Text } from './Text';
+import { isValidImageUrl } from '../services/portalApi';
 
 
 export interface QueueListProps {
@@ -105,7 +106,7 @@ const QueueRow = React.memo(
               isLandscapeStill ? S.thumbLandscape : S.thumbPortrait,
               isTouch && (isLandscapeStill ? { width: 54, height: 36 } : { width: 36, height: 50 })
             ]}>
-              {item.poster ? (
+              {isValidImageUrl(item.poster) ? (
                 <Image
                   source={{ uri: item.poster }}
                   style={S.thumbImage}

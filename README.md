@@ -1,11 +1,10 @@
-
-# Infinity IPTV Player TV
+# Infinity IPTV Player
 
 <p align="center">
   <img
     width="1280"
     height="720"
-    alt="Infinity IPTV Player TV"
+    alt="Infinity IPTV Player"
     src="https://github.com/user-attachments/assets/c77437a3-b17c-43f4-8daf-b8e73fe1f1fb"
   />
 </p>
@@ -15,13 +14,30 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v1.0.0-blue.svg?style=for-the-badge" alt="Release v1.0.0" />
-  <img src="https://img.shields.io/badge/Google%20Play-Soon%20Live-brightgreen.svg?style=for-the-badge&logo=google-play&logoColor=white" alt="Google Play Soon Live" />
-  <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV-00C853.svg?style=for-the-badge&logo=android&logoColor=white" alt="Android & Android TV" />
+  <a href="https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest">
+    <img src="https://img.shields.io/badge/Release-v1.0.0-blue.svg?style=for-the-badge" alt="Release v1.0.0" />
+  </a>
+  <a href="https://play.google.com/store/apps/details?id=com.infinity.iptvplayer">
+    <img src="https://img.shields.io/badge/Google%20Play-Live%20Now-brightgreen.svg?style=for-the-badge&logo=google-play&logoColor=white" alt="Google Play Store" />
+  </a>
+  <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Android%20TV%20%7C%20webOS-00C853.svg?style=for-the-badge&logo=android&logoColor=white" alt="Android & Android TV & webOS" />
+  <a href="https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest">
+    <img src="https://img.shields.io/badge/webOS-LG%20Smart%20TV%20(.ipk)-E50914.svg?style=for-the-badge&logo=lg&logoColor=white" alt="LG webOS TV IPK" />
+  </a>
 </p>
 
 <p align="center">
-  🚀 <strong>Release 1.0.0 is officially ready — Soon live on the Google Play Store!</strong>
+  🚀 <strong>Release 1.0.0 is officially live! Available on Google Play Store, Android TV, and LG webOS Smart TVs.</strong>
+</p>
+
+<p align="center">
+  <a href="https://play.google.com/store/apps/details?id=com.infinity.iptvplayer">
+    <img
+      src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+      alt="Get it on Google Play"
+      height="80"
+    />
+  </a>
 </p>
 
 <p align="center">
@@ -32,7 +48,7 @@
 
 ## Disclaimer
 
-> **Infinity IPTV Player TV is a player application only.**
+> **Infinity IPTV Player is a player application only.**
 >
 > It does not provide, host, distribute, or include IPTV channels, streams, subscriptions, or credentials.
 >
@@ -42,22 +58,33 @@
 
 ## Overview
 
-**Infinity IPTV Player TV** is a modern IPTV/media player built with **Expo, React Native, and TypeScript**.
+**Infinity IPTV Player** is a modern IPTV/media player built with **Expo, React Native, and TypeScript**.
 
 It supports multiple IPTV playlist and portal formats while providing a consistent experience across:
 
-- Android phones
-- Tablets
-- Android TV
-- D-Pad / remote-controlled devices
+- Android phones & Tablets
+- Android TV / Google TV
+- LG webOS Smart TVs (webOS 3.5 through webOS 24)
+- D-Pad, Magic Remote, and remote-controlled devices
 
 The application is designed around a premium dark UI, fast content browsing, large media libraries, and a TV-friendly 10-foot interface.
 
-### Release & Availability
+### Release & Downloads
 
-- **Version**: `Release 1.0.0`
-- **Google Play Store**: 🟢 **Soon Live on Google Play Store!** The production release has been compiled, packaged, and submitted for review. Direct install links will be added immediately upon store publication.
-- **Supported Formats**: Android Mobile (APK), Tablets, Android TV, and Google TV.
+<p align="center">
+  <a href="https://play.google.com/store/apps/details?id=com.infinity.iptvplayer">
+    <img
+      src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+      alt="Get it on Google Play"
+      height="75"
+    />
+  </a>
+</p>
+
+- **Google Play Store**: [**Get it on Google Play**](https://play.google.com/store/apps/details?id=com.infinity.iptvplayer) (Official Android Mobile, Tablet & Android TV / Google TV)
+- **Latest Release**: [**v1.0.0 on GitHub Releases**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0)
+- **LG webOS Smart TV**: Download the installable [**`com.infinity.iptvplayer_1.0.0.ipk`**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.0/com.infinity.iptvplayer_1.0.0.ipk)
+- **Android / Android TV APK**: [**Download Universal APK (v1.0.0)**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.0/Infinity-IPTV-Player-v1.0.0-universal.apk) | [**View all release APKs**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0)
 
 ---
 
@@ -100,6 +127,19 @@ Designed specifically for the Android TV 10-foot experience.
 - High-contrast active states
 - Large TV-friendly UI elements
 - Leanback launcher support
+
+---
+
+### LG webOS Smart TV Optimized
+
+Built with native support for LG Smart TVs (webOS 3.5 through webOS 24).
+
+- **LG Magic Remote Air-Mouse**: Native hover pointer support with smooth card highlight states
+- **2D Spatial Navigation**: Vector-based directional focus transitions across grids and sidebars
+- **Remote Key Mapping**: Comprehensive support for webOS Back button (key code `461`), Play/Pause, Fast-Forward, Rewind, and Channel keys
+- **Hardware-Accelerated Playback**: Direct webOS hardware video pipeline (`video/mp2t`, H.264, HEVC) with `mpegts.js` and `HLS.js` fallbacks
+- **Universal Audio Decoding**: Automatic webOS audio track activation for AAC, MP3, and multi-track streams
+- **Single-File IPK Distribution**: Automated packaging into standalone `.ipk` for sideloading or webOS Dev Manager installation
 
 ---
 
@@ -168,7 +208,7 @@ The interface is designed around a premium streaming experience.
 
 | Splash Screen | Dashboard | Portal Options |
 |:---:|:---:|:---:|
-| <img width="300" alt="Infinity IPTV Player TV Splash Screen" src="https://github.com/user-attachments/assets/b5b7d547-138c-4d8d-9704-9612c7d132d1"> | <img width="300" alt="Infinity IPTV Player TV Dashboard" src="https://github.com/user-attachments/assets/8ad857b5-70b4-413c-b127-c2cb0b579fde"> | <img width="300" alt="Infinity IPTV Player TV Add Portal" src="https://github.com/user-attachments/assets/fab05763-b7ad-44fd-a1f0-5ddd4ffb2c5f"> |
+| <img width="300" alt="Infinity IPTV Player Splash Screen" src="https://github.com/user-attachments/assets/b5b7d547-138c-4d8d-9704-9612c7d132d1"> | <img width="300" alt="Infinity IPTV Player Dashboard" src="https://github.com/user-attachments/assets/8ad857b5-70b4-413c-b127-c2cb0b579fde"> | <img width="300" alt="Infinity IPTV Player Add Portal" src="https://github.com/user-attachments/assets/fab05763-b7ad-44fd-a1f0-5ddd4ffb2c5f"> |
 
 ---
 
@@ -178,7 +218,7 @@ The interface is designed around a premium streaming experience.
 
 <img
   width="1280"
-  alt="Infinity IPTV Player TV Android TV Splash Screen"
+  alt="Infinity IPTV Player Android TV Splash Screen"
   src="https://github.com/user-attachments/assets/e858646d-c480-490e-9be2-5a5fd3a528bb"
 />
 
@@ -186,7 +226,7 @@ The interface is designed around a premium streaming experience.
 
 <img
   width="1280"
-  alt="Infinity IPTV Player TV Android TV Dashboard"
+  alt="Infinity IPTV Player Android TV Dashboard"
   src="https://github.com/user-attachments/assets/3db99589-24b0-4b8c-a545-60f2ee780c99"
 />
 
@@ -194,7 +234,7 @@ The interface is designed around a premium streaming experience.
 
 <img
   width="1280"
-  alt="Infinity IPTV Player TV Android TV Add Portal"
+  alt="Infinity IPTV Player Android TV Add Portal"
   src="https://github.com/user-attachments/assets/d2c844f8-bad9-4d3e-a1be-c717917e2e5d"
 />
 
@@ -204,17 +244,19 @@ The interface is designed around a premium streaming experience.
 
 | Category | Technology |
 |---|---|
-| Framework | Expo |
+| Framework | Expo / React Native for Web |
 | UI | React Native |
 | Language | TypeScript |
-| Navigation | Expo Router |
+| Navigation | Expo Router (File-based & Hash Routing on webOS) |
 | State Management | Zustand |
 | Networking | Axios |
-| IPTV APIs | M3U, Xtream Codes, MAG/Stalker |
-| Lists | FlashList / FlatList |
-| Video | Expo Video |
-| TV Navigation | Custom D-Pad Focus Engine |
-| Platform | Android / Android TV |
+| IPTV APIs | M3U, Xtream Codes, MAG / Stalker |
+| Virtualized Lists | FlashList / FlatList |
+| Video Engines | Expo Video (Android) / HTML5 Video, `mpegts.js`, `HLS.js`, Shaka Player (webOS) |
+| TV Navigation | Custom D-Pad Focus Engine (Android TV) & 2D Spatial Navigation (webOS) |
+| TV Packaging | Gradle (Android APK) & `@webosose/ares-cli` (webOS IPK) |
+| webOS TV SDK | Official `webOSTV.js` & `webOSTV-dev.js` |
+| Platforms | Android Phone, Tablet, Android TV, Google TV, LG webOS Smart TV |
 
 ---
 
@@ -235,25 +277,36 @@ The interface is designed around a premium streaming experience.
 │   └── settings.tsx              # Application settings
 │
 ├── src/
-│   ├── components/              # Reusable UI components
-│   ├── services/                # IPTV API clients
-│   │   ├── m3u/
-│   │   ├── xtream/
-│   │   └── stalker/
-│   ├── store/                   # Zustand stores
-│   ├── theme/                   # Design system & tokens
-│   ├── tv/                      # Android TV focus engine
-│   │   ├── Focusable/
-│   │   └── FocusGroup/
-│   └── utils/                   # Device & utility helpers
+│   ├── components/              # Reusable UI components & video players
+│   ├── services/                # IPTV API clients (M3U, Xtream, MAG) & StreamManager
+│   ├── store/                   # Zustand state stores
+│   ├── theme/                   # Design system & responsive TV tokens
+│   ├── tv/                      # Android TV focus engine & webOS Spatial Navigation
+│   │   ├── Focusable.tsx
+│   │   ├── FocusGroup.tsx
+│   │   └── webSpatialNavigation.ts
+│   └── utils/                   # Device helpers & webOS utilities (webosUtils.ts)
 │
-├── assets/                      # Images, icons & splash assets
-├── android/                     # Native Android configuration
+├── webos/                       # LG webOS TV package definitions & assets
+│   ├── appinfo.json             # webOS app descriptor & permissions
+│   ├── icon.png                 # 80x80 app tile icon
+│   ├── largeIcon.png            # 130x130 large app icon
+│   ├── bgImage.png              # 1920x1080 background image
+│   └── splashBackground.png     # 1920x1080 splash screen
+│
+├── scripts/
+│   └── build-webos.js           # Automated webOS packaging & IPK generator
+│
+├── docs/
+│   └── WEBOS_GUIDE.md           # LG webOS TV developer & sideloading guide
+│
+├── release-webos/               # Generated .ipk releases (com.infinity.iptvplayer_1.0.0_all.ipk)
+├── assets/                      # Shared images, fonts & splash assets
+├── android/                     # Native Android project configuration
 ├── app.json
-├── eas.json
 ├── package.json
 └── README.md
-````
+```
 
 ---
 
@@ -310,22 +363,43 @@ bun install
 
 # Development
 
+### Android & Android TV
+
 Start the Expo development server:
 
 ```bash
 npx expo start
 ```
 
-Run on Android:
+Run on Android (Emulator or physical device):
 
 ```bash
 npx expo start --android
 ```
 
-For a development build:
+For an Android native development build:
 
 ```bash
 npx expo run:android
+```
+
+### LG webOS TV & Web
+
+Run the application locally in the browser with spatial navigation & webOS polyfills:
+
+```bash
+npm run web
+```
+
+Build the webOS package and run in the LG webOS TV Simulator:
+
+```bash
+# 1. Package the .ipk
+npm run build:webos
+
+# 2. Launch in webOS Simulator or on TV
+ares-install --device <device-name> release-webos/com.infinity.iptvplayer_1.0.0_all.ipk
+ares-launch --device <device-name> com.infinity.iptvplayer
 ```
 
 ---
@@ -371,9 +445,73 @@ npx eas build --platform android --profile production
 
 ---
 
+## LG webOS Smart TV (`.ipk`)
+
+### 1. Build & Package IPK Locally
+
+Make sure the official LG webOS TV CLI is installed:
+
+```bash
+npm install -g @webosose/ares-cli
+```
+
+Generate the optimized webOS build and `.ipk` package:
+
+```bash
+npm run build:webos
+```
+
+*(Or with Yarn: `yarn build:webos`)*
+
+The generated `.ipk` package will be available in:
+
+```text
+release-webos/com.infinity.iptvplayer_1.0.0.ipk
+```
+
+> **Note**: You can also download the pre-built [**`com.infinity.iptvplayer_1.0.0.ipk`**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.0/com.infinity.iptvplayer_1.0.0.ipk) directly from [GitHub Releases v1.0.0](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0).
+
+---
+
+### 2. Sideload / Install IPK on LG Smart TV
+
+There are three easy ways to install the `.ipk` on your LG webOS TV:
+
+#### Method A: webOS Dev Manager (Recommended — GUI for Windows / Mac / Linux)
+
+1. Download and install [**webOS Dev Manager**](https://github.com/webosbrew/dev-manager/releases).
+2. On your LG TV, install and launch the **Developer Mode** app from the LG Content Store.
+3. Turn **Dev Mode ON** and **Key Server ON**.
+4. In webOS Dev Manager on your computer, click **Add Device**, enter the TV IP address and the 6-character passphrase shown on your TV screen.
+5. Click **Install IPK**, select `com.infinity.iptvplayer_1.0.0_all.ipk`, and the app will install on your TV!
+
+#### Method B: LG webOS CLI (`ares-cli`)
+
+1. Register your TV with the CLI:
+   ```bash
+   ares-setup-device
+   ```
+2. Fetch the authentication key (enter the 6-character passphrase from the TV screen):
+   ```bash
+   ares-novacom --device <device-name> --getkey
+   ```
+3. Install and launch the application:
+   ```bash
+   ares-install --device <device-name> release-webos/com.infinity.iptvplayer_1.0.0_all.ipk
+   ares-launch --device <device-name> com.infinity.iptvplayer
+   ```
+
+#### Method C: Homebrew Channel (webOS Brew for Rooted TVs)
+
+If your LG TV is rooted with the [Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel):
+1. Open the Homebrew Channel app on your TV.
+2. Transfer or upload `com.infinity.iptvplayer_1.0.0_all.ipk` via web browser or Dev Manager without needing Developer Mode timers.
+
+---
+
 # Portal Configuration
 
-Infinity IPTV Player TV supports three main connection methods.
+Infinity IPTV Player supports three main connection methods.
 
 ## M3U / M3U8
 
@@ -426,7 +564,7 @@ MAC: 00:1A:79:XX:XX:XX
 
 # Android TV Experience
 
-Infinity IPTV Player TV is designed around the Android TV 10-foot UI experience.
+Infinity IPTV Player is designed around the Android TV 10-foot UI experience.
 
 ## D-Pad Navigation
 
@@ -476,12 +614,35 @@ This makes the interface easy to use from a distance with a standard TV remote.
 
 ---
 
+# LG webOS TV Experience
+
+Infinity IPTV Player provides first-class support for LG Smart TVs running webOS 3.5 through webOS 24.
+
+## Magic Remote & Spatial Navigation
+
+```text
+       Magic Remote                 D-Pad & Media Keys
+    ┌────────────────┐              ┌────────────────┐
+    │  Air Pointer   │              │  Arrow Keys    │
+    │  Wheel Click   │              │  Enter / OK    │
+    │  Back (461)    │              │  Play / Pause  │
+    └────────────────┘              └────────────────┘
+```
+
+- **Magic Remote Air-Mouse**: Point-and-click navigation with automatic hover card expansions and focus rings.
+- **2D Spatial Navigation**: D-Pad navigation moves between cards and menus based on Euclidean vector geometry without requiring Tab orders.
+- **Back Button**: Dedicated mapping for key code `461` gracefully dismisses modals, exits full-screen playback, or returns to previous dashboards.
+- **Media Keys**: Native response to physical Play (`415`), Pause (`19`), Fast-Forward (`417`), Rewind (`412`), and Channel Up/Down (`33`/`34`).
+- **Complete Developer Guide**: For detailed webOS remote architecture, video pipeline, and debugging, see [**docs/WEBOS_GUIDE.md**](docs/WEBOS_GUIDE.md).
+
+---
+
 # Architecture
 
 The application separates the IPTV providers from the UI layer.
 
 ```text
-                    Infinity IPTV Player TV
+                    Infinity IPTV Player
                             │
              ┌──────────────┼──────────────┐
              │              │              │
@@ -501,11 +662,12 @@ The application separates the IPTV providers from the UI layer.
                             │
                      React Native UI
                             │
-             ┌──────────────┴──────────────┐
-             │                             │
-          Mobile                      Android TV
-             │                             │
-        Touch UI                      D-Pad UI
+             ┌──────────────┼──────────────┐
+             │              │              │
+          Mobile        Android TV      LG webOS
+             │              │              │
+         Touch UI        D-Pad UI     Magic Remote &
+                                       Spatial Nav
 ```
 
 ---
@@ -608,7 +770,7 @@ Contributions, bug reports, and feature requests are welcome! For complete devel
 
 # Privacy & Content Responsibility
 
-Infinity IPTV Player TV does not provide IPTV content.
+Infinity IPTV Player does not provide IPTV content.
 
 The application does not:
 
@@ -626,8 +788,29 @@ Always ensure that your IPTV provider and content are legally authorized in your
 
 # Changelog
 
-### Release 1.0.0 (Production App Release — Soon Live on Google Play Store)
-- **Official Google Play Store Release**: Production build compiled and packaged for Google Play Store review across Android Mobile, Tablet, and Android TV devices.
+### [webOS Experimental (LG Smart TV Compatibility)](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0)
+- **LG webOS TV Package Pipeline**: Automated packaging generating official `com.infinity.iptvplayer_1.0.0.ipk` via `npm run build:webos`.
+- **Direct IPK Download**: Download [**`com.infinity.iptvplayer_1.0.0.ipk`**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.0/com.infinity.iptvplayer_1.0.0.ipk) directly from GitHub Releases.
+- **Branch & Codebase**: Maintained on the [**webos-experimental branch**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/tree/webos-experimental).
+- **Magic Remote Air-Pointer & D-Pad Integration**: Full spatial 2D navigation engine (`webSpatialNavigation.ts`) with Magic Remote hover highlight support.
+- **webOS Back Button & Media Control**: Polyfilled React Native `BackHandler` on Web catching webOS remote Back (key code `461`), Play/Pause, Fast-Forward, Rewind, Channel Up/Down, and color keys.
+- **Hardware-Accelerated Video Pipeline**: Native webOS HLS streaming with dual-mode `HLS.js` fallback for standard browsers.
+- **Developer Guide**: Comprehensive LG webOS deployment and testing documentation in [WEBOS_GUIDE.md](docs/WEBOS_GUIDE.md).
+
+### [Release 1.0.0 (Production App Release — Live on Google Play Store)](https://play.google.com/store/apps/details?id=com.infinity.iptvplayer)
+
+<p align="left">
+  <a href="https://play.google.com/store/apps/details?id=com.infinity.iptvplayer">
+    <img
+      src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+      alt="Get it on Google Play"
+      height="60"
+    />
+  </a>
+</p>
+
+- **Official Google Play Store Release**: Production build is officially live! Install directly on Android phones, tablets, and Android TV / Google TV devices from the [**Google Play Store**](https://play.google.com/store/apps/details?id=com.infinity.iptvplayer).
+- **GitHub Release & Assets**: Download standalone APKs and IPK packages from [**GitHub Releases v1.0.0**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0).
 - **Universal Multi-Portal Engine**: Native integration for M3U / M3U8 playlists, Xtream Codes API, and MAG / Stalker Portal APIs with unified category and EPG navigation.
 - **Cinematic Dark UI & 10-Foot TV Experience**: Responsive layouts with D-Pad focus engine, glow highlights, and remote-control navigation tailored for Android TV and Google TV.
 - **Resilient Media Playback**: High-performance streaming pipeline with hardware video decoding (AVC, HEVC, VP9) and robust audio safety guards for Qualcomm ACDB and MediaTek chipsets.
@@ -644,7 +827,7 @@ Please ensure that your use of third-party IPTV services complies with applicabl
 
 # Disclaimer
 
-**Infinity IPTV Player TV is a media player, not an IPTV content provider.**
+**Infinity IPTV Player is a media player, not an IPTV content provider.**
 
 The developers do not provide, host, control, or distribute third-party IPTV content.
 
@@ -659,7 +842,7 @@ The developers are not responsible for content accessed through third-party serv
 </p>
 
 <p align="center">
-  <strong>Infinity IPTV Player TV</strong>
+  <strong>Infinity IPTV Player</strong>
   <br />
   Your Player. Your Content. Your Choice.
 </p>
