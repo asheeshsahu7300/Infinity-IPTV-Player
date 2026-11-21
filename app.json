@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.infinity.iptvplayer",
-      "versionCode": 17,
+      "versionCode": 18,
       "edgeToEdgeEnabled": true,
       "largeHeap": true,
       "adaptiveIcon": {
