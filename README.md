@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/latest">
-    <img src="https://img.shields.io/badge/Release-v1.0.0-blue.svg?style=for-the-badge" alt="Release v1.0.0" />
+    <img src="https://img.shields.io/badge/Release-v1.0.1-blue.svg?style=for-the-badge" alt="Release v1.0.1" />
   </a>
   <a href="https://play.google.com/store/apps/details?id=com.infinity.iptvplayer">
     <img src="https://img.shields.io/badge/Google%20Play-Live%20Now-brightgreen.svg?style=for-the-badge&logo=google-play&logoColor=white" alt="Google Play Store" />
@@ -27,7 +27,7 @@
 </p>
 
 <p align="center">
-  🚀 <strong>Release 1.0.0 is officially live! Available on Google Play Store, Android TV, and LG webOS Smart TVs.</strong>
+  🚀 <strong>Release 1.0.1 is live! Features merged LG webOS Smart TV compatibility, Android 15 & 16 policy optimizations, and official signed production bundles.</strong>
 </p>
 
 <p align="center">
@@ -82,9 +82,10 @@ The application is designed around a premium dark UI, fast content browsing, lar
 </p>
 
 - **Google Play Store**: [**Get it on Google Play**](https://play.google.com/store/apps/details?id=com.infinity.iptvplayer) (Official Android Mobile, Tablet & Android TV / Google TV)
-- **Latest Release**: [**v1.0.0 on GitHub Releases**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0)
-- **LG webOS Smart TV**: Download the installable [**`com.infinity.iptvplayer_1.0.0.ipk`**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.0/com.infinity.iptvplayer_1.0.0.ipk)
-- **Android / Android TV APK**: [**Download Universal APK (v1.0.0)**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.0/Infinity-IPTV-Player-v1.0.0-universal.apk) | [**View all release APKs**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.0)
+- **Latest Release**: [**v1.0.1 on GitHub Releases**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.1)
+- **LG webOS Smart TV**: Download the installable [**`com.infinity.iptvplayer_1.0.1.ipk`**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.1/com.infinity.iptvplayer_1.0.1.ipk)
+- **Android / Android TV Signed APK**: [**Download APK (v1.0.1)**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.1/Infinity-IPTV-Player-v1.0.1.apk)
+- **Google Play App Bundle**: [**Download Signed AAB (v1.0.1)**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/download/v1.0.1/Infinity-IPTV-Player-v1.0.1.aab) | [**View all release assets**](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.1)
 
 ---
 
@@ -796,6 +797,15 @@ Always ensure that your IPTV provider and content are legally authorized in your
 - **webOS Back Button & Media Control**: Polyfilled React Native `BackHandler` on Web catching webOS remote Back (key code `461`), Play/Pause, Fast-Forward, Rewind, Channel Up/Down, and color keys.
 - **Hardware-Accelerated Video Pipeline**: Native webOS HLS streaming with dual-mode `HLS.js` fallback for standard browsers.
 - **Developer Guide**: Comprehensive LG webOS deployment and testing documentation in [WEBOS_GUIDE.md](docs/WEBOS_GUIDE.md).
+
+### [Release 1.0.1 (Production App Release — Android 15/16 Compliance & Merged webOS Support)](https://github.com/asheeshsahu7300/Infinity-IPTV-Player/releases/tag/v1.0.1)
+
+- **Official Google Play Store Updates**: Bumped `versionCode` to **`17`** and `versionName` to **`1.0.1`**.
+- **Merged LG webOS Smart TV Engine**: Unified webOS TV build pipeline, Magic Remote air-pointer, spatial 2D navigation, and direct hardware media pipeline.
+- **Android 15 Edge-to-Edge Compliance**: Migrated status bar / navigation bar controls to modern AndroidX `WindowInsetsControllerCompat`, set transparent window bars, and replaced deprecated cutout modes with `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS`.
+- **R8 DEX Code Optimization & Obfuscation**: Enabled release R8 minification and resource shrinking with comprehensive ProGuard keep rules, exceeding Play Console's 25% obfuscation threshold.
+- **Android 16 Large Screen & Foldables Compliance**: Overrode ML Kit barcode scanner orientation, guarded multi-window mode, and added resizability compatibility properties.
+- **Signed Release Assets**: Generated production-signed APK and Google Play App Bundle (AAB) with release credentials.
 
 ### [Release 1.0.0 (Production App Release — Live on Google Play Store)](https://play.google.com/store/apps/details?id=com.infinity.iptvplayer)
 

@@ -49,5 +49,7 @@ app-example
 /credentials.json
 /credentials/android/keystore.jks
 /android/app/release/
+/releases/
 *.apk
+*.aab
 upload_certificate.pem
